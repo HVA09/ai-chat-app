@@ -1,0 +1,26 @@
+Commercial Source License (Template Use)
+
+Copyright (c) 2026 The Seller
+
+1. Grant of License
+Upon purchase from the original seller (e.g. via Gumroad), you receive a non-exclusive,
+non-transferable license to use this source code to build and operate your own applications,
+including commercial projects for yourself or your clients.
+
+2. Allowed
+- Use in unlimited personal or commercial end-products you build
+- Modify the code for your needs
+- Deploy to your own servers or your clients' servers
+
+3. Not Allowed
+- Resell, redistribute, or share this template as a competing starter kit, boilerplate,
+  or digital product (on Gumroad, CodeCanyon, GitHub public mirrors, etc.)
+- Publish the full source as open source without written permission
+- Share your purchase download with others (one license per buyer / company)
+
+4. No Warranty
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. The seller is not liable
+for damages arising from use, deployment, or third-party API costs (OpenAI, Stripe, etc.).
+
+5. Support
+Support is only included if your purchase tier explicitly includes it, for the stated period.
