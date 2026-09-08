@@ -36,10 +36,8 @@ def _set_session_cookies(response: Response, access_token: str, refresh_token: s
 
 
 def _token_response(access_token: str, refresh_token: str) -> Token:
-    """Return tokens only to the isolated test environment; production uses HttpOnly cookies."""
-    if settings.ENVIRONMENT == "test":
-        return Token(access_token=access_token, refresh_token=refresh_token)
-    return Token(access_token="", refresh_token="")
+    """Never expose authentication tokens in the JSON response; use HttpOnly cookies."""
+    return Token(access_token=None, refresh_token=None)
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
@@ -101,6 +99,7 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
         raise HTTPException(status_code=503, detail="خدمة الجلسات غير متاحة مؤقتًا")
     access_token = create_access_token(user.id, user.token_version)
     _set_session_cookies(response, access_token, refresh_token)
+    log_event(db, "login", f"تسجيل دخول ناجح: {user.email}", user.id)
     return _token_response(access_token, refresh_token)
 
 
@@ -165,9 +164,7 @@ def request_email_verification(current_user: User = Depends(get_current_user)):
 def confirm_email_verification(payload: EmailVerificationConfirm, db: Session = Depends(get_db)):
     invalid = HTTPException(status_code=400, detail="رابط التأكيد غير صالح أو منتهي")
     try:
-        data = decode_token(payload.token)
-        if data.get("type") != "email_verify":
-            raise ValueError
+        data = decode_token(payload.token, expected_type="email_verify")
         user_id = int(data.get("sub"))
         jti = data.get("jti")
         if not jti or not consume_email_verification_token(jti):
@@ -199,9 +196,7 @@ def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(
 def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
     invalid = HTTPException(status_code=400, detail="رابط الاستعادة غير صالح أو منتهي")
     try:
-        data = decode_token(payload.token)
-        if data.get("type") != "password_reset":
-            raise ValueError
+        data = decode_token(payload.token, expected_type="password_reset")
         user_id = int(data.get("sub"))
         jti = data.get("jti")
         if not jti or not consume_password_reset_token(jti):
