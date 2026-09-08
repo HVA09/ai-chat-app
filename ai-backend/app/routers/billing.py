@@ -1,7 +1,10 @@
 """
 مسارات الاشتراكات والدفع: عرض الخطط، بدء الدفع، إلغاء الاشتراك، واستقبال webhooks
 """
+import hashlib
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.audit import log_event
@@ -13,6 +16,7 @@ from app.logging_config import get_logger
 from app.models.plan import Plan
 from app.models.subscription import Subscription, SubscriptionStatus
 from app.models.user import User
+from app.models.webhook_event import WebhookEvent
 from app.notifications import notify_realtime
 from app.schemas.billing import CheckoutRequest, CheckoutResponse, PlanOut, SubscriptionOut
 from app.services.email_service import send_subscription_activated_email, send_subscription_canceled_email
@@ -155,7 +159,7 @@ async def _apply_webhook_event(event, provider_name: str, db: Session) -> None:
             try:
                 subscription.status = SubscriptionStatus(event.status)
             except ValueError:
-                pass  # حالة غير معروفة من المزوّد — نتجاهلها بدل ما نفشل الـ webhook كامل
+                pass
             db.commit()
             log_event(
                 db,
@@ -176,32 +180,51 @@ async def _apply_webhook_event(event, provider_name: str, db: Session) -> None:
                     )
 
 
+async def _verify_and_record_webhook(
+    request: Request, db: Session, provider_name: str, verifier
+):
+    payload = await request.body()
+    event = verifier(payload, dict(request.headers))
+    event_hash = hashlib.sha256(payload).hexdigest()
+    db.add(WebhookEvent(provider=provider_name, event_hash=event_hash))
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        return None
+    return event
+
+
 @router.post("/webhook/stripe", include_in_schema=False)
 async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
-    payload = await request.body()
     provider = get_payment_provider()
     try:
-        event = provider.verify_webhook(payload, dict(request.headers))
+        event = await _verify_and_record_webhook(request, db, "stripe", provider.verify_webhook)
     except Exception as exc:
+        db.rollback()
         logger.warning("توقيع Stripe webhook غير صالح: %s", exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="توقيع غير صالح")
 
+    if event is None:
+        return {"received": True, "duplicate": True}
     await _apply_webhook_event(event, "stripe", db)
     return {"received": True}
 
 
 @router.post("/webhook/paypal", include_in_schema=False)
 async def paypal_webhook(request: Request, db: Session = Depends(get_db)):
-    payload = await request.body()
     provider = get_payment_provider()
     if not isinstance(provider, PayPalProvider):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PayPal غير مفعّل")
 
     try:
-        event = await provider.verify_webhook_async(payload, dict(request.headers))
+        event = await _verify_and_record_webhook(request, db, "paypal", provider.verify_webhook_async)
     except Exception as exc:
+        db.rollback()
         logger.warning("توقيع PayPal webhook غير صالح: %s", exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="توقيع غير صالح")
 
+    if event is None:
+        return {"received": True, "duplicate": True}
     await _apply_webhook_event(event, "paypal", db)
     return {"received": True}
