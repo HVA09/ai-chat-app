@@ -26,7 +26,6 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
     Base.metadata.create_all(bind=engine)
-    # create_all لا يشغّل بيانات Alembic — نزرع الخطط الافتراضية للاختبارات
     from app.models.plan import Plan
     session = TestingSessionLocal()
     try:
@@ -60,10 +59,6 @@ def setup_test_db():
 
 @pytest.fixture()
 def db_session():
-    """
-    كل اختبار يشتغل داخل transaction خارجي + SAVEPOINT داخلي، ويُلغى الاثنان (rollback)
-    بعد انتهائه — عزل كامل بين الاختبارات.
-    """
     connection = engine.connect()
     outer_transaction = connection.begin()
     session = TestingSessionLocal(bind=connection)
@@ -89,6 +84,7 @@ def reset_test_security_state(monkeypatch):
     from app.middleware import _hits
 
     monkeypatch.setattr(app_settings, "ENVIRONMENT", "test")
+    monkeypatch.setattr(app_settings, "INITIAL_ADMIN_EMAIL", None)
     _hits.clear()
     yield
     _hits.clear()
