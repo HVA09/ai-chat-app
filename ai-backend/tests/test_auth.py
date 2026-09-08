@@ -102,8 +102,9 @@ def test_refresh_requires_cookie_not_body(client):
         "/auth/login", json={"email": "cookie@example.com", "password": "StrongPass123"}
     )
     refresh_token = login_response.json()["refresh_token"]
+    client.cookies.clear()
     response = client.post("/auth/refresh", json={"refresh_token": refresh_token})
-    assert response.status_code in (401, 422)
+    assert response.status_code == 401
 
 
 def test_login_rejects_inactive_user(client, db_session):
