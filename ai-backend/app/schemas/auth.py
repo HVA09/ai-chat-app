@@ -47,6 +47,11 @@ class PasswordResetConfirm(BaseModel):
         return validate_strong_password(v)
 
 
+class TwoFactorSetupRequest(BaseModel):
+    # Required only when replacing an already-enabled 2FA secret.
+    totp_code: str | None = Field(default=None, min_length=6, max_length=6)
+
+
 class TwoFactorSetupResponse(BaseModel):
     secret: str
     qr_code_base64: str
