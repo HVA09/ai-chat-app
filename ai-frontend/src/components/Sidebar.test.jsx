@@ -3,6 +3,20 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import Sidebar from "./Sidebar";
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key) => ({
+      appName: "مساعد الذكاء الاصطناعي",
+      newChat: "محادثة جديدة",
+      noChats: "لا توجد محادثات بعد",
+      "sidebar.renamePrompt": "اسم المحادثة الجديد:",
+      "sidebar.renameTitle": "إعادة تسمية",
+      "sidebar.deleteTitle": "حذف",
+      "sidebar.confirmDelete": "حذف المحادثة؟",
+    })[key] ?? key,
+  }),
+}));
+
 const sampleConversations = [
   { id: 1, title: "محادثة أولى", created_at: "2026-07-01T10:00:00Z" },
   { id: 2, title: "محادثة ثانية", created_at: "2026-07-02T10:00:00Z" },
