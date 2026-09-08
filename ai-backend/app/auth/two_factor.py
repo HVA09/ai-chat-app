@@ -15,7 +15,7 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
-from app.schemas.auth import TwoFactorCodeRequest, TwoFactorSetupResponse
+from app.schemas.auth import TwoFactorCodeRequest, TwoFactorSetupRequest, TwoFactorSetupResponse
 
 router = APIRouter(prefix="/auth/2fa", tags=["Two-Factor Authentication"])
 
@@ -38,14 +38,13 @@ def _totp(user: User) -> pyotp.TOTP:
 
 @router.post("/setup", response_model=TwoFactorSetupResponse)
 def setup_two_factor(
+    payload: TwoFactorSetupRequest,
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     # إذا كان 2FA مفعّلًا، لا تسمح لجلسة مسروقة بإعادة استبدال السر بدون العامل الثاني.
     if current_user.is_2fa_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="أدخل رمز 2FA الحالي قبل إعادة إعداد التحقق الثنائي",
-        )
+        if not payload.totp_code or not _totp(current_user).verify(payload.totp_code, valid_window=1):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="رمز 2FA الحالي غير صحيح")
 
     secret = pyotp.random_base32()
     current_user.totp_secret = encrypt_totp_secret(secret)
