@@ -20,27 +20,28 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def _create_token(subject: str, expires_delta: timedelta, token_type: str, jti: str | None = None) -> str:
+def _create_token(subject: str, expires_delta: timedelta, token_type: str, jti: str | None = None, token_version: int = 0) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": subject,
         "type": token_type,
         "iat": now,
         "exp": now + expires_delta,
+        "ver": token_version,
         **({"jti": jti} if jti else {}),
     }
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-def create_access_token(user_id: int) -> str:
+def create_access_token(user_id: int, token_version: int = 0) -> str:
     return _create_token(
-        str(user_id), timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES), "access"
+        str(user_id), timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES), "access", token_version=token_version
     )
 
 
-def create_refresh_token(user_id: int) -> str:
+def create_refresh_token(user_id: int, token_version: int = 0) -> str:
     return _create_token(
-        str(user_id), timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS), "refresh", uuid.uuid4().hex
+        str(user_id), timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS), "refresh", uuid.uuid4().hex, token_version
     )
 
 
