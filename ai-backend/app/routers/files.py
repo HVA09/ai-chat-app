@@ -5,6 +5,7 @@
 import uuid
 from pathlib import Path
 import tempfile
+import zipfile
 from sqlalchemy import func
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
@@ -27,21 +28,20 @@ ALLOWED_CONTENT_TYPES = {
     "image/gif",
     "image/webp",
     "application/pdf",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "text/csv",
-    "application/vnd.ms-excel",  # بعض المتصفحات ترسل CSV/XLS بهذا النوع
+    "application/vnd.ms-excel",
 }
 
-# توقيعات بسيطة (magic bytes) — لا نعتمد على Content-Type القادم من العميل وحده
 _MAGIC_PREFIXES: list[tuple[bytes, str]] = [
     (b"\xFF\xD8\xFF", "image/jpeg"),
     (b"\x89PNG\r\n\x1a\n", "image/png"),
     (b"GIF87a", "image/gif"),
     (b"GIF89a", "image/gif"),
-    (b"RIFF", "image/webp"),  # يحتاج فحص أعمق لاحقًا؛ WEBP داخل RIFF
+    (b"RIFF", "image/webp"),
     (b"%PDF", "application/pdf"),
-    (b"PK\x03\x04", "application/zip"),  # docx/xlsx = zip
+    (b"PK\x03\x04", "application/zip"),
 ]
 
 
@@ -52,7 +52,6 @@ def _sniff_content_type(data: bytes, claimed: str | None) -> str | None:
     for prefix, mime in _MAGIC_PREFIXES:
         if data.startswith(prefix):
             if mime == "application/zip":
-                # docx / xlsx فقط من عائلة Office المفتوحة
                 if claimed in {
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -64,7 +63,6 @@ def _sniff_content_type(data: bytes, claimed: str | None) -> str | None:
                     return "image/webp"
                 continue
             return mime
-    # CSV نصي — نقبله فقط لو ادّعى العميل text/csv أو excel القديم
     if claimed in {"text/csv", "application/vnd.ms-excel"}:
         sample = data[:2048]
         if b"\x00" in sample:
@@ -80,6 +78,28 @@ def _sniff_content_type(data: bytes, claimed: str | None) -> str | None:
                 return None
     return None
 
+
+def _validate_office_archive(path: Path, max_uncompressed: int) -> None:
+    """Basic ZIP-bomb defense for DOCX/XLSX containers without extracting them."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            infos = archive.infolist()
+            if len(infos) > 1000:
+                raise HTTPException(status_code=415, detail="ملف Office يحتوي عددًا غير طبيعي من العناصر")
+
+            total_uncompressed = 0
+            for info in infos:
+                if info.filename.startswith("/") or ".." in Path(info.filename).parts:
+                    raise HTTPException(status_code=415, detail="مسار داخل ملف Office غير صالح")
+                if info.file_size > max_uncompressed:
+                    raise HTTPException(status_code=415, detail="عنصر داخل ملف Office أكبر من الحد المسموح")
+                total_uncompressed += info.file_size
+                if total_uncompressed > max_uncompressed:
+                    raise HTTPException(status_code=415, detail="الحجم غير المضغوط لملف Office كبير جدًا")
+                if info.compress_size and info.file_size / info.compress_size > 100:
+                    raise HTTPException(status_code=415, detail="نسبة ضغط غير طبيعية في ملف Office")
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(status_code=415, detail="ملف Office تالف أو ليس ZIP صالحًا") from exc
 
 
 def _user_upload_dir(user_id: int) -> Path:
@@ -118,6 +138,7 @@ async def upload_file(
     temp_path = None
     total = 0
     header = bytearray()
+    sniffed = None
     try:
         with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".upload-", delete=False) as tmp:
             temp_path = Path(tmp.name)
@@ -137,6 +158,12 @@ async def upload_file(
         sniffed = _sniff_content_type(bytes(header), file.content_type)
         if sniffed is None or sniffed not in ALLOWED_CONTENT_TYPES:
             raise HTTPException(status_code=415, detail="نوع الملف غير مدعوم أو لا يطابق محتواه (مسموح: صور، PDF، Word، Excel، CSV)")
+
+        if sniffed in {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }:
+            _validate_office_archive(temp_path, max_uncompressed=max_bytes)
 
         temp_path.replace(destination)
         temp_path = None
