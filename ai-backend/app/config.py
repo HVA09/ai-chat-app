@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     MAX_FAILED_LOGIN_ATTEMPTS: int = 5
     ACCOUNT_LOCKOUT_MINUTES: int = 15
     TOTP_ISSUER_NAME: str = "AI Backend"
+    TOTP_ENCRYPTION_KEY: str = ""
 
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
     TRUSTED_PROXY_NETWORKS: list[str] = [
@@ -62,7 +63,6 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://redis:6379/1"
     CACHE_TTL_SECONDS: int = 60
 
-    # Healthcare public sources / integrations. Credentials must be supplied separately.
     CLINICALTRIALS_BASE_URL: str = "https://clinicaltrials.gov/api/v2"
     RXNORM_BASE_URL: str = "https://rxnav.nlm.nih.gov/REST"
     PUBMED_BASE_URL: str = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
@@ -101,6 +101,8 @@ class Settings(BaseSettings):
                 raise ValueError("INITIAL_ADMIN_EMAIL is required in production")
             if not self.SMTP_HOST or not self.SMTP_FROM_EMAIL:
                 raise ValueError("SMTP must be configured in production")
+            if not self.TOTP_ENCRYPTION_KEY:
+                raise ValueError("TOTP_ENCRYPTION_KEY is required in production")
             if any("localhost" in origin or "127.0.0.1" in origin for origin in self.CORS_ORIGINS):
                 raise ValueError("Production CORS_ORIGINS cannot contain localhost")
         return self
