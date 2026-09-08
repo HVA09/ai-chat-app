@@ -16,11 +16,11 @@ Thank you for your purchase.
 ```bash
 cd ai-backend
 cp .env.example .env
-# Set: JWT_SECRET_KEY, AI_API_KEY, POSTGRES_PASSWORD, DATABASE_URL
+# Set: JWT_SECRET_KEY, AI_API_KEY, POSTGRES_PASSWORD, DATABASE_URL, INITIAL_ADMIN_EMAIL
 docker compose up --build
 ```
 
-- API docs: http://localhost:8000/docs
+- API docs (development): http://localhost:8000/docs
 - Health: http://localhost:8000/health
 
 ### Frontend
@@ -31,8 +31,9 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173  
-**First registered user becomes admin.**
+Open http://localhost:5173
+
+The first registered user is **not** automatically an admin. Set `INITIAL_ADMIN_EMAIL` to the intended administrator email before production deployment.
 
 ## Production
 
@@ -40,7 +41,7 @@ Open http://localhost:5173
 - `ai-backend/docs/DEPLOY_BEGINNER_AR.md` (Arabic guide)
 - Smoke: `cd ai-backend && ./scripts/smoke.sh https://your-api.com`
 
-Frontend: set `VITE_API_BASE_URL` in `.env.production`.
+Frontend: copy `ai-frontend/.env.production.example` to `.env.production` and set `VITE_API_BASE_URL`.
 
 ## You need
 
@@ -52,7 +53,6 @@ Frontend: set `VITE_API_BASE_URL` in `.env.production`.
 ## License
 
 See `LICENSE.txt`. Commercial end-products allowed. Do not resell this template as-is.
-
 
 ## Security hardening included
 
