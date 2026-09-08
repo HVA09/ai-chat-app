@@ -1,5 +1,5 @@
 """Redis helpers: caching + security primitives.
-Redis is required for refresh-token rotation in production; ordinary caching may fail open.
+Redis is required for refresh-token rotation and one-time auth tokens in production.
 """
 import json
 
@@ -56,30 +56,59 @@ def cache_delete(key: str) -> None:
         pass
 
 
-def remember_refresh_token(jti: str, ttl_seconds: int) -> bool:
-    """Store a refresh-token JTI. Fail closed because rotation depends on this."""
+def _remember_once(prefix: str, jti: str, ttl_seconds: int) -> bool:
     if not _REDIS_AVAILABLE or _client is None:
         return False
     try:
-        return bool(_client.set(f"refresh:jti:{jti}", "1", ex=max(1, ttl_seconds), nx=True))
+        return bool(_client.set(f"{prefix}:{jti}", "1", ex=max(1, ttl_seconds), nx=True))
     except Exception:
-        logger.exception("Redis unavailable while storing refresh JTI")
+        logger.exception("Redis unavailable while storing one-time token")
         return False
 
 
-def consume_refresh_token(jti: str) -> bool:
-    """Atomically consume a refresh JTI to prevent replay after rotation."""
+def _consume_once(prefix: str, jti: str) -> bool:
     if not _REDIS_AVAILABLE or _client is None:
         return False
+    key = f"{prefix}:{jti}"
     try:
         with _client.pipeline() as pipe:
-            pipe.watch(f"refresh:jti:{jti}")
-            if pipe.get(f"refresh:jti:{jti}") != "1":
+            pipe.watch(key)
+            if pipe.get(key) != "1":
                 pipe.unwatch()
                 return False
             pipe.multi()
-            pipe.delete(f"refresh:jti:{jti}")
+            pipe.delete(key)
             pipe.execute()
             return True
     except Exception:
         return False
+
+
+def remember_refresh_token(jti: str, ttl_seconds: int) -> bool:
+    """Store a refresh-token JTI. Fail closed because rotation depends on this."""
+    return _remember_once("refresh:jti", jti, ttl_seconds)
+
+
+def consume_refresh_token(jti: str) -> bool:
+    """Atomically consume a refresh JTI to prevent replay after rotation."""
+    return _consume_once("refresh:jti", jti)
+
+
+def remember_email_verification_token(jti: str, ttl_seconds: int) -> bool:
+    """Store an email-verification JTI so the verification link can be used once."""
+    return _remember_once("email_verify:jti", jti, ttl_seconds)
+
+
+def consume_email_verification_token(jti: str) -> bool:
+    """Atomically consume an email-verification JTI."""
+    return _consume_once("email_verify:jti", jti)
+
+
+def remember_password_reset_token(jti: str, ttl_seconds: int) -> bool:
+    """Store a password-reset JTI so the reset link can be used once."""
+    return _remember_once("password_reset:jti", jti, ttl_seconds)
+
+
+def consume_password_reset_token(jti: str) -> bool:
+    """Atomically consume a password-reset JTI."""
+    return _consume_once("password_reset:jti", jti)
