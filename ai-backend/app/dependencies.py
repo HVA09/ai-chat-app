@@ -18,8 +18,6 @@ from app.models.usage_log import UsageLog
 from app.models.user import User, UserRole
 
 logger = get_logger("dependencies")
-
-# tokenUrl هنا لأغراض توثيق Swagger فقط — الدخول الفعلي عبر /auth/login بصيغة JSON
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
@@ -28,7 +26,7 @@ def get_current_user(
     token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    """Authentication: يتحقق من صلاحية JWT ويرجّع المستخدم صاحب التوكن"""
+    """Authentication: يتحقق من JWT ومن رقم إصدار جلسة المستخدم."""
     credentials_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="بيانات الدخول غير صالحة",
@@ -42,33 +40,26 @@ def get_current_user(
         if payload.get("type") != "access":
             raise credentials_error
         user_id = int(payload.get("sub"))
+        token_version = int(payload.get("ver", -1))
     except (JWTError, TypeError, ValueError):
         raise credentials_error
 
     user = db.get(User, user_id)
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or token_version != user.token_version:
         raise credentials_error
     return user
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """Authorization: يسمح فقط لمستخدم بدور admin"""
     if current_user.role != UserRole.admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="هذا الإجراء يتطلب صلاحية admin",
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="هذا الإجراء يتطلب صلاحية admin")
     return current_user
 
 
 def _daily_ai_limit_for(current_user: User, db: Session) -> int:
-    """يرجّع الحد اليومي حسب خطة اشتراك المستخدم — الإعداد الافتراضي لو ما عنده اشتراك فعّال"""
     subscription = (
         db.query(Subscription)
-        .filter(
-            Subscription.user_id == current_user.id,
-            Subscription.status == SubscriptionStatus.active,
-        )
+        .filter(Subscription.user_id == current_user.id, Subscription.status == SubscriptionStatus.active)
         .first()
     )
     if subscription and subscription.plan:
@@ -76,21 +67,14 @@ def _daily_ai_limit_for(current_user: User, db: Session) -> int:
     return settings.DAILY_AI_REQUEST_LIMIT
 
 
-def enforce_daily_ai_limit(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> User:
-    """Authorization: يمنع تجاوز الحد اليومي لطلبات AI (حسب خطة الاشتراك) — admin مستثنى"""
+def enforce_daily_ai_limit(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> User:
     if current_user.role == UserRole.admin:
         return current_user
-
     daily_limit = _daily_ai_limit_for(current_user, db)
     since = datetime.now(timezone.utc) - timedelta(days=1)
-    count = (
-        db.query(func.count(UsageLog.id))
-        .filter(UsageLog.user_id == current_user.id, UsageLog.created_at >= since)
-        .scalar()
-    )
+    count = db.query(func.count(UsageLog.id)).filter(
+        UsageLog.user_id == current_user.id, UsageLog.created_at >= since
+    ).scalar()
     if count >= daily_limit:
         logger.warning("تجاوز الحد اليومي: %s", current_user.email)
         raise HTTPException(
