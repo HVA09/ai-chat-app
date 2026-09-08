@@ -1,6 +1,7 @@
 """
-اختبارات مسارات المصادقة: تسجيل، دخول، وحماية المسارات الخاصة
+اختبارات مسارات المصادقة: تسجيل، دخول، تدوير الجلسات وحماية المسارات الخاصة
 """
+from app.config import settings as app_settings
 from app.models.user import User
 
 
@@ -29,14 +30,16 @@ def test_register_rejects_short_password(client):
     assert response.status_code == 422
 
 
-def test_first_user_becomes_admin(client):
+def test_initial_admin_is_explicitly_configured(client, monkeypatch):
+    monkeypatch.setattr(app_settings, "INITIAL_ADMIN_EMAIL", "first@example.com")
     response = client.post(
         "/auth/register", json={"email": "first@example.com", "password": "StrongPass123"}
     )
     assert response.json()["role"] == "admin"
 
 
-def test_second_user_is_regular(client):
+def test_second_user_is_regular(client, monkeypatch):
+    monkeypatch.setattr(app_settings, "INITIAL_ADMIN_EMAIL", "first@example.com")
     client.post("/auth/register", json={"email": "first@example.com", "password": "StrongPass123"})
     response = client.post(
         "/auth/register", json={"email": "second@example.com", "password": "StrongPass123"}
@@ -44,7 +47,7 @@ def test_second_user_is_regular(client):
     assert response.json()["role"] == "user"
 
 
-def test_login_success_returns_tokens(client):
+def test_login_success_uses_httponly_cookies(client):
     client.post(
         "/auth/register", json={"email": "login@example.com", "password": "StrongPass123"}
     )
@@ -53,8 +56,10 @@ def test_login_success_returns_tokens(client):
     )
     assert response.status_code == 200
     body = response.json()
-    assert "access_token" in body
-    assert "refresh_token" in body
+    assert body["access_token"] in (None, "")
+    assert body["refresh_token"] in (None, "")
+    assert client.cookies.get("access_token")
+    assert client.cookies.get("refresh_token")
 
 
 def test_login_wrong_password_fails(client):
@@ -79,14 +84,26 @@ def test_refresh_fails_for_deactivated_user(client, db_session):
     login_response = client.post(
         "/auth/login", json={"email": "inactive@example.com", "password": "StrongPass123"}
     )
-    refresh_token = login_response.json()["refresh_token"]
+    assert login_response.status_code == 200
 
     user = db_session.query(User).filter(User.email == "inactive@example.com").first()
     user.is_active = False
     db_session.commit()
 
-    response = client.post("/auth/refresh", json={"refresh_token": refresh_token})
+    response = client.post("/auth/refresh")
     assert response.status_code == 401
+
+
+def test_refresh_requires_cookie_not_body(client):
+    client.post(
+        "/auth/register", json={"email": "cookie@example.com", "password": "StrongPass123"}
+    )
+    login_response = client.post(
+        "/auth/login", json={"email": "cookie@example.com", "password": "StrongPass123"}
+    )
+    refresh_token = login_response.json()["refresh_token"]
+    response = client.post("/auth/refresh", json={"refresh_token": refresh_token})
+    assert response.status_code in (401, 422)
 
 
 def test_login_rejects_inactive_user(client, db_session):
