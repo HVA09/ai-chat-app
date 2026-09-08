@@ -19,7 +19,7 @@ _AUTH_LIMITS: dict[str, tuple[int, int]] = {
     "/auth/login": (10, 60),
     "/auth/register": (5, 60),
     "/auth/password-reset/request": (5, 60),
-    "/auth/email-verification/request": (5, 60),
+    "/auth/verify-email/request": (5, 60),
     "/auth/2fa/setup": (5, 60),
     "/auth/2fa/enable": (10, 60),
     "/auth/2fa/disable": (10, 60),
