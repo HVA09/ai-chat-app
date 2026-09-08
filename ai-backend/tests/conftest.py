@@ -63,26 +63,14 @@ def db_session():
     """
     كل اختبار يشتغل داخل transaction خارجي + SAVEPOINT داخلي، ويُلغى الاثنان (rollback)
     بعد انتهائه — عزل كامل بين الاختبارات.
-
-    ملاحظة مهمة: session.commit() عادي على session مربوطة بـ connection عندها transaction
-    خارجي شغّال بيسكّر هداك الـ transaction فعليًا على قاعدة البيانات (ما فيه "nested
-    transactions" حقيقية بدون SAVEPOINT صريح). وبما إن كود التطبيق ينادي db.commit() مباشرة
-    بكل مسار تقريبًا (تسجيل، دخول، شات...)، بدون SAVEPOINT هون كان الـ rollback بالنهاية
-    ما يلغي شي فعليًا، وبيانات كل اختبار كانت تتراكم بقاعدة الاختبار لباقي التشغيلة
-    (وتكسر اختبارات تعتمد على عدّ دقيق متل total_users == 1). هذا هو النمط الموثّق رسميًا
-    بتوثيق SQLAlchemy لـ"Joining a Session into an External Transaction".
     """
     connection = engine.connect()
     outer_transaction = connection.begin()
     session = TestingSessionLocal(bind=connection)
-
-    # SAVEPOINT داخلي — أي db.commit() من كود التطبيق بيسكّر هاد الـ SAVEPOINT بس، مش
-    # الـ transaction الخارجي، فيضل الـ rollback بالنهاية قادر يلغي كل شي
     session.begin_nested()
 
     @event.listens_for(session, "after_transaction_end")
     def _restart_savepoint(sess, transaction):
-        # لما SAVEPOINT الحالي يسكّر (بعد commit من كود التطبيق)، افتح وحدة جديدة فورًا
         if transaction.nested and not transaction._parent.nested:
             sess.begin_nested()
 
@@ -92,6 +80,18 @@ def db_session():
     session.close()
     outer_transaction.rollback()
     connection.close()
+
+
+@pytest.fixture(autouse=True)
+def reset_test_security_state(monkeypatch):
+    """Keep security middleware deterministic in pytest without weakening production."""
+    from app.config import settings as app_settings
+    from app.middleware import _hits
+
+    monkeypatch.setattr(app_settings, "ENVIRONMENT", "test")
+    _hits.clear()
+    yield
+    _hits.clear()
 
 
 @pytest.fixture()
