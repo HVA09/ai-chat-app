@@ -41,6 +41,7 @@ describe("AuthForm", () => {
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
     expect(localStorage.getItem("access_token")).toBeNull();
     expect(authApi.registerUser).not.toHaveBeenCalled();
+    expect(authApi.loginUser).toHaveBeenCalledWith("test@example.com", "StrongPass123", null);
   });
 
   it("عند فشل الدخول يعرض رسالة الخطأ القادمة من الخادم", async () => {
@@ -75,7 +76,7 @@ describe("AuthForm", () => {
     await waitFor(() =>
       expect(authApi.registerUser).toHaveBeenCalledWith("new@example.com", "StrongPass123")
     );
-    expect(authApi.loginUser).toHaveBeenCalledWith("new@example.com", "StrongPass123");
+    expect(authApi.loginUser).toHaveBeenCalledWith("new@example.com", "StrongPass123", null);
     expect(onAuthenticated).toHaveBeenCalled();
   });
 });
