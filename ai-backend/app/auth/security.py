@@ -45,11 +45,11 @@ def create_refresh_token(user_id: int) -> str:
 
 
 def create_email_verification_token(user_id: int) -> str:
-    return _create_token(str(user_id), timedelta(hours=24), "email_verify")
+    return _create_token(str(user_id), timedelta(hours=24), "email_verify", uuid.uuid4().hex)
 
 
 def create_password_reset_token(user_id: int) -> str:
-    return _create_token(str(user_id), timedelta(hours=1), "password_reset")
+    return _create_token(str(user_id), timedelta(hours=1), "password_reset", uuid.uuid4().hex)
 
 
 def decode_token(token: str) -> dict:
