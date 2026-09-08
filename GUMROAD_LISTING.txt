@@ -20,4 +20,4 @@ AFTER PURCHASE:
 1) Download ZIP and open README.md
 2) Backend: cp .env.example .env → set secrets → docker compose up --build
 3) Frontend: npm install && npm run dev
-4) First user registered = admin
+4) Set INITIAL_ADMIN_EMAIL to the intended administrator before production deployment; the first registered user is not automatically an admin.
