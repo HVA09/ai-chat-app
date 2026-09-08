@@ -56,8 +56,8 @@ def test_login_success_uses_httponly_cookies(client):
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["access_token"]
-    assert body["refresh_token"]
+    assert not body.get("access_token")
+    assert not body.get("refresh_token")
     assert client.cookies.get("access_token")
     assert client.cookies.get("refresh_token")
 
@@ -101,7 +101,9 @@ def test_refresh_requires_cookie_not_body(client):
     login_response = client.post(
         "/auth/login", json={"email": "cookie@example.com", "password": "StrongPass123"}
     )
-    refresh_token = login_response.json()["refresh_token"]
+    assert login_response.status_code == 200
+    refresh_token = client.cookies.get("refresh_token")
+    assert refresh_token
     client.cookies.clear()
     response = client.post("/auth/refresh", json={"refresh_token": refresh_token})
     assert response.status_code == 401
@@ -136,3 +138,4 @@ def test_login_normalizes_email_case(client):
         "/auth/login", json={"email": "caseuser@example.com", "password": "StrongPass123"}
     )
     assert response.status_code == 200
+    assert client.cookies.get("access_token")
