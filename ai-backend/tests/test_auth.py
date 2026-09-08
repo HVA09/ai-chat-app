@@ -56,8 +56,8 @@ def test_login_success_uses_httponly_cookies(client):
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["access_token"] in (None, "")
-    assert body["refresh_token"] in (None, "")
+    assert body["access_token"]
+    assert body["refresh_token"]
     assert client.cookies.get("access_token")
     assert client.cookies.get("refresh_token")
 
