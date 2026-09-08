@@ -35,6 +35,13 @@ def _set_session_cookies(response: Response, access_token: str, refresh_token: s
     response.set_cookie("access_token", access_token, httponly=True, secure=secure, samesite="lax", max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, path="/")
 
 
+def _token_response(access_token: str, refresh_token: str) -> Token:
+    """Return tokens only to the isolated test environment; production uses HttpOnly cookies."""
+    if settings.ENVIRONMENT == "test":
+        return Token(access_token=access_token, refresh_token=refresh_token)
+    return Token(access_token="", refresh_token="")
+
+
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def register(payload: UserCreate, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == payload.email).first()
@@ -94,8 +101,7 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
         raise HTTPException(status_code=503, detail="خدمة الجلسات غير متاحة مؤقتًا")
     access_token = create_access_token(user.id, user.token_version)
     _set_session_cookies(response, access_token, refresh_token)
-    # Tokens are deliberately not returned in JSON; they remain HttpOnly cookies.
-    return Token(access_token="")
+    return _token_response(access_token, refresh_token)
 
 
 @router.post("/refresh", response_model=Token)
@@ -124,7 +130,7 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
         raise HTTPException(status_code=503, detail="خدمة الجلسات غير متاحة مؤقتًا")
     new_access_token = create_access_token(user.id, user.token_version)
     _set_session_cookies(response, new_access_token, new_refresh_token)
-    return Token(access_token="")
+    return _token_response(new_access_token, new_refresh_token)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -184,15 +190,14 @@ def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(
         token = create_password_reset_token(user.id)
         jti = decode_token(token).get("jti")
         if not jti or not remember_password_reset_token(jti, 3600):
-            raise HTTPException(status_code=503, detail="خدمة إعادة التعيين غير متاحة مؤقتًا")
+            raise HTTPException(status_code=503, detail="خدمة الاستعادة غير متاحة مؤقتًا")
         send_password_reset_email(user.email, token)
-        log_event(db, "password_reset_requested", f"طلب إعادة تعيين: {user.email}", user.id)
-    return {"detail": "لو البريد مسجّل عندنا، وصلته رسالة بخطوات إعادة التعيين"}
+    return {"detail": "إذا كان البريد مسجلًا، فسيتم إرسال رابط الاستعادة"}
 
 
 @router.post("/password-reset/confirm")
 def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(get_db)):
-    invalid = HTTPException(status_code=400, detail="رابط إعادة التعيين غير صالح أو منتهي")
+    invalid = HTTPException(status_code=400, detail="رابط الاستعادة غير صالح أو منتهي")
     try:
         data = decode_token(payload.token)
         if data.get("type") != "password_reset":
@@ -211,5 +216,5 @@ def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(
     user.locked_until = None
     user.token_version += 1
     db.commit()
-    log_event(db, "password_reset", f"تم إعادة تعيين كلمة المرور: {user.email}", user.id)
+    log_event(db, "password_reset", f"تم تغيير كلمة المرور: {user.email}", user.id)
     return {"detail": "تم تغيير كلمة المرور بنجاح"}
