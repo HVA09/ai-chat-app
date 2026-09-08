@@ -37,7 +37,7 @@ def _set_session_cookies(response: Response, access_token: str, refresh_token: s
 
 def _token_response(access_token: str, refresh_token: str) -> Token:
     """Never expose authentication tokens in the JSON response; use HttpOnly cookies."""
-    return Token(access_token=None, refresh_token=None)
+    return Token(token_type="bearer")
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
@@ -62,7 +62,7 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
     return user
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=Token, response_model_exclude_none=True)
 def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
     invalid = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="بريد إلكتروني أو كلمة مرور غير صحيحة")
     user = db.query(User).filter(User.email == payload.email).first()
@@ -103,7 +103,7 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     return _token_response(access_token, refresh_token)
 
 
-@router.post("/refresh", response_model=Token)
+@router.post("/refresh", response_model=Token, response_model_exclude_none=True)
 def refresh(request: Request, response: Response, db: Session = Depends(get_db)):
     invalid = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="refresh token غير صالح")
     try:
@@ -164,7 +164,7 @@ def request_email_verification(current_user: User = Depends(get_current_user)):
 def confirm_email_verification(payload: EmailVerificationConfirm, db: Session = Depends(get_db)):
     invalid = HTTPException(status_code=400, detail="رابط التأكيد غير صالح أو منتهي")
     try:
-        data = decode_token(payload.token, expected_type="email_verify")
+        data = decode_token(payload.token, expected_type="email_verification")
         user_id = int(data.get("sub"))
         jti = data.get("jti")
         if not jti or not consume_email_verification_token(jti):
