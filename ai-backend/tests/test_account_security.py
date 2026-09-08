@@ -1,7 +1,7 @@
 """
 اختبارات المرحلة الثالثة: الحماية من Brute Force، تأكيد البريد، إعادة تعيين كلمة المرور
 """
-from app.auth.cache import remember_email_verification_token, remember_password_reset_token
+from app.cache import remember_email_verification_token, remember_password_reset_token
 from app.auth.security import create_email_verification_token, create_password_reset_token, decode_token
 from app.config import settings as app_settings
 from app.models.user import User
