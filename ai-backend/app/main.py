@@ -54,7 +54,9 @@ app.add_middleware(AuthRateLimitMiddleware)
 try:
     from prometheus_fastapi_instrumentator import Instrumentator
 
-    Instrumentator().instrument(app).expose(app, tags=["Monitoring"], include_in_schema=settings.ENVIRONMENT != "production")
+    instrumentator = Instrumentator().instrument(app)
+    if settings.ENVIRONMENT != "production":
+        instrumentator.expose(app, tags=["Monitoring"])
 except ImportError:
     logger.info("مكتبة prometheus-fastapi-instrumentator غير مثبّتة — /metrics معطّل")
 
