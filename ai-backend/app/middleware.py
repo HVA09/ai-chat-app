@@ -1,13 +1,13 @@
 """
-Middleware خفيف بدون مكتبات إضافية:
+Middleware خفيف:
 - X-Request-ID لتتبع الطلبات
-- Rate limit بسيط في الذاكرة لمسارات المصادقة الحساسة
+- Rate limit لمسارات المصادقة الحساسة
 """
 from __future__ import annotations
 
+import ipaddress
 import time
 import uuid
-import ipaddress
 from collections import defaultdict, deque
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -19,6 +19,10 @@ _AUTH_LIMITS: dict[str, tuple[int, int]] = {
     "/auth/login": (10, 60),
     "/auth/register": (5, 60),
     "/auth/password-reset/request": (5, 60),
+    "/auth/email-verification/request": (5, 60),
+    "/auth/2fa/setup": (5, 60),
+    "/auth/2fa/enable": (10, 60),
+    "/auth/2fa/disable": (10, 60),
 }
 
 # ip → path → timestamps
@@ -30,7 +34,10 @@ def _client_ip(request: Request) -> str:
     peer = request.client.host if request.client else None
     try:
         from app.config import settings
-        trusted = any(ipaddress.ip_address(peer) in ipaddress.ip_network(net) for net in settings.TRUSTED_PROXY_NETWORKS) if peer else False
+        trusted = any(
+            ipaddress.ip_address(peer) in ipaddress.ip_network(net)
+            for net in settings.TRUSTED_PROXY_NETWORKS
+        ) if peer else False
     except (ValueError, TypeError):
         trusted = False
     if trusted:
@@ -65,7 +72,6 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
             pass
 
         path = request.url.path.rstrip("/") or "/"
-        # دعم المسارات مع أو بدون شرطة نهائية
         limit_cfg = _AUTH_LIMITS.get(path) or _AUTH_LIMITS.get(path + "/")
         if limit_cfg and request.method.upper() == "POST":
             max_hits, window = limit_cfg
@@ -83,5 +89,14 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
                     headers={"Retry-After": str(window)},
                 )
             bucket.append(now)
+
+            # منع نمو الذاكرة بلا حدود في حالة آلاف عناوين IP مختلفة.
+            if len(_hits) > 10000:
+                stale_ips = [
+                    key for key, paths in _hits.items()
+                    if all(not values or now - values[-1] > 300 for values in paths.values())
+                ]
+                for key in stale_ips[:5000]:
+                    _hits.pop(key, None)
 
         return await call_next(request)
