@@ -19,7 +19,14 @@ from app.auth.security import (
     verify_password,
 )
 from app.audit import log_event
-from app.cache import consume_refresh_token, remember_refresh_token
+from app.cache import (
+    consume_email_verification_token,
+    consume_password_reset_token,
+    consume_refresh_token,
+    remember_email_verification_token,
+    remember_password_reset_token,
+    remember_refresh_token,
+)
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
@@ -61,7 +68,11 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
     db.refresh(user)
     log_event(db, "register", f"مستخدم جديد: {user.email} (admin={is_initial_admin})", user.id)
 
-    send_verification_email(user.email, create_email_verification_token(user.id))
+    verification_token = create_email_verification_token(user.id)
+    verification_jti = decode_token(verification_token).get("jti")
+    if not verification_jti or not remember_email_verification_token(verification_jti, 24 * 3600):
+        raise HTTPException(status_code=503, detail="خدمة الجلسات غير متاحة مؤقتًا")
+    send_verification_email(user.email, verification_token)
     send_welcome_email(user.email)
     notify(db, user.id, "أهلًا بك", "تم إنشاء حسابك بنجاح.", "welcome")
     return user
@@ -78,7 +89,6 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     if not user:
         raise invalid_credentials_error
 
-    # حماية ضد Brute Force: الحساب مقفل مؤقتًا بعد محاولات فاشلة كثيرة
     now = datetime.now(timezone.utc)
     if user.locked_until and user.locked_until > now:
         remaining_minutes = int((user.locked_until - now).total_seconds() // 60) + 1
@@ -106,8 +116,6 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
         log_event(db, "login_failed", f"محاولة دخول فاشلة: {payload.email}", user.id)
         raise invalid_credentials_error
 
-    # حساب معطّل من لوحة الإدارة — نرفض الدخول بعد التحقق من كلمة المرور
-    # عشان ما نكشف إن الحساب موجود لكن معطّل لمهاجم ما يعرف كلمة المرور
     if not user.is_active:
         log_event(db, "login_inactive", f"محاولة دخول لحساب معطّل: {user.email}", user.id)
         raise HTTPException(
@@ -128,7 +136,6 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="رمز التحقق الثنائي غير صحيح"
             )
 
-    # دخول ناجح: تصفير عداد المحاولات الفاشلة
     if user.failed_login_attempts or user.locked_until:
         user.failed_login_attempts = 0
         user.locked_until = None
@@ -166,7 +173,6 @@ def refresh(payload: RefreshRequest, request: Request, response: Response, db: S
     if not jti or not consume_refresh_token(jti):
         raise invalid_token_error
 
-    # تأكد إن المستخدم لسه موجود ومفعّل قبل ما نصدر توكنات جديدة
     user = db.get(User, user_id)
     if user is None or not user.is_active:
         raise invalid_token_error
@@ -182,11 +188,23 @@ def refresh(payload: RefreshRequest, request: Request, response: Response, db: S
     return Token(access_token=new_access_token)
 
 
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(request: Request, response: Response):
+    """إزالة cookies الخاصة بالجلسة من المتصفح."""
+    response.delete_cookie("access_token", path="/")
+    response.delete_cookie("refresh_token", path="/auth")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/verify-email/request", status_code=status.HTTP_202_ACCEPTED)
 def request_email_verification(current_user: User = Depends(get_current_user)):
     if current_user.is_email_verified:
         return {"detail": "البريد مؤكد مسبقًا"}
-    send_verification_email(current_user.email, create_email_verification_token(current_user.id))
+    token = create_email_verification_token(current_user.id)
+    jti = decode_token(token).get("jti")
+    if not jti or not remember_email_verification_token(jti, 24 * 3600):
+        raise HTTPException(status_code=503, detail="خدمة التحقق غير متاحة مؤقتًا")
+    send_verification_email(current_user.email, token)
     return {"detail": "تم إرسال رابط التأكيد"}
 
 
@@ -200,6 +218,9 @@ def confirm_email_verification(payload: EmailVerificationConfirm, db: Session = 
         if data.get("type") != "email_verify":
             raise ValueError
         user_id = int(data.get("sub"))
+        jti = data.get("jti")
+        if not jti or not consume_email_verification_token(jti):
+            raise ValueError
     except (JWTError, TypeError, ValueError):
         raise invalid_error
 
@@ -215,10 +236,13 @@ def confirm_email_verification(payload: EmailVerificationConfirm, db: Session = 
 
 @router.post("/password-reset/request", status_code=status.HTTP_202_ACCEPTED)
 def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(get_db)):
-    # نرجّع نفس الرد سواء كان الإيميل مسجّل أو لا — عشان ما نكشف إذا حساب موجود
     user = db.query(User).filter(User.email == payload.email).first()
     if user:
-        send_password_reset_email(user.email, create_password_reset_token(user.id))
+        token = create_password_reset_token(user.id)
+        jti = decode_token(token).get("jti")
+        if not jti or not remember_password_reset_token(jti, 3600):
+            raise HTTPException(status_code=503, detail="خدمة إعادة التعيين غير متاحة مؤقتًا")
+        send_password_reset_email(user.email, token)
         log_event(db, "password_reset_requested", f"طلب إعادة تعيين: {user.email}", user.id)
     return {"detail": "لو البريد مسجّل عندنا، وصلته رسالة بخطوات إعادة التعيين"}
 
@@ -233,6 +257,9 @@ def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(
         if data.get("type") != "password_reset":
             raise ValueError
         user_id = int(data.get("sub"))
+        jti = data.get("jti")
+        if not jti or not consume_password_reset_token(jti):
+            raise ValueError
     except (JWTError, TypeError, ValueError):
         raise invalid_error
 
@@ -241,7 +268,6 @@ def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(
         raise invalid_error
 
     user.hashed_password = hash_password(payload.new_password)
-    # إعادة التعيين إجراء استرجاع مشروع للحساب — نفك أي قفل Brute Force قائم
     user.failed_login_attempts = 0
     user.locked_until = None
     db.commit()
