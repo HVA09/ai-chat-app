@@ -2,6 +2,7 @@
 مسارات الاشتراكات والدفع: عرض الخطط، بدء الدفع، إلغاء الاشتراك، واستقبال webhooks
 """
 import hashlib
+import inspect
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
@@ -185,6 +186,9 @@ async def _verify_and_record_webhook(
 ):
     payload = await request.body()
     event = verifier(payload, dict(request.headers))
+    if inspect.isawaitable(event):
+        event = await event
+
     event_hash = hashlib.sha256(payload).hexdigest()
     db.add(WebhookEvent(provider=provider_name, event_hash=event_hash))
     try:
