@@ -38,9 +38,10 @@ def _totp(user: User) -> pyotp.TOTP:
 
 @router.post("/setup", response_model=TwoFactorSetupResponse)
 def setup_two_factor(
-    payload: TwoFactorSetupRequest,
+    payload: TwoFactorSetupRequest | None = None,
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
+    payload = payload or TwoFactorSetupRequest()
     # إذا كان 2FA مفعّلًا، لا تسمح لجلسة مسروقة بإعادة استبدال السر بدون العامل الثاني.
     if current_user.is_2fa_enabled:
         if not payload.totp_code or not _totp(current_user).verify(payload.totp_code, valid_window=1):
