@@ -5,6 +5,7 @@ import hashlib
 import inspect
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -57,6 +58,11 @@ async def create_checkout(
     plan = db.get(Plan, payload.plan_id)
     if not plan or not plan.is_active:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الخطة غير موجودة")
+
+    # PostgreSQL advisory transaction lock prevents two concurrent checkout requests
+    # for the same user from both creating provider-side subscriptions before either
+    # request has persisted its local subscription row.
+    db.execute(text("SELECT pg_advisory_xact_lock(:user_id)"), {"user_id": current_user.id})
 
     existing = db.query(Subscription).filter(Subscription.user_id == current_user.id).first()
     if existing and existing.status in {
