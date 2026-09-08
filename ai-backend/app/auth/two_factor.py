@@ -41,7 +41,6 @@ def setup_two_factor(current_user: User = Depends(get_current_user), db: Session
     secret = pyotp.random_base32()
     current_user.totp_secret = encrypt_totp_secret(secret)
     current_user.is_2fa_enabled = False
-    current_user.token_version += 1
     db.commit()
 
     totp = pyotp.TOTP(secret)
