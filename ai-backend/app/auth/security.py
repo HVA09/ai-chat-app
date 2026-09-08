@@ -53,8 +53,11 @@ def create_password_reset_token(user_id: int) -> str:
     return _create_token(str(user_id), timedelta(hours=1), "password_reset", uuid.uuid4().hex)
 
 
-def decode_token(token: str) -> dict:
-    return jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+def decode_token(token: str, expected_type: str | None = None) -> dict:
+    payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+    if expected_type is not None and payload.get("type") != expected_type:
+        raise ValueError("unexpected token type")
+    return payload
 
 
 def _totp_fernet() -> Fernet:
