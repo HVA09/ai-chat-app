@@ -67,20 +67,21 @@ def _remember_once(prefix: str, jti: str, ttl_seconds: int) -> bool:
 
 
 def _consume_once(prefix: str, jti: str) -> bool:
+    """Atomically consume a one-time token using a Redis server-side script."""
     if not _REDIS_AVAILABLE or _client is None:
         return False
     key = f"{prefix}:{jti}"
+    script = """
+    if redis.call('GET', KEYS[1]) == '1' then
+        redis.call('DEL', KEYS[1])
+        return 1
+    end
+    return 0
+    """
     try:
-        with _client.pipeline() as pipe:
-            pipe.watch(key)
-            if pipe.get(key) != "1":
-                pipe.unwatch()
-                return False
-            pipe.multi()
-            pipe.delete(key)
-            pipe.execute()
-            return True
+        return bool(_client.eval(script, 1, key))
     except Exception:
+        logger.exception("Redis unavailable while consuming one-time token")
         return False
 
 
