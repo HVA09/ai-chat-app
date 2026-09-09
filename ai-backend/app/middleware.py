@@ -1,7 +1,7 @@
 """
 Middleware خفيف:
 - X-Request-ID لتتبع الطلبات
-- Rate limit لمسارات المصادقة الحساسة
+- Rate limit لمسارات المصادقة الحساسة باستخدام Redis في التشغيل الحقيقي
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ _AUTH_LIMITS: dict[str, tuple[int, int]] = {
     "/auth/2fa/disable": (10, 60),
 }
 
-# ip → path → timestamps
+# Fallback only for non-production environments when Redis is unavailable.
 _hits: dict[str, dict[str, deque[float]]] = defaultdict(lambda: defaultdict(deque))
 
 
@@ -61,6 +61,26 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         return response
 
 
+def _in_memory_rate_limit(ip: str, path: str, max_hits: int, window: int) -> tuple[bool, int]:
+    now = time.monotonic()
+    bucket = _hits[ip][path]
+    while bucket and now - bucket[0] > window:
+        bucket.popleft()
+    if len(bucket) >= max_hits:
+        return False, len(bucket)
+    bucket.append(now)
+
+    # منع نمو الذاكرة بلا حدود في حالة آلاف عناوين IP مختلفة.
+    if len(_hits) > 10000:
+        stale_ips = [
+            key for key, paths in _hits.items()
+            if all(not values or now - values[-1] > 300 for values in paths.values())
+        ]
+        for key in stale_ips[:5000]:
+            _hits.pop(key, None)
+    return True, len(bucket)
+
+
 class AuthRateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         # عطّل أثناء الاختبارات عشان ما تنهار مجموعة pytest من نفس الـ IP
@@ -69,18 +89,28 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
             if settings.ENVIRONMENT in ("test", "testing"):
                 return await call_next(request)
         except Exception:
-            pass
+            settings = None
 
         path = request.url.path.rstrip("/") or "/"
         limit_cfg = _AUTH_LIMITS.get(path) or _AUTH_LIMITS.get(path + "/")
         if limit_cfg and request.method.upper() == "POST":
             max_hits, window = limit_cfg
             ip = _client_ip(request)
-            now = time.monotonic()
-            bucket = _hits[ip][path]
-            while bucket and now - bucket[0] > window:
-                bucket.popleft()
-            if len(bucket) >= max_hits:
+
+            from app.cache import check_rate_limit
+            redis_result = check_rate_limit(f"auth:{ip}:{path}", max_hits, window)
+            if redis_result is None:
+                if settings is not None and settings.ENVIRONMENT == "production":
+                    return JSONResponse(
+                        status_code=503,
+                        content={"detail": "خدمة تحديد المعدل غير متاحة مؤقتًا"},
+                        headers={"Retry-After": "30"},
+                    )
+                allowed, current_count = _in_memory_rate_limit(ip, path, max_hits, window)
+            else:
+                allowed, current_count = redis_result
+
+            if not allowed:
                 return JSONResponse(
                     status_code=429,
                     content={
@@ -88,15 +118,5 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
                     },
                     headers={"Retry-After": str(window)},
                 )
-            bucket.append(now)
-
-            # منع نمو الذاكرة بلا حدود في حالة آلاف عناوين IP مختلفة.
-            if len(_hits) > 10000:
-                stale_ips = [
-                    key for key, paths in _hits.items()
-                    if all(not values or now - values[-1] > 300 for values in paths.values())
-                ]
-                for key in stale_ips[:5000]:
-                    _hits.pop(key, None)
 
         return await call_next(request)
