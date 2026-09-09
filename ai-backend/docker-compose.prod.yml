@@ -9,39 +9,44 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  app:
-    build: .
+  redis:
+    image: redis:7-alpine
     restart: unless-stopped
-    env_file: .env
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    image: ${BACKEND_IMAGE:-ghcr.io/hva09/ai-chat-app-backend:latest}
+    restart: unless-stopped
+    env_file: .env.production
     depends_on:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     expose:
       - "8000"
     volumes:
       - uploads:/app/uploads
 
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-
   celery_worker:
-    build: .
+    image: ${BACKEND_IMAGE:-ghcr.io/hva09/ai-chat-app-backend:latest}
     restart: unless-stopped
     command: celery -A app.tasks.celery_app worker --loglevel=info
-    env_file: .env
+    env_file: .env.production
     depends_on:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
 
   nginx:
     image: nginx:alpine
@@ -56,8 +61,6 @@ services:
     depends_on:
       - app
 
-  # يجدد شهادة SSL تلقائيًا كل 12 ساعة (يتأكد إذا قربت تنتهي فقط).
-  # الحصول على الشهادة الأولى يدويًا مرة واحدة — راجع README.
   certbot:
     image: certbot/certbot
     restart: unless-stopped
@@ -67,11 +70,10 @@ services:
     entrypoint: >
       /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;"
 
-  # نسخة احتياطية يومية لقاعدة البيانات — تُحفظ بمجلد ./backups (آخر 7 أيام فقط).
   backup:
     image: postgres:16-alpine
     restart: unless-stopped
-    env_file: .env
+    env_file: .env.production
     volumes:
       - ./backups:/backups
       - ./scripts:/scripts:ro
