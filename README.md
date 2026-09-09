@@ -11,17 +11,20 @@ Thank you for your purchase.
 
 ## Quick start
 
-### Backend
+### Backend — development
 
 ```bash
 cd ai-backend
 cp .env.example .env
 # Set: JWT_SECRET_KEY, AI_API_KEY, POSTGRES_PASSWORD, DATABASE_URL, INITIAL_ADMIN_EMAIL
-docker compose up --build
+docker compose -f docker-compose.dev.yml up --build
 ```
 
+- API: http://localhost:8000
 - API docs (development): http://localhost:8000/docs
 - Health: http://localhost:8000/health
+
+The development Compose file intentionally publishes FastAPI on `localhost:8000`. Do not use this configuration as the public production deployment.
 
 ### Frontend
 
@@ -36,6 +39,21 @@ Open http://localhost:5173
 The first registered user is **not** automatically an admin. Set `INITIAL_ADMIN_EMAIL` to the intended administrator email before production deployment.
 
 ## Production
+
+Use the dedicated production Compose file instead of the development configuration:
+
+```bash
+cd ai-backend
+cp .env.production.example .env.production
+# Fill every production secret, domain, SMTP/payment setting, CORS origin, and BACKEND_IMAGE
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Production publishes only Nginx on ports `80` and `443`; FastAPI is internal to the Compose network. The production file uses a prebuilt `BACKEND_IMAGE` so deployment can pull an immutable application image rather than building source code on the server.
+
+Production HTTPS is not complete until a real domain and certificate are configured in `ai-backend/nginx/nginx.conf`. The current Nginx configuration intentionally leaves the certificate-dependent HTTPS server commented until those values are supplied.
+
+See:
 
 - `ai-backend/docs/PRODUCTION.md`
 - `ai-backend/docs/DEPLOY_BEGINNER_AR.md` (Arabic guide)
@@ -56,8 +74,8 @@ See `LICENSE.txt`. Commercial end-products allowed. Do not resell this template 
 
 ## Security hardening included
 
-The patched release no longer exposes FastAPI directly on the public `:8000` port; development traffic on `localhost:8000` goes through Nginx. Refresh tokens are rotated and kept in HttpOnly cookies backed by Redis, and the WebSocket uses the HttpOnly access-token cookie rather than placing JWTs in the URL. Production configuration fails closed for missing secrets/SMTP/admin bootstrap, and upload quotas/streaming are enabled.
+The patched release no longer exposes FastAPI publicly in the production Compose configuration. Development uses a separate Compose file with a localhost-only `:8000` mapping. Refresh tokens are rotated and kept in HttpOnly cookies backed by Redis, and the WebSocket uses the HttpOnly access-token cookie rather than placing JWTs in the URL. Production configuration fails closed for missing secrets/SMTP/admin bootstrap, and upload quotas/streaming are enabled.
 
-For production, set `FRONTEND_URL`, `CORS_ORIGINS`, `INITIAL_ADMIN_EMAIL`, real SMTP/payment settings, and a real HTTPS-enabled Nginx server name/certificate.
+For production, set `FRONTEND_URL`, `CORS_ORIGINS`, `INITIAL_ADMIN_EMAIL`, real SMTP/payment settings, a real HTTPS-enabled Nginx server name/certificate, and `BACKEND_IMAGE`.
 
 Healthcare source configuration is documented in `ai-backend/docs/HEALTHCARE_SOURCES.md`. The app does not expose these sources to the browser automatically; integrate them server-side with rate limits and source attribution.
