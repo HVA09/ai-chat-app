@@ -1,0 +1,23 @@
+TITLE:
+AI Chat SaaS Starter — FastAPI + React (Auth, 2FA, Billing, Admin, Streaming)
+
+PRICE:
+$149 launch / $249 standard
+
+DESCRIPTION:
+Full-stack AI assistant starter for indie hackers and agencies.
+
+Backend (FastAPI): JWT auth, 2FA, streaming chat, OpenAI/Anthropic/Gemini/DeepSeek providers, files, notifications, Stripe/PayPal scaffolding, admin APIs, Docker, tests.
+
+Frontend (React + Vite + Tailwind): streaming chat, conversations, account/billing/admin, AR/EN + RTL, pricing & legal pages, PWA-ready.
+
+Includes source code, deployment docs, and smoke test script.
+
+You deploy it yourself and use your own AI/payment keys.
+Commercial use for your products allowed. Do not resell the template as-is.
+
+AFTER PURCHASE:
+1) Download ZIP and open README.md
+2) Backend: cp .env.example .env → set secrets → docker compose up --build
+3) Frontend: npm install && npm run dev
+4) Set INITIAL_ADMIN_EMAIL to the intended administrator before production deployment; the first registered user is not automatically an admin.
