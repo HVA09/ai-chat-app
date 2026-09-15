@@ -33,9 +33,14 @@ def test_factory_returns_anthropic_provider(monkeypatch):
     assert isinstance(get_provider(), AnthropicProvider)
 
 
-def test_factory_returns_gemini_provider(monkeypatch):
+def test_factory_gemini_uses_openai_compatible_provider(monkeypatch):
     monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
-    assert isinstance(get_provider(), GeminiProvider)
+    monkeypatch.setattr(app_settings, "AI_API_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
+    monkeypatch.setattr(app_settings, "AI_MODEL", "gemini-2.5-flash")
+    provider = get_provider()
+    assert isinstance(provider, OpenAICompatibleProvider)
+    assert provider.base_url == "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert provider.model == "gemini-2.5-flash"
 
 
 def test_factory_rejects_unsupported_provider(monkeypatch):
