@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy.orm import Session
 
 from app.auth.security import decode_token
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.notification import Notification
@@ -64,6 +65,11 @@ def mark_all_notifications_read(
 @router.websocket("/ws/notifications")
 async def notifications_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
     """WebSocket authenticated with the HttpOnly access-token cookie; no JWT in the URL."""
+    origin = websocket.headers.get("origin")
+    if origin not in settings.CORS_ORIGINS:
+        await websocket.close(code=1008)
+        return
+
     try:
         token = websocket.cookies.get("access_token")
         if not token:
