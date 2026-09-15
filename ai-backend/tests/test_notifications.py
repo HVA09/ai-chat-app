@@ -3,6 +3,7 @@
 """
 from unittest.mock import MagicMock
 
+from app.config import settings as app_settings
 from app.routers import billing as billing_router_module
 from app.services.payment_providers.base import WebhookEvent
 
@@ -65,7 +66,10 @@ def test_websocket_receives_realtime_notification_on_subscription_activated(clie
     me = client.get("/users/me", headers=headers).json()
     pro_plan = next(p for p in client.get("/billing/plans").json() if p["name"] == "Pro")
 
-    with client.websocket_connect("/ws/notifications") as websocket:
+    with client.websocket_connect(
+        "/ws/notifications",
+        headers={"Origin": app_settings.CORS_ORIGINS[0]},
+    ) as websocket:
         mock_provider = MagicMock()
         mock_provider.verify_webhook = MagicMock(return_value=WebhookEvent(
             event_type="checkout_completed",
