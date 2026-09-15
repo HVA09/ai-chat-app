@@ -70,6 +70,23 @@ app.add_middleware(
 
 
 @app.middleware("http")
+async def cookie_csrf_middleware(request: Request, call_next):
+    """Protect cookie-authenticated state changes from cross-site requests."""
+    if settings.ENVIRONMENT == "production" and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        cookie_header = request.headers.get("cookie", "")
+        has_auth_cookie = "access_token=" in cookie_header or "refresh_token=" in cookie_header
+        if has_auth_cookie:
+            origin = request.headers.get("origin")
+            allowed_origins = {origin.rstrip("/") for origin in settings.CORS_ORIGINS if origin}
+            if not origin or origin.rstrip("/") not in allowed_origins:
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={"detail": "CSRF validation failed"},
+                )
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"

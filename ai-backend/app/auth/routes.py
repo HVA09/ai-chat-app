@@ -20,6 +20,7 @@ from app.cache import (
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.logging_config import get_logger
 from app.models.user import User, UserRole
 from app.notifications import notify
 from app.schemas.auth import EmailVerificationConfirm, LoginRequest, PasswordResetConfirm, PasswordResetRequest, Token
@@ -27,12 +28,14 @@ from app.schemas.user import UserCreate, UserOut
 from app.services.email_service import send_password_reset_email, send_verification_email, send_welcome_email
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+logger = get_logger("auth")
 
 
 def _set_session_cookies(response: Response, access_token: str, refresh_token: str) -> None:
     secure = settings.ENVIRONMENT == "production"
-    response.set_cookie("refresh_token", refresh_token, httponly=True, secure=secure, samesite="lax", max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400, path="/auth")
-    response.set_cookie("access_token", access_token, httponly=True, secure=secure, samesite="lax", max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, path="/")
+    same_site = "none" if secure else "lax"
+    response.set_cookie("refresh_token", refresh_token, httponly=True, secure=secure, samesite=same_site, max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400, path="/auth")
+    response.set_cookie("access_token", access_token, httponly=True, secure=secure, samesite=same_site, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, path="/")
 
 
 def _token_response(access_token: str, refresh_token: str) -> Token:
@@ -107,7 +110,7 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
 def refresh(request: Request, response: Response, db: Session = Depends(get_db)):
     invalid = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="refresh token غير صالح")
     refresh_token = request.cookies.get("refresh_token")
-    log_event(db, "refresh_debug", f"refresh_cookie_present={bool(refresh_token)}")
+    logger.debug("refresh_cookie_present=%s", bool(refresh_token))
     try:
         if not refresh_token:
             raise ValueError("missing")
@@ -117,16 +120,16 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
         user_id = int(data.get("sub"))
         token_version = int(data.get("ver", -1))
     except (JWTError, TypeError, ValueError):
-        log_event(db, "refresh_debug", "refresh_jwt_invalid=True")
+        logger.debug("refresh_jwt_invalid=True")
         raise invalid
     jti = data.get("jti")
     consumed = bool(jti and consume_refresh_token(jti))
-    log_event(db, "refresh_debug", f"refresh_jti_present={bool(jti)} refresh_consume_ok={consumed}")
+    logger.debug("refresh_jti_present=%s refresh_consume_ok=%s", bool(jti), consumed)
     if not consumed:
         raise invalid
     user = db.get(User, user_id)
     user_valid = user is not None and user.is_active and token_version == user.token_version
-    log_event(db, "refresh_debug", f"refresh_user_valid={user_valid}")
+    logger.debug("refresh_user_valid=%s", user_valid)
     if not user_valid:
         raise invalid
     new_refresh_token = create_refresh_token(user.id, user.token_version)
