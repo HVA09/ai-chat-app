@@ -31,8 +31,9 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 def _set_session_cookies(response: Response, access_token: str, refresh_token: str) -> None:
     secure = settings.ENVIRONMENT == "production"
-    response.set_cookie("refresh_token", refresh_token, httponly=True, secure=secure, samesite="lax", max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400, path="/auth")
-    response.set_cookie("access_token", access_token, httponly=True, secure=secure, samesite="lax", max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, path="/")
+    same_site = "none" if secure else "lax"
+    response.set_cookie("refresh_token", refresh_token, httponly=True, secure=secure, samesite=same_site, max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400, path="/auth")
+    response.set_cookie("access_token", access_token, httponly=True, secure=secure, samesite=same_site, max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60, path="/")
 
 
 def _token_response(access_token: str, refresh_token: str) -> Token:
