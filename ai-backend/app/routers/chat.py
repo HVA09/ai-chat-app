@@ -11,7 +11,7 @@ from app.logging_config import get_logger
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.usage_log import UsageLog
 from app.models.user import User
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import ChatEditRequest, ChatRequest, ChatResponse
 from app.services.ai_service import get_ai_reply, stream_ai_reply
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -98,7 +98,7 @@ async def chat_stream(
     """
     نفس /chat لكن الرد يوصل تدريجيًا (Server-Sent Events).
     أحداث SSE: conversation (رقم المحادثة) → chunk (جزء نص، مرارًا) → done | error
-    الأسطر الجديدة داخل chunk تُستبدل بـ \\n نصية عشان ما تكسر صيغة السطر الواحد لكل حدث.
+    الأسطر الجديدة داخل chunk تُستبدل بـ \\\n نصية عشان ما تكسر صيغة السطر الواحد لكل حدث.
     """
     conversation = _get_or_create_conversation(payload, current_user, db)
     history = _build_history(conversation, db)
@@ -209,6 +209,81 @@ async def regenerate_chat_stream(
             logger.exception("فشل حفظ الرد المعاد توليده لمحادثة %s", conversation.id)
             db.rollback()
             yield "event: error\ndata: تعذر حفظ الرد الجديد\n\n"
+            return
+
+        yield "event: done\ndata: {}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/{conversation_id}/edit/stream")
+async def edit_chat_stream(
+    conversation_id: int,
+    payload: ChatEditRequest,
+    current_user: User = Depends(enforce_daily_ai_limit),
+    db: Session = Depends(get_db),
+):
+    """تعديل رسالة مستخدم سابقة ثم إعادة توليد بقية المحادثة من موقع التعديل."""
+    conversation = (
+        db.query(Conversation)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
+
+    messages = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation.id)
+        .order_by(Message.created_at.asc(), Message.id.asc())
+        .all()
+    )
+    user_messages = [message for message in messages if message.role == MessageRole.user]
+    if payload.message_index > len(user_messages):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="رسالة المستخدم غير موجودة")
+
+    target_message = user_messages[payload.message_index - 1]
+    target_position = messages.index(target_message)
+    history_messages = messages[:target_position]
+    history = [{"role": m.role.value, "content": m.content} for m in history_messages[-MAX_HISTORY_MESSAGES:]]
+
+    async def event_generator():
+        yield f"event: conversation\ndata: {conversation.id}\n\n"
+        full_reply = ""
+        try:
+            async for chunk in stream_ai_reply(payload.message, history):
+                full_reply += chunk
+                safe_chunk = chunk.replace("\n", "\\n")
+                yield f"event: chunk\ndata: {safe_chunk}\n\n"
+        except Exception:
+            logger.exception("خطأ أثناء تعديل رسالة لمحادثة %s", conversation.id)
+            yield "event: error\ndata: حدث خطأ أثناء تعديل الرسالة\n\n"
+            return
+
+        try:
+            for message in messages[target_position + 1:]:
+                db.delete(message)
+
+            target_message.content = payload.message
+            if payload.message_index == 1:
+                conversation.title = payload.message[:50]
+
+            db.add(
+                Message(
+                    conversation_id=conversation.id,
+                    role=MessageRole.assistant,
+                    content=full_reply,
+                )
+            )
+            db.add(UsageLog(user_id=current_user.id, endpoint="/chat/edit/stream"))
+            db.commit()
+        except Exception:
+            logger.exception("فشل حفظ الرسالة المعدلة لمحادثة %s", conversation.id)
+            db.rollback()
+            yield "event: error\ndata: تعذر حفظ التعديل\n\n"
             return
 
         yield "event: done\ndata: {}\n\n"
