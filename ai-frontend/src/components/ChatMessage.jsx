@@ -1,3 +1,4 @@
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -18,6 +19,27 @@ function CodeBlock({ className, children }) {
 export default function ChatMessage({ role, text, time }) {
   const isUser = role === "user";
   const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+
+  const copyMessage = async () => {
+    if (!text || !navigator.clipboard) return;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // تجاهل فشل النسخ؛ لا نوقف المحادثة بسببه.
+    }
+  };
+
+  const copyLabel = document.documentElement.lang === "ar"
+    ? copied
+      ? "تم النسخ"
+      : "نسخ"
+    : copied
+      ? "Copied"
+      : "Copy";
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -28,10 +50,24 @@ export default function ChatMessage({ role, text, time }) {
             : "border border-slate-200 bg-white text-slate-900"
         }`}
       >
-        <div className="mb-2 flex items-center gap-2 text-xs opacity-70">
-          <span>{isUser ? t("you") : t("assistant")}</span>
-          <span>•</span>
-          <span>{time}</span>
+        <div className="mb-2 flex items-center justify-between gap-3 text-xs opacity-70">
+          <div className="flex items-center gap-2">
+            <span>{isUser ? t("you") : t("assistant")}</span>
+            <span>•</span>
+            <span>{time}</span>
+          </div>
+
+          {!isUser && text ? (
+            <button
+              type="button"
+              onClick={copyMessage}
+              className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
+              aria-label={copyLabel}
+              title={copyLabel}
+            >
+              {copyLabel}
+            </button>
+          ) : null}
         </div>
 
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock }}>
