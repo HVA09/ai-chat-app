@@ -7,7 +7,7 @@ import ChatComposer from "./components/ChatComposer";
 import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
-import { streamChatMessage, streamRegenerateMessage } from "./lib/chatApi";
+import { streamChatMessage, streamRegenerateMessage, streamEditMessage } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 
 // مُحمَّلة عند الحاجة فقط (lazy) — كل وحدة تصير ملف منفصل (code splitting)،
@@ -82,6 +82,7 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showBilling, setShowBilling] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const bottomRef = useRef(null);
   const streamAbortRef = useRef(null);
 
@@ -105,6 +106,8 @@ export default function App() {
     setConversations([]);
     setConversationId(null);
     setMessages([getWelcomeMessage(t)]);
+    setInput("");
+    setEditingMessageIndex(null);
     setError("");
     setCurrentUser(null);
     setShowAccountSettings(false);
@@ -188,11 +191,15 @@ export default function App() {
   const startNewChat = () => {
     setConversationId(null);
     setMessages([getWelcomeMessage(t)]);
+    setInput("");
+    setEditingMessageIndex(null);
     setError("");
   };
 
   const openConversation = async (id) => {
     setError("");
+    setInput("");
+    setEditingMessageIndex(null);
     try {
       const data = await getConversation(id);
       setConversationId(data.id);
@@ -235,7 +242,79 @@ export default function App() {
     setLoading(false);
   };
 
+  const cancelEditing = () => {
+    setEditingMessageIndex(null);
+    setInput("");
+    setError("");
+  };
+
+  const startEditingMessage = (index) => {
+    if (loading || !conversationId || messages[index]?.role !== "user") return;
+    setError("");
+    setEditingMessageIndex(index);
+    setInput(messages[index]?.text ?? "");
+  };
+
+  const editMessage = async () => {
+    const targetIndex = editingMessageIndex;
+    const editedText = input.trim();
+    if (targetIndex === null || !conversationId || !editedText || loading) return;
+
+    const userMessageIndex = messages
+      .slice(0, targetIndex + 1)
+      .filter((message) => message.role === "user").length;
+    if (!userMessageIndex) return;
+
+    const previousMessages = messages;
+    setError("");
+    setMessages((prev) => [
+      ...prev.slice(0, targetIndex + 1).map((message, index) =>
+        index === targetIndex ? { ...message, text: editedText } : message
+      ),
+      { role: "assistant", text: "", time: new Date().toLocaleTimeString() },
+    ]);
+    setInput("");
+    setEditingMessageIndex(null);
+    setLoading(true);
+
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+
+    const appendToLastMessage = (chunk) => {
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        next[next.length - 1] = { ...last, text: last.text + chunk };
+        return next;
+      });
+    };
+
+    await streamEditMessage(conversationId, userMessageIndex, editedText, {
+      signal: controller.signal,
+      onConversationId: (id) => setConversationId(id),
+      onChunk: appendToLastMessage,
+      onDone: () => {
+        streamAbortRef.current = null;
+        setLoading(false);
+        refreshConversations();
+      },
+      onError: (message) => {
+        streamAbortRef.current = null;
+        setLoading(false);
+        setError(message);
+        setMessages(previousMessages);
+        setInput(editedText);
+        setEditingMessageIndex(targetIndex);
+      },
+    });
+  };
+
   const sendMessage = async () => {
+    if (editingMessageIndex !== null) {
+      await editMessage();
+      return;
+    }
+
     const userText = input.trim();
     if (!userText) return;
 
@@ -467,7 +546,19 @@ export default function App() {
                     role={msg.role}
                     text={msg.text}
                     time={msg.time}
-                    canRegenerate={index === lastAssistantIndex && !loading && conversationId !== null}
+                    canEdit={
+                      msg.role === "user" &&
+                      !loading &&
+                      editingMessageIndex === null &&
+                      conversationId !== null
+                    }
+                    onEdit={() => startEditingMessage(index)}
+                    canRegenerate={
+                      index === lastAssistantIndex &&
+                      !loading &&
+                      editingMessageIndex === null &&
+                      conversationId !== null
+                    }
                     onRegenerate={regenerateLastResponse}
                   />
                 );
@@ -492,7 +583,15 @@ export default function App() {
           )}
         </section>
 
-        <ChatComposer value={input} setValue={setInput} onSend={sendMessage} onStop={stopGeneration} loading={loading} />
+        <ChatComposer
+          value={input}
+          setValue={setInput}
+          onSend={sendMessage}
+          onStop={stopGeneration}
+          loading={loading}
+          isEditing={editingMessageIndex !== null}
+          onCancelEdit={cancelEditing}
+        />
       </main>
 
       <Toast message={toast?.message} type={toast?.type} onDismiss={() => setToast(null)} />
