@@ -18,6 +18,19 @@ class ChatRequest(BaseModel):
         return v
 
 
+class ChatEditRequest(BaseModel):
+    message_index: int = Field(ge=1)
+    message: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("message")
+    @classmethod
+    def message_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("الرسالة لا يمكن أن تكون فارغة")
+        return v
+
+
 class MessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
