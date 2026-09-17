@@ -141,3 +141,76 @@ async def chat_stream(
         yield "event: done\ndata: {}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/{conversation_id}/regenerate/stream")
+async def regenerate_chat_stream(
+    conversation_id: int,
+    current_user: User = Depends(enforce_daily_ai_limit),
+    db: Session = Depends(get_db),
+):
+    """إعادة توليد آخر رد مساعد بدون إضافة رسالة مستخدم مكررة."""
+    conversation = (
+        db.query(Conversation)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
+
+    messages = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation.id)
+        .order_by(Message.created_at.asc(), Message.id.asc())
+        .all()
+    )
+    if not messages:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="لا توجد رسالة لإعادة توليدها")
+
+    previous_assistant = messages[-1] if messages[-1].role == MessageRole.assistant else None
+    user_index = len(messages) - 2 if previous_assistant else len(messages) - 1
+
+    if user_index < 0 or messages[user_index].role != MessageRole.user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="لا توجد رسالة مستخدم لإعادة توليد الرد")
+
+    user_message = messages[user_index]
+    history_messages = messages[:user_index]
+    history = [{"role": m.role.value, "content": m.content} for m in history_messages[-MAX_HISTORY_MESSAGES:]]
+
+    async def event_generator():
+        yield f"event: conversation\ndata: {conversation.id}\n\n"
+        full_reply = ""
+        try:
+            async for chunk in stream_ai_reply(user_message.content, history):
+                full_reply += chunk
+                safe_chunk = chunk.replace("\n", "\\n")
+                yield f"event: chunk\ndata: {safe_chunk}\n\n"
+        except Exception:
+            logger.exception("خطأ أثناء إعادة توليد الرد لمحادثة %s", conversation.id)
+            yield "event: error\ndata: حدث خطأ أثناء إعادة توليد الرد\n\n"
+            return
+
+        try:
+            if previous_assistant is not None:
+                db.delete(previous_assistant)
+            db.add(
+                Message(
+                    conversation_id=conversation.id,
+                    role=MessageRole.assistant,
+                    content=full_reply,
+                )
+            )
+            db.add(UsageLog(user_id=current_user.id, endpoint="/chat/regenerate/stream"))
+            db.commit()
+        except Exception:
+            logger.exception("فشل حفظ الرد المعاد توليده لمحادثة %s", conversation.id)
+            db.rollback()
+            yield "event: error\ndata: تعذر حفظ الرد الجديد\n\n"
+            return
+
+        yield "event: done\ndata: {}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")

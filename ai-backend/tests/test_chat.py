@@ -4,6 +4,7 @@
 from unittest.mock import AsyncMock
 
 from app.config import settings as app_settings
+from app.models.conversation import Message, MessageRole
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
 
@@ -24,6 +25,47 @@ def test_chat_creates_conversation_and_returns_reply(client, monkeypatch):
     body = response.json()
     assert body["reply"] == "رد تجريبي من المساعد"
     assert "conversation_id" in body
+
+
+def test_regenerate_replaces_last_assistant_without_duplicate_user_message(client, monkeypatch, db_session):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="الرد القديم")),
+    )
+
+    token = _register_and_login(client, "regenerate@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    first = client.post("/chat", json={"message": "ما هو لينكس؟"}, headers=headers)
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+
+    async def fake_stream(message, history):
+        assert message == "ما هو لينكس؟"
+        assert history == []
+        yield "الرد الجديد"
+
+    monkeypatch.setattr(chat_router_module, "stream_ai_reply", fake_stream)
+
+    response = client.post(
+        f"/chat/{conversation_id}/regenerate/stream",
+        headers=headers,
+        json={},
+    )
+    assert response.status_code == 200
+    assert "event: done" in response.text
+    assert "الرد الجديد" in response.text
+
+    messages = (
+        db_session.query(Message)
+        .filter(Message.conversation_id == conversation_id)
+        .order_by(Message.id.asc())
+        .all()
+    )
+    assert [(message.role, message.content) for message in messages] == [
+        (MessageRole.user, "ما هو لينكس؟"),
+        (MessageRole.assistant, "الرد الجديد"),
+    ]
 
 
 def test_chat_requires_authentication(client):

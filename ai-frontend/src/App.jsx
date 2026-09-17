@@ -7,7 +7,7 @@ import ChatComposer from "./components/ChatComposer";
 import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
-import { streamChatMessage } from "./lib/chatApi";
+import { streamChatMessage, streamRegenerateMessage } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 
 // مُحمَّلة عند الحاجة فقط (lazy) — كل وحدة تصير ملف منفصل (code splitting)،
@@ -92,6 +92,12 @@ export default function App() {
   }, [messages, loading]);
 
   const empty = useMemo(() => messages.length === 0, [messages.length]);
+  const lastAssistantIndex = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].role === "assistant") return index;
+    }
+    return -1;
+  }, [messages]);
 
   const logout = useCallback(async () => {
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
@@ -286,6 +292,52 @@ export default function App() {
     });
   };
 
+  const regenerateLastResponse = async () => {
+    if (!conversationId || loading || lastAssistantIndex < 0) return;
+
+    const targetIndex = lastAssistantIndex;
+    const previousText = messages[targetIndex]?.text ?? "";
+    setError("");
+    setMessages((prev) =>
+      prev.map((message, index) =>
+        index === targetIndex ? { ...message, text: "" } : message
+      )
+    );
+    setLoading(true);
+
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+
+    const appendToTargetMessage = (chunk) => {
+      setMessages((prev) =>
+        prev.map((message, index) =>
+          index === targetIndex ? { ...message, text: message.text + chunk } : message
+        )
+      );
+    };
+
+    await streamRegenerateMessage(conversationId, {
+      signal: controller.signal,
+      onConversationId: (id) => setConversationId(id),
+      onChunk: appendToTargetMessage,
+      onDone: () => {
+        streamAbortRef.current = null;
+        setLoading(false);
+        refreshConversations();
+      },
+      onError: (message) => {
+        streamAbortRef.current = null;
+        setLoading(false);
+        setError(message);
+        setMessages((prev) =>
+          prev.map((item, index) =>
+            index === targetIndex ? { ...item, text: previousText } : item
+          )
+        );
+      },
+    });
+  };
+
   const handleMarkNotificationRead = async (id) => {
     try {
       await markNotificationRead(id);
@@ -409,7 +461,16 @@ export default function App() {
                   msg.text === "" &&
                   loading;
                 if (isPendingAssistantBubble) return null;
-                return <ChatMessage key={index} role={msg.role} text={msg.text} time={msg.time} />;
+                return (
+                  <ChatMessage
+                    key={index}
+                    role={msg.role}
+                    text={msg.text}
+                    time={msg.time}
+                    canRegenerate={index === lastAssistantIndex && !loading && conversationId !== null}
+                    onRegenerate={regenerateLastResponse}
+                  />
+                );
               })
             )}
 
