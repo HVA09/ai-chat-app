@@ -16,7 +16,13 @@ function CodeBlock({ className, children }) {
   );
 }
 
-export default function ChatMessage({ role, text, time }) {
+export default function ChatMessage({
+  role,
+  text,
+  time,
+  canRegenerate = false,
+  onRegenerate,
+}) {
   const isUser = role === "user";
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -41,6 +47,10 @@ export default function ChatMessage({ role, text, time }) {
       ? "Copied"
       : "Copy";
 
+  const regenerateLabel = document.documentElement.lang === "ar"
+    ? "إعادة التوليد"
+    : "Regenerate";
+
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
@@ -58,15 +68,28 @@ export default function ChatMessage({ role, text, time }) {
           </div>
 
           {!isUser && text ? (
-            <button
-              type="button"
-              onClick={copyMessage}
-              className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
-              aria-label={copyLabel}
-              title={copyLabel}
-            >
-              {copyLabel}
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={copyMessage}
+                className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                aria-label={copyLabel}
+                title={copyLabel}
+              >
+                {copyLabel}
+              </button>
+              {canRegenerate && onRegenerate ? (
+                <button
+                  type="button"
+                  onClick={onRegenerate}
+                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  aria-label={regenerateLabel}
+                  title={regenerateLabel}
+                >
+                  {regenerateLabel}
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </div>
 
