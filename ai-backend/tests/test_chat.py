@@ -68,6 +68,59 @@ def test_regenerate_replaces_last_assistant_without_duplicate_user_message(clien
     ]
 
 
+def test_edit_user_message_replaces_turn_and_truncates_following_history(client, monkeypatch, db_session):
+    replies = iter(["رد الرسالة الأولى", "رد الرسالة الثانية"])
+    mock_get_reply = AsyncMock()
+    mock_get_reply.side_effect = lambda *args, **kwargs: AIReply(text=next(replies))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_get_reply)
+
+    token = _register_and_login(client, "edit@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post("/chat", json={"message": "ما هو لينكس؟"}, headers=headers)
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+
+    second = client.post(
+        "/chat",
+        json={"message": "ما هي بايثون؟", "conversation_id": conversation_id},
+        headers=headers,
+    )
+    assert second.status_code == 200
+
+    async def fake_stream(message, history):
+        assert message == "ما هي بايثون؟ باختصار"
+        assert history == [
+            {"role": "user", "content": "ما هو لينكس؟"},
+            {"role": "assistant", "content": "رد الرسالة الأولى"},
+        ]
+        yield "رد بايثون المعدل"
+
+    monkeypatch.setattr(chat_router_module, "stream_ai_reply", fake_stream)
+
+    response = client.post(
+        f"/chat/{conversation_id}/edit/stream",
+        headers=headers,
+        json={"message_index": 2, "message": "ما هي بايثون؟ باختصار"},
+    )
+    assert response.status_code == 200
+    assert "event: done" in response.text
+    assert "رد بايثون المعدل" in response.text
+
+    messages = (
+        db_session.query(Message)
+        .filter(Message.conversation_id == conversation_id)
+        .order_by(Message.id.asc())
+        .all()
+    )
+    assert [(message.role, message.content) for message in messages] == [
+        (MessageRole.user, "ما هو لينكس؟"),
+        (MessageRole.assistant, "رد الرسالة الأولى"),
+        (MessageRole.user, "ما هي بايثون؟ باختصار"),
+        (MessageRole.assistant, "رد بايثون المعدل"),
+    ]
+
+
 def test_chat_requires_authentication(client):
     response = client.post("/chat", json={"message": "مرحبًا"})
     assert response.status_code == 401

@@ -174,3 +174,87 @@ export async function streamRegenerateMessage(
     throw err;
   }
 }
+
+/**
+ * تعديل رسالة مستخدم سابقة مع إعادة توليد كل ما بعدها، بدون إضافة رسالة مستخدم جديدة.
+ * messageIndex يبدأ من 1 بين رسائل المستخدم داخل المحادثة.
+ */
+export async function streamEditMessage(
+  conversationId,
+  messageIndex,
+  message,
+  { onChunk, onConversationId, onDone, onError, signal } = {}
+) {
+  const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+
+  let response;
+  try {
+    response = await fetch(`${baseURL}/chat/${conversationId}/edit/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({ message_index: messageIndex, message }),
+      signal,
+    });
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      onDone?.();
+      return;
+    }
+    onError?.(i18n.t("app.connectionError"));
+    return;
+  }
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      window.dispatchEvent(new Event("auth:unauthorized"));
+      return;
+    }
+    const body = await response.json().catch(() => ({}));
+    onError?.(detailToMessage(body.detail, i18n.t("app.sendMessageError")));
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const events = buffer.split("\n\n");
+      buffer = events.pop() ?? "";
+
+      for (const raw of events) {
+        const lines = raw.split("\n");
+        const eventLine = lines.find((l) => l.startsWith("event: "));
+        const dataLine = lines.find((l) => l.startsWith("data: "));
+        if (!eventLine || !dataLine) continue;
+
+        const eventType = eventLine.slice("event: ".length);
+        const data = dataLine.slice("data: ".length);
+
+        if (eventType === "conversation") onConversationId?.(Number(data));
+        else if (eventType === "chunk") onChunk?.(data.replace(/\\n/g, "\n"));
+        else if (eventType === "error") onError?.(data);
+        else if (eventType === "done") onDone?.();
+      }
+    }
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      try {
+        await reader.cancel();
+      } catch {
+        /* ignore */
+      }
+      onDone?.();
+      return;
+    }
+    throw err;
+  }
+}

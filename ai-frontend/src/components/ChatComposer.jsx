@@ -4,9 +4,20 @@ import { useTranslation } from "react-i18next";
 // يقدر يبعت رسالة أطول من المسموح ويوصله خطأ 422 بدل ما نمنعه من الأساس
 const MAX_MESSAGE_LENGTH = 4000;
 
-export default function ChatComposer({ value, setValue, onSend, onStop, loading }) {
+export default function ChatComposer({
+  value,
+  setValue,
+  onSend,
+  onStop,
+  loading,
+  isEditing = false,
+  onCancelEdit,
+}) {
   const { t } = useTranslation();
   const nearLimit = value.length > MAX_MESSAGE_LENGTH - 200;
+  const lang = document.documentElement.lang;
+  const saveEditLabel = lang === "ar" ? "حفظ التعديل" : "Save edit";
+  const cancelEditLabel = lang === "ar" ? "إلغاء" : "Cancel";
 
   return (
     <form
@@ -17,6 +28,19 @@ export default function ChatComposer({ value, setValue, onSend, onStop, loading 
       }}
       className="border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"
     >
+      {isEditing && !loading ? (
+        <div className="mb-2 flex items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
+          <span>{lang === "ar" ? "تعديل الرسالة" : "Editing message"}</span>
+          <button
+            type="button"
+            onClick={onCancelEdit}
+            className="rounded-md px-2 py-1 font-medium hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+          >
+            {cancelEditLabel}
+          </button>
+        </div>
+      ) : null}
+
       <div className="flex items-end gap-3">
         <div className="flex-1">
           <textarea
@@ -48,7 +72,7 @@ export default function ChatComposer({ value, setValue, onSend, onStop, loading 
             disabled={!value.trim()}
             className="rounded-2xl bg-slate-900 px-5 py-3 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-1 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           >
-            {t("send")}
+            {isEditing ? saveEditLabel : t("send")}
           </button>
         )}
       </div>
