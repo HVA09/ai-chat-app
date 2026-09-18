@@ -17,7 +17,7 @@ export async function sendChatMessage(message, conversationId = null) {
 export async function streamChatMessage(
   message,
   conversationId,
-  { onChunk, onConversationId, onDone, onError, signal } = {}
+  { onChunk, onConversationId, onSources, onDone, onError, signal } = {}
 ) {
   const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -74,6 +74,7 @@ export async function streamChatMessage(
         const data = dataLine.slice("data: ".length);
 
         if (eventType === "conversation") onConversationId?.(Number(data));
+        else if (eventType === "sources") onSources?.(JSON.parse(data));
         else if (eventType === "chunk") onChunk?.(data.replace(/\\n/g, "\n"));
         else if (eventType === "error") onError?.(data);
         else if (eventType === "done") onDone?.();
