@@ -106,7 +106,7 @@ def test_cannot_attach_to_other_users_conversation(client, tmp_path, monkeypatch
 
     token_b = _register_and_login(client, "link-intruder@example.com")
     headers_b = {"Authorization": f"Bearer {token_b}"}
-    conversation_id = _make_chat(client, headers_b)
+    conversation_id = _make_chat(client, headers_b, monkeypatch)
 
     response = client.post(
         f"/files/{uploaded['id']}/attach/{conversation_id}",
