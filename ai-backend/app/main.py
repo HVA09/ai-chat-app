@@ -29,6 +29,7 @@ from app.routers.notifications import router as notifications_router
 from app.routers.shared_conversations import router as shared_conversations_router
 from app.routers.shared_conversations import router as shared_conversations_router
 from app.routers.users import router as users_router
+from app.routers.workspaces import router as workspaces_router
 
 configure_logging()
 logger = get_logger("main")
@@ -133,6 +134,7 @@ def health_check(db: Session = Depends(get_db)):
 app.include_router(auth_router)
 app.include_router(two_factor_router)
 app.include_router(users_router)
+app.include_router(workspaces_router)
 app.include_router(chat_router)
 app.include_router(conversations_router)
 app.include_router(files_router)
