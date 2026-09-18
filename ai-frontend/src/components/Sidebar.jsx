@@ -29,6 +29,11 @@ export default function Sidebar({
   onRenameFolder,
   onDeleteFolder,
   onMoveConversationToFolder,
+  workspaces,
+  selectedWorkspaceId,
+  onSelectWorkspace,
+  onCreateWorkspace,
+  onRenameWorkspace,
   showArchived,
   onShowArchived,
   loading,
@@ -172,6 +177,35 @@ export default function Sidebar({
               ✕
             </button>
           </div>
+          <div className="mt-3 flex items-center gap-2">
+            <select
+              aria-label={t("sidebar.workspaceSelectTitle")}
+              value={selectedWorkspaceId ?? ""}
+              onChange={(e) => onSelectWorkspace(e.target.value)}
+              className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            >
+              {workspaces.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={onCreateWorkspace}
+              title={t("sidebar.workspaceCreateTitle")}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            >
+              +
+            </button>
+            <button
+              type="button"
+              onClick={onRenameWorkspace}
+              title={t("sidebar.workspaceRenameTitle")}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            >
+              ✎
+            </button>
+          </div>
+
           <button
             onClick={() => {
               onNewChat();
