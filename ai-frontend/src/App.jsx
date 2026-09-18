@@ -170,11 +170,12 @@ export default function App() {
 
   const refreshConversations = async (
     includeArchived = showArchivedConversations,
-    folderId = selectedFolderId
+    folderId = selectedFolderId,
+    workspaceId = selectedWorkspaceId
   ) => {
     setConversationsLoading(true);
     try {
-      const list = await listConversations(includeArchived, folderId);
+      const list = await listConversations(includeArchived, folderId, workspaceId);
       setConversations(list);
     } catch {
       // فشل تحميل القائمة لا يوقف الشات نفسه — نتجاهله بصمت
@@ -258,7 +259,7 @@ export default function App() {
       await refreshFolders();
       setSelectedFolderId(folder.id);
       startNewChat();
-      await refreshConversations(showArchivedConversations, folder.id);
+      await refreshConversations(showArchivedConversations, folder.id, selectedWorkspaceId);
     } catch {
       setToast({ message: t("app.folderCreateError"), type: "error" });
     }
@@ -268,7 +269,7 @@ export default function App() {
     try {
       await renameFolder(id, newName);
       await refreshFolders();
-      await refreshConversations(showArchivedConversations, selectedFolderId);
+      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
     } catch {
       setToast({ message: t("app.folderRenameError"), type: "error" });
     }
@@ -283,7 +284,11 @@ export default function App() {
         startNewChat();
       }
       await refreshFolders();
-      await refreshConversations(showArchivedConversations, wasSelected ? null : selectedFolderId);
+      await refreshConversations(
+        showArchivedConversations,
+        wasSelected ? null : selectedFolderId,
+        selectedWorkspaceId
+      );
     } catch {
       setToast({ message: t("app.folderDeleteError"), type: "error" });
     }
@@ -292,7 +297,7 @@ export default function App() {
   const handleSelectFolder = async (id) => {
     setSelectedFolderId(id);
     startNewChat();
-    await refreshConversations(showArchivedConversations, id);
+    await refreshConversations(showArchivedConversations, id, selectedWorkspaceId);
   };
 
   const refreshAssistants = async () => {
@@ -376,7 +381,7 @@ export default function App() {
       ) {
         startNewChat();
       }
-      await refreshConversations(showArchivedConversations, selectedFolderId);
+      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
     } catch {
       setToast({ message: t("app.conversationMoveError"), type: "error" });
     }
@@ -504,7 +509,7 @@ export default function App() {
     try {
       const result = await toggleArchiveConversation(id);
       if (result.is_archived && id === conversationId) startNewChat();
-      await refreshConversations(showArchivedConversations, selectedFolderId);
+      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
     } catch {
       setToast({ message: t("app.archiveConversationError"), type: "error" });
     }
@@ -888,7 +893,7 @@ export default function App() {
         showArchived={showArchivedConversations}
         onShowArchived={(value) => {
           setShowArchivedConversations(value);
-          refreshConversations(value, selectedFolderId);
+          refreshConversations(value, selectedFolderId, selectedWorkspaceId);
           if (value) startNewChat();
         }}
         loading={conversationsLoading}
