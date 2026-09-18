@@ -33,6 +33,8 @@ const resources = {
         folderRenameError: "تعذر إعادة تسمية المجلد",
         folderDeleteError: "تعذر حذف المجلد",
         conversationMoveError: "تعذر نقل المحادثة",
+        workspaceCreateError: "تعذر إنشاء مساحة العمل",
+        workspaceRenameError: "تعذر إعادة تسمية مساحة العمل",
         assistantCreateError: "تعذر إنشاء المساعد",
         assistantRenameError: "تعذر إعادة تسمية المساعد",
         assistantDeleteError: "تعذر حذف المساعد",
