@@ -39,7 +39,6 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
 
 def index_file_chunks(db: Session, file: FileAttachment) -> int:
     """يعيد فهرسة ملف واحد. لو لا يوجد نص قابل للاستخراج فلا ينشئ مقاطع."""
-    db.execute(delete(FileChunk).where(FileChunk.file_id == file.id))
     text = (file.extracted_text or "").strip()
     if not text:
         return 0
@@ -47,6 +46,7 @@ def index_file_chunks(db: Session, file: FileAttachment) -> int:
     chunks = chunk_text(text)
     embeddings = embed_documents_sync(chunks)
 
+    db.execute(delete(FileChunk).where(FileChunk.file_id == file.id))
     db.add_all(
         [
             FileChunk(
