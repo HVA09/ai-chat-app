@@ -589,6 +589,32 @@ const resources = {
         confirmDelete: 'Delete conversation "{{title}}"? This cannot be undone.',
       },
 
+      workspaceMembers: {
+        title: "Workspace members",
+        inviteTitle: "Invite a member",
+        emailPlaceholder: "Account email",
+        memberRole: "Member",
+        adminRole: "Admin",
+        invite: "Invite",
+        existingUserOnly: "For now, invitations require an existing account.",
+        membersTitle: "Members",
+        pendingTitle: "Pending invitations",
+        remove: "Remove",
+        revoke: "Revoke",
+        noMembers: "No other members",
+        noPending: "No pending invitations",
+        confirmRemove: "Remove {{email}} from this workspace?",
+      },
+
+      workspaceInvite: {
+        title: "Workspace invitation",
+        invalid: "The invitation link is invalid or incomplete.",
+        loginFirst: "Log in with the invited account, then open the invitation link again.",
+        accepted: "Invitation accepted. You joined {{workspace}}.",
+        error: "Couldn't accept the invitation. It may be expired or revoked.",
+        backToApp: "Back to app",
+      },
+
       sources: {
         title: "Sources",
         chunkShort: "chunk {{chunk}}",
