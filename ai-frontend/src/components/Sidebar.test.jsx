@@ -13,13 +13,27 @@ vi.mock("react-i18next", () => ({
       "sidebar.renameTitle": "إعادة تسمية",
       "sidebar.deleteTitle": "حذف",
       "sidebar.confirmDelete": "حذف المحادثة؟",
+      "sidebar.foldersTitle": "المجلدات",
+      "sidebar.allConversations": "كل المحادثات",
+      "sidebar.createFolderTitle": "إنشاء مجلد",
+      "sidebar.folderCreatePrompt": "اسم المجلد:",
+      "sidebar.folderRenamePrompt": "اسم المجلد الجديد:",
+      "sidebar.renameFolderTitle": "إعادة تسمية المجلد",
+      "sidebar.deleteFolderTitle": "حذف المجلد",
+      "sidebar.folderDeleteConfirm": "حذف المجلد {{name}}؟",
+      "sidebar.moveFolderTitle": "نقل إلى مجلد",
+      "sidebar.noFolder": "بدون مجلد",
     })[key] ?? key,
   }),
 }));
 
 const sampleConversations = [
-  { id: 1, title: "محادثة أولى", created_at: "2026-07-01T10:00:00Z" },
-  { id: 2, title: "محادثة ثانية", created_at: "2026-07-02T10:00:00Z" },
+  { id: 1, title: "محادثة أولى", created_at: "2026-07-01T10:00:00Z", folder_id: 10 },
+  { id: 2, title: "محادثة ثانية", created_at: "2026-07-02T10:00:00Z", folder_id: null },
+];
+const sampleFolders = [
+  { id: 10, name: "عمل", created_at: "2026-07-01T10:00:00Z" },
+  { id: 20, name: "دراسة", created_at: "2026-07-02T10:00:00Z" },
 ];
 
 function renderSidebar(overrides = {}) {
@@ -29,6 +43,17 @@ function renderSidebar(overrides = {}) {
     onNewChat: vi.fn(),
     onRenameConversation: vi.fn(),
     onDeleteConversation: vi.fn(),
+    onTogglePinConversation: vi.fn(),
+    onToggleArchiveConversation: vi.fn(),
+    folders: sampleFolders,
+    selectedFolderId: null,
+    onSelectFolder: vi.fn(),
+    onCreateFolder: vi.fn(),
+    onRenameFolder: vi.fn(),
+    onDeleteFolder: vi.fn(),
+    onMoveConversationToFolder: vi.fn(),
+    showArchived: false,
+    onShowArchived: vi.fn(),
     loading: false,
     ...overrides,
   };
@@ -95,6 +120,27 @@ describe("Sidebar", () => {
 
     expect(onDeleteConversation).toHaveBeenCalledWith(1);
     expect(onSelectConversation).not.toHaveBeenCalled();
+  });
+
+  it("يستطيع اختيار مجلد للمحادثات", async () => {
+    const user = userEvent.setup();
+    const { onSelectFolder } = renderSidebar();
+    await user.click(screen.getByText("عمل"));
+    expect(onSelectFolder).toHaveBeenCalledWith(10);
+  });
+
+  it("نقل محادثة يرسل معرف المجلد", async () => {
+    const user = userEvent.setup();
+    const { onMoveConversationToFolder } = renderSidebar();
+    await user.selectOptions(screen.getAllByLabelText("نقل إلى مجلد")[0], "20");
+    expect(onMoveConversationToFolder).toHaveBeenCalledWith(1, "20");
+  });
+
+  it("زر إنشاء مجلد يستدعي المعالج", async () => {
+    const user = userEvent.setup();
+    const { onCreateFolder } = renderSidebar();
+    await user.click(screen.getByTitle("إنشاء مجلد"));
+    expect(onCreateFolder).toHaveBeenCalled();
   });
 
   it("الحذف ما يصير لو المستخدم ألغى التأكيد", async () => {
