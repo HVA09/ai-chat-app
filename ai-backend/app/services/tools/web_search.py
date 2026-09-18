@@ -84,7 +84,8 @@ async def search_web(
     if len(query) > MAX_QUERY_LENGTH:
         raise WebSearchError("استعلام البحث طويل جدًا.")
 
-    result_limit = max(1, min(limit or DEFAULT_RESULT_LIMIT, 8))
+    configured_limit = limit if limit is not None else settings.WEB_SEARCH_MAX_RESULTS
+    result_limit = max(1, min(configured_limit or DEFAULT_RESULT_LIMIT, 8))
 
     try:
         async with httpx.AsyncClient(
