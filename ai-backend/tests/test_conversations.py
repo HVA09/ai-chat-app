@@ -51,6 +51,54 @@ def test_conversations_require_authentication(client):
     assert response.status_code == 401
 
 
+def test_toggle_pin_conversation(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "pin@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    chat_response = client.post("/chat", json={"message": "رسالة"}, headers=headers)
+    conversation_id = chat_response.json()["conversation_id"]
+
+    first = client.get("/conversations", headers=headers)
+    assert first.json()[0]["is_pinned"] is False
+
+    response = client.patch(f"/conversations/{conversation_id}/pin", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["is_pinned"] is True
+
+    second = client.get("/conversations", headers=headers)
+    assert second.json()[0]["is_pinned"] is True
+
+    response = client.patch(f"/conversations/{conversation_id}/pin", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["is_pinned"] is False
+
+
+def test_cannot_pin_other_users_conversation(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token_a = _register_and_login(client, "pin-owner@example.com")
+    chat_response = client.post(
+        "/chat",
+        json={"message": "خاص"},
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    conversation_id = chat_response.json()["conversation_id"]
+
+    token_b = _register_and_login(client, "pin-other@example.com")
+    response = client.patch(
+        f"/conversations/{conversation_id}/pin",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
+
+
 def test_rename_conversation(client, monkeypatch):
     monkeypatch.setattr(chat_router_module, "get_ai_reply", AsyncMock(return_value=AIReply(text="رد")))
     token = _register_and_login(client)
