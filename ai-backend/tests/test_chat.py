@@ -220,9 +220,16 @@ def test_chat_includes_attached_file_text_as_untrusted_context(client, monkeypat
 
     from app.models.conversation_file_link import ConversationFileLink
     from app.models.file_attachment import FileAttachment
+    from app.models.user import User
+
+    user = (
+        db_session.query(User)
+        .filter(User.email == "file-context@example.com")
+        .one()
+    )
 
     file = FileAttachment(
-        user_id=1,
+        user_id=user.id,
         original_filename="linux.txt",
         stored_filename="linux.txt",
         content_type="text/plain",
