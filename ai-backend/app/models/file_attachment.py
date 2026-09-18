@@ -29,3 +29,6 @@ class FileAttachment(Base):
     conversation_links = relationship(
         "ConversationFileLink", back_populates="file", cascade="all, delete-orphan", passive_deletes=True
     )
+    chunks = relationship(
+        "FileChunk", back_populates="file", cascade="all, delete-orphan", passive_deletes=True
+    )
