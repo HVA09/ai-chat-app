@@ -37,7 +37,7 @@ def _ensure_unique_owned_name(
 ) -> None:
     query = db.query(Workspace).filter(
         Workspace.owner_id == owner_id,
-        func.lower(Workspace.name) == name.lower(),
+        func.lower(Workspace.name) == func.lower(name.strip()),
     )
     if exclude_id is not None:
         query = query.filter(Workspace.id != exclude_id)
