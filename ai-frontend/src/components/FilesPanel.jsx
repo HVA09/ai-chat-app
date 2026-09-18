@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { deleteFile, downloadFile, fetchFileBlob, listFiles, uploadFile } from "../lib/filesApi";
+import {
+  attachFileToConversation,
+  deleteFile,
+  detachFileFromConversation,
+  downloadFile,
+  fetchFileBlob,
+  listFiles,
+  uploadFile,
+} from "../lib/filesApi";
 import { getErrorMessage } from "../lib/errors";
 
 const ICONS = {
@@ -21,7 +29,7 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function FilesPanel({ onClose }) {
+export default function FilesPanel({ onClose, conversationId = null }) {
   const { t } = useTranslation();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,7 +42,7 @@ export default function FilesPanel({ onClose }) {
   const refresh = async () => {
     setLoading(true);
     try {
-      setFiles(await listFiles());
+      setFiles(await listFiles(conversationId, Boolean(conversationId)));
     } catch {
       setError(t("files.listError"));
     } finally {
@@ -44,7 +52,7 @@ export default function FilesPanel({ onClose }) {
 
   useEffect(() => {
     refresh();
-  }, []);
+  }, [conversationId]);
 
   const handleUpload = async (fileList) => {
     const file = fileList?.[0];
@@ -52,12 +60,26 @@ export default function FilesPanel({ onClose }) {
     setError("");
     setUploadProgress(0);
     try {
-      await uploadFile(file, setUploadProgress);
+      await uploadFile(file, setUploadProgress, conversationId);
       await refresh();
     } catch (err) {
       setError(getErrorMessage(err, t("files.uploadError")));
     } finally {
       setUploadProgress(null);
+    }
+  };
+
+  const handleToggleAttachment = async (file) => {
+    if (!conversationId) return;
+    try {
+      if (file.is_attached) {
+        await detachFileFromConversation(file.id, conversationId);
+      } else {
+        await attachFileToConversation(file.id, conversationId);
+      }
+      await refresh();
+    } catch (err) {
+      setError(getErrorMessage(err, t("files.attachmentError")));
     }
   };
 
@@ -181,6 +203,15 @@ export default function FilesPanel({ onClose }) {
                   >
                     ⬇
                   </button>
+                  {conversationId && (
+                    <button
+                      onClick={() => handleToggleAttachment(file)}
+                      title={file.is_attached ? t("files.detach") : t("files.attach")}
+                      className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                    >
+                      {file.is_attached ? "↩" : "＋"}
+                    </button>
+                  )}
                   <button
                     onClick={() => handleDelete(file.id)}
                     title={t("files.delete")}
