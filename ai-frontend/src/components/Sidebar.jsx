@@ -16,6 +16,12 @@ export default function Sidebar({
   onDeleteConversation,
   onTogglePinConversation,
   onToggleArchiveConversation,
+  assistants = [],
+  selectedAssistantId = null,
+  onSelectAssistant = () => {},
+  onCreateAssistant = () => {},
+  onRenameAssistant = () => {},
+  onDeleteAssistant = () => {},
   folders,
   selectedFolderId,
   onSelectFolder,
@@ -176,6 +182,59 @@ export default function Sidebar({
             {t("newChat")}
           </button>
           <button type="button" onClick={() => onShowArchived(!showArchived)} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">{showArchived ? t("sidebar.backToChats") : t("sidebar.archivedTitle")}</button>
+
+          <div className="mt-3 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                {t("sidebar.assistantsTitle")}
+              </span>
+              <button
+                type="button"
+                onClick={onCreateAssistant}
+                title={t("sidebar.createAssistantTitle")}
+                className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800"
+              >
+                +
+              </button>
+            </div>
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => onSelectAssistant(null)}
+                className={`w-full rounded-lg px-2 py-1.5 text-start text-sm ${selectedAssistantId === null ? "bg-slate-100 font-medium text-slate-900 dark:bg-slate-800 dark:text-slate-100" : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"}`}
+              >
+                {t("sidebar.defaultAssistant")}
+              </button>
+              {assistants.map((assistant) => (
+                <div key={assistant.id} className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onSelectAssistant(assistant.id)}
+                    className={`min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-start text-sm ${selectedAssistantId === assistant.id ? "bg-slate-100 font-medium text-slate-900 dark:bg-slate-800 dark:text-slate-100" : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"}`}
+                    title={assistant.description || assistant.name}
+                  >
+                    🤖 {assistant.name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRenameAssistant(assistant.id, assistant.name)}
+                    title={t("sidebar.renameAssistantTitle")}
+                    className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDeleteAssistant(assistant.id, assistant.name)}
+                    title={t("sidebar.deleteAssistantTitle")}
+                    className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-red-100 hover:text-red-600"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <div className="mt-3 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
             <div className="mb-2 flex items-center justify-between gap-2">
