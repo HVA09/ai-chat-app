@@ -125,7 +125,7 @@ describe("Sidebar", () => {
   it("يستطيع اختيار مجلد للمحادثات", async () => {
     const user = userEvent.setup();
     const { onSelectFolder } = renderSidebar();
-    await user.click(screen.getByText("عمل"));
+    await user.click(screen.getByRole("button", { name: /عمل/ }));
     expect(onSelectFolder).toHaveBeenCalledWith(10);
   });
 
