@@ -485,7 +485,19 @@ export default function App() {
 
     await streamChatMessage(userText, conversationId, {
       signal: controller.signal,
-      onConversationId: (id) => setConversationId(id),
+      onConversationId: async (id) => {
+        setConversationId(id);
+        if (isNewConversation && selectedFolderId !== null) {
+          try {
+            await moveConversationToFolder(id, selectedFolderId);
+          } catch {
+            setToast({
+              message: t("app.conversationMoveError"),
+              type: "error",
+            });
+          }
+        }
+      },
       onChunk: (chunk) => {
         if (!receivedFirstChunk) {
           receivedFirstChunk = true;
