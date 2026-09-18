@@ -37,6 +37,9 @@ class Conversation(Base):
 
     owner = relationship("User", back_populates="conversations")
     folder = relationship("ConversationFolder", back_populates="conversations")
+    file_links = relationship(
+        "ConversationFileLink", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
+    )
     messages = relationship(
         "Message",
         back_populates="conversation",

@@ -773,7 +773,10 @@ export default function App() {
 
       {showFiles && (
         <Suspense fallback={<ModalLoadingFallback />}>
-          <FilesPanel onClose={() => setShowFiles(false)} />
+          <FilesPanel
+            conversationId={conversationId}
+            onClose={() => setShowFiles(false)}
+          />
         </Suspense>
       )}
 
