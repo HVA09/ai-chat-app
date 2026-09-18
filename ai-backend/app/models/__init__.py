@@ -1,6 +1,7 @@
 from app.models.user import User, UserRole
 from app.models.assistant import Assistant
 from app.models.conversation import Conversation, Message, MessageRole
+from app.models.conversation_share import ConversationShare
 from app.models.conversation_folder import ConversationFolder
 from app.models.conversation_share import ConversationShare
 from app.models.usage_log import UsageLog
@@ -18,6 +19,7 @@ __all__ = [
     "UserRole",
     "Assistant",
     "Conversation",
+    "ConversationShare",
     "Message",
     "MessageRole",
     "ConversationFolder",
