@@ -17,7 +17,12 @@ def _make_png():
     return b"\x89PNG\r\n\x1a\n" + b"fake"
 
 
-def _make_chat(client, headers, text="رسالة"):
+def _make_chat(client, headers, monkeypatch, text="رسالة"):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تجريبي")),
+    )
     response = client.post("/chat", json={"message": text}, headers=headers)
     assert response.status_code == 200
     return response.json()["conversation_id"]
@@ -42,7 +47,7 @@ def test_upload_attaches_file_to_owned_conversation(client, tmp_path, monkeypatc
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client, "link-upload@example.com")
     headers = {"Authorization": f"Bearer {token}"}
-    conversation_id = _make_chat(client, headers)
+    conversation_id = _make_chat(client, headers, monkeypatch)
 
     uploaded = _upload(client, headers, conversation_id=conversation_id)
     assert uploaded["is_attached"] is True
