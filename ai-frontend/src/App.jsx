@@ -9,6 +9,7 @@ import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
+import { createConversationShare } from "./lib/sharedConversationsApi";
 
 // مُحمَّلة عند الحاجة فقط (lazy) — كل وحدة تصير ملف منفصل (code splitting)،
 // يقلّل حجم الحزمة الأولى اللي يحمّلها أي زائر
@@ -23,6 +24,7 @@ const BillingCancelPage = lazy(() => import("./components/BillingCancelPage"));
 const TermsPage = lazy(() => import("./components/TermsPage"));
 const PrivacyPage = lazy(() => import("./components/PrivacyPage"));
 const PricingPage = lazy(() => import("./components/PricingPage"));
+const SharedConversationPage = lazy(() => import("./components/SharedConversationPage"));
 import {
   listConversations,
   getConversation,
@@ -395,6 +397,38 @@ export default function App() {
     }
   };
 
+  const handleShareConversation = async () => {
+    if (!conversationId) return;
+    try {
+      const share = await createConversationShare(conversationId, 7);
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: messages[0]?.text || t("appName"),
+            url: share.url,
+          });
+          setToast({ message: t("sharing.sharedSuccess"), type: "success" });
+          return;
+        } catch (err) {
+          if (err?.name === "AbortError") return;
+        }
+      }
+
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(share.url);
+        setToast({ message: t("sharing.linkCopied"), type: "success" });
+        return;
+      }
+
+      window.prompt(t("sharing.copyPrompt"), share.url);
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("sharing.createError"),
+        type: "error",
+      });
+    }
+  };
+
   const handleToggleArchiveConversation = async (id) => {
     try {
       const result = await toggleArchiveConversation(id);
@@ -680,6 +714,13 @@ export default function App() {
   };
 
   const path = normalizedPath;
+  if (path.startsWith("/share/")) {
+    return (
+      <Suspense fallback={<ModalLoadingFallback />}>
+        <SharedConversationPage />
+      </Suspense>
+    );
+  }
   if (path === "/terms") {
     return (
       <Suspense fallback={<PageLoadingFallback />}>
@@ -784,6 +825,8 @@ export default function App() {
           onOpenFiles={() => setShowFiles(true)}
           onOpenAdmin={() => setShowAdmin(true)}
           onOpenBilling={() => setShowBilling(true)}
+          onShareConversation={handleShareConversation}
+          canShareConversation={conversationId !== null && !loading}
           isAdmin={currentUser?.role === "admin"}
           notifications={notifications}
           onMarkNotificationRead={handleMarkNotificationRead}
