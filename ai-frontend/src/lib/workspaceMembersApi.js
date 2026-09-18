@@ -32,3 +32,8 @@ export async function acceptWorkspaceInvitation(token) {
   const { data } = await api.post("/workspace-invitations/accept", { token });
   return data;
 }
+
+export async function listWorkspaceAuditLogs(workspaceId) {
+  const { data } = await api.get(`/workspaces/${workspaceId}/audit-logs`);
+  return data;
+}
