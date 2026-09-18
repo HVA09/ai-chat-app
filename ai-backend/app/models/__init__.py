@@ -1,4 +1,5 @@
 from app.models.user import User, UserRole
+from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
 from app.models.assistant import Assistant
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.conversation_share import ConversationShare
@@ -17,6 +18,9 @@ from app.models.webhook_event import WebhookEvent
 __all__ = [
     "User",
     "UserRole",
+    "Workspace",
+    "WorkspaceMember",
+    "WorkspaceRole",
     "Assistant",
     "Conversation",
     "ConversationShare",
