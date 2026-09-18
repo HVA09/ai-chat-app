@@ -1,5 +1,6 @@
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
+from app.models.workspace_invitation import WorkspaceInvitation
 from app.models.assistant import Assistant
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.conversation_share import ConversationShare
@@ -21,6 +22,7 @@ __all__ = [
     "Workspace",
     "WorkspaceMember",
     "WorkspaceRole",
+    "WorkspaceInvitation",
     "Assistant",
     "Conversation",
     "ConversationShare",
