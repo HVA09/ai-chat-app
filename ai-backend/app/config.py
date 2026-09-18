@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     DAILY_AI_REQUEST_LIMIT: int = 20
     MAX_AI_OUTPUT_TOKENS: int = 1200
 
+    WEB_SEARCH_TIMEOUT_SECONDS: float = 8.0
+    WEB_SEARCH_MAX_RESULTS: int = 5
+
     FRONTEND_URL: str = "http://localhost:5173"
     INITIAL_ADMIN_EMAIL: str | None = None
 
