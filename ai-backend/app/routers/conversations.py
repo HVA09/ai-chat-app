@@ -9,12 +9,8 @@ from app.dependencies import get_current_user
 from app.models.conversation import Conversation
 from app.models.conversation_folder import ConversationFolder
 from app.models.user import User
-from app.schemas.chat import (
-    ConversationDetail,
-    ConversationFolderUpdate,
-    ConversationOut,
-    ConversationRename,
-)
+from app.schemas.chat import ConversationDetail, ConversationOut, ConversationRename
+from app.schemas.folders import ConversationFolderUpdate
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
 
