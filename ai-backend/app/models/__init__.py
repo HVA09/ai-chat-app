@@ -4,6 +4,7 @@ from app.models.conversation_folder import ConversationFolder
 from app.models.usage_log import UsageLog
 from app.models.file_attachment import FileAttachment
 from app.models.conversation_file_link import ConversationFileLink
+from app.models.file_chunk import FileChunk
 from app.models.audit_log import AuditLog
 from app.models.plan import Plan
 from app.models.subscription import Subscription, SubscriptionStatus
@@ -20,6 +21,7 @@ __all__ = [
     "UsageLog",
     "FileAttachment",
     "ConversationFileLink",
+    "FileChunk",
     "AuditLog",
     "Plan",
     "Subscription",
