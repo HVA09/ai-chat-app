@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     AI_API_BASE_URL: str = "https://api.openai.com/v1"
     AI_MODEL: str = "gpt-4o-mini"
     AI_PROVIDER: str = "openai"
+    EMBEDDING_MODEL: str = "gemini-embedding-001"
+    EMBEDDING_DIMENSIONS: int = 768
     DAILY_AI_REQUEST_LIMIT: int = 20
     MAX_AI_OUTPUT_TOKENS: int = 1200
 
