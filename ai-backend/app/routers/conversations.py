@@ -10,6 +10,7 @@ from app.models.assistant import Assistant
 from app.models.conversation import Conversation
 from app.models.conversation_folder import ConversationFolder
 from app.models.user import User
+from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.chat import ConversationDetail, ConversationOut, ConversationRename
 from app.schemas.folders import ConversationFolderUpdate
 
@@ -45,6 +46,22 @@ def list_conversations(
         Conversation.user_id == current_user.id,
         Conversation.is_archived == include_archived,
     )
+
+    if workspace_id is not None:
+        membership = (
+            db.query(WorkspaceMember)
+            .filter(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.user_id == current_user.id,
+            )
+            .first()
+        )
+        if not membership:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="مساحة العمل غير موجودة",
+            )
+        query = query.filter(Conversation.workspace_id == workspace_id)
 
     if folder_id is not None:
         owned_folder = (
