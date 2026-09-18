@@ -37,8 +37,3 @@ export async function listWorkspaceAuditLogs(workspaceId) {
   const { data } = await api.get(`/workspaces/${workspaceId}/audit-logs`);
   return data;
 }
-
-export async function listWorkspaceAuditLogs(workspaceId) {
-  const { data } = await api.get(`/workspaces/${workspaceId}/audit-logs`);
-  return data;
-}
