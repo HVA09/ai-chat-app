@@ -367,6 +367,7 @@ async def edit_chat_stream(
     target_position = messages.index(target_message)
     history_messages = messages[:target_position]
     history = [{"role": m.role.value, "content": m.content} for m in history_messages[-MAX_HISTORY_MESSAGES:]]
+    ai_message = _augment_message(payload.message, conversation, db)
 
     async def event_generator():
         yield f"event: conversation\ndata: {conversation.id}\n\n"
