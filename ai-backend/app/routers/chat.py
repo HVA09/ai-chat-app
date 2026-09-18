@@ -296,7 +296,6 @@ async def regenerate_chat_stream(
     user_message = messages[user_index]
     history_messages = messages[:user_index]
     history = [{"role": m.role.value, "content": m.content} for m in history_messages[-MAX_HISTORY_MESSAGES:]]
-    ai_message = _augment_message(payload.message, conversation, db)
     ai_message = _augment_message(user_message.content, conversation, db)
 
     async def event_generator():
