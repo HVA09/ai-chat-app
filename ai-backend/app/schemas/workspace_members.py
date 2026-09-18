@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.models.workspace import WorkspaceRole
 
@@ -32,6 +32,8 @@ class WorkspaceMemberOut(BaseModel):
 
 
 class WorkspaceInvitationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     email: EmailStr
     role: WorkspaceRole
