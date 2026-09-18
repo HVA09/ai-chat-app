@@ -15,6 +15,9 @@ export default function Sidebar({
   onRenameConversation,
   onDeleteConversation,
   onTogglePinConversation,
+  onToggleArchiveConversation,
+  showArchived,
+  onShowArchived,
   loading,
 }) {
   const { t } = useTranslation();
@@ -40,6 +43,11 @@ export default function Sidebar({
   const handleTogglePin = (e, item) => {
     e.stopPropagation();
     onTogglePinConversation(item.id);
+  };
+
+  const handleToggleArchive = (e, item) => {
+    e.stopPropagation();
+    onToggleArchiveConversation(item.id);
   };
 
   const handleDelete = (e, item) => {
@@ -70,6 +78,13 @@ export default function Sidebar({
               className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
             >
               {item.is_pinned ? "★" : "☆"}
+            </button>
+            <button
+              onClick={(e) => handleToggleArchive(e, item)}
+              title={showArchived ? t("sidebar.unarchiveTitle") : t("sidebar.archiveTitle")}
+              className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+            >
+              {showArchived ? "↩" : "▱"}
             </button>
             <button
               onClick={(e) => handleRename(e, item)}
@@ -121,6 +136,7 @@ export default function Sidebar({
           >
             {t("newChat")}
           </button>
+          <button type="button" onClick={() => onShowArchived(!showArchived)} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">{showArchived ? t("sidebar.backToChats") : t("sidebar.archivedTitle")}</button>
           <label className="mt-3 block">
             <span className="sr-only">
               {document.documentElement.lang === "ar" ? "البحث في المحادثات" : "Search conversations"}
