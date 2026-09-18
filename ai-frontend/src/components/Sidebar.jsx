@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FixedSizeList } from "react-window";
 import AutoSizer from "react-virtualized-auto-sizer";
@@ -18,6 +18,15 @@ export default function Sidebar({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filteredConversations = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    if (!query) return conversations;
+    return conversations.filter((item) =>
+      (item.title || "").toLocaleLowerCase().includes(query)
+    );
+  }, [conversations, search]);
 
   const handleRename = (e, item) => {
     e.stopPropagation();
@@ -99,16 +108,38 @@ export default function Sidebar({
           >
             {t("newChat")}
           </button>
+          <label className="mt-3 block">
+            <span className="sr-only">
+              {document.documentElement.lang === "ar" ? "البحث في المحادثات" : "Search conversations"}
+            </span>
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={
+                document.documentElement.lang === "ar"
+                  ? "ابحث في المحادثات..."
+                  : "Search conversations..."
+              }
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-slate-500"
+            />
+          </label>
         </div>
 
         <div className="min-h-0 flex-1">
           {loading ? (
             <p className="px-5 py-4 text-sm text-slate-400">...</p>
-          ) : conversations.length === 0 ? (
-            <p className="px-5 py-4 text-sm text-slate-400">{t("noChats")}</p>
-          ) : conversations.length <= VIRTUALIZE_THRESHOLD ? (
+          ) : filteredConversations.length === 0 ? (
+            <p className="px-5 py-4 text-sm text-slate-400">
+              {search.trim()
+                ? document.documentElement.lang === "ar"
+                  ? "لا توجد محادثات مطابقة"
+                  : "No matching conversations"
+                : t("noChats")}
+            </p>
+          ) : filteredConversations.length <= VIRTUALIZE_THRESHOLD ? (
             <div className="h-full space-y-2 overflow-y-auto p-4">
-              {conversations.map((item) => (
+              {filteredConversations.map((item) => (
                 <ConversationRow key={item.id} item={item} style={{ height: ROW_HEIGHT - 8 }} />
               ))}
             </div>
@@ -118,11 +149,11 @@ export default function Sidebar({
                 <FixedSizeList
                   height={height}
                   width={width}
-                  itemCount={conversations.length}
+                  itemCount={filteredConversations.length}
                   itemSize={ROW_HEIGHT}
                 >
                   {({ index, style }) => (
-                    <ConversationRow item={conversations[index]} style={style} />
+                    <ConversationRow item={filteredConversations[index]} style={style} />
                   )}
                 </FixedSizeList>
               )}
