@@ -16,6 +16,13 @@ export default function Sidebar({
   onDeleteConversation,
   onTogglePinConversation,
   onToggleArchiveConversation,
+  folders,
+  selectedFolderId,
+  onSelectFolder,
+  onCreateFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onMoveConversationToFolder,
   showArchived,
   onShowArchived,
   loading,
@@ -48,6 +55,26 @@ export default function Sidebar({
   const handleToggleArchive = (e, item) => {
     e.stopPropagation();
     onToggleArchiveConversation(item.id);
+  };
+
+  const handleMoveFolder = (e, item) => {
+    e.stopPropagation();
+    onMoveConversationToFolder(item.id, e.target.value);
+  };
+
+  const handleRenameFolder = (e, folder) => {
+    e.stopPropagation();
+    const newName = window.prompt(t("sidebar.folderRenamePrompt"), folder.name);
+    if (newName && newName.trim() && newName.trim() !== folder.name) {
+      onRenameFolder(folder.id, newName.trim());
+    }
+  };
+
+  const handleDeleteFolder = (e, folder) => {
+    e.stopPropagation();
+    if (window.confirm(t("sidebar.folderDeleteConfirm", { name: folder.name }))) {
+      onDeleteFolder(folder.id);
+    }
   };
 
   const handleDelete = (e, item) => {
@@ -93,6 +120,18 @@ export default function Sidebar({
             >
               ✎
             </button>
+            <select
+              aria-label={t("sidebar.moveFolderTitle")}
+              value={item.folder_id ?? ""}
+              onChange={(e) => handleMoveFolder(e, item)}
+              onClick={(e) => e.stopPropagation()}
+              className="max-w-[120px] rounded-lg border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+            >
+              <option value="">{t("sidebar.noFolder")}</option>
+              {folders.map((folder) => (
+                <option key={folder.id} value={folder.id}>{folder.name}</option>
+              ))}
+            </select>
             <button
               onClick={(e) => handleDelete(e, item)}
               title={t("sidebar.deleteTitle")}
@@ -137,6 +176,43 @@ export default function Sidebar({
             {t("newChat")}
           </button>
           <button type="button" onClick={() => onShowArchived(!showArchived)} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">{showArchived ? t("sidebar.backToChats") : t("sidebar.archivedTitle")}</button>
+
+          <div className="mt-3 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t("sidebar.foldersTitle")}</span>
+              <button
+                type="button"
+                onClick={onCreateFolder}
+                title={t("sidebar.createFolderTitle")}
+                className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800"
+              >
+                +
+              </button>
+            </div>
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => onSelectFolder(null)}
+                className={`w-full rounded-lg px-2 py-1.5 text-start text-sm ${selectedFolderId === null ? "bg-slate-100 font-medium text-slate-900 dark:bg-slate-800 dark:text-slate-100" : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"}`}
+              >
+                {t("sidebar.allConversations")}
+              </button>
+              {folders.map((folder) => (
+                <div key={folder.id} className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onSelectFolder(folder.id)}
+                    className={`min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-start text-sm ${selectedFolderId === folder.id ? "bg-slate-100 font-medium text-slate-900 dark:bg-slate-800 dark:text-slate-100" : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"}`}
+                  >
+                    📁 {folder.name}
+                  </button>
+                  <button type="button" onClick={(e) => handleRenameFolder(e, folder)} title={t("sidebar.renameFolderTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700">✎</button>
+                  <button type="button" onClick={(e) => handleDeleteFolder(e, folder)} title={t("sidebar.deleteFolderTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-red-100 hover:text-red-600">✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+
           <label className="mt-3 block">
             <span className="sr-only">
               {document.documentElement.lang === "ar" ? "البحث في المحادثات" : "Search conversations"}
