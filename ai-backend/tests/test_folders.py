@@ -103,6 +103,36 @@ def test_move_conversation_and_filter_by_folder(client, monkeypatch):
     assert cleared.json()["folder_id"] is None
 
 
+def test_delete_folder_keeps_conversation_unassigned(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "folder-delete-preserve@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    folder = client.post("/folders", json={"name": "Temporary"}, headers=headers).json()
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "تبقى المحادثة"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    moved = client.patch(
+        f"/conversations/{conversation_id}/folder",
+        json={"folder_id": folder["id"]},
+        headers=headers,
+    )
+    assert moved.status_code == 200
+
+    assert client.delete(f"/folders/{folder['id']}", headers=headers).status_code == 204
+
+    detail = client.get(f"/conversations/{conversation_id}", headers=headers)
+    assert detail.status_code == 200
+    assert detail.json()["folder_id"] is None
+
+
 def test_cannot_move_conversation_to_other_users_folder(client, monkeypatch):
     monkeypatch.setattr(
         chat_router_module,
