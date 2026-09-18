@@ -36,6 +36,7 @@ def list_conversations(
     include_archived: bool = False,
     folder_id: int | None = None,
     assistant_id: int | None = None,
+    workspace_id: int | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
