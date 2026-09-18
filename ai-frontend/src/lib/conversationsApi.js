@@ -1,7 +1,7 @@
 import api from "./api";
 
-export async function listConversations() {
-  const { data } = await api.get("/conversations");
+export async function listConversations(includeArchived = false) {
+  const { data } = await api.get("/conversations", { params: { include_archived: includeArchived } });
   return data;
 }
 
@@ -21,5 +21,10 @@ export async function deleteConversation(id) {
 
 export async function togglePinConversation(id) {
   const { data } = await api.patch(`/conversations/${id}/pin`);
+  return data;
+}
+
+export async function toggleArchiveConversation(id) {
+  const { data } = await api.patch(`/conversations/${id}/archive`);
   return data;
 }

@@ -51,6 +51,7 @@ class ConversationOut(BaseModel):
     title: str
     created_at: datetime
     is_pinned: bool
+    is_archived: bool
 
 
 class ConversationDetail(ConversationOut):

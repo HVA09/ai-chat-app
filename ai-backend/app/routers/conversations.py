@@ -28,6 +28,7 @@ def _get_owned_conversation(conversation_id: int, current_user: User, db: Sessio
 def list_conversations(
     skip: int = 0,
     limit: int = 50,
+    include_archived: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -35,7 +36,10 @@ def list_conversations(
     skip = max(skip, 0)
     return (
         db.query(Conversation)
-        .filter(Conversation.user_id == current_user.id)
+        .filter(
+            Conversation.user_id == current_user.id,
+            Conversation.is_archived == include_archived,
+        )
         .order_by(Conversation.is_pinned.desc(), Conversation.created_at.desc())
         .offset(skip)
         .limit(limit)
@@ -82,6 +86,19 @@ def toggle_pin_conversation(
 ):
     conversation = _get_owned_conversation(conversation_id, current_user, db)
     conversation.is_pinned = not conversation.is_pinned
+    db.commit()
+    db.refresh(conversation)
+    return conversation
+
+
+@router.patch("/{conversation_id}/archive", response_model=ConversationOut)
+def toggle_archive_conversation(
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conversation = _get_owned_conversation(conversation_id, current_user, db)
+    conversation.is_archived = not conversation.is_archived
     db.commit()
     db.refresh(conversation)
     return conversation
