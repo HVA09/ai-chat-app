@@ -22,6 +22,7 @@ from app.services.ai_service import get_ai_reply, stream_ai_reply
 from app.services.embeddings import EmbeddingServiceError
 from app.services.rag import build_fallback_file_context, build_retrieval_context, retrieve_relevant_chunks
 from app.services.tools.calculator import CalculatorError, calculate_expression, extract_calculator_expression
+from app.services.tools.web_search import WebSearchError, extract_web_search_query, format_web_search_response, search_web
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 logger = get_logger("chat")
@@ -238,6 +239,36 @@ async def chat(
             sources=[],
         )
 
+    search_query = extract_web_search_query(payload.message)
+    if search_query is not None:
+        try:
+            results = await search_web(search_query)
+            search_reply, sources = format_web_search_response(search_query, results)
+        except WebSearchError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(exc),
+            ) from exc
+
+        db.add(
+            Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
+        )
+        db.add(
+            Message(
+                conversation_id=conversation.id,
+                role=MessageRole.assistant,
+                content=search_reply,
+                sources=sources,
+            )
+        )
+        db.add(UsageLog(user_id=current_user.id, endpoint="/chat/tool/web-search"))
+        db.commit()
+        return ChatResponse(
+            conversation_id=conversation.id,
+            reply=search_reply,
+            sources=sources,
+        )
+
     history = _build_history(conversation, db)
     ai_message, sources = await _augment_message(payload.message, conversation, db)
 
@@ -318,6 +349,48 @@ async def chat_stream(
             yield "event: done\ndata: {}\n\n"
 
         return StreamingResponse(calculator_event_generator(), media_type="text/event-stream")
+
+    search_query = extract_web_search_query(payload.message)
+    if search_query is not None:
+        try:
+            results = await search_web(search_query)
+            search_reply, sources = format_web_search_response(search_query, results)
+        except WebSearchError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(exc),
+            ) from exc
+
+        db.add(
+            Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
+        )
+        db.commit()
+        safe_search_reply = search_reply.replace("\n", "\\n")
+        safe_sources = json.dumps(sources, ensure_ascii=False)
+
+        async def web_search_event_generator():
+            yield f"event: conversation\ndata: {conversation.id}\n\n"
+            yield f"event: sources\ndata: {safe_sources}\n\n"
+            yield f"event: chunk\ndata: {safe_search_reply}\n\n"
+            try:
+                db.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        role=MessageRole.assistant,
+                        content=search_reply,
+                        sources=sources,
+                    )
+                )
+                db.add(UsageLog(user_id=current_user.id, endpoint="/chat/tool/web-search"))
+                db.commit()
+            except Exception:
+                logger.exception("فشل حفظ نتائج بحث الويب لمحادثة %s", conversation.id)
+                db.rollback()
+                yield "event: error\ndata: تعذر حفظ نتيجة البحث\n\n"
+                return
+            yield "event: done\ndata: {}\n\n"
+
+        return StreamingResponse(web_search_event_generator(), media_type="text/event-stream")
 
     history = _build_history(conversation, db)
     ai_message, sources = await _augment_message(payload.message, conversation, db)
