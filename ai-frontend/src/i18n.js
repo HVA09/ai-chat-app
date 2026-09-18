@@ -601,6 +601,7 @@ const resources = {
         calculator: "Calculator — enter an expression like /calc (12 + 8) * 3",
         webSearch: "Web search — search available web sources",
         dataAnalysis: "Data analysis — analyze an attached CSV or XLSX file",
+        agent: "Agent mode — let the assistant choose safe tools",
       },
     },
   },
