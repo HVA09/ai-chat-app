@@ -14,6 +14,7 @@ export default function Sidebar({
   onNewChat,
   onRenameConversation,
   onDeleteConversation,
+  onTogglePinConversation,
   loading,
 }) {
   const { t } = useTranslation();
@@ -36,6 +37,11 @@ export default function Sidebar({
     }
   };
 
+  const handleTogglePin = (e, item) => {
+    e.stopPropagation();
+    onTogglePinConversation(item.id);
+  };
+
   const handleDelete = (e, item) => {
     e.stopPropagation();
     if (window.confirm(t("sidebar.confirmDelete", { title: item.title }))) {
@@ -53,11 +59,18 @@ export default function Sidebar({
         className="group h-full cursor-pointer rounded-xl border border-slate-200 px-3 py-3 hover:bg-slate-50"
       >
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate font-medium">{item.title}</span>
+          <span className="flex min-w-0 items-center gap-1 truncate font-medium">{item.is_pinned ? <span aria-hidden="true">★</span> : null}<span className="truncate">{item.title}</span></span>
           <div className="flex shrink-0 items-center gap-1">
             <span className="text-xs text-slate-400">
               {new Date(item.created_at).toLocaleDateString()}
             </span>
+            <button
+              onClick={(e) => handleTogglePin(e, item)}
+              title={item.is_pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}
+              className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+            >
+              {item.is_pinned ? "★" : "☆"}
+            </button>
             <button
               onClick={(e) => handleRename(e, item)}
               title={t("sidebar.renameTitle")}
