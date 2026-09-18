@@ -7,7 +7,10 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
+from app.audit import log_event
+from app.schemas.workspace_audit import WorkspaceAuditLogOut
 from app.schemas.workspaces import WorkspaceCreate, WorkspaceOut, WorkspaceRename
+from app.models.audit_log import AuditLog
 
 router = APIRouter(prefix="/workspaces", tags=["Workspaces"])
 
@@ -90,6 +93,13 @@ def create_workspace(
     )
     db.commit()
     db.refresh(workspace)
+    log_event(
+        db,
+        "workspace_created",
+        f"تم إنشاء مساحة العمل {workspace.name}",
+        current_user.id,
+        workspace.id,
+    )
     return WorkspaceOut(
         id=workspace.id,
         name=workspace.name,
@@ -119,12 +129,61 @@ def rename_workspace(
         db,
         exclude_id=workspace.id,
     )
+    old_name = workspace.name
     workspace.name = payload.name
     db.commit()
     db.refresh(workspace)
+    log_event(
+        db,
+        "workspace_renamed",
+        f"تم تغيير اسم مساحة العمل من {old_name} إلى {workspace.name}",
+        current_user.id,
+        workspace.id,
+    )
     return WorkspaceOut(
         id=workspace.id,
         name=workspace.name,
         role=membership.role,
         created_at=workspace.created_at,
     )
+
+
+@router.get("/{workspace_id}/audit-logs", response_model=list[WorkspaceAuditLogOut])
+def list_workspace_audit_logs(
+    workspace_id: int,
+    limit: int = 100,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = _get_membership(workspace_id, current_user, db)
+    if membership.role not in {WorkspaceRole.owner, WorkspaceRole.admin}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="هذه العملية تتطلب صلاحية مدير مساحة العمل",
+        )
+
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+
+    rows = (
+        db.query(AuditLog, User.email)
+        .outerjoin(User, AuditLog.user_id == User.id)
+        .filter(AuditLog.workspace_id == workspace_id)
+        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return [
+        WorkspaceAuditLogOut(
+            id=log.id,
+            user_id=log.user_id,
+            actor_email=email,
+            event_type=log.event_type,
+            description=log.description,
+            created_at=log.created_at,
+        )
+        for log, email in rows
+    ]
