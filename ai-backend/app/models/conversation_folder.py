@@ -25,4 +25,6 @@ class ConversationFolder(Base):
     )
 
     owner = relationship("User", back_populates="conversation_folders")
-    conversations = relationship("Conversation", back_populates="folder")
+    conversations = relationship(
+        "Conversation", back_populates="folder", passive_deletes=True
+    )
