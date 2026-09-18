@@ -21,6 +21,7 @@ from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.user import User
 from app.schemas.file import FileOut
+from app.services.file_text_extractor import FileTextExtractionError, extract_text
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
@@ -32,6 +33,7 @@ ALLOWED_CONTENT_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain",
     "text/csv",
     "application/vnd.ms-excel",
 }
@@ -65,7 +67,7 @@ def _sniff_content_type(data: bytes, claimed: str | None) -> str | None:
                     return "image/webp"
                 continue
             return mime
-    if claimed in {"text/csv", "application/vnd.ms-excel"}:
+    if claimed in {"text/plain", "text/csv", "application/vnd.ms-excel"}:
         sample = data[:2048]
         if b"\x00" in sample:
             return None
@@ -191,12 +193,25 @@ async def upload_file(
         if temp_path:
             temp_path.unlink(missing_ok=True)
 
+    extracted_text = None
+    if sniffed is not None:
+        try:
+            extracted_text = extract_text(destination, sniffed)
+        except FileTextExtractionError as exc:
+            log_event(
+                db,
+                "file_text_extraction_failed",
+                f"فشل استخراج نص الملف: {file.filename or stored_filename} ({exc})",
+                current_user.id,
+            )
+
     attachment = FileAttachment(
         user_id=current_user.id,
         original_filename=(file.filename or stored_filename)[:255],
         stored_filename=stored_filename,
         content_type=sniffed,
         size_bytes=total,
+        extracted_text=extracted_text,
     )
     db.add(attachment)
     db.flush()
