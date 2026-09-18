@@ -77,3 +77,24 @@ def test_invalid_chat_calculator_command_returns_400(client):
         headers=headers,
     )
     assert response.status_code == 400
+
+def test_chat_stream_calculator_command_does_not_call_ai(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "stream_ai_reply",
+        AsyncMock(side_effect=AssertionError("AI provider must not be called")),
+    )
+    token = _register_and_login(client, "tool-stream@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/chat/stream",
+        json={"message": "/calc 7 * 6"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert "event: conversation" in response.text
+    assert "event: chunk\ndata: 42" in response.text
+    assert "event: done" in response.text
+
