@@ -52,6 +52,7 @@ class ConversationOut(BaseModel):
     created_at: datetime
     is_pinned: bool
     is_archived: bool
+    folder_id: int | None
 
 
 class ConversationDetail(ConversationOut):
