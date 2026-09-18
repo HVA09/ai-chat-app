@@ -11,6 +11,7 @@ vi.mock("react-i18next", () => ({
       stop: "إيقاف",
       "tools.calculator": "الآلة الحاسبة",
       "tools.webSearch": "بحث الويب",
+      "tools.dataAnalysis": "تحليل البيانات",
     })[key] ?? key,
   }),
 }));
@@ -33,6 +34,26 @@ describe("ChatComposer tools", () => {
 
     await user.click(screen.getByTitle("بحث الويب"));
     expect(onInsertWebSearch).toHaveBeenCalled();
+  });
+
+  it("زر تحليل البيانات يمرر المعالج", async () => {
+    const user = userEvent.setup();
+    const onInsertDataAnalysis = vi.fn();
+
+    render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onInsertCalculator={vi.fn()}
+        onInsertWebSearch={vi.fn()}
+        onInsertDataAnalysis={onInsertDataAnalysis}
+      />
+    );
+
+    await user.click(screen.getByTitle("تحليل البيانات"));
+    expect(onInsertDataAnalysis).toHaveBeenCalled();
   });
 
   it("زر الآلة الحاسبة يمرر المعالج", async () => {

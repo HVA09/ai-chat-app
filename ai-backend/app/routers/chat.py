@@ -2,11 +2,13 @@
 مسارات المحادثة مع الذكاء الاصطناعي: عادي (/chat) ومباشر تدريجيًا (/chat/stream)
 """
 import json
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import enforce_daily_ai_limit, get_current_user
 from app.logging_config import get_logger
@@ -22,6 +24,12 @@ from app.services.ai_service import get_ai_reply, stream_ai_reply
 from app.services.embeddings import EmbeddingServiceError
 from app.services.rag import build_fallback_file_context, build_retrieval_context, retrieve_relevant_chunks
 from app.services.tools.calculator import CalculatorError, calculate_expression, extract_calculator_expression
+from app.services.tools.data_analysis import (
+    DataAnalysisError,
+    DataFile,
+    analyze_file,
+    extract_data_analysis_request,
+)
 from app.services.tools.web_search import WebSearchError, extract_web_search_query, format_web_search_response, search_web
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -185,6 +193,65 @@ def _build_assistant_context(
     )
 
 
+def _get_attached_data_file(
+    conversation: Conversation,
+    current_user: User,
+    filename: str,
+    db: Session,
+) -> DataFile:
+    requested_name = filename.strip()
+    if not requested_name:
+        raise DataAnalysisError("اكتب اسم الملف بعد /analyze، مثل: /analyze sales.csv")
+
+    attachments = (
+        db.query(FileAttachment)
+        .join(
+            ConversationFileLink,
+            ConversationFileLink.file_id == FileAttachment.id,
+        )
+        .filter(
+            ConversationFileLink.conversation_id == conversation.id,
+            FileAttachment.user_id == current_user.id,
+        )
+        .order_by(ConversationFileLink.created_at.asc())
+        .all()
+    )
+
+    normalized = requested_name.casefold()
+    attachment = next(
+        (
+            item
+            for item in attachments
+            if item.original_filename.casefold() == normalized
+        ),
+        None,
+    )
+    if attachment is None:
+        attachment = next(
+            (
+                item
+                for item in attachments
+                if normalized in item.original_filename.casefold()
+            ),
+            None,
+        )
+
+    if attachment is None:
+        available = ", ".join(item.original_filename for item in attachments[:8])
+        suffix = f" الملفات المرفقة: {available}." if available else " لا توجد ملفات مرفقة بهذه المحادثة."
+        raise DataAnalysisError(f"لم أجد الملف المطلوب.{suffix}")
+
+    path = Path(settings.UPLOAD_DIR) / str(current_user.id) / attachment.stored_filename
+    if not path.exists():
+        raise DataAnalysisError("الملف غير موجود على القرص.")
+
+    return DataFile(
+        path=path,
+        original_filename=attachment.original_filename,
+        content_type=attachment.content_type,
+    )
+
+
 async def _augment_message(
     message: str, conversation: Conversation, db: Session
 ) -> tuple[str, list[dict]]:
@@ -237,6 +304,44 @@ async def chat(
             conversation_id=conversation.id,
             reply=calculator_result,
             sources=[],
+        )
+
+    analysis_filename = extract_data_analysis_request(payload.message)
+    if analysis_filename is not None:
+        try:
+            data_file = _get_attached_data_file(conversation, current_user, analysis_filename, db)
+            analysis_result = analyze_file(data_file)
+        except DataAnalysisError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+        sources = [
+            {
+                "id": "D1",
+                "filename": data_file.original_filename,
+                "chunk": None,
+                "kind": "data-analysis",
+            }
+        ]
+        db.add(
+            Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
+        )
+        db.add(
+            Message(
+                conversation_id=conversation.id,
+                role=MessageRole.assistant,
+                content=analysis_result,
+                sources=sources,
+            )
+        )
+        db.add(UsageLog(user_id=current_user.id, endpoint="/chat/tool/data-analysis"))
+        db.commit()
+        return ChatResponse(
+            conversation_id=conversation.id,
+            reply=analysis_result,
+            sources=sources,
         )
 
     search_query = extract_web_search_query(payload.message)
@@ -349,6 +454,56 @@ async def chat_stream(
             yield "event: done\ndata: {}\n\n"
 
         return StreamingResponse(calculator_event_generator(), media_type="text/event-stream")
+
+    analysis_filename = extract_data_analysis_request(payload.message)
+    if analysis_filename is not None:
+        try:
+            data_file = _get_attached_data_file(conversation, current_user, analysis_filename, db)
+            analysis_result = analyze_file(data_file)
+        except DataAnalysisError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+        db.add(
+            Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
+        )
+        db.commit()
+        safe_analysis_result = analysis_result.replace("\n", "\\n")
+        sources = [
+            {
+                "id": "D1",
+                "filename": data_file.original_filename,
+                "chunk": None,
+                "kind": "data-analysis",
+            }
+        ]
+        safe_sources = json.dumps(sources, ensure_ascii=False)
+
+        async def data_analysis_event_generator():
+            yield f"event: conversation\ndata: {conversation.id}\n\n"
+            yield f"event: sources\ndata: {safe_sources}\n\n"
+            yield f"event: chunk\ndata: {safe_analysis_result}\n\n"
+            try:
+                db.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        role=MessageRole.assistant,
+                        content=analysis_result,
+                        sources=sources,
+                    )
+                )
+                db.add(UsageLog(user_id=current_user.id, endpoint="/chat/tool/data-analysis"))
+                db.commit()
+            except Exception:
+                logger.exception("فشل حفظ تقرير تحليل البيانات لمحادثة %s", conversation.id)
+                db.rollback()
+                yield "event: error\ndata: تعذر حفظ نتيجة التحليل\n\n"
+                return
+            yield "event: done\ndata: {}\n\n"
+
+        return StreamingResponse(data_analysis_event_generator(), media_type="text/event-stream")
 
     search_query = extract_web_search_query(payload.message)
     if search_query is not None:
