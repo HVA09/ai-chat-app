@@ -100,7 +100,7 @@ export async function streamChatMessage(
  */
 export async function streamRegenerateMessage(
   conversationId,
-  { onChunk, onConversationId, onDone, onError, signal } = {}
+  { onChunk, onConversationId, onSources, onDone, onError, signal } = {}
 ) {
   const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -184,7 +184,7 @@ export async function streamEditMessage(
   conversationId,
   messageIndex,
   message,
-  { onChunk, onConversationId, onDone, onError, signal } = {}
+  { onChunk, onConversationId, onSources, onDone, onError, signal } = {}
 ) {
   const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
