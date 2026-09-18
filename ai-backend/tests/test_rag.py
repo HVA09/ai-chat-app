@@ -64,6 +64,11 @@ def test_chat_uses_retrieved_rag_context(client, monkeypatch, db_session):
     token = _register_and_login(client, "rag-chat@example.com")
     headers = {"Authorization": f"Bearer {token}"}
 
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=type("Reply", (), {"text": "تهيئة", "input_tokens": 1, "output_tokens": 1})()),
+    )
     first = client.post("/chat", json={"message": "ابدأ محادثة"}, headers=headers)
     conversation_id = first.json()["conversation_id"]
 
