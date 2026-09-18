@@ -437,7 +437,7 @@ export default function App() {
       onConversationId: (id) => setConversationId(id),
       onSources: (sources) => {
         setMessages((prev) => prev.map((message, index) =>
-          index === messages.length - 1 ? { ...message, sources } : message
+          index === targetIndex + 1 ? { ...message, sources } : message
         ));
       },
       onChunk: appendToLastMessage,
@@ -495,7 +495,7 @@ export default function App() {
       onConversationId: (id) => setConversationId(id),
       onSources: (sources) => {
         setMessages((prev) => prev.map((message, index) =>
-          index === messages.length - 1 ? { ...message, sources } : message
+          index === messages.length + 1 ? { ...message, sources } : message
         ));
       },
       onChunk: (chunk) => {
