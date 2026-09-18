@@ -52,7 +52,6 @@ def upgrade() -> None:
     )
 
     workspace_role = sa.Enum("owner", "admin", "member", name="workspacerole")
-    workspace_role.create(op.get_bind(), checkfirst=True)
     op.create_table(
         "workspace_members",
         sa.Column("id", sa.Integer(), primary_key=True),
