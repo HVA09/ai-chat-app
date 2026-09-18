@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
-from app.services.ai_providers.base import AIProvider, AIReply
+from app.services.ai_providers.base import AIProvider, AIReply, AIToolCall, AIToolReply
 
 
 class OpenAICompatibleProvider(AIProvider):
@@ -36,6 +36,64 @@ class OpenAICompatibleProvider(AIProvider):
         usage = data.get("usage") or {}
         return AIReply(
             text=data["choices"][0]["message"]["content"],
+            input_tokens=usage.get("prompt_tokens"),
+            output_tokens=usage.get("completion_tokens"),
+        )
+
+    async def get_reply_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        tool_choice: str = "auto",
+    ) -> AIToolReply:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            response = await client.post(
+                f"{self.base_url}/chat/completions",
+                headers=self._headers(),
+                json={
+                    "model": self.model,
+                    "messages": messages,
+                    "tools": tools,
+                    "tool_choice": tool_choice,
+                },
+            )
+            response.raise_for_status()
+
+        data = response.json()
+        message = (data.get("choices") or [{}])[0].get("message") or {}
+        tool_calls: list[AIToolCall] = []
+
+        for item in message.get("tool_calls") or []:
+            function = item.get("function") or {}
+            raw_arguments = function.get("arguments") or "{}"
+            try:
+                arguments = (
+                    raw_arguments
+                    if isinstance(raw_arguments, dict)
+                    else json.loads(raw_arguments)
+                )
+            except (TypeError, json.JSONDecodeError):
+                arguments = {}
+
+            if not isinstance(arguments, dict):
+                arguments = {}
+
+            name = function.get("name")
+            if not name:
+                continue
+
+            tool_calls.append(
+                AIToolCall(
+                    id=str(item.get("id") or name),
+                    name=str(name),
+                    arguments=arguments,
+                )
+            )
+
+        usage = data.get("usage") or {}
+        return AIToolReply(
+            text=message.get("content") or None,
+            tool_calls=tool_calls,
             input_tokens=usage.get("prompt_tokens"),
             output_tokens=usage.get("completion_tokens"),
         )
