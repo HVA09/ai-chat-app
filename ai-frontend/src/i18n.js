@@ -295,6 +295,10 @@ const resources = {
         enableLight: "تفعيل الوضع الفاتح",
         enableDark: "تفعيل الوضع الداكن",
       },
+
+      tools: {
+        calculator: "الآلة الحاسبة — أدخل تعبيرًا مثل /calc (12 + 8) * 3",
+      },
     },
   },
   en: {
@@ -589,6 +593,10 @@ const resources = {
       theme: {
         enableLight: "Switch to light mode",
         enableDark: "Switch to dark mode",
+      },
+
+      tools: {
+        calculator: "Calculator — enter an expression like /calc (12 + 8) * 3",
       },
     },
   },

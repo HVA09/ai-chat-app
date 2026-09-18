@@ -858,6 +858,11 @@ export default function App() {
         <ChatComposer
           value={input}
           setValue={setInput}
+          onInsertCalculator={() =>
+            setInput((current) =>
+              current.trim() ? `/calc ${current.trim()}` : "/calc "
+            )
+          }
           onSend={sendMessage}
           onStop={stopGeneration}
           loading={loading}
