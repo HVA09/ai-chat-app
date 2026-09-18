@@ -868,6 +868,11 @@ export default function App() {
               current.trim() ? `/search ${current.trim()}` : "/search "
             )
           }
+          onInsertDataAnalysis={() =>
+            setInput((current) =>
+              current.trim() ? `/analyze ${current.trim()}` : "/analyze "
+            )
+          }
           onSend={sendMessage}
           onStop={stopGeneration}
           loading={loading}
