@@ -21,7 +21,9 @@ from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.user import User
 from app.schemas.file import FileOut
+from app.services.embeddings import EmbeddingServiceError
 from app.services.file_text_extractor import FileTextExtractionError, extract_text
+from app.services.rag import index_file_chunks
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
@@ -215,6 +217,25 @@ async def upload_file(
     )
     db.add(attachment)
     db.flush()
+
+    if extracted_text:
+        try:
+            indexed_chunks = index_file_chunks(db, attachment)
+            if indexed_chunks:
+                log_event(
+                    db,
+                    "file_rag_indexed",
+                    f"تم فهرسة {indexed_chunks} مقطعًا للملف {attachment.original_filename}",
+                    current_user.id,
+                )
+        except EmbeddingServiceError as exc:
+            log_event(
+                db,
+                "file_rag_index_failed",
+                f"تعذر فهرسة الملف {attachment.original_filename}: {exc}",
+                current_user.id,
+            )
+
     if conversation_id is not None:
         db.add(
             ConversationFileLink(
