@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.models.conversation import Conversation
 from app.models.conversation_folder import ConversationFolder
 from app.models.user import User
 from app.schemas.folders import FolderCreate, FolderOut, FolderRename
@@ -93,7 +94,8 @@ def delete_folder(
 ):
     folder = _get_owned_folder(folder_id, current_user, db)
     # المحادثات لا تُحذف عند حذف المجلد؛ تصبح غير مصنفة فقط.
-    for conversation in folder.conversations:
-        conversation.folder_id = None
+    db.query(Conversation).filter(Conversation.folder_id == folder.id).update(
+        {Conversation.folder_id: None}, synchronize_session=False
+    )
     db.delete(folder)
     db.commit()
