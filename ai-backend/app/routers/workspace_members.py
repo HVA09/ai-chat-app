@@ -90,6 +90,11 @@ def create_workspace_invitation(
     db: Session = Depends(get_db),
 ):
     membership = _require_manager(workspace_id, current_user, db)
+    if membership.role == WorkspaceRole.admin and payload.role == WorkspaceRole.admin:
+        raise HTTPException(
+            status_code=403,
+            detail="مدير مساحة العمل لا يمكنه منح صلاحية مدير آخر",
+        )
     target = db.query(User).filter(User.email == normalize_email(payload.email)).first()
     if not target:
         raise HTTPException(status_code=404, detail="المستخدم غير موجود. الدعوات الحالية تتطلب حسابًا مسجلًا.")
