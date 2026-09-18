@@ -1,5 +1,5 @@
 """اختبارات أداة بحث الويب."""
-from unittest.mock import AsyncMock
+import asyncio
 
 import pytest
 
@@ -35,8 +35,7 @@ def test_format_web_search_response_without_results():
     assert "duckduckgo.com" in sources[0]["url"]
 
 
-@pytest.mark.asyncio
-async def test_search_web_parses_instant_answer(monkeypatch):
+def test_search_web_parses_instant_answer(monkeypatch):
     class FakeResponse:
         def raise_for_status(self):
             return None
@@ -72,21 +71,19 @@ async def test_search_web_parses_instant_answer(monkeypatch):
         FakeClient,
     )
 
-    results = await search_web("python")
+    results = asyncio.run(search_web("python"))
     assert [item.url for item in results] == [
         "https://www.python.org/",
         "https://fastapi.tiangolo.com/",
     ]
 
 
-@pytest.mark.asyncio
-async def test_search_web_rejects_empty_query():
+def test_search_web_rejects_empty_query():
     with pytest.raises(WebSearchError):
-        await search_web("")
+        asyncio.run(search_web(""))
 
 
-@pytest.mark.asyncio
-async def test_search_web_timeout(monkeypatch):
+def test_search_web_timeout(monkeypatch):
     class FakeClient:
         def __init__(self, *args, **kwargs):
             pass
@@ -103,4 +100,4 @@ async def test_search_web_timeout(monkeypatch):
     )
 
     with pytest.raises(WebSearchError):
-        await search_web("python")
+        asyncio.run(search_web("python"))
