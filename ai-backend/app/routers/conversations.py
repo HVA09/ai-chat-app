@@ -36,7 +36,7 @@ def list_conversations(
     return (
         db.query(Conversation)
         .filter(Conversation.user_id == current_user.id)
-        .order_by(Conversation.created_at.desc())
+        .order_by(Conversation.is_pinned.desc(), Conversation.created_at.desc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -69,6 +69,19 @@ def rename_conversation(
 ):
     conversation = _get_owned_conversation(conversation_id, current_user, db)
     conversation.title = payload.title
+    db.commit()
+    db.refresh(conversation)
+    return conversation
+
+
+@router.patch("/{conversation_id}/pin", response_model=ConversationOut)
+def toggle_pin_conversation(
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conversation = _get_owned_conversation(conversation_id, current_user, db)
+    conversation.is_pinned = not conversation.is_pinned
     db.commit()
     db.refresh(conversation)
     return conversation

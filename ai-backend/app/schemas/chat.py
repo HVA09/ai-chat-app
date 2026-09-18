@@ -50,6 +50,7 @@ class ConversationOut(BaseModel):
     id: int
     title: str
     created_at: datetime
+    is_pinned: bool
 
 
 class ConversationDetail(ConversationOut):

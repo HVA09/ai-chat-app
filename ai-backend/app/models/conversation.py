@@ -28,6 +28,7 @@ class Conversation(Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     title: Mapped[str] = mapped_column(String(255), default="محادثة جديدة")
+    is_pinned: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     owner = relationship("User", back_populates="conversations")

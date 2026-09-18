@@ -18,3 +18,8 @@ export async function renameConversation(id, title) {
 export async function deleteConversation(id) {
   await api.delete(`/conversations/${id}`);
 }
+
+export async function togglePinConversation(id) {
+  const { data } = await api.patch(`/conversations/${id}/pin`);
+  return data;
+}

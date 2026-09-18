@@ -27,6 +27,7 @@ const resources = {
         conversationLoadError: "تعذر تحميل المحادثة.",
         renameConversationError: "تعذر إعادة تسمية المحادثة",
         deleteConversationError: "تعذر حذف المحادثة",
+        pinConversationError: "تعذر تثبيت المحادثة",
         loginSuccess: "تم تسجيل الدخول بنجاح",
         connectionError: "تعذر الاتصال بالخادم",
         sendMessageError: "تعذر إرسال الرسالة إلى الخادم.",
@@ -176,6 +177,8 @@ const resources = {
         renamePrompt: "اسم المحادثة الجديد:",
         renameTitle: "إعادة تسمية",
         deleteTitle: "حذف",
+        pinTitle: "تثبيت",
+        unpinTitle: "إلغاء التثبيت",
         confirmDelete: 'حذف محادثة "{{title}}"؟ ما يمكن التراجع.',
       },
 
@@ -268,6 +271,7 @@ const resources = {
         conversationLoadError: "Couldn't load the conversation.",
         renameConversationError: "Couldn't rename the conversation",
         deleteConversationError: "Couldn't delete the conversation",
+        pinConversationError: "Couldn't pin the conversation",
         loginSuccess: "Logged in successfully",
         connectionError: "Couldn't connect to the server",
         sendMessageError: "Couldn't send the message to the server.",
@@ -417,6 +421,8 @@ const resources = {
         renamePrompt: "New conversation name:",
         renameTitle: "Rename",
         deleteTitle: "Delete",
+        pinTitle: "Pin",
+        unpinTitle: "Unpin",
         confirmDelete: 'Delete conversation "{{title}}"? This cannot be undone.',
       },
 
