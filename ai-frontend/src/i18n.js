@@ -252,6 +252,8 @@ const resources = {
         noMembers: "لا يوجد أعضاء آخرون",
         noPending: "لا توجد دعوات معلقة",
         confirmRemove: 'إزالة {{email}} من مساحة العمل؟',
+        activityTitle: "نشاط مساحة العمل",
+        noActivity: "لا توجد أحداث مسجلة بعد",
       },
 
       workspaceInvite: {
@@ -604,6 +606,8 @@ const resources = {
         noMembers: "No other members",
         noPending: "No pending invitations",
         confirmRemove: "Remove {{email}} from this workspace?",
+        activityTitle: "Workspace activity",
+        noActivity: "No activity recorded yet",
       },
 
       workspaceInvite: {
