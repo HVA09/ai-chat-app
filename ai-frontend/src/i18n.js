@@ -176,6 +176,9 @@ const resources = {
         noFiles: "لا توجد ملفات بعد",
         download: "تحميل",
         delete: "حذف",
+        attach: "إرفاق بالمحادثة",
+        detach: "إزالة من المحادثة",
+        attachmentError: "تعذر تحديث ارتباط الملف بالمحادثة",
       },
 
       sidebar: {
@@ -449,6 +452,9 @@ const resources = {
         noFiles: "No files yet",
         download: "Download",
         delete: "Delete",
+        attach: "Attach to conversation",
+        detach: "Remove from conversation",
+        attachmentError: "Couldn't update the file attachment",
       },
 
       sidebar: {
