@@ -11,3 +11,4 @@ class FileOut(BaseModel):
     content_type: str
     size_bytes: int
     created_at: datetime
+    conversation_id: int | None
