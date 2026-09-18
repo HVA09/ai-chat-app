@@ -214,6 +214,18 @@ const resources = {
         confirmDelete: 'حذف محادثة "{{title}}"؟ ما يمكن التراجع.',
       },
 
+      sources: {
+        title: "المصادر",
+        chunkShort: "مقطع {{chunk}}",
+        chunkTooltip: "المقطع {{chunk}} من الملف",
+      },
+
+      sources: {
+        title: "Sources",
+        chunkShort: "chunk {{chunk}}",
+        chunkTooltip: "Chunk {{chunk}} from the file",
+      },
+
       notif: {
         title: "الإشعارات",
         markAllRead: "تعليم الكل كمقروء",

@@ -4,7 +4,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -58,6 +58,7 @@ class Message(Base):
     )
     role: Mapped[MessageRole] = mapped_column(Enum(MessageRole), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    sources: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     conversation = relationship("Conversation", back_populates="messages")

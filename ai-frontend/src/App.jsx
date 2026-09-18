@@ -294,6 +294,7 @@ export default function App() {
           role: m.role,
           text: m.content,
           time: new Date(m.created_at).toLocaleTimeString(),
+          sources: m.sources ?? [],
         }))
       );
     } catch {
@@ -360,6 +361,7 @@ export default function App() {
               role: m.role,
               text: m.content,
               time: new Date(m.created_at).toLocaleTimeString(),
+              sources: m.sources ?? [],
             }))
           : [getWelcomeMessage(t)]
       );
@@ -412,7 +414,7 @@ export default function App() {
       ...prev.slice(0, targetIndex + 1).map((message, index) =>
         index === targetIndex ? { ...message, text: editedText } : message
       ),
-      { role: "assistant", text: "", time: new Date().toLocaleTimeString() },
+      { role: "assistant", text: "", time: new Date().toLocaleTimeString(), sources: [] },
     ]);
     setInput("");
     setEditingMessageIndex(null);
@@ -433,6 +435,11 @@ export default function App() {
     await streamEditMessage(conversationId, userMessageIndex, editedText, {
       signal: controller.signal,
       onConversationId: (id) => setConversationId(id),
+      onSources: (sources) => {
+        setMessages((prev) => prev.map((message, index) =>
+          index === targetIndex + 1 ? { ...message, sources } : message
+        ));
+      },
       onChunk: appendToLastMessage,
       onDone: () => {
         streamAbortRef.current = null;
@@ -486,6 +493,11 @@ export default function App() {
     await streamChatMessage(userText, conversationId, {
       signal: controller.signal,
       onConversationId: (id) => setConversationId(id),
+      onSources: (sources) => {
+        setMessages((prev) => prev.map((message, index) =>
+          index === messages.length + 1 ? { ...message, sources } : message
+        ));
+      },
       onChunk: (chunk) => {
         if (!receivedFirstChunk) {
           receivedFirstChunk = true;
@@ -541,6 +553,11 @@ export default function App() {
     await streamRegenerateMessage(conversationId, {
       signal: controller.signal,
       onConversationId: (id) => setConversationId(id),
+      onSources: (sources) => {
+        setMessages((prev) => prev.map((message, index) =>
+          index === targetIndex ? { ...message, sources } : message
+        ));
+      },
       onChunk: appendToTargetMessage,
       onDone: () => {
         streamAbortRef.current = null;
@@ -704,6 +721,7 @@ export default function App() {
                     role={msg.role}
                     text={msg.text}
                     time={msg.time}
+                    sources={msg.sources}
                     canEdit={
                       msg.role === "user" &&
                       !loading &&

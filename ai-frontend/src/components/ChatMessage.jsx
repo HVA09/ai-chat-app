@@ -26,6 +26,7 @@ export default function ChatMessage({
   onEdit,
   canDelete = false,
   onDelete,
+  sources = [],
 }) {
   const isUser = role === "user";
   const { t } = useTranslation();
@@ -140,6 +141,25 @@ export default function ChatMessage({
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock }}>
           {text}
         </ReactMarkdown>
+
+        {!isUser && sources.length > 0 ? (
+          <div className="mt-3 border-t border-slate-200 pt-2 dark:border-slate-700">
+            <div className="mb-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {t("sources.title")}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {sources.map((source) => (
+                <span
+                  key={source.id}
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  title={source.chunk ? t("sources.chunkTooltip", { chunk: source.chunk }) : source.filename}
+                >
+                  [{source.id}] {source.filename}{source.chunk ? ` · ${t("sources.chunkShort", { chunk: source.chunk })}` : ""}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

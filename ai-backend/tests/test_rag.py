@@ -123,5 +123,40 @@ def test_chat_uses_retrieved_rag_context(client, monkeypatch, db_session):
     )
     assert response.status_code == 200
     sent = mock_reply.await_args.args[0]
-    assert "[SOURCE: linux.txt | CHUNK: 1]" in sent
+    assert "[SOURCE S1: linux.txt | CHUNK: 1]" in sent
     assert "Linux is an operating system used to run servers." in sent
+
+    body = response.json()
+    assert body["sources"] == [{"id": "S1", "filename": "linux.txt", "chunk": 1}]
+
+
+def test_build_retrieval_context_returns_stable_sources(db_session):
+    from app.services.rag import build_retrieval_context
+
+    user = User(email="source@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+
+    file = FileAttachment(
+        user_id=user.id,
+        original_filename="report.pdf",
+        stored_filename="report.pdf",
+        content_type="application/pdf",
+        size_bytes=10,
+        extracted_text="report text",
+    )
+    db_session.add(file)
+    db_session.flush()
+
+    chunk = FileChunk(
+        file_id=file.id,
+        chunk_index=2,
+        content="important evidence",
+        embedding=[0.1] * 768,
+    )
+    db_session.add(chunk)
+    db_session.flush()
+
+    context, sources = build_retrieval_context([(chunk, file)])
+    assert "[SOURCE S1: report.pdf | CHUNK: 3]" in context
+    assert sources == [{"id": "S1", "filename": "report.pdf", "chunk": 3}]
