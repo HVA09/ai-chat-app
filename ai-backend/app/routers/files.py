@@ -16,11 +16,18 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.audit import log_event
+from app.models.conversation import Conversation
 from app.models.file_attachment import FileAttachment
 from app.models.user import User
 from app.schemas.file import FileOut
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/files", tags=["Files"])
+
+
+class FileConversationUpdate(BaseModel):
+    conversation_id: int | None = None
+
 
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg",
