@@ -65,7 +65,7 @@ def test_attach_and_detach_existing_file(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client, "link-existing@example.com")
     headers = {"Authorization": f"Bearer {token}"}
-    conversation_id = _make_chat(client, headers)
+    conversation_id = _make_chat(client, headers, monkeypatch)
     uploaded = _upload(client, headers)
 
     attached = client.post(
@@ -119,7 +119,7 @@ def test_conversation_delete_removes_file_link_but_not_file(client, tmp_path, mo
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client, "link-delete@example.com")
     headers = {"Authorization": f"Bearer {token}"}
-    conversation_id = _make_chat(client, headers)
+    conversation_id = _make_chat(client, headers, monkeypatch)
     uploaded = _upload(client, headers, conversation_id=conversation_id)
 
     delete_conversation = client.delete(
