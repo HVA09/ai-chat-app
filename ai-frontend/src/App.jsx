@@ -30,7 +30,14 @@ import {
   deleteConversation,
   togglePinConversation,
   toggleArchiveConversation,
+  moveConversationToFolder,
 } from "./lib/conversationsApi";
+import {
+  listFolders,
+  createFolder,
+  renameFolder,
+  deleteFolder,
+} from "./lib/foldersApi";
 import { getCurrentUser } from "./lib/usersApi";
 import {
   listNotifications,
@@ -75,6 +82,8 @@ export default function App() {
   const [conversations, setConversations] = useState([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [showArchivedConversations, setShowArchivedConversations] = useState(false);
+  const [folders, setFolders] = useState([]);
+  const [selectedFolderId, setSelectedFolderId] = useState(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -135,15 +144,88 @@ export default function App() {
     return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
   }, [logout, t]);
 
-  const refreshConversations = async (includeArchived = showArchivedConversations) => {
+  const refreshConversations = async (
+    includeArchived = showArchivedConversations,
+    folderId = selectedFolderId
+  ) => {
     setConversationsLoading(true);
     try {
-      const list = await listConversations(includeArchived);
+      const list = await listConversations(includeArchived, folderId);
       setConversations(list);
     } catch {
       // فشل تحميل القائمة لا يوقف الشات نفسه — نتجاهله بصمت
     } finally {
       setConversationsLoading(false);
+    }
+  };
+
+  const refreshFolders = async () => {
+    try {
+      setFolders(await listFolders());
+    } catch {
+      // فشل تحميل المجلدات لا يوقف الشات.
+    }
+  };
+
+  const handleCreateFolder = async () => {
+    const name = window.prompt(t("sidebar.folderCreatePrompt"));
+    if (!name?.trim()) return;
+    try {
+      const folder = await createFolder(name.trim());
+      await refreshFolders();
+      setSelectedFolderId(folder.id);
+      startNewChat();
+      await refreshConversations(showArchivedConversations, folder.id);
+    } catch {
+      setToast({ message: t("app.folderCreateError"), type: "error" });
+    }
+  };
+
+  const handleRenameFolder = async (id, newName) => {
+    try {
+      await renameFolder(id, newName);
+      await refreshFolders();
+      await refreshConversations(showArchivedConversations, selectedFolderId);
+    } catch {
+      setToast({ message: t("app.folderRenameError"), type: "error" });
+    }
+  };
+
+  const handleDeleteFolder = async (id) => {
+    const wasSelected = id === selectedFolderId;
+    try {
+      await deleteFolder(id);
+      if (wasSelected) {
+        setSelectedFolderId(null);
+        startNewChat();
+      }
+      await refreshFolders();
+      await refreshConversations(showArchivedConversations, wasSelected ? null : selectedFolderId);
+    } catch {
+      setToast({ message: t("app.folderDeleteError"), type: "error" });
+    }
+  };
+
+  const handleSelectFolder = async (id) => {
+    setSelectedFolderId(id);
+    startNewChat();
+    await refreshConversations(showArchivedConversations, id);
+  };
+
+  const handleMoveConversationToFolder = async (id, folderId) => {
+    const normalizedFolderId = folderId === "" ? null : Number(folderId);
+    try {
+      const result = await moveConversationToFolder(id, normalizedFolderId);
+      if (
+        id === conversationId &&
+        selectedFolderId !== null &&
+        result.folder_id !== selectedFolderId
+      ) {
+        startNewChat();
+      }
+      await refreshConversations(showArchivedConversations, selectedFolderId);
+    } catch {
+      setToast({ message: t("app.conversationMoveError"), type: "error" });
     }
   };
 
@@ -167,6 +249,7 @@ export default function App() {
   useEffect(() => {
     if (authed) {
       refreshConversations();
+      refreshFolders();
       refreshCurrentUser();
       refreshNotifications();
     }
@@ -231,7 +314,7 @@ export default function App() {
     try {
       const result = await toggleArchiveConversation(id);
       if (result.is_archived && id === conversationId) startNewChat();
-      await refreshConversations(showArchivedConversations);
+      await refreshConversations(showArchivedConversations, selectedFolderId);
     } catch {
       setToast({ message: t("app.archiveConversationError"), type: "error" });
     }
@@ -240,7 +323,7 @@ export default function App() {
   const handleTogglePinConversation = async (id) => {
     try {
       await togglePinConversation(id);
-      await refreshConversations();
+      await refreshConversations(showArchivedConversations, selectedFolderId);
     } catch {
       setToast({ message: t("app.pinConversationError"), type: "error" });
     }
@@ -250,7 +333,7 @@ export default function App() {
     try {
       await deleteConversation(id);
       if (id === conversationId) startNewChat();
-      await refreshConversations();
+      await refreshConversations(showArchivedConversations, selectedFolderId);
     } catch {
       setToast({ message: t("app.deleteConversationError"), type: "error" });
     }
@@ -354,7 +437,7 @@ export default function App() {
       onDone: () => {
         streamAbortRef.current = null;
         setLoading(false);
-        refreshConversations();
+        refreshConversations(showArchivedConversations, selectedFolderId);
       },
       onError: (message) => {
         streamAbortRef.current = null;
@@ -413,7 +496,9 @@ export default function App() {
       onDone: () => {
         streamAbortRef.current = null;
         setLoading(false);
-        if (isNewConversation) refreshConversations();
+        if (isNewConversation) {
+          refreshConversations(showArchivedConversations, selectedFolderId);
+        }
       },
       onError: (message) => {
         streamAbortRef.current = null;
@@ -568,10 +653,17 @@ export default function App() {
         onDeleteConversation={handleDeleteConversation}
         onTogglePinConversation={handleTogglePinConversation}
         onToggleArchiveConversation={handleToggleArchiveConversation}
+        folders={folders}
+        selectedFolderId={selectedFolderId}
+        onSelectFolder={handleSelectFolder}
+        onCreateFolder={handleCreateFolder}
+        onRenameFolder={handleRenameFolder}
+        onDeleteFolder={handleDeleteFolder}
+        onMoveConversationToFolder={handleMoveConversationToFolder}
         showArchived={showArchivedConversations}
         onShowArchived={(value) => {
           setShowArchivedConversations(value);
-          refreshConversations(value);
+          refreshConversations(value, selectedFolderId);
           if (value) startNewChat();
         }}
         loading={conversationsLoading}

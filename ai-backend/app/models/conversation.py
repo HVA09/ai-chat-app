@@ -30,9 +30,13 @@ class Conversation(Base):
     title: Mapped[str] = mapped_column(String(255), default="محادثة جديدة")
     is_pinned: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
     is_archived: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
+    folder_id: Mapped[int | None] = mapped_column(
+        ForeignKey("conversation_folders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     owner = relationship("User", back_populates="conversations")
+    folder = relationship("ConversationFolder", back_populates="conversations")
     messages = relationship(
         "Message",
         back_populates="conversation",
