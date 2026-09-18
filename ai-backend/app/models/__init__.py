@@ -1,4 +1,5 @@
 from app.models.user import User, UserRole
+from app.models.assistant import Assistant
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.conversation_folder import ConversationFolder
 from app.models.usage_log import UsageLog
@@ -14,6 +15,7 @@ from app.models.webhook_event import WebhookEvent
 __all__ = [
     "User",
     "UserRole",
+    "Assistant",
     "Conversation",
     "Message",
     "MessageRole",
