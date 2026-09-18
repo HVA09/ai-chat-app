@@ -21,6 +21,7 @@ from app.schemas.chat import ChatEditRequest, ChatRequest, ChatResponse
 from app.services.ai_service import get_ai_reply, stream_ai_reply
 from app.services.embeddings import EmbeddingServiceError
 from app.services.rag import build_fallback_file_context, build_retrieval_context, retrieve_relevant_chunks
+from app.services.tools.calculator import CalculatorError, calculate_expression, extract_calculator_expression
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 logger = get_logger("chat")
@@ -204,6 +205,39 @@ async def chat(
     db: Session = Depends(get_db),
 ):
     conversation = _get_or_create_conversation(payload, current_user, db)
+    calculator_expression = extract_calculator_expression(payload.message)
+    if calculator_expression is not None:
+        try:
+            calculator_result = calculate_expression(calculator_expression)
+        except CalculatorError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+        db.add(
+            Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
+        )
+        db.add(
+            Message(
+                conversation_id=conversation.id,
+                role=MessageRole.assistant,
+                content=calculator_result,
+            )
+        )
+        db.add(
+            UsageLog(
+                user_id=current_user.id,
+                endpoint="/chat/tool/calculator",
+            )
+        )
+        db.commit()
+        return ChatResponse(
+            conversation_id=conversation.id,
+            reply=calculator_result,
+            sources=[],
+        )
+
     history = _build_history(conversation, db)
     ai_message, sources = await _augment_message(payload.message, conversation, db)
 
@@ -241,6 +275,49 @@ async def chat_stream(
     الأسطر الجديدة داخل chunk تُستبدل بـ \\\n نصية عشان ما تكسر صيغة السطر الواحد لكل حدث.
     """
     conversation = _get_or_create_conversation(payload, current_user, db)
+    calculator_expression = extract_calculator_expression(payload.message)
+    if calculator_expression is not None:
+        try:
+            calculator_result = calculate_expression(calculator_expression)
+        except CalculatorError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+        db.add(
+            Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
+        )
+        db.commit()
+
+        async def calculator_event_generator():
+            yield f"event: conversation\ndata: {conversation.id}\n\n"
+            yield "event: sources\ndata: []\n\n"
+            yield f"event: chunk\ndata: {calculator_result.replace(chr(10), '\\\\n')}\n\n"
+            try:
+                db.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        role=MessageRole.assistant,
+                        content=calculator_result,
+                    )
+                )
+                db.add(
+                    UsageLog(
+                        user_id=current_user.id,
+                        endpoint="/chat/tool/calculator",
+                    )
+                )
+                db.commit()
+            except Exception:
+                logger.exception("فشل حفظ نتيجة أداة الآلة الحاسبة لمحادثة %s", conversation.id)
+                db.rollback()
+                yield "event: error\ndata: تعذر حفظ نتيجة الأداة\n\n"
+                return
+            yield "event: done\ndata: {}\n\n"
+
+        return StreamingResponse(calculator_event_generator(), media_type="text/event-stream")
+
     history = _build_history(conversation, db)
     ai_message, sources = await _augment_message(payload.message, conversation, db)
 
