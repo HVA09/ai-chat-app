@@ -2,11 +2,17 @@ import api from "./api";
 import { detailToMessage } from "./errors";
 import i18n from "../i18n";
 
-export async function sendChatMessage(message, conversationId = null, assistantId = null) {
+export async function sendChatMessage(
+  message,
+  conversationId = null,
+  assistantId = null,
+  workspaceId = null
+) {
   const { data } = await api.post("/chat", {
     message,
     conversation_id: conversationId,
     assistant_id: assistantId,
+    workspace_id: workspaceId,
   });
   return data;
 }
@@ -19,7 +25,7 @@ export async function streamChatMessage(
   message,
   conversationId,
   assistantId = null,
-  { onChunk, onConversationId, onSources, onDone, onError, signal } = {}
+  { onChunk, onConversationId, onSources, onDone, onError, signal, workspaceId = null } = {}
 ) {
   const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -35,6 +41,7 @@ export async function streamChatMessage(
         message,
         conversation_id: conversationId,
         assistant_id: assistantId,
+        workspace_id: workspaceId,
       }),
       signal,
     });
