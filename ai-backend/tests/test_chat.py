@@ -255,6 +255,6 @@ def test_chat_includes_attached_file_text_as_untrusted_context(client, monkeypat
 
     sent_message = mock_reply.await_args.args[0]
     assert "USER REQUEST:" in sent_message
-    assert "[FILE: linux.txt]" in sent_message
+    assert "[SOURCE S1: linux.txt]" in sent_message
     assert "untrusted reference material" in sent_message
     assert "Linux is an operating system" in sent_message
