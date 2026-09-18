@@ -1,6 +1,9 @@
 """
 مسارات المحادثة مع الذكاء الاصطناعي: عادي (/chat) ومباشر تدريجيًا (/chat/stream)
 """
+import re
+import unicodedata
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -11,6 +14,7 @@ from app.logging_config import get_logger
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
+from app.models.file_chunk import FileChunk
 from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.schemas.chat import ChatEditRequest, ChatRequest, ChatResponse
@@ -22,6 +26,14 @@ logger = get_logger("chat")
 MAX_HISTORY_MESSAGES = 20  # يحدّ من نمو الاستعلام وتكلفة/زمن استدعاء AI بمحادثة طويلة جدًا
 MAX_FILE_CONTEXT_CHARS = 24_000
 MAX_FILE_CONTEXT_PER_FILE_CHARS = 8_000
+MAX_RETRIEVED_FILE_CHUNKS = 8
+
+_RETRIEVAL_STOP_WORDS = {
+    "a", "an", "the", "and", "or", "of", "to", "in", "on", "for", "is", "are",
+    "what", "how", "why", "who", "when", "where",
+    "ما", "ماذا", "من", "هو", "هي", "هم", "في", "عن", "على", "الى", "إلى",
+    "هذا", "هذه", "ذلك", "تلك", "هل", "كيف", "لماذا",
+}
 
 
 def _get_or_create_conversation(
@@ -61,38 +73,97 @@ def _build_history(conversation: Conversation, db: Session) -> list[dict[str, st
     recent_messages.reverse()  # نرجّعها لترتيبها الزمني الطبيعي (الأقدم أول)
     return [{"role": m.role.value, "content": m.content} for m in recent_messages]
 
-def _build_file_context(conversation: Conversation, db: Session) -> str:
-    """يجلب النص المستخرج من ملفات المحادثة الحالية كسياق مرجعي غير موثوق."""
-    files = (
+def _retrieval_tokens(text: str) -> set[str]:
+    normalized = unicodedata.normalize("NFKC", text).lower()
+    normalized = normalized.translate(
+        str.maketrans({"إ": "ا", "أ": "ا", "آ": "ا", "ى": "ي"})
+    )
+    normalized = "".join(
+        char
+        for char in unicodedata.normalize("NFD", normalized)
+        if unicodedata.category(char) != "Mn"
+    )
+    tokens = re.findall(r"[a-z0-9_\u0600-\u06ff]+", normalized)
+    return {
+        token
+        for token in tokens
+        if len(token) > 1 and token not in _RETRIEVAL_STOP_WORDS
+    }
+
+
+def _score_chunk(query_tokens: set[str], chunk: FileChunk) -> float:
+    chunk_tokens = _retrieval_tokens(chunk.content)
+    if not query_tokens or not chunk_tokens:
+        return 0.0
+    overlap = len(query_tokens & chunk_tokens) / max(len(query_tokens), 1)
+    return overlap
+
+
+def _build_file_context(message: str, conversation: Conversation, db: Session) -> str:
+    """يجلب أفضل مقاطع الملفات المرفقة بالمحادثة الحالية كسياق مرجعي غير موثوق."""
+    linked_files = (
         db.query(FileAttachment)
-        .join(
-            ConversationFileLink,
-            ConversationFileLink.file_id == FileAttachment.id,
-        )
+        .join(ConversationFileLink, ConversationFileLink.file_id == FileAttachment.id)
         .filter(
             ConversationFileLink.conversation_id == conversation.id,
             FileAttachment.user_id == conversation.user_id,
-            FileAttachment.extracted_text.isnot(None),
         )
         .order_by(ConversationFileLink.created_at.asc())
         .all()
     )
+    if not linked_files:
+        return ""
 
+    file_ids = [file.id for file in linked_files]
+    chunks = (
+        db.query(FileChunk)
+        .filter(FileChunk.file_id.in_(file_ids))
+        .order_by(FileChunk.file_id.asc(), FileChunk.chunk_index.asc())
+        .all()
+    )
+    query_tokens = _retrieval_tokens(message)
+
+    ranked = sorted(
+        ((_score_chunk(query_tokens, chunk), chunk) for chunk in chunks),
+        key=lambda item: (item[0], -item[1].chunk_index),
+        reverse=True,
+    )
+
+    selected = [chunk for score, chunk in ranked if score > 0][:MAX_RETRIEVED_FILE_CHUNKS]
+
+    if not selected and chunks:
+        # عند عدم وجود تطابق لغوي نأخذ عددًا قليلًا من المقاطع بدل إرسال الملف كاملًا.
+        selected = chunks[: min(2, MAX_RETRIEVED_FILE_CHUNKS)]
+
+    file_names = {file.id: file.original_filename for file in linked_files}
     parts: list[str] = []
     total = 0
-    for file in files:
-        text = (file.extracted_text or "").strip()
-        if not text:
-            continue
-        remaining = MAX_FILE_CONTEXT_CHARS - total
-        if remaining <= 0:
-            break
-        snippet = text[: min(MAX_FILE_CONTEXT_PER_FILE_CHARS, remaining)]
-        parts.append(
-            f"[FILE: {file.original_filename}]\n"
-            f"{snippet}"
-        )
-        total += len(snippet)
+
+    if selected:
+        for chunk in selected:
+            remaining = MAX_FILE_CONTEXT_CHARS - total
+            if remaining <= 0:
+                break
+            snippet = chunk.content[:remaining]
+            if not snippet:
+                continue
+            parts.append(
+                f"[FILE: {file_names.get(chunk.file_id, 'unknown')} | CHUNK: {chunk.chunk_index + 1}]\n"
+                f"{snippet}"
+            )
+            total += len(snippet)
+    else:
+        # Backward compatibility for files uploaded before chunk indexing existed.
+        for file in linked_files[:3]:
+            remaining = MAX_FILE_CONTEXT_CHARS - total
+            if remaining <= 0:
+                break
+            text = (file.extracted_text or "").strip()
+            if not text:
+                continue
+            snippet = text[: min(MAX_FILE_CONTEXT_PER_FILE_CHARS, remaining)]
+            parts.append(f"[FILE: {file.original_filename}]\n{snippet}")
+            total += len(snippet)
 
     if not parts:
         return ""
@@ -104,8 +175,6 @@ def _build_file_context(conversation: Conversation, db: Session) -> str:
         + "\n\n".join(parts)
         + "\n\n[END FILE CONTEXT]"
     )
-
-
 def _augment_message(message: str, conversation: Conversation, db: Session) -> str:
     file_context = _build_file_context(conversation, db)
     if not file_context:
