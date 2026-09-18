@@ -148,15 +148,29 @@ export default function ChatMessage({
               {t("sources.title")}
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {sources.map((source) => (
-                <span
-                  key={source.id}
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                  title={source.chunk ? t("sources.chunkTooltip", { chunk: source.chunk }) : source.filename}
-                >
-                  [{source.id}] {source.filename}{source.chunk ? ` · ${t("sources.chunkShort", { chunk: source.chunk })}` : ""}
-                </span>
-              ))}
+              {sources.map((source) => {
+                const label = source.filename || source.title || source.url || source.id;
+                const text = `[${source.id}] ${label}${source.chunk ? ` · ${t("sources.chunkShort", { chunk: source.chunk })}` : ""}`;
+                const content = source.url ? (
+                  <a
+                    href={source.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 hover:underline dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                    title={source.snippet || (source.chunk ? t("sources.chunkTooltip", { chunk: source.chunk }) : source.url)}
+                  >
+                    {text}
+                  </a>
+                ) : (
+                  <span
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                    title={source.snippet || (source.chunk ? t("sources.chunkTooltip", { chunk: source.chunk }) : label)}
+                  >
+                    {text}
+                  </span>
+                );
+                return <span key={source.id}>{content}</span>;
+              })}
             </div>
           </div>
         ) : null}
