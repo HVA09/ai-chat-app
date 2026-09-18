@@ -12,6 +12,7 @@ export default function ChatComposer({
   loading,
   isEditing = false,
   onCancelEdit,
+  onInsertCalculator,
 }) {
   const { t } = useTranslation();
   const nearLimit = value.length > MAX_MESSAGE_LENGTH - 200;
@@ -58,6 +59,16 @@ export default function ChatComposer({
             </p>
           )}
         </div>
+        {!loading && !isEditing ? (
+          <button
+            type="button"
+            onClick={onInsertCalculator}
+            title={t("tools.calculator")}
+            className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
+          >
+            🧮
+          </button>
+        ) : null}
         {loading ? (
           <button
             type="button"
