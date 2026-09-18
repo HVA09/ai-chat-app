@@ -105,27 +105,6 @@ def send_workspace_invitation_email(
 ) -> None:
     from app.tasks import queue_email
 
-    link = f"{settings.FRONTEND_URL}/workspace-invite?token={token}"
-    queue_email(
-        to=to,
-        subject=f"دعوة للانضمام إلى مساحة عمل: {workspace_name}",
-        body=(
-            f"تمت دعوتك بواسطة {inviter_email} للانضمام إلى مساحة العمل "
-            f"«{workspace_name}».\n\n"
-            f"سجّل الدخول بالحساب المدعو ثم افتح الرابط لقبول الدعوة:\n{link}\n\n"
-            "الدعوة صالحة لمدة 7 أيام."
-        ),
-    )
-
-
-def send_workspace_invitation_email(
-    to: str,
-    workspace_name: str,
-    inviter_email: str,
-    token: str,
-) -> None:
-    from app.tasks import queue_email
-
     link = f"{settings.FRONTEND_URL.rstrip('/')}/workspace-invite?token={token}"
     queue_email(
         to=to,
