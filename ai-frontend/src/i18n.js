@@ -296,6 +296,22 @@ const resources = {
         enableDark: "تفعيل الوضع الداكن",
       },
 
+      sharing: {
+        shareButton: "مشاركة",
+        shareDisabled: "ابدأ محادثة أولًا للمشاركة",
+        sharedSuccess: "تم فتح المشاركة",
+        linkCopied: "تم نسخ رابط المشاركة",
+        copyPrompt: "انسخ رابط المشاركة:",
+        createError: "تعذر إنشاء رابط المشاركة",
+        badge: "محادثة مشتركة",
+        loading: "جارٍ تحميل المحادثة المشتركة...",
+        invalidTitle: "رابط المشاركة غير صالح",
+        notFound: "رابط المشاركة غير موجود أو تم إلغاؤه",
+        expired: "انتهت صلاحية رابط المشاركة",
+        expiresAt: "تنتهي الصلاحية: {{date}}",
+        readOnly: "هذه محادثة للقراءة فقط",
+      },
+
       tools: {
         calculator: "الآلة الحاسبة — أدخل تعبيرًا مثل /calc (12 + 8) * 3",
         webSearch: "بحث الويب — ابحث في المصادر المتاحة عبر الويب",
@@ -596,6 +612,22 @@ const resources = {
       theme: {
         enableLight: "Switch to light mode",
         enableDark: "Switch to dark mode",
+      },
+
+      sharing: {
+        shareButton: "Share",
+        shareDisabled: "Start a conversation first",
+        sharedSuccess: "Share link ready",
+        linkCopied: "Share link copied",
+        copyPrompt: "Copy this share link:",
+        createError: "Couldn't create a share link",
+        badge: "Shared conversation",
+        loading: "Loading shared conversation...",
+        invalidTitle: "Invalid share link",
+        notFound: "The share link doesn't exist or was revoked",
+        expired: "This share link has expired",
+        expiresAt: "Expires: {{date}}",
+        readOnly: "This conversation is read-only",
       },
 
       tools: {
