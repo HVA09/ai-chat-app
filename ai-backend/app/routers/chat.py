@@ -193,7 +193,8 @@ async def _augment_message(
     if not context_parts:
         return message, []
 
-    return f"{'\n\n'.join(context_parts)}\n\nUSER REQUEST:\n{message}", sources
+    combined_context = "\n\n".join(context_parts)
+    return f"{combined_context}\n\nUSER REQUEST:\n{message}", sources
 
 
 @router.post("", response_model=ChatResponse)
