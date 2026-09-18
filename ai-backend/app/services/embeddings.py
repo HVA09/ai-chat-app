@@ -86,7 +86,7 @@ def embed_documents_sync(texts: Sequence[str]) -> list[list[float]]:
                             "model": f"models/{settings.EMBEDDING_MODEL}",
                             "content": {"parts": [{"text": text}]},
                             "taskType": "RETRIEVAL_DOCUMENT",
-                            "outputDimensionality": settings.EMBEDDING_DIMENSIONS,
+                            "output_dimensionality": settings.EMBEDDING_DIMENSIONS,
                         }
                         for text in batch
                     ]
