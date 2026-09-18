@@ -6,6 +6,7 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.audit import log_event
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
@@ -129,6 +130,13 @@ def create_workspace_invitation(
     db.add(invitation)
     db.commit()
     db.refresh(invitation)
+    log_event(
+        db,
+        "workspace_invitation_created",
+        f"دعوة {target.email} للانضمام إلى مساحة العمل {membership.workspace.name}",
+        current_user.id,
+        workspace_id,
+    )
 
     send_workspace_invitation_email(
         to=target.email,
@@ -185,6 +193,13 @@ def revoke_workspace_invitation(
         raise HTTPException(status_code=404, detail="الدعوة غير موجودة")
     invitation.revoked_at = datetime.now(timezone.utc)
     db.commit()
+    log_event(
+        db,
+        "workspace_invitation_revoked",
+        f"إلغاء دعوة {invitation.email} من مساحة العمل {workspace_id}",
+        current_user.id,
+        workspace_id,
+    )
 
 
 @router.patch("/workspaces/{workspace_id}/members/{member_id}/role", response_model=WorkspaceMemberOut)
@@ -211,9 +226,17 @@ def update_workspace_member_role(
     if target_member.role == WorkspaceRole.owner:
         raise HTTPException(status_code=403, detail="لا يمكن تغيير دور مالك مساحة العمل")
 
+    previous_role = target_member.role
     target_member.role = payload.role
     db.commit()
     db.refresh(target_member)
+    log_event(
+        db,
+        "workspace_member_role_updated",
+        f"تغيير دور {target_user.email} من {previous_role.value} إلى {target_member.role.value}",
+        current_user.id,
+        workspace_id,
+    )
     return WorkspaceMemberOut(
         id=target_member.id,
         user_id=target_user.id,
@@ -242,8 +265,18 @@ def remove_workspace_member(
         raise HTTPException(status_code=403, detail="لا يمكن إزالة مالك مساحة العمل")
     if manager.role == WorkspaceRole.admin and target.role != WorkspaceRole.member:
         raise HTTPException(status_code=403, detail="المدير لا يمكنه إزالة مدير آخر")
+    target_user_id = target.user_id
     db.delete(target)
     db.commit()
+    removed_user = db.get(User, target_user_id)
+    removed_email = removed_user.email if removed_user else str(target_user_id)
+    log_event(
+        db,
+        "workspace_member_removed",
+        f"إزالة {removed_email} من مساحة العمل {workspace_id}",
+        current_user.id,
+        workspace_id,
+    )
 
 
 @router.post("/workspace-invitations/accept", response_model=WorkspaceInvitationAcceptOut)
@@ -280,6 +313,13 @@ def accept_workspace_invitation(
     )
     invitation.accepted_at = now
     db.commit()
+    log_event(
+        db,
+        "workspace_invitation_accepted",
+        f"انضمام {current_user.email} إلى مساحة العمل {invitation.workspace_id}",
+        current_user.id,
+        invitation.workspace_id,
+    )
 
     workspace = db.get(Workspace, invitation.workspace_id)
     if workspace:
