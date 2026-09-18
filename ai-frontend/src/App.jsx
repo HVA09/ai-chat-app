@@ -25,6 +25,8 @@ const TermsPage = lazy(() => import("./components/TermsPage"));
 const PrivacyPage = lazy(() => import("./components/PrivacyPage"));
 const PricingPage = lazy(() => import("./components/PricingPage"));
 const SharedConversationPage = lazy(() => import("./components/SharedConversationPage"));
+const WorkspaceMembersPanel = lazy(() => import("./components/WorkspaceMembersPanel"));
+const WorkspaceInvitePage = lazy(() => import("./components/WorkspaceInvitePage"));
 import {
   listConversations,
   getConversation,
@@ -110,6 +112,7 @@ export default function App() {
   const [showFiles, setShowFiles] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showBilling, setShowBilling] = useState(false);
+  const [showWorkspaceMembers, setShowWorkspaceMembers] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const bottomRef = useRef(null);
@@ -150,6 +153,7 @@ export default function App() {
     setShowFiles(false);
     setShowAdmin(false);
     setShowBilling(false);
+    setShowWorkspaceMembers(false);
     setNotifications([]);
   }, [t]);
 
@@ -232,6 +236,10 @@ export default function App() {
     } catch {
       setToast({ message: t("app.workspaceRenameError"), type: "error" });
     }
+  };
+
+  const handleOpenWorkspaceMembers = () => {
+    if (selectedWorkspaceId !== null) setShowWorkspaceMembers(true);
   };
 
   const handleSelectWorkspace = async (id) => {
@@ -791,6 +799,13 @@ export default function App() {
   };
 
   const path = normalizedPath;
+  if (path === "/workspace-invite") {
+    return (
+      <Suspense fallback={<PageLoadingFallback />}>
+        <WorkspaceInvitePage />
+      </Suspense>
+    );
+  }
   if (path.startsWith("/share/")) {
     return (
       <Suspense fallback={<ModalLoadingFallback />}>
@@ -890,6 +905,7 @@ export default function App() {
         onSelectWorkspace={handleSelectWorkspace}
         onCreateWorkspace={handleCreateWorkspace}
         onRenameWorkspace={handleRenameWorkspace}
+        onOpenWorkspaceMembers={handleOpenWorkspaceMembers}
         showArchived={showArchivedConversations}
         onShowArchived={(value) => {
           setShowArchivedConversations(value);
@@ -1042,6 +1058,21 @@ export default function App() {
       {showBilling && (
         <Suspense fallback={<ModalLoadingFallback />}>
           <BillingPanel onClose={() => setShowBilling(false)} />
+        </Suspense>
+      )}
+
+      {showWorkspaceMembers && selectedWorkspaceId !== null && (
+        <Suspense fallback={<ModalLoadingFallback />}>
+          <WorkspaceMembersPanel
+            workspaceId={selectedWorkspaceId}
+            workspaceName={
+              workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.name || ""
+            }
+            workspaceRole={
+              workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.role || "member"
+            }
+            onClose={() => setShowWorkspaceMembers(false)}
+          />
         </Suspense>
       )}
     </div>
