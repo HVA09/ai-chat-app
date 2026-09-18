@@ -121,6 +121,48 @@ def test_edit_user_message_replaces_turn_and_truncates_following_history(client,
     ]
 
 
+def test_delete_user_message_removes_its_assistant_reply_and_preserves_later_turn(
+    client, monkeypatch, db_session
+):
+    replies = iter(["رد أول", "رد ثان"])
+    mock_get_reply = AsyncMock(
+        side_effect=lambda *args, **kwargs: AIReply(text=next(replies))
+    )
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_get_reply)
+
+    token = _register_and_login(client, "delete-message@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post("/chat", json={"message": "السؤال الأول"}, headers=headers)
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+
+    second = client.post(
+        "/chat",
+        json={"message": "السؤال الثاني", "conversation_id": conversation_id},
+        headers=headers,
+    )
+    assert second.status_code == 200
+
+    response = client.delete(
+        f"/chat/{conversation_id}/messages/1",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["deleted"] == 2
+
+    messages = (
+        db_session.query(Message)
+        .filter(Message.conversation_id == conversation_id)
+        .order_by(Message.id.asc())
+        .all()
+    )
+    assert [(message.role, message.content) for message in messages] == [
+        (MessageRole.user, "السؤال الثاني"),
+        (MessageRole.assistant, "رد ثان"),
+    ]
+
+
 def test_chat_requires_authentication(client):
     response = client.post("/chat", json={"message": "مرحبًا"})
     assert response.status_code == 401
