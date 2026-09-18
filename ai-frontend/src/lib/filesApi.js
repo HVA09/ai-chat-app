@@ -23,6 +23,13 @@ export async function deleteFile(id) {
   await api.delete(`/files/${id}`);
 }
 
+export async function setFileConversation(id, conversationId) {
+  const { data } = await api.patch(`/files/${id}/conversation`, {
+    conversation_id: conversationId,
+  });
+  return data;
+}
+
 // التحميل يحتاج نفس هيدر الـ Authorization، ورابط <a> عادي ما يقدر يرسله —
 // فنجيب الملف كـ blob عبر axios (اللي يرفق التوكن تلقائيًا) وننزّله يدويًا
 export async function fetchFileBlob(id) {
