@@ -53,15 +53,11 @@ def list_conversations(
             .first()
         )
         if not owned_folder:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="المجلد غير موجود",
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المجلد غير موجود")
         query = query.filter(Conversation.folder_id == folder_id)
 
     return (
-        query
-        .order_by(Conversation.is_pinned.desc(), Conversation.created_at.desc())
+        query.order_by(Conversation.is_pinned.desc(), Conversation.created_at.desc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -144,10 +140,7 @@ def set_conversation_folder(
             .first()
         )
         if not owned_folder:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="المجلد غير موجود",
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المجلد غير موجود")
 
     conversation.folder_id = payload.folder_id
     db.commit()
