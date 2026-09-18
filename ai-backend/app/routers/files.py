@@ -19,8 +19,10 @@ from app.audit import log_event
 from app.models.conversation import Conversation
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
+from app.models.file_chunk import FileChunk
 from app.models.user import User
 from app.schemas.file import FileOut
+from app.services.file_chunker import chunk_text
 from app.services.file_text_extractor import FileTextExtractionError, extract_text
 
 router = APIRouter(prefix="/files", tags=["Files"])
@@ -215,6 +217,17 @@ async def upload_file(
     )
     db.add(attachment)
     db.flush()
+
+    if extracted_text:
+        for chunk_index, chunk in enumerate(chunk_text(extracted_text)):
+            db.add(
+                FileChunk(
+                    file_id=attachment.id,
+                    chunk_index=chunk_index,
+                    content=chunk,
+                )
+            )
+
     if conversation_id is not None:
         db.add(
             ConversationFileLink(
