@@ -34,6 +34,9 @@ class User(Base):
     totp_secret: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_2fa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    conversation_folders = relationship(
+        "ConversationFolder", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
+    )
     conversations = relationship(
         "Conversation", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )
