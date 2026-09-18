@@ -38,7 +38,7 @@ class MessageOut(BaseModel):
     role: MessageRole
     content: str
     created_at: datetime
-    sources: list[dict[str, Any]] = Field(default_factory=list)
+    sources: list[dict[str, Any]] | None = None
 
 
 class ChatResponse(BaseModel):
