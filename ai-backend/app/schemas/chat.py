@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -37,11 +38,13 @@ class MessageOut(BaseModel):
     role: MessageRole
     content: str
     created_at: datetime
+    sources: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):
     conversation_id: int
     reply: str
+    sources: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ConversationOut(BaseModel):
