@@ -361,6 +361,7 @@ export default function App() {
               role: m.role,
               text: m.content,
               time: new Date(m.created_at).toLocaleTimeString(),
+              sources: m.sources ?? [],
             }))
           : [getWelcomeMessage(t)]
       );
