@@ -10,6 +10,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     conversation_id: int | None = None
     assistant_id: int | None = None
+    workspace_id: int | None = None
 
     @field_validator("message")
     @classmethod
@@ -58,6 +59,7 @@ class ConversationOut(BaseModel):
     is_archived: bool
     folder_id: int | None
     assistant_id: int | None
+    workspace_id: int
 
 
 class ConversationDetail(ConversationOut):

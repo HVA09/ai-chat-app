@@ -41,6 +41,11 @@ import {
   deleteFolder,
 } from "./lib/foldersApi";
 import {
+  listWorkspaces,
+  createWorkspace,
+  renameWorkspace,
+} from "./lib/workspacesApi";
+import {
   listAssistants,
   createAssistant,
   updateAssistant,
@@ -92,6 +97,8 @@ export default function App() {
   const [showArchivedConversations, setShowArchivedConversations] = useState(false);
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState(null);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(null);
   const [assistants, setAssistants] = useState([]);
   const [selectedAssistantId, setSelectedAssistantId] = useState(null);
   const [input, setInput] = useState("");
@@ -127,6 +134,9 @@ export default function App() {
     setAuthed(false);
     setConversations([]);
     setFolders([]);
+    setWorkspaces([]);
+    setSelectedWorkspaceId(null);
+    setSelectedFolderId(null);
     setAssistants([]);
     setSelectedFolderId(null);
     setSelectedAssistantId(null);
@@ -160,17 +170,77 @@ export default function App() {
 
   const refreshConversations = async (
     includeArchived = showArchivedConversations,
-    folderId = selectedFolderId
+    folderId = selectedFolderId,
+    workspaceId = selectedWorkspaceId
   ) => {
     setConversationsLoading(true);
     try {
-      const list = await listConversations(includeArchived, folderId);
+      const list = await listConversations(includeArchived, folderId, workspaceId);
       setConversations(list);
     } catch {
       // فشل تحميل القائمة لا يوقف الشات نفسه — نتجاهله بصمت
     } finally {
       setConversationsLoading(false);
     }
+  };
+
+  const refreshWorkspaces = async () => {
+    try {
+      const list = await listWorkspaces();
+      setWorkspaces(list);
+      const nextId =
+        selectedWorkspaceId && list.some((workspace) => workspace.id === selectedWorkspaceId)
+          ? selectedWorkspaceId
+          : list[0]?.id ?? null;
+      setSelectedWorkspaceId(nextId);
+      setSelectedFolderId(null);
+      await refreshConversations(showArchivedConversations, null, nextId);
+    } catch {
+      // فشل تحميل مساحات العمل لا يوقف الشات.
+    }
+  };
+
+  const handleCreateWorkspace = async () => {
+    const name = window.prompt(t("sidebar.workspaceCreatePrompt"));
+    if (!name?.trim()) return;
+    try {
+      const workspace = await createWorkspace(name.trim());
+      const nextList = [...workspaces, workspace];
+      setWorkspaces(nextList);
+      setSelectedWorkspaceId(workspace.id);
+      setSelectedFolderId(null);
+      startNewChat();
+      await refreshConversations(showArchivedConversations, null, workspace.id);
+    } catch {
+      setToast({ message: t("app.workspaceCreateError"), type: "error" });
+    }
+  };
+
+  const handleRenameWorkspace = async () => {
+    if (selectedWorkspaceId === null) return;
+    const current = workspaces.find((workspace) => workspace.id === selectedWorkspaceId);
+    const name = window.prompt(
+      t("sidebar.workspaceRenamePrompt"),
+      current?.name || ""
+    );
+    if (!name?.trim()) return;
+    try {
+      const updated = await renameWorkspace(selectedWorkspaceId, name.trim());
+      setWorkspaces((prev) =>
+        prev.map((workspace) => (workspace.id === updated.id ? updated : workspace))
+      );
+    } catch {
+      setToast({ message: t("app.workspaceRenameError"), type: "error" });
+    }
+  };
+
+  const handleSelectWorkspace = async (id) => {
+    const workspaceId = Number(id);
+    if (!workspaceId || workspaceId === selectedWorkspaceId) return;
+    setSelectedWorkspaceId(workspaceId);
+    setSelectedFolderId(null);
+    startNewChat();
+    await refreshConversations(showArchivedConversations, null, workspaceId);
   };
 
   const refreshFolders = async () => {
@@ -189,7 +259,7 @@ export default function App() {
       await refreshFolders();
       setSelectedFolderId(folder.id);
       startNewChat();
-      await refreshConversations(showArchivedConversations, folder.id);
+      await refreshConversations(showArchivedConversations, folder.id, selectedWorkspaceId);
     } catch {
       setToast({ message: t("app.folderCreateError"), type: "error" });
     }
@@ -199,7 +269,7 @@ export default function App() {
     try {
       await renameFolder(id, newName);
       await refreshFolders();
-      await refreshConversations(showArchivedConversations, selectedFolderId);
+      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
     } catch {
       setToast({ message: t("app.folderRenameError"), type: "error" });
     }
@@ -214,7 +284,11 @@ export default function App() {
         startNewChat();
       }
       await refreshFolders();
-      await refreshConversations(showArchivedConversations, wasSelected ? null : selectedFolderId);
+      await refreshConversations(
+        showArchivedConversations,
+        wasSelected ? null : selectedFolderId,
+        selectedWorkspaceId
+      );
     } catch {
       setToast({ message: t("app.folderDeleteError"), type: "error" });
     }
@@ -223,7 +297,7 @@ export default function App() {
   const handleSelectFolder = async (id) => {
     setSelectedFolderId(id);
     startNewChat();
-    await refreshConversations(showArchivedConversations, id);
+    await refreshConversations(showArchivedConversations, id, selectedWorkspaceId);
   };
 
   const refreshAssistants = async () => {
@@ -307,7 +381,7 @@ export default function App() {
       ) {
         startNewChat();
       }
-      await refreshConversations(showArchivedConversations, selectedFolderId);
+      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
     } catch {
       setToast({ message: t("app.conversationMoveError"), type: "error" });
     }
@@ -332,7 +406,7 @@ export default function App() {
 
   useEffect(() => {
     if (authed) {
-      refreshConversations();
+      refreshWorkspaces();
       refreshFolders();
       refreshAssistants();
       refreshCurrentUser();
@@ -375,6 +449,8 @@ export default function App() {
       const data = await getConversation(id);
       setConversationId(data.id);
       setSelectedAssistantId(data.assistant_id ?? null);
+      setSelectedWorkspaceId(data.workspace_id ?? null);
+      setSelectedFolderId(data.folder_id ?? null);
       setMessages(
         data.messages.map((m) => ({
           role: m.role,
@@ -433,7 +509,7 @@ export default function App() {
     try {
       const result = await toggleArchiveConversation(id);
       if (result.is_archived && id === conversationId) startNewChat();
-      await refreshConversations(showArchivedConversations, selectedFolderId);
+      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
     } catch {
       setToast({ message: t("app.archiveConversationError"), type: "error" });
     }
@@ -562,7 +638,7 @@ export default function App() {
       onDone: () => {
         streamAbortRef.current = null;
         setLoading(false);
-        refreshConversations(showArchivedConversations, selectedFolderId);
+        refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
       },
       onError: (message) => {
         streamAbortRef.current = null;
@@ -610,6 +686,7 @@ export default function App() {
 
     await streamChatMessage(userText, conversationId, selectedAssistantId, {
       signal: controller.signal,
+      workspaceId: selectedWorkspaceId,
       onConversationId: (id) => setConversationId(id),
       onSources: (sources) => {
         setMessages((prev) => prev.map((message, index) =>
@@ -627,7 +704,7 @@ export default function App() {
         streamAbortRef.current = null;
         setLoading(false);
         if (isNewConversation) {
-          refreshConversations(showArchivedConversations, selectedFolderId);
+          refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
         }
       },
       onError: (message) => {
@@ -808,10 +885,15 @@ export default function App() {
         onRenameFolder={handleRenameFolder}
         onDeleteFolder={handleDeleteFolder}
         onMoveConversationToFolder={handleMoveConversationToFolder}
+        workspaces={workspaces}
+        selectedWorkspaceId={selectedWorkspaceId}
+        onSelectWorkspace={handleSelectWorkspace}
+        onCreateWorkspace={handleCreateWorkspace}
+        onRenameWorkspace={handleRenameWorkspace}
         showArchived={showArchivedConversations}
         onShowArchived={(value) => {
           setShowArchivedConversations(value);
-          refreshConversations(value, selectedFolderId);
+          refreshConversations(value, selectedFolderId, selectedWorkspaceId);
           if (value) startNewChat();
         }}
         loading={conversationsLoading}

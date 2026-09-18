@@ -19,6 +19,7 @@ from app.models.file_attachment import FileAttachment
 from app.models.file_chunk import FileChunk
 from app.models.usage_log import UsageLog
 from app.models.user import User
+from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.chat import ChatEditRequest, ChatRequest, ChatResponse
 from app.services.ai_agent import AgentModeError, extract_agent_request, run_agent
 from app.services.ai_service import get_ai_reply, stream_ai_reply
@@ -60,6 +61,42 @@ def _get_owned_assistant(
     return assistant
 
 
+def _get_owned_workspace(
+    workspace_id: int, current_user: User, db: Session
+) -> Workspace:
+    workspace = (
+        db.query(Workspace)
+        .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
+        .filter(
+            Workspace.id == workspace_id,
+            WorkspaceMember.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not workspace:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="مساحة العمل غير موجودة",
+        )
+    return workspace
+
+
+def _get_default_workspace(current_user: User, db: Session) -> Workspace:
+    workspace = (
+        db.query(Workspace)
+        .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
+        .filter(WorkspaceMember.user_id == current_user.id)
+        .order_by(Workspace.created_at.asc(), Workspace.id.asc())
+        .first()
+    )
+    if not workspace:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="لا توجد مساحة عمل لهذا الحساب",
+        )
+    return workspace
+
+
 def _get_or_create_conversation(
     payload: ChatRequest, current_user: User, db: Session
 ) -> Conversation:
@@ -68,6 +105,11 @@ def _get_or_create_conversation(
         if payload.assistant_id is not None
         else None
     )
+    selected_workspace = (
+        _get_owned_workspace(payload.workspace_id, current_user, db)
+        if payload.workspace_id is not None
+        else _get_default_workspace(current_user, db)
+    )
 
     if payload.conversation_id:
         conversation = (
@@ -75,6 +117,7 @@ def _get_or_create_conversation(
             .filter(
                 Conversation.id == payload.conversation_id,
                 Conversation.user_id == current_user.id,
+                Conversation.workspace_id == selected_workspace.id,
             )
             .first()
         )
@@ -92,6 +135,7 @@ def _get_or_create_conversation(
 
     conversation = Conversation(
         user_id=current_user.id,
+        workspace_id=selected_workspace.id,
         title=payload.message[:50],
         assistant_id=selected_assistant.id if selected_assistant else None,
     )

@@ -23,6 +23,9 @@ vi.mock("react-i18next", () => ({
       "sidebar.folderDeleteConfirm": "حذف المجلد {{name}}؟",
       "sidebar.moveFolderTitle": "نقل إلى مجلد",
       "sidebar.noFolder": "بدون مجلد",
+      "sidebar.workspaceSelectTitle": "مساحة العمل",
+      "sidebar.workspaceCreateTitle": "إنشاء مساحة عمل",
+      "sidebar.workspaceRenameTitle": "إعادة تسمية مساحة العمل",
     })[key] ?? key,
   }),
 }));
@@ -30,6 +33,10 @@ vi.mock("react-i18next", () => ({
 const sampleConversations = [
   { id: 1, title: "محادثة أولى", created_at: "2026-07-01T10:00:00Z", folder_id: 10 },
   { id: 2, title: "محادثة ثانية", created_at: "2026-07-02T10:00:00Z", folder_id: null },
+];
+const sampleWorkspaces = [
+  { id: 1, name: "Personal", role: "owner", created_at: "2026-07-01T10:00:00Z" },
+  { id: 2, name: "Research", role: "owner", created_at: "2026-07-02T10:00:00Z" },
 ];
 const sampleFolders = [
   { id: 10, name: "عمل", created_at: "2026-07-01T10:00:00Z" },
@@ -46,6 +53,11 @@ function renderSidebar(overrides = {}) {
     onTogglePinConversation: vi.fn(),
     onToggleArchiveConversation: vi.fn(),
     folders: sampleFolders,
+    workspaces: sampleWorkspaces,
+    selectedWorkspaceId: 1,
+    onSelectWorkspace: vi.fn(),
+    onCreateWorkspace: vi.fn(),
+    onRenameWorkspace: vi.fn(),
     selectedFolderId: null,
     onSelectFolder: vi.fn(),
     onCreateFolder: vi.fn(),
@@ -122,6 +134,13 @@ describe("Sidebar", () => {
     expect(onSelectConversation).not.toHaveBeenCalled();
   });
 
+  it("يستطيع تغيير مساحة العمل", async () => {
+    const user = userEvent.setup();
+    const { onSelectWorkspace } = renderSidebar();
+    await user.selectOptions(screen.getByLabelText("مساحة العمل"), "2");
+    expect(onSelectWorkspace).toHaveBeenCalledWith("2");
+  });
+
   it("يستطيع اختيار مجلد للمحادثات", async () => {
     const user = userEvent.setup();
     const { onSelectFolder } = renderSidebar();
@@ -134,6 +153,13 @@ describe("Sidebar", () => {
     const { onMoveConversationToFolder } = renderSidebar();
     await user.selectOptions(screen.getAllByLabelText("نقل إلى مجلد")[0], "20");
     expect(onMoveConversationToFolder).toHaveBeenCalledWith(1, "20");
+  });
+
+  it("إنشاء مساحة عمل يستدعي المعالج", async () => {
+    const user = userEvent.setup();
+    const { onCreateWorkspace } = renderSidebar();
+    await user.click(screen.getByTitle("إنشاء مساحة عمل"));
+    expect(onCreateWorkspace).toHaveBeenCalled();
   });
 
   it("زر إنشاء مجلد يستدعي المعالج", async () => {

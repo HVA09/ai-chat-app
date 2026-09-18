@@ -22,6 +22,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.logging_config import get_logger
 from app.models.user import User, UserRole
+from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
 from app.notifications import notify
 from app.schemas.auth import EmailVerificationConfirm, LoginRequest, PasswordResetConfirm, PasswordResetRequest, Token
 from app.schemas.user import UserCreate, UserOut
@@ -52,6 +53,19 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
     is_initial_admin = bool(initial_admin and payload.email.lower() == initial_admin)
     user = User(email=payload.email, hashed_password=hash_password(payload.password), role=UserRole.admin if is_initial_admin else UserRole.user)
     db.add(user)
+    db.flush()
+
+    personal_workspace = Workspace(owner_id=user.id, name="Personal")
+    db.add(personal_workspace)
+    db.flush()
+    db.add(
+        WorkspaceMember(
+            workspace_id=personal_workspace.id,
+            user_id=user.id,
+            role=WorkspaceRole.owner,
+        )
+    )
+
     db.commit()
     db.refresh(user)
     log_event(db, "register", f"مستخدم جديد: {user.email} (admin={is_initial_admin})", user.id)
