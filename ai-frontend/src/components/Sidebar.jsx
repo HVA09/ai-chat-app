@@ -34,6 +34,7 @@ export default function Sidebar({
   onSelectWorkspace = () => {},
   onCreateWorkspace = () => {},
   onRenameWorkspace = () => {},
+  onOpenWorkspaceMembers = () => {},
   showArchived,
   onShowArchived,
   loading,
@@ -203,6 +204,14 @@ export default function Sidebar({
               className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
             >
               ✎
+            </button>
+            <button
+              type="button"
+              onClick={onOpenWorkspaceMembers}
+              title={t("sidebar.workspaceMembersTitle")}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-500 hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800"
+            >
+              👥
             </button>
           </div>
 
