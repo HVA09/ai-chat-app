@@ -126,6 +126,8 @@ export default function App() {
     setConversations([]);
     setFolders([]);
     setAssistants([]);
+    setSelectedFolderId(null);
+    setSelectedAssistantId(null);
     setConversationId(null);
     setMessages([getWelcomeMessage(t)]);
     setInput("");
