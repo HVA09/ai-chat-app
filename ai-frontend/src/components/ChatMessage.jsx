@@ -24,6 +24,8 @@ export default function ChatMessage({
   onRegenerate,
   canEdit = false,
   onEdit,
+  canDelete = false,
+  onDelete,
 }) {
   const isUser = role === "user";
   const { t } = useTranslation();
@@ -42,6 +44,7 @@ export default function ChatMessage({
   };
 
   const editLabel = document.documentElement.lang === "ar" ? "تعديل" : "Edit";
+  const deleteLabel = document.documentElement.lang === "ar" ? "حذف" : "Delete";
   const copyLabel = document.documentElement.lang === "ar"
     ? copied
       ? "تم النسخ"
@@ -70,16 +73,31 @@ export default function ChatMessage({
             <span>{time}</span>
           </div>
 
-          {isUser && canEdit && onEdit ? (
-            <button
-              type="button"
-              onClick={onEdit}
-              className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300"
-              aria-label={editLabel}
-              title={editLabel}
-            >
-              {editLabel}
-            </button>
+          {isUser && (canEdit || canDelete) ? (
+            <div className="flex items-center gap-1">
+              {canEdit && onEdit ? (
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  aria-label={editLabel}
+                  title={editLabel}
+                >
+                  {editLabel}
+                </button>
+              ) : null}
+              {canDelete && onDelete ? (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  aria-label={deleteLabel}
+                  title={deleteLabel}
+                >
+                  {deleteLabel}
+                </button>
+              ) : null}
+            </div>
           ) : null}
 
           {!isUser && text ? (
@@ -102,6 +120,17 @@ export default function ChatMessage({
                   title={regenerateLabel}
                 >
                   {regenerateLabel}
+                </button>
+              ) : null}
+              {canDelete && onDelete ? (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  aria-label={deleteLabel}
+                  title={deleteLabel}
+                >
+                  {deleteLabel}
                 </button>
               ) : null}
             </div>

@@ -234,6 +234,42 @@ export default function App() {
     }
   };
 
+  const deleteMessage = async (index) => {
+    if (!conversationId || loading || editingMessageIndex !== null) return;
+
+    const isArabic = document.documentElement.lang === "ar";
+    const confirmed = window.confirm(
+      isArabic
+        ? "حذف هذه الرسالة؟ إذا كانت رسالة مستخدم فسيُحذف رد المساعد المرتبط بها أيضًا."
+        : "Delete this message? For a user message, its linked assistant reply will also be deleted."
+    );
+    if (!confirmed) return;
+
+    setError("");
+    try {
+      await api.delete(`/chat/${conversationId}/messages/${index + 1}`);
+      const data = await getConversation(conversationId);
+      setMessages(
+        data.messages.length
+          ? data.messages.map((m) => ({
+              role: m.role,
+              text: m.content,
+              time: new Date(m.created_at).toLocaleTimeString(),
+            }))
+          : [getWelcomeMessage(t)]
+      );
+      await refreshConversations();
+    } catch (err) {
+      if (err?.response?.status === 401) return;
+      setToast({
+        message:
+          err?.response?.data?.detail ||
+          (isArabic ? "تعذر حذف الرسالة" : "Couldn't delete the message"),
+        type: "error",
+      });
+    }
+  };
+
   const stopGeneration = () => {
     if (streamAbortRef.current) {
       streamAbortRef.current.abort();
@@ -553,6 +589,12 @@ export default function App() {
                       conversationId !== null
                     }
                     onEdit={() => startEditingMessage(index)}
+                    canDelete={
+                      !loading &&
+                      editingMessageIndex === null &&
+                      conversationId !== null
+                    }
+                    onDelete={() => deleteMessage(index)}
                     canRegenerate={
                       index === lastAssistantIndex &&
                       !loading &&

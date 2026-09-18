@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import enforce_daily_ai_limit
+from app.dependencies import enforce_daily_ai_limit, get_current_user
 from app.logging_config import get_logger
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.usage_log import UsageLog
@@ -141,6 +141,67 @@ async def chat_stream(
         yield "event: done\ndata: {}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.delete("/{conversation_id}/messages/{message_index}")
+async def delete_chat_message(
+    conversation_id: int,
+    message_index: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """حذف رسالة أو دور المحادثة مع المساعد بشكل متسق."""
+    conversation = (
+        db.query(Conversation)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
+
+    messages = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation.id)
+        .order_by(Message.created_at.asc(), Message.id.asc())
+        .all()
+    )
+    if message_index < 1 or message_index > len(messages):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="الرسالة غير موجودة")
+
+    target = messages[message_index - 1]
+    messages_to_delete = [target]
+
+    # حذف رسالة المستخدم يحذف أيضًا رد المساعد المرتبط بها مباشرةً.
+    if (
+        target.role == MessageRole.user
+        and message_index < len(messages)
+        and messages[message_index].role == MessageRole.assistant
+    ):
+        messages_to_delete.append(messages[message_index])
+
+    for message in messages_to_delete:
+        db.delete(message)
+
+    db.flush()
+
+    first_remaining_user = (
+        db.query(Message)
+        .filter(
+            Message.conversation_id == conversation.id,
+            Message.role == MessageRole.user,
+        )
+        .order_by(Message.created_at.asc(), Message.id.asc())
+        .first()
+    )
+    conversation.title = (
+        first_remaining_user.content[:50] if first_remaining_user else "محادثة جديدة"
+    )
+
+    db.commit()
+    return {"deleted": len(messages_to_delete)}
 
 
 @router.post("/{conversation_id}/regenerate/stream")
