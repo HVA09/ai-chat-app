@@ -289,11 +289,12 @@ async def chat_stream(
             Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
         )
         db.commit()
+        safe_calculator_result = calculator_result.replace("\n", "\\n")
 
         async def calculator_event_generator():
             yield f"event: conversation\ndata: {conversation.id}\n\n"
             yield "event: sources\ndata: []\n\n"
-            yield f"event: chunk\ndata: {calculator_result.replace(chr(10), '\\\\n')}\n\n"
+            yield f"event: chunk\ndata: {safe_calculator_result}\n\n"
             try:
                 db.add(
                     Message(
