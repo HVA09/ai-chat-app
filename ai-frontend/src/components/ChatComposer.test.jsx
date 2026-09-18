@@ -10,11 +10,31 @@ vi.mock("react-i18next", () => ({
       send: "إرسال",
       stop: "إيقاف",
       "tools.calculator": "الآلة الحاسبة",
+      "tools.webSearch": "بحث الويب",
     })[key] ?? key,
   }),
 }));
 
 describe("ChatComposer tools", () => {
+  it("زر بحث الويب يمرر المعالج", async () => {
+    const user = userEvent.setup();
+    const onInsertWebSearch = vi.fn();
+
+    render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onInsertCalculator={vi.fn()}
+        onInsertWebSearch={onInsertWebSearch}
+      />
+    );
+
+    await user.click(screen.getByTitle("بحث الويب"));
+    expect(onInsertWebSearch).toHaveBeenCalled();
+  });
+
   it("زر الآلة الحاسبة يمرر المعالج", async () => {
     const user = userEvent.setup();
     const onInsertCalculator = vi.fn();

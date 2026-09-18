@@ -863,6 +863,11 @@ export default function App() {
               current.trim() ? `/calc ${current.trim()}` : "/calc "
             )
           }
+          onInsertWebSearch={() =>
+            setInput((current) =>
+              current.trim() ? `/search ${current.trim()}` : "/search "
+            )
+          }
           onSend={sendMessage}
           onStop={stopGeneration}
           loading={loading}
