@@ -29,6 +29,7 @@ import {
   renameConversation,
   deleteConversation,
   togglePinConversation,
+  toggleArchiveConversation,
 } from "./lib/conversationsApi";
 import { getCurrentUser } from "./lib/usersApi";
 import {
@@ -73,6 +74,7 @@ export default function App() {
   const [conversationId, setConversationId] = useState(null);
   const [conversations, setConversations] = useState([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
+  const [showArchivedConversations, setShowArchivedConversations] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -133,10 +135,10 @@ export default function App() {
     return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
   }, [logout, t]);
 
-  const refreshConversations = async () => {
+  const refreshConversations = async (includeArchived = showArchivedConversations) => {
     setConversationsLoading(true);
     try {
-      const list = await listConversations();
+      const list = await listConversations(includeArchived);
       setConversations(list);
     } catch {
       // فشل تحميل القائمة لا يوقف الشات نفسه — نتجاهله بصمت
@@ -222,6 +224,16 @@ export default function App() {
       await refreshConversations();
     } catch {
       setToast({ message: t("app.renameConversationError"), type: "error" });
+    }
+  };
+
+  const handleToggleArchiveConversation = async (id) => {
+    try {
+      const result = await toggleArchiveConversation(id);
+      if (result.is_archived && id === conversationId) startNewChat();
+      await refreshConversations(showArchivedConversations);
+    } catch {
+      setToast({ message: t("app.archiveConversationError"), type: "error" });
     }
   };
 
@@ -555,6 +567,13 @@ export default function App() {
         onRenameConversation={handleRenameConversation}
         onDeleteConversation={handleDeleteConversation}
         onTogglePinConversation={handleTogglePinConversation}
+        onToggleArchiveConversation={handleToggleArchiveConversation}
+        showArchived={showArchivedConversations}
+        onShowArchived={(value) => {
+          setShowArchivedConversations(value);
+          refreshConversations(value);
+          if (value) startNewChat();
+        }}
         loading={conversationsLoading}
       />
       <main className="flex flex-1 flex-col">
