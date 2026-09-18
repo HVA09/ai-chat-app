@@ -6,11 +6,13 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.models.assistant import Assistant
 from app.models.conversation import Conversation
 from app.models.conversation_folder import ConversationFolder
 from app.models.user import User
 from app.schemas.chat import ConversationDetail, ConversationOut, ConversationRename
 from app.schemas.folders import ConversationFolderUpdate
+
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
 
@@ -32,6 +34,7 @@ def list_conversations(
     limit: int = 50,
     include_archived: bool = False,
     folder_id: int | None = None,
+    assistant_id: int | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -58,6 +61,22 @@ def list_conversations(
                 detail="المجلد غير موجود",
             )
         query = query.filter(Conversation.folder_id == folder_id)
+
+    if assistant_id is not None:
+        owned_assistant = (
+            db.query(Assistant)
+            .filter(
+                Assistant.id == assistant_id,
+                Assistant.user_id == current_user.id,
+            )
+            .first()
+        )
+        if not owned_assistant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المساعد غير موجود",
+            )
+        query = query.filter(Conversation.assistant_id == assistant_id)
 
     return (
         query
@@ -150,6 +169,34 @@ def set_conversation_folder(
             )
 
     conversation.folder_id = payload.folder_id
+    db.commit()
+    db.refresh(conversation)
+    return conversation
+
+
+@router.patch("/{conversation_id}/assistant", response_model=ConversationOut)
+def set_conversation_assistant(
+    conversation_id: int,
+    assistant_id: int | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conversation = _get_owned_conversation(conversation_id, current_user, db)
+    if assistant_id is not None:
+        owned_assistant = (
+            db.query(Assistant)
+            .filter(
+                Assistant.id == assistant_id,
+                Assistant.user_id == current_user.id,
+            )
+            .first()
+        )
+        if not owned_assistant:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المساعد غير موجود",
+            )
+    conversation.assistant_id = assistant_id
     db.commit()
     db.refresh(conversation)
     return conversation

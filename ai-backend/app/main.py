@@ -19,6 +19,7 @@ from app.database import get_db
 from app.middleware import AuthRateLimitMiddleware, RequestIdMiddleware
 from app.logging_config import configure_logging, get_logger
 from app.routers.admin import router as admin_router
+from app.routers.assistants import router as assistants_router
 from app.routers.billing import router as billing_router
 from app.routers.chat import router as chat_router
 from app.routers.conversations import router as conversations_router
@@ -137,3 +138,4 @@ app.include_router(folders_router)
 app.include_router(billing_router)
 app.include_router(notifications_router)
 app.include_router(admin_router)
+app.include_router(assistants_router)

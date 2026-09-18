@@ -38,6 +38,12 @@ import {
   renameFolder,
   deleteFolder,
 } from "./lib/foldersApi";
+import {
+  listAssistants,
+  createAssistant,
+  updateAssistant,
+  deleteAssistant,
+} from "./lib/assistantsApi";
 import { getCurrentUser } from "./lib/usersApi";
 import {
   listNotifications,
@@ -84,6 +90,8 @@ export default function App() {
   const [showArchivedConversations, setShowArchivedConversations] = useState(false);
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState(null);
+  const [assistants, setAssistants] = useState([]);
+  const [selectedAssistantId, setSelectedAssistantId] = useState(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -116,6 +124,10 @@ export default function App() {
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
     setAuthed(false);
     setConversations([]);
+    setFolders([]);
+    setAssistants([]);
+    setSelectedFolderId(null);
+    setSelectedAssistantId(null);
     setConversationId(null);
     setMessages([getWelcomeMessage(t)]);
     setInput("");
@@ -212,6 +224,76 @@ export default function App() {
     await refreshConversations(showArchivedConversations, id);
   };
 
+  const refreshAssistants = async () => {
+    try {
+      setAssistants(await listAssistants());
+    } catch {
+      // فشل تحميل المساعدين لا يوقف الشات.
+    }
+  };
+
+  const handleCreateAssistant = async () => {
+    const name = window.prompt(t("sidebar.assistantCreateNamePrompt"));
+    if (!name?.trim()) return;
+    const instructions = window.prompt(t("sidebar.assistantCreateInstructionsPrompt"));
+    if (!instructions?.trim()) return;
+    const description = window.prompt(t("sidebar.assistantCreateDescriptionPrompt"));
+    try {
+      const assistant = await createAssistant({
+        name: name.trim(),
+        description: description?.trim() || null,
+        instructions: instructions.trim(),
+      });
+      await refreshAssistants();
+      setSelectedAssistantId(assistant.id);
+      startNewChat();
+    } catch (err) {
+      setToast({
+        message:
+          err?.response?.data?.detail || t("app.assistantCreateError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleRenameAssistant = async (id, currentName) => {
+    const name = window.prompt(t("sidebar.assistantRenamePrompt"), currentName);
+    if (!name?.trim() || name.trim() === currentName) return;
+    try {
+      await updateAssistant(id, { name: name.trim() });
+      await refreshAssistants();
+    } catch (err) {
+      setToast({
+        message:
+          err?.response?.data?.detail || t("app.assistantRenameError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleDeleteAssistant = async (id, name) => {
+    if (!window.confirm(t("sidebar.assistantDeleteConfirm", { name }))) return;
+    try {
+      await deleteAssistant(id);
+      if (id === selectedAssistantId) {
+        setSelectedAssistantId(null);
+        startNewChat();
+      }
+      await refreshAssistants();
+    } catch (err) {
+      setToast({
+        message:
+          err?.response?.data?.detail || t("app.assistantDeleteError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleSelectAssistant = (id) => {
+    setSelectedAssistantId(id);
+    startNewChat();
+  };
+
   const handleMoveConversationToFolder = async (id, folderId) => {
     const normalizedFolderId = folderId === "" ? null : Number(folderId);
     try {
@@ -250,6 +332,7 @@ export default function App() {
     if (authed) {
       refreshConversations();
       refreshFolders();
+      refreshAssistants();
       refreshCurrentUser();
       refreshNotifications();
     }
@@ -289,6 +372,7 @@ export default function App() {
     try {
       const data = await getConversation(id);
       setConversationId(data.id);
+      setSelectedAssistantId(data.assistant_id ?? null);
       setMessages(
         data.messages.map((m) => ({
           role: m.role,
@@ -490,7 +574,7 @@ export default function App() {
       });
     };
 
-    await streamChatMessage(userText, conversationId, {
+    await streamChatMessage(userText, conversationId, selectedAssistantId, {
       signal: controller.signal,
       onConversationId: (id) => setConversationId(id),
       onSources: (sources) => {
@@ -670,6 +754,12 @@ export default function App() {
         onDeleteConversation={handleDeleteConversation}
         onTogglePinConversation={handleTogglePinConversation}
         onToggleArchiveConversation={handleToggleArchiveConversation}
+        assistants={assistants}
+        selectedAssistantId={selectedAssistantId}
+        onSelectAssistant={handleSelectAssistant}
+        onCreateAssistant={handleCreateAssistant}
+        onRenameAssistant={handleRenameAssistant}
+        onDeleteAssistant={handleDeleteAssistant}
         folders={folders}
         selectedFolderId={selectedFolderId}
         onSelectFolder={handleSelectFolder}

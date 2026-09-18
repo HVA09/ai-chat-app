@@ -33,10 +33,14 @@ class Conversation(Base):
     folder_id: Mapped[int | None] = mapped_column(
         ForeignKey("conversation_folders.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    assistant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assistants.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     owner = relationship("User", back_populates="conversations")
     folder = relationship("ConversationFolder", back_populates="conversations")
+    assistant = relationship("Assistant", back_populates="conversations")
     file_links = relationship(
         "ConversationFileLink", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
     )

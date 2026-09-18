@@ -9,6 +9,7 @@ from app.models.conversation import MessageRole
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     conversation_id: int | None = None
+    assistant_id: int | None = None
 
     @field_validator("message")
     @classmethod
@@ -56,6 +57,7 @@ class ConversationOut(BaseModel):
     is_pinned: bool
     is_archived: bool
     folder_id: int | None
+    assistant_id: int | None
 
 
 class ConversationDetail(ConversationOut):
