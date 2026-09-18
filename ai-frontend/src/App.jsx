@@ -873,6 +873,11 @@ export default function App() {
               current.trim() ? `/analyze ${current.trim()}` : "/analyze "
             )
           }
+          onInsertAgent={() =>
+            setInput((current) =>
+              current.trim() ? `/agent ${current.trim()}` : "/agent "
+            )
+          }
           onSend={sendMessage}
           onStop={stopGeneration}
           loading={loading}

@@ -20,6 +20,7 @@ from app.models.file_chunk import FileChunk
 from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.schemas.chat import ChatEditRequest, ChatRequest, ChatResponse
+from app.services.ai_agent import AgentModeError, extract_agent_request, run_agent
 from app.services.ai_service import get_ai_reply, stream_ai_reply
 from app.services.embeddings import EmbeddingServiceError
 from app.services.rag import build_fallback_file_context, build_retrieval_context, retrieve_relevant_chunks
@@ -273,6 +274,54 @@ async def chat(
     db: Session = Depends(get_db),
 ):
     conversation = _get_or_create_conversation(payload, current_user, db)
+    agent_task = extract_agent_request(payload.message)
+    if agent_task is not None:
+        try:
+            agent_history = _build_history(conversation, db)
+            agent_reply, sources, input_tokens, output_tokens = await run_agent(
+                agent_task,
+                agent_history,
+                conversation,
+                current_user,
+                db,
+            )
+        except AgentModeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+        db.add(
+            Message(
+                conversation_id=conversation.id,
+                role=MessageRole.user,
+                content=payload.message,
+            )
+        )
+        db.add(
+            Message(
+                conversation_id=conversation.id,
+                role=MessageRole.assistant,
+                content=agent_reply,
+                sources=sources or None,
+            )
+        )
+        db.add(
+            UsageLog(
+                user_id=current_user.id,
+                endpoint="/chat/agent",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+        )
+        db.commit()
+
+        return ChatResponse(
+            conversation_id=conversation.id,
+            reply=agent_reply,
+            sources=sources,
+        )
+
     calculator_expression = extract_calculator_expression(payload.message)
     if calculator_expression is not None:
         try:
@@ -411,6 +460,59 @@ async def chat_stream(
     الأسطر الجديدة داخل chunk تُستبدل بـ \\\n نصية عشان ما تكسر صيغة السطر الواحد لكل حدث.
     """
     conversation = _get_or_create_conversation(payload, current_user, db)
+    agent_task = extract_agent_request(payload.message)
+    if agent_task is not None:
+        try:
+            agent_history = _build_history(conversation, db)
+            agent_reply, sources, input_tokens, output_tokens = await run_agent(
+                agent_task,
+                agent_history,
+                conversation,
+                current_user,
+                db,
+            )
+        except AgentModeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+        db.add(
+            Message(
+                conversation_id=conversation.id,
+                role=MessageRole.user,
+                content=payload.message,
+            )
+        )
+        db.add(
+            Message(
+                conversation_id=conversation.id,
+                role=MessageRole.assistant,
+                content=agent_reply,
+                sources=sources or None,
+            )
+        )
+        db.add(
+            UsageLog(
+                user_id=current_user.id,
+                endpoint="/chat/agent",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+        )
+        db.commit()
+
+        safe_reply = agent_reply.replace("\n", "\\n")
+        safe_sources = json.dumps(sources, ensure_ascii=False)
+
+        async def agent_event_generator():
+            yield f"event: conversation\\ndata: {conversation.id}\\n\\n"
+            yield f"event: sources\\ndata: {safe_sources}\\n\\n"
+            yield f"event: chunk\\ndata: {safe_reply}\\n\\n"
+            yield "event: done\\ndata: {}\\n\\n"
+
+        return StreamingResponse(agent_event_generator(), media_type="text/event-stream")
+
     calculator_expression = extract_calculator_expression(payload.message)
     if calculator_expression is not None:
         try:

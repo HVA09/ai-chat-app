@@ -15,6 +15,7 @@ export default function ChatComposer({
   onInsertCalculator,
   onInsertWebSearch,
   onInsertDataAnalysis,
+  onInsertAgent,
 }) {
   const { t } = useTranslation();
   const nearLimit = value.length > MAX_MESSAGE_LENGTH - 200;
@@ -78,6 +79,14 @@ export default function ChatComposer({
               className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
             >
               🔎
+            </button>
+            <button
+              type="button"
+              onClick={onInsertAgent}
+              title={t("tools.agent")}
+              className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
+            >
+              🤖
             </button>
             <button
               type="button"

@@ -12,6 +12,7 @@ vi.mock("react-i18next", () => ({
       "tools.calculator": "الآلة الحاسبة",
       "tools.webSearch": "بحث الويب",
       "tools.dataAnalysis": "تحليل البيانات",
+      "tools.agent": "وضع الوكيل",
     })[key] ?? key,
   }),
 }));
@@ -73,4 +74,26 @@ describe("ChatComposer tools", () => {
     await user.click(screen.getByTitle("الآلة الحاسبة"));
     expect(onInsertCalculator).toHaveBeenCalled();
   });
+
+  it("زر وضع الوكيل يمرر المعالج", async () => {
+    const user = userEvent.setup();
+    const onInsertAgent = vi.fn();
+
+    render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onInsertCalculator={vi.fn()}
+        onInsertWebSearch={vi.fn()}
+        onInsertDataAnalysis={vi.fn()}
+        onInsertAgent={onInsertAgent}
+      />
+    );
+
+    await user.click(screen.getByTitle("وضع الوكيل"));
+    expect(onInsertAgent).toHaveBeenCalled();
+  });
+
 });
