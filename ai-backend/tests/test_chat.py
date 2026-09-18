@@ -258,3 +258,68 @@ def test_chat_includes_attached_file_text_as_untrusted_context(client, monkeypat
     assert "[FILE: linux.txt]" in sent_message
     assert "untrusted reference material" in sent_message
     assert "Linux is an operating system" in sent_message
+
+
+def test_chat_retrieves_relevant_file_chunk(client, monkeypatch, db_session):
+    mock_reply = AsyncMock(return_value=AIReply(text="تم"))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
+
+    token = _register_and_login(client, "chunk-context@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    first = client.post("/chat", json={"message": "ابدأ"}, headers=headers)
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+
+    from app.models.conversation_file_link import ConversationFileLink
+    from app.models.file_attachment import FileAttachment
+    from app.models.file_chunk import FileChunk
+    from app.models.user import User
+
+    user = (
+        db_session.query(User)
+        .filter(User.email == "chunk-context@example.com")
+        .one()
+    )
+    file = FileAttachment(
+        user_id=user.id,
+        original_filename="knowledge.txt",
+        stored_filename="knowledge.txt",
+        content_type="text/plain",
+        size_bytes=200,
+        extracted_text="Linux is an operating system. Python is a programming language.",
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(
+        ConversationFileLink(
+            conversation_id=conversation_id,
+            file_id=file.id,
+        )
+    )
+    db_session.add_all(
+        [
+            FileChunk(
+                file_id=file.id,
+                chunk_index=0,
+                content="Linux is an operating system used to run servers.",
+            ),
+            FileChunk(
+                file_id=file.id,
+                chunk_index=1,
+                content="Python is a programming language used for automation and AI.",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = client.post(
+        "/chat",
+        json={"message": "Explain Python language", "conversation_id": conversation_id},
+        headers=headers,
+    )
+    assert response.status_code == 200
+
+    sent_message = mock_reply.await_args.args[0]
+    assert "[FILE: knowledge.txt | CHUNK: 2]" in sent_message
+    assert "Python is a programming language used for automation and AI." in sent_message
+    assert "Linux is an operating system used to run servers." not in sent_message
