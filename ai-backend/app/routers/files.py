@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 import tempfile
 import zipfile
-from sqlalchemy import func
+from sqlalchemy import and_, case, func
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
@@ -16,6 +16,8 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.audit import log_event
+from app.models.conversation import Conversation
+from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.user import User
 from app.schemas.file import FileOut
@@ -108,6 +110,20 @@ def _user_upload_dir(user_id: int) -> Path:
     return path
 
 
+def _get_owned_conversation(conversation_id: int, current_user: User, db: Session) -> Conversation:
+    conversation = (
+        db.query(Conversation)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
+    return conversation
+
+
 def _get_owned_file(file_id: int, current_user: User, db: Session) -> FileAttachment:
     file = (
         db.query(FileAttachment)
@@ -122,9 +138,13 @@ def _get_owned_file(file_id: int, current_user: User, db: Session) -> FileAttach
 @router.post("/upload", response_model=FileOut, status_code=status.HTTP_201_CREATED)
 async def upload_file(
     file: UploadFile,
+    conversation_id: int | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if conversation_id is not None:
+        _get_owned_conversation(conversation_id, current_user, db)
+
     max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
     max_storage = settings.MAX_STORAGE_PER_USER_MB * 1024 * 1024
     current_files = db.query(func.count(FileAttachment.id)).filter(FileAttachment.user_id == current_user.id).scalar() or 0
@@ -179,6 +199,14 @@ async def upload_file(
         size_bytes=total,
     )
     db.add(attachment)
+    db.flush()
+    if conversation_id is not None:
+        db.add(
+            ConversationFileLink(
+                conversation_id=conversation_id,
+                file_id=attachment.id,
+            )
+        )
     db.commit()
     db.refresh(attachment)
     log_event(
@@ -187,20 +215,130 @@ async def upload_file(
         f"رفع ملف: {attachment.original_filename} بواسطة {current_user.email}",
         current_user.id,
     )
-    return attachment
+    response = FileOut.model_validate(attachment)
+    response.is_attached = conversation_id is not None
+    return response
 
 
 @router.get("", response_model=list[FileOut])
 def list_files(
+    conversation_id: int | None = None,
+    include_unattached: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return (
-        db.query(FileAttachment)
+    if conversation_id is None:
+        return (
+            db.query(FileAttachment)
+            .filter(FileAttachment.user_id == current_user.id)
+            .order_by(FileAttachment.created_at.desc())
+            .all()
+        )
+
+    _get_owned_conversation(conversation_id, current_user, db)
+
+    if not include_unattached:
+        files = (
+            db.query(FileAttachment)
+            .join(
+                ConversationFileLink,
+                and_(
+                    ConversationFileLink.file_id == FileAttachment.id,
+                    ConversationFileLink.conversation_id == conversation_id,
+                ),
+            )
+            .filter(FileAttachment.user_id == current_user.id)
+            .order_by(FileAttachment.created_at.desc())
+            .all()
+        )
+        results = []
+        for file in files:
+            item = FileOut.model_validate(file)
+            item.is_attached = True
+            results.append(item)
+        return results
+
+    rows = (
+        db.query(
+            FileAttachment,
+            case(
+                (ConversationFileLink.file_id.isnot(None), True),
+                else_=False,
+            ).label("is_attached"),
+        )
+        .outerjoin(
+            ConversationFileLink,
+            and_(
+                ConversationFileLink.file_id == FileAttachment.id,
+                ConversationFileLink.conversation_id == conversation_id,
+            ),
+        )
         .filter(FileAttachment.user_id == current_user.id)
         .order_by(FileAttachment.created_at.desc())
         .all()
     )
+    results = []
+    for file, is_attached in rows:
+        item = FileOut.model_validate(file)
+        item.is_attached = bool(is_attached)
+        results.append(item)
+    return results
+
+
+@router.post("/{file_id}/attach/{conversation_id}", response_model=FileOut)
+def attach_file_to_conversation(
+    file_id: int,
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    file = _get_owned_file(file_id, current_user, db)
+    _get_owned_conversation(conversation_id, current_user, db)
+    link = (
+        db.query(ConversationFileLink)
+        .filter(
+            ConversationFileLink.file_id == file.id,
+            ConversationFileLink.conversation_id == conversation_id,
+        )
+        .first()
+    )
+    if not link:
+        db.add(
+            ConversationFileLink(
+                file_id=file.id,
+                conversation_id=conversation_id,
+            )
+        )
+        db.commit()
+    response = FileOut.model_validate(file)
+    response.is_attached = True
+    return response
+
+
+@router.delete("/{file_id}/attach/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def detach_file_from_conversation(
+    file_id: int,
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    file = _get_owned_file(file_id, current_user, db)
+    _get_owned_conversation(conversation_id, current_user, db)
+    link = (
+        db.query(ConversationFileLink)
+        .filter(
+            ConversationFileLink.file_id == file.id,
+            ConversationFileLink.conversation_id == conversation_id,
+        )
+        .first()
+    )
+    if not link:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الملف غير مرفق بهذه المحادثة",
+        )
+    db.delete(link)
+    db.commit()
 
 
 @router.get("/{file_id}")
