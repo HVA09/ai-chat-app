@@ -73,7 +73,7 @@ export async function streamChatMessage(
         const eventType = eventLine.slice("event: ".length);
         const data = dataLine.slice("data: ".length);
 
-        if (eventType === "conversation") onConversationId?.(Number(data));
+        if (eventType === "conversation") await onConversationId?.(Number(data));
         else if (eventType === "chunk") onChunk?.(data.replace(/\\n/g, "\n"));
         else if (eventType === "error") onError?.(data);
         else if (eventType === "done") onDone?.();
@@ -155,7 +155,7 @@ export async function streamRegenerateMessage(
         const eventType = eventLine.slice("event: ".length);
         const data = dataLine.slice("data: ".length);
 
-        if (eventType === "conversation") onConversationId?.(Number(data));
+        if (eventType === "conversation") await onConversationId?.(Number(data));
         else if (eventType === "chunk") onChunk?.(data.replace(/\\n/g, "\n"));
         else if (eventType === "error") onError?.(data);
         else if (eventType === "done") onDone?.();
@@ -239,7 +239,7 @@ export async function streamEditMessage(
         const eventType = eventLine.slice("event: ".length);
         const data = dataLine.slice("data: ".length);
 
-        if (eventType === "conversation") onConversationId?.(Number(data));
+        if (eventType === "conversation") await onConversationId?.(Number(data));
         else if (eventType === "chunk") onChunk?.(data.replace(/\\n/g, "\n"));
         else if (eventType === "error") onError?.(data);
         else if (eventType === "done") onDone?.();
