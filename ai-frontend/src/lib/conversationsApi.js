@@ -1,9 +1,16 @@
 import api from "./api";
 
-export async function listConversations(includeArchived = false, folderId = null) {
+export async function listConversations(
+  includeArchived = false,
+  folderId = null,
+  workspaceId = null
+) {
   const params = { include_archived: includeArchived };
   if (folderId !== null && folderId !== undefined) {
     params.folder_id = folderId;
+  }
+  if (workspaceId !== null && workspaceId !== undefined) {
+    params.workspace_id = workspaceId;
   }
   const { data } = await api.get("/conversations", { params });
   return data;
