@@ -299,6 +299,7 @@ const resources = {
       tools: {
         calculator: "الآلة الحاسبة — أدخل تعبيرًا مثل /calc (12 + 8) * 3",
         webSearch: "بحث الويب — ابحث في المصادر المتاحة عبر الويب",
+        dataAnalysis: "تحليل البيانات — حلل ملف CSV أو XLSX مرفق بالمحادثة",
       },
     },
   },
@@ -599,6 +600,7 @@ const resources = {
       tools: {
         calculator: "Calculator — enter an expression like /calc (12 + 8) * 3",
         webSearch: "Web search — search available web sources",
+        dataAnalysis: "Data analysis — analyze an attached CSV or XLSX file",
       },
     },
   },
