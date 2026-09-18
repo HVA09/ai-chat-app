@@ -23,6 +23,7 @@ from app.routers.billing import router as billing_router
 from app.routers.chat import router as chat_router
 from app.routers.conversations import router as conversations_router
 from app.routers.files import router as files_router
+from app.routers.folders import router as folders_router
 from app.routers.notifications import router as notifications_router
 from app.routers.users import router as users_router
 
@@ -132,6 +133,7 @@ app.include_router(users_router)
 app.include_router(chat_router)
 app.include_router(conversations_router)
 app.include_router(files_router)
+app.include_router(folders_router)
 app.include_router(billing_router)
 app.include_router(notifications_router)
 app.include_router(admin_router)
