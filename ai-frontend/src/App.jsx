@@ -557,7 +557,7 @@ export default function App() {
       onDone: () => {
         streamAbortRef.current = null;
         setLoading(false);
-        refreshConversations();
+        refreshConversations(showArchivedConversations, selectedFolderId);
       },
       onError: (message) => {
         streamAbortRef.current = null;
