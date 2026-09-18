@@ -28,6 +28,7 @@ import {
   getConversation,
   renameConversation,
   deleteConversation,
+  togglePinConversation,
 } from "./lib/conversationsApi";
 import { getCurrentUser } from "./lib/usersApi";
 import {
@@ -221,6 +222,15 @@ export default function App() {
       await refreshConversations();
     } catch {
       setToast({ message: t("app.renameConversationError"), type: "error" });
+    }
+  };
+
+  const handleTogglePinConversation = async (id) => {
+    try {
+      await togglePinConversation(id);
+      await refreshConversations();
+    } catch {
+      setToast({ message: t("app.pinConversationError"), type: "error" });
     }
   };
 
@@ -544,6 +554,7 @@ export default function App() {
         onNewChat={startNewChat}
         onRenameConversation={handleRenameConversation}
         onDeleteConversation={handleDeleteConversation}
+        onTogglePinConversation={handleTogglePinConversation}
         loading={conversationsLoading}
       />
       <main className="flex flex-1 flex-col">
