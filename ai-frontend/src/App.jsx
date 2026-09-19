@@ -742,6 +742,7 @@ export default function App() {
       refreshFolders();
       refreshTags();
       refreshAssistants();
+      refreshSavedPrompts();
       refreshCurrentUser();
       refreshNotifications();
     }
