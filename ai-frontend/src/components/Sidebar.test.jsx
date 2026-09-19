@@ -13,6 +13,9 @@ vi.mock("react-i18next", () => ({
       "sidebar.renamePrompt": "اسم المحادثة الجديد:",
       "sidebar.renameTitle": "إعادة تسمية",
       "sidebar.deleteTitle": "حذف",
+      "sidebar.trashTitle": "سلة المحذوفات",
+      "sidebar.permanentDeleteConfirm": "حذف نهائي للمحادثة {{title}}؟",
+      "sidebar.bulkTrash": "نقل المحدد إلى سلة المحذوفات",
       "sidebar.confirmDelete": "حذف المحادثة؟",
       "sidebar.foldersTitle": "المجلدات",
       "sidebar.allConversations": "كل المحادثات",
@@ -67,6 +70,7 @@ function renderSidebar(overrides = {}) {
     onDeleteConversation: vi.fn(),
     onTogglePinConversation: vi.fn(),
     onToggleArchiveConversation: vi.fn(),
+    onToggleTrashConversation: vi.fn(),
     folders: sampleFolders,
     workspaces: sampleWorkspaces,
     selectedWorkspaceId: 1,
@@ -88,6 +92,7 @@ function renderSidebar(overrides = {}) {
     onBulkMoveToFolder: vi.fn(),
     showArchived: false,
     onShowArchived: vi.fn(),
+    onShowTrash: vi.fn(),
     searchValue: "",
     onSearchChange: vi.fn(),
     loading: false,
@@ -163,15 +168,23 @@ describe("Sidebar", () => {
     expect(onRenameConversation).not.toHaveBeenCalled();
   });
 
-  it("الحذف يستدعي onDeleteConversation بعد تأكيد المستخدم (حذف)", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("نقل المحادثة إلى سلة المحذوفات يستدعي onToggleTrashConversation", async () => {
     const user = userEvent.setup();
-    const { onDeleteConversation, onSelectConversation } = renderSidebar();
+    const { onToggleTrashConversation, onSelectConversation } = renderSidebar();
 
-    await user.click(screen.getAllByTitle("حذف")[0]);
+    await user.click(screen.getAllByTitle("سلة المحذوفات")[0]);
 
-    expect(onDeleteConversation).toHaveBeenCalledWith(1);
+    expect(onToggleTrashConversation).toHaveBeenCalledWith(1);
     expect(onSelectConversation).not.toHaveBeenCalled();
+  });
+
+  it("زر سلة المحذوفات يستخدم onToggleTrashConversation مباشرة", async () => {
+    const user = userEvent.setup();
+    const { onToggleTrashConversation } = renderSidebar();
+
+    await user.click(screen.getAllByTitle("سلة المحذوفات")[0]);
+
+    expect(onToggleTrashConversation).toHaveBeenCalledWith(1);
   });
 
   it("يستطيع تغيير مساحة العمل", async () => {
@@ -226,7 +239,7 @@ describe("Sidebar", () => {
   it("يعرض أدوات الإجراءات الجماعية عند وجود تحديد", () => {
     renderSidebar({ selectedConversationIds: [1] });
     expect(screen.getByText("أرشفة المحدد")).toBeInTheDocument();
-    expect(screen.getByText("حذف المحدد")).toBeInTheDocument();
+    expect(screen.getByText("نقل المحدد إلى سلة المحذوفات")).toBeInTheDocument();
   });
 
   it("يستطيع نقل المحدد إلى مجلد", async () => {
@@ -236,12 +249,25 @@ describe("Sidebar", () => {
     expect(onBulkMoveToFolder).toHaveBeenCalledWith("20");
   });
 
+  it("سلة المحذوفات في وضع السلة تصبح حذفًا نهائيًا", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    const { onDeleteConversation, onToggleTrashConversation } = renderSidebar({
+      showTrash: true,
+    });
+
+    await user.click(screen.getAllByTitle("حذف")[0]);
+
+    expect(onDeleteConversation).toHaveBeenCalledWith(1);
+    expect(onToggleTrashConversation).not.toHaveBeenCalled();
+  });
+
   it("الحذف ما يصير لو المستخدم ألغى التأكيد", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
     const user = userEvent.setup();
     const { onDeleteConversation } = renderSidebar();
 
-    await user.click(screen.getAllByTitle("حذف")[0]);
+    await user.click(screen.getAllByTitle("سلة المحذوفات")[0]);
     expect(onDeleteConversation).not.toHaveBeenCalled();
   });
 });

@@ -310,6 +310,73 @@ def test_cannot_export_other_users_conversation(client, monkeypatch):
     assert response.status_code == 404
 
 
+
+def test_trash_and_restore_conversation(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "trash@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "رسالة إلى السلة"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    trashed = client.patch(
+        f"/conversations/{conversation_id}/trash",
+        headers=headers,
+    )
+    assert trashed.status_code == 200
+    assert trashed.json()["deleted_at"] is not None
+
+    normal = client.get("/conversations", headers=headers)
+    assert normal.json() == []
+
+    trash = client.get(
+        "/conversations",
+        params={"include_deleted": True},
+        headers=headers,
+    )
+    assert len(trash.json()) == 1
+    assert trash.json()[0]["id"] == conversation_id
+
+    detail = client.get(f"/conversations/{conversation_id}", headers=headers)
+    assert detail.status_code == 404
+
+    restored = client.patch(
+        f"/conversations/{conversation_id}/trash",
+        headers=headers,
+    )
+    assert restored.status_code == 200
+    assert restored.json()["deleted_at"] is None
+    assert len(client.get("/conversations", headers=headers).json()) == 1
+
+
+def test_cannot_trash_other_users_conversation(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token_a = _register_and_login(client, "trash-owner@example.com")
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "خاص"},
+        headers=headers_a,
+    ).json()["conversation_id"]
+
+    token_b = _register_and_login(client, "trash-other@example.com")
+    response = client.patch(
+        f"/conversations/{conversation_id}/trash",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
+
+
 def test_delete_conversation(client, monkeypatch):
     monkeypatch.setattr(chat_router_module, "get_ai_reply", AsyncMock(return_value=AIReply(text="رد")))
     token = _register_and_login(client)

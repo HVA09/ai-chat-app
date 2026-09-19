@@ -6,6 +6,7 @@ import re
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
@@ -22,12 +23,20 @@ from app.schemas.folders import ConversationFolderUpdate
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
 
 
-def _get_owned_conversation(conversation_id: int, current_user: User, db: Session) -> Conversation:
-    conversation = (
-        db.query(Conversation)
-        .filter(Conversation.id == conversation_id, Conversation.user_id == current_user.id)
-        .first()
+def _get_owned_conversation(
+    conversation_id: int,
+    current_user: User,
+    db: Session,
+    *,
+    include_deleted: bool = False,
+) -> Conversation:
+    query = db.query(Conversation).filter(
+        Conversation.id == conversation_id,
+        Conversation.user_id == current_user.id,
     )
+    if not include_deleted:
+        query = query.filter(Conversation.deleted_at.is_(None))
+    conversation = query.first()
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
     return conversation
@@ -40,6 +49,7 @@ def list_conversations(
     include_archived: bool = False,
     folder_id: int | None = None,
     assistant_id: int | None = None,
+    include_deleted: bool = False,
     workspace_id: int | None = None,
     search: str | None = None,
     current_user: User = Depends(get_current_user),
@@ -52,6 +62,10 @@ def list_conversations(
         Conversation.user_id == current_user.id,
         Conversation.is_archived == include_archived,
     )
+    if include_deleted:
+        query = query.filter(Conversation.deleted_at.is_not(None))
+    else:
+        query = query.filter(Conversation.deleted_at.is_(None))
 
     if search and search.strip():
         escaped_search = (
@@ -133,7 +147,11 @@ def get_conversation(
     conversation = (
         db.query(Conversation)
         .options(selectinload(Conversation.messages))
-        .filter(Conversation.id == conversation_id, Conversation.user_id == current_user.id)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+            Conversation.deleted_at.is_(None),
+        )
         .first()
     )
     if not conversation:
@@ -252,6 +270,7 @@ def export_conversation(
         .filter(
             Conversation.id == conversation_id,
             Conversation.user_id == current_user.id,
+            Conversation.deleted_at.is_(None),
         )
         .first()
     )
@@ -317,12 +336,32 @@ def export_conversation(
     )
 
 
+@router.patch("/{conversation_id}/trash", response_model=ConversationOut)
+def toggle_trash_conversation(
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conversation = _get_owned_conversation(
+        conversation_id, current_user, db, include_deleted=True
+    )
+    if conversation.deleted_at is None:
+        conversation.deleted_at = func.now()
+    else:
+        conversation.deleted_at = None
+    db.commit()
+    db.refresh(conversation)
+    return conversation
+
+
 @router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_conversation(
     conversation_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    conversation = _get_owned_conversation(conversation_id, current_user, db)
+    conversation = _get_owned_conversation(
+        conversation_id, current_user, db, include_deleted=True
+    )
     db.delete(conversation)
     db.commit()

@@ -106,6 +106,7 @@ class ConversationOut(BaseModel):
     assistant_id: int | None
     workspace_id: int
     ai_model: str | None
+    deleted_at: datetime | None
 
 
 class ConversationDetail(ConversationOut):
