@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TypedDict
 
-from sqlalchemy import delete
+from sqlalchemy import and_, delete, exists, or_
 from sqlalchemy.orm import Session
 
 from app.models.file_attachment import FileAttachment
@@ -73,19 +73,33 @@ async def retrieve_relevant_chunks(
     conversation_id: int,
     query: str,
     top_k: int = TOP_K,
+    workspace_id: int | None = None,
 ) -> list[tuple[FileChunk, FileAttachment]]:
     from app.models.conversation_file_link import ConversationFileLink
 
     query_embedding = await embed_query(query)
+    linked_to_conversation = exists().where(
+        ConversationFileLink.file_id == FileChunk.file_id,
+        ConversationFileLink.conversation_id == conversation_id,
+    )
+
+    personal_scope = and_(
+        FileAttachment.workspace_id.is_(None),
+        FileAttachment.user_id == user_id,
+        linked_to_conversation,
+    )
+    workspace_scope = (
+        and_(FileAttachment.workspace_id == workspace_id)
+        if workspace_id is not None
+        else False
+    )
 
     return (
         db.query(FileChunk, FileAttachment)
         .join(FileAttachment, FileAttachment.id == FileChunk.file_id)
-        .join(ConversationFileLink, ConversationFileLink.file_id == FileChunk.file_id)
         .filter(
-            FileAttachment.user_id == user_id,
-            ConversationFileLink.conversation_id == conversation_id,
             FileChunk.embedding.is_not(None),
+            or_(personal_scope, workspace_scope),
         )
         .order_by(FileChunk.embedding.cosine_distance(query_embedding))
         .limit(max(1, min(top_k, 12)))
