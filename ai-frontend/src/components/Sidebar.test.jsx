@@ -33,6 +33,8 @@ vi.mock("react-i18next", () => ({
       "sidebar.editSavedPromptTitle": "تعديل الموجه المحفوظ",
       "sidebar.deleteSavedPromptTitle": "حذف الموجه المحفوظ",
       "sidebar.noSavedPrompts": "لا توجد موجهات محفوظة",
+      "bookmarks.title": "المحفوظات",
+      "bookmarks.empty": "لا توجد رسائل محفوظة بعد",
       "sidebar.selectConversation": "تحديد {{title}}",
       "sidebar.selectAllVisible": "تحديد الكل الظاهر",
       "sidebar.bulkSelected": "{{count}} محددة",
@@ -77,6 +79,10 @@ function renderSidebar(overrides = {}) {
     onTogglePinConversation: vi.fn(),
     onDuplicateConversation: vi.fn(),
     savedPrompts: [{ id: 10, name: "تلخيص", content: "لخص النص في 5 نقاط." }],
+    bookmarkedMessages: [
+      { message_id: 20, conversation_id: 1, conversation_title: "محادثة أولى", message_index: 2, content: "رد مهم" },
+    ],
+    onOpenBookmarkedMessage: vi.fn(),
     onCreateSavedPrompt: vi.fn(),
     onRenameSavedPrompt: vi.fn(),
     onDeleteSavedPrompt: vi.fn(),
@@ -253,6 +259,16 @@ describe("Sidebar", () => {
     const { onToggleSelectAllVisible } = renderSidebar();
     await user.click(screen.getByRole("checkbox", { name: "تحديد الكل الظاهر" }));
     expect(onToggleSelectAllVisible).toHaveBeenCalledWith([1, 2]);
+  });
+
+  it("يعرض المحفوظات ويفتح المحادثة عند اختيار رسالة محفوظة", async () => {
+    const user = userEvent.setup();
+    const { onOpenBookmarkedMessage } = renderSidebar();
+    expect(screen.getByText("المحفوظات")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /محادثة أولى/ }));
+    expect(onOpenBookmarkedMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ message_id: 20, conversation_id: 1 })
+    );
   });
 
   it("يعرض أدوات الإجراءات الجماعية عند وجود تحديد", () => {

@@ -13,6 +13,8 @@ vi.mock("react-i18next", () => ({
         "feedback.notHelpful": "Not helpful",
         "feedback.saved": "Feedback saved",
         "sources.title": "Sources",
+        "bookmarks.save": "Save message",
+        "bookmarks.remove": "Remove from bookmarks",
       })[key] ?? key,
   }),
 }));
@@ -57,6 +59,38 @@ describe("ChatMessage feedback", () => {
     expect(screen.getByText("Feedback saved")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Not helpful" }));
     expect(onFeedback).toHaveBeenCalledWith(-1);
+  });
+
+  it("toggles bookmark state for assistant messages", async () => {
+    const user = userEvent.setup();
+    const onToggleBookmark = vi.fn();
+
+    render(
+      <ChatMessage
+        role="assistant"
+        text="رد مهم"
+        time="10:00"
+        onToggleBookmark={onToggleBookmark}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Save message" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save message" }));
+    expect(onToggleBookmark).toHaveBeenCalled();
+  });
+
+  it("shows remove-bookmark label when bookmarked", () => {
+    render(
+      <ChatMessage
+        role="assistant"
+        text="رد مهم"
+        time="10:00"
+        isBookmarked
+        onToggleBookmark={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Remove from bookmarks" })).toBeInTheDocument();
   });
 
   it("does not show feedback controls for user messages", () => {

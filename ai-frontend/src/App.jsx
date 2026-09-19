@@ -8,6 +8,7 @@ import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, listAiModels } from "./lib/chatApi";
+import { listBookmarkedMessages, toggleMessageBookmark } from "./lib/bookmarksApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
 
@@ -126,6 +127,7 @@ export default function App() {
   const [assistants, setAssistants] = useState([]);
   const [selectedAssistantId, setSelectedAssistantId] = useState(null);
   const [savedPrompts, setSavedPrompts] = useState([]);
+  const [bookmarkedMessages, setBookmarkedMessages] = useState([]);
   const [aiModels, setAiModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [input, setInput] = useState("");
@@ -173,6 +175,7 @@ export default function App() {
     setSelectedTagId(null);
     setAssistants([]);
     setSavedPrompts([]);
+    setBookmarkedMessages([]);
     setAiModels([]);
     setSelectedModel("");
     setSelectedFolderId(null);
@@ -487,6 +490,14 @@ export default function App() {
     await refreshConversations(showArchivedConversations, id, selectedWorkspaceId);
   };
 
+  const refreshBookmarkedMessages = async () => {
+    try {
+      setBookmarkedMessages(await listBookmarkedMessages());
+    } catch {
+      // فشل تحميل المحفوظات لا يوقف الشات.
+    }
+  };
+
   const refreshSavedPrompts = async () => {
     try {
       setSavedPrompts(await listSavedPrompts());
@@ -544,6 +555,30 @@ export default function App() {
         type: "error",
       });
     }
+  };
+
+  const handleToggleMessageBookmark = async (index) => {
+    if (!conversationId || loading) return;
+    try {
+      const result = await toggleMessageBookmark(conversationId, index + 1);
+      setMessages((prev) =>
+        prev.map((message, messageIndex) =>
+          messageIndex === index
+            ? { ...message, isBookmarked: result.bookmarked }
+            : message
+        )
+      );
+      await refreshBookmarkedMessages();
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.bookmarkError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleOpenBookmarkedMessage = async (item) => {
+    await openConversation(item.conversation_id);
   };
 
   const handleUseSavedPrompt = (content) => {
@@ -744,6 +779,7 @@ export default function App() {
       refreshTags();
       refreshAssistants();
       refreshSavedPrompts();
+      refreshBookmarkedMessages();
       refreshCurrentUser();
       refreshNotifications();
     }
@@ -803,6 +839,7 @@ export default function App() {
           time: new Date(m.created_at).toLocaleTimeString(),
           sources: m.sources ?? [],
           feedback: m.feedback ?? null,
+          isBookmarked: m.is_bookmarked ?? false,
         }))
       );
     } catch {
@@ -1384,6 +1421,8 @@ export default function App() {
         onCreateAssistant={handleCreateAssistant}
         onRenameAssistant={handleRenameAssistant}
         onDeleteAssistant={handleDeleteAssistant}
+        bookmarkedMessages={bookmarkedMessages}
+        onOpenBookmarkedMessage={handleOpenBookmarkedMessage}
         savedPrompts={savedPrompts}
         onCreateSavedPrompt={handleCreateSavedPrompt}
         onRenameSavedPrompt={handleRenameSavedPrompt}
@@ -1512,6 +1551,8 @@ export default function App() {
                     time={msg.time}
                     sources={msg.sources}
                     feedback={msg.feedback ?? null}
+                    isBookmarked={msg.isBookmarked ?? false}
+                    onToggleBookmark={() => handleToggleMessageBookmark(index)}
                     canFeedback={
                       msg.role === "assistant" &&
                       !loading &&

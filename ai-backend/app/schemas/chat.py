@@ -75,6 +75,7 @@ class MessageOut(BaseModel):
     created_at: datetime
     sources: list[dict[str, Any]] | None = None
     feedback: int | None = None
+    is_bookmarked: bool = False
 
 
 class VisionResponse(BaseModel):

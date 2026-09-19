@@ -25,6 +25,8 @@ export default function Sidebar({
   onCreateAssistant = () => {},
   onRenameAssistant = () => {},
   onDeleteAssistant = () => {},
+  bookmarkedMessages = [],
+  onOpenBookmarkedMessage = () => {},
   savedPrompts = [],
   onCreateSavedPrompt = () => {},
   onRenameSavedPrompt = () => {},
@@ -140,6 +142,12 @@ export default function Sidebar({
     if (newName && newName.trim() && newName.trim() !== folder.name) {
       onRenameFolder(folder.id, newName.trim());
     }
+  };
+
+  const handleOpenBookmarkedMessage = async (e, item) => {
+    e.stopPropagation();
+    await onOpenBookmarkedMessage(item);
+    setOpen(false);
   };
 
   const handleRenameSavedPrompt = (e, prompt) => {
@@ -520,6 +528,36 @@ export default function Sidebar({
                   <button type="button" onClick={(e) => handleDeleteFolder(e, folder)} title={t("sidebar.deleteFolderTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-red-100 hover:text-red-600">✕</button>
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
+            <div className="mb-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              {t("bookmarks.title")}
+            </div>
+            <div className="max-h-48 space-y-1 overflow-y-auto">
+              {bookmarkedMessages.length === 0 ? (
+                <p className="px-2 py-1 text-xs text-slate-400">
+                  {t("bookmarks.empty")}
+                </p>
+              ) : (
+                bookmarkedMessages.map((item) => (
+                  <button
+                    key={item.message_id}
+                    type="button"
+                    onClick={(e) => handleOpenBookmarkedMessage(e, item)}
+                    className="w-full rounded-lg px-2 py-1.5 text-start hover:bg-slate-50 dark:hover:bg-slate-800"
+                    title={item.content}
+                  >
+                    <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">
+                      ★ {item.conversation_title}
+                    </span>
+                    <span className="block truncate text-xs text-slate-400">
+                      {item.content}
+                    </span>
+                  </button>
+                ))
+              )}
             </div>
           </div>
 
