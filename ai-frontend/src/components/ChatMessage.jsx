@@ -27,6 +27,9 @@ export default function ChatMessage({
   canDelete = false,
   onDelete,
   sources = [],
+  feedback = null,
+  canFeedback = false,
+  onFeedback,
 }) {
   const isUser = role === "user";
   const { t } = useTranslation();
@@ -57,6 +60,8 @@ export default function ChatMessage({
   const regenerateLabel = document.documentElement.lang === "ar"
     ? "إعادة التوليد"
     : "Regenerate";
+  const goodFeedbackLabel = t("feedback.helpful");
+  const badFeedbackLabel = t("feedback.notHelpful");
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -141,6 +146,32 @@ export default function ChatMessage({
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock }}>
           {text}
         </ReactMarkdown>
+
+        {!isUser && canFeedback ? (
+          <div className="mt-3 flex items-center gap-1 border-t border-slate-200 pt-2 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={() => onFeedback?.(1)}
+              className={`rounded-lg px-2 py-1 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 ${feedback === 1 ? "bg-slate-100 dark:bg-slate-800" : ""}`}
+              aria-label={goodFeedbackLabel}
+              title={goodFeedbackLabel}
+            >
+              👍
+            </button>
+            <button
+              type="button"
+              onClick={() => onFeedback?.(-1)}
+              className={`rounded-lg px-2 py-1 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 ${feedback === -1 ? "bg-slate-100 dark:bg-slate-800" : ""}`}
+              aria-label={badFeedbackLabel}
+              title={badFeedbackLabel}
+            >
+              👎
+            </button>
+            {feedback !== null ? (
+              <span className="ms-1 text-xs text-slate-400">{t("feedback.saved")}</span>
+            ) : null}
+          </div>
+        ) : null}
 
         {!isUser && sources.length > 0 ? (
           <div className="mt-3 border-t border-slate-200 pt-2 dark:border-slate-700">

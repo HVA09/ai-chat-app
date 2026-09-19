@@ -37,6 +37,7 @@ const resources = {
         folderRenameError: "تعذر إعادة تسمية المجلد",
         folderDeleteError: "تعذر حذف المجلد",
         conversationMoveError: "تعذر نقل المحادثة",
+        feedbackError: "تعذر حفظ التقييم",
         workspaceCreateError: "تعذر إنشاء مساحة العمل",
         workspaceRenameError: "تعذر إعادة تسمية مساحة العمل",
         assistantCreateError: "تعذر إنشاء المساعد",
@@ -283,6 +284,12 @@ const resources = {
         chunkTooltip: "المقطع {{chunk}} من الملف",
       },
 
+      feedback: {
+        helpful: "مفيد",
+        notHelpful: "غير مفيد",
+        saved: "تم حفظ التقييم",
+      },
+
       notif: {
         title: "الإشعارات",
         markAllRead: "تعليم الكل كمقروء",
@@ -405,6 +412,7 @@ const resources = {
         folderRenameError: "Couldn't rename the folder",
         folderDeleteError: "Couldn't delete the folder",
         conversationMoveError: "Couldn't move the conversation",
+        feedbackError: "Couldn't save the feedback",
         assistantCreateError: "Couldn't create the assistant",
         assistantRenameError: "Couldn't rename the assistant",
         assistantDeleteError: "Couldn't delete the assistant",
@@ -647,6 +655,12 @@ const resources = {
         title: "Sources",
         chunkShort: "chunk {{chunk}}",
         chunkTooltip: "Chunk {{chunk}} from the file",
+      },
+
+      feedback: {
+        helpful: "Helpful",
+        notHelpful: "Not helpful",
+        saved: "Feedback saved",
       },
 
       notif: {

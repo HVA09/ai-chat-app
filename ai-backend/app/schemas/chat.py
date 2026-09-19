@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -34,6 +34,15 @@ class ChatEditRequest(BaseModel):
         return v
 
 
+class MessageFeedbackRequest(BaseModel):
+    rating: Literal[-1, 1] | None = None
+
+
+class MessageFeedbackOut(BaseModel):
+    message_index: int
+    feedback: int | None
+
+
 class MessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -41,6 +50,7 @@ class MessageOut(BaseModel):
     content: str
     created_at: datetime
     sources: list[dict[str, Any]] | None = None
+    feedback: int | None = None
 
 
 class ChatResponse(BaseModel):

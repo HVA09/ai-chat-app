@@ -272,3 +272,12 @@ export async function streamEditMessage(
     throw err;
   }
 }
+
+
+export async function setMessageFeedback(conversationId, messageIndex, rating) {
+  const { data } = await api.patch(
+    `/chat/${conversationId}/messages/${messageIndex}/feedback`,
+    { rating }
+  );
+  return data;
+}
