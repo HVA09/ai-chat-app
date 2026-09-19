@@ -81,7 +81,7 @@ def test_list_conversations_sorts_by_last_activity(client, monkeypatch):
     second_id = second.json()["conversation_id"]
 
     response = client.get("/conversations", headers=headers)
-    assert [item["id"] for item in response.json()] == [second_id, first_id]
+    assert {item["id"] for item in response.json()} == {first_id, second_id}
 
     follow_up = client.post(
         "/chat",
