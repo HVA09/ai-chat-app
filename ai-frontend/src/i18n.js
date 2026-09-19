@@ -227,6 +227,11 @@ const resources = {
 
       files: {
         title: "الملفات",
+        workspaceTitle: "مكتبة معرفة مساحة العمل",
+        myFiles: "ملفاتي",
+        workspaceFiles: "معرفة مساحة العمل",
+        workspaceUnavailable: "لا توجد مساحة عمل نشطة.",
+        workspaceDropHint: "ارفع ملفًا إلى مكتبة معرفة مساحة العمل المشتركة",
         listError: "تعذر تحميل قائمة الملفات",
         uploadError: "تعذر رفع الملف",
         confirmDelete: "حذف هذا الملف؟",
@@ -680,6 +685,11 @@ const resources = {
 
       files: {
         title: "Files",
+        workspaceTitle: "Workspace knowledge",
+        myFiles: "My files",
+        workspaceFiles: "Workspace knowledge",
+        workspaceUnavailable: "No active workspace.",
+        workspaceDropHint: "Upload a file to the shared workspace knowledge base",
         listError: "Couldn't load the file list",
         uploadError: "Couldn't upload the file",
         confirmDelete: "Delete this file?",
