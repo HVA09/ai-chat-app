@@ -51,14 +51,16 @@ export async function moveConversationToFolder(id, folderId) {
   return data;
 }
 
-export async function exportConversation(id) {
+export async function exportConversation(id, format = "markdown") {
   const response = await api.get(`/conversations/${id}/export`, {
+    params: { format },
     responseType: "blob",
   });
 
   const contentDisposition = response.headers["content-disposition"] || "";
   const match = contentDisposition.match(/filename="([^"]+)"/i);
-  const filename = match?.[1] || "conversation.md";
+  const fallbackExtension = format === "json" ? "json" : "md";
+  const filename = match?.[1] || `conversation.${fallbackExtension}`;
   const url = URL.createObjectURL(response.data);
 
   try {
