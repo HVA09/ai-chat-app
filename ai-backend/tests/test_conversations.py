@@ -173,7 +173,8 @@ def test_export_conversation_markdown(client, monkeypatch):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/markdown")
     assert "attachment; filename=" in response.headers["content-disposition"]
-    assert "# محادثة جديدة" in response.text
+    assert response.text.startswith("# ")
+    assert "Created: " in response.text
     assert "أول رسالة للتصدير" in response.text
     assert "رد تجريبي" in response.text
 
