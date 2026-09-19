@@ -1,6 +1,7 @@
 """
 مسارات إدارة محادثات المستخدم الحالي: عرض، تعديل الاسم، حذف، وتصدير
 """
+from datetime import datetime, timezone
 import json
 import re
 from typing import Literal
@@ -180,8 +181,8 @@ def get_conversation(
     return conversation
 
 
-const SUMMARY_MAX_MESSAGES = 60
-const SUMMARY_MAX_CHARS = 36_000
+SUMMARY_MAX_MESSAGES = 60
+SUMMARY_MAX_CHARS = 36_000
 
 
 def _build_summary_prompt(conversation: Conversation) -> str:
