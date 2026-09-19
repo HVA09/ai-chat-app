@@ -1114,6 +1114,7 @@ export default function App() {
           loading={loading}
           isEditing={editingMessageIndex !== null}
           onCancelEdit={cancelEditing}
+          onVoiceError={(message) => setToast({ message, type: "error" })}
         />
       </main>
 
