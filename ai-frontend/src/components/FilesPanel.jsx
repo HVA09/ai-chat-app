@@ -220,7 +220,7 @@ export default function FilesPanel({ onClose, conversationId = null, onAnalyzeIm
                   >
                     ⬇
                   </button>
-                  {conversationId && file.content_type.startsWith("image/") && onAnalyzeImage && (
+                  {conversationId && file.is_attached && file.content_type.startsWith("image/") && onAnalyzeImage && (
                     <button
                       onClick={() => handleAnalyzeImage(file)}
                       disabled={analyzingId === file.id}
