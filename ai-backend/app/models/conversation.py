@@ -86,6 +86,7 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     sources: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
     feedback: Mapped[int | None] = mapped_column(nullable=True)
+    is_bookmarked: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     conversation = relationship("Conversation", back_populates="messages")
