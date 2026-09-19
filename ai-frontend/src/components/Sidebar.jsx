@@ -16,6 +16,8 @@ export default function Sidebar({
   onDeleteConversation,
   onTogglePinConversation,
   onToggleArchiveConversation,
+  onToggleTrashConversation = () => {},
+  showTrash = false,
   assistants = [],
   selectedAssistantId = null,
   onSelectAssistant = () => {},
@@ -46,6 +48,7 @@ export default function Sidebar({
   onOpenWorkspaceMembers = () => {},
   showArchived,
   onShowArchived,
+  onShowTrash = () => {},
   loading,
 }) {
   const { t } = useTranslation();
@@ -92,6 +95,11 @@ export default function Sidebar({
     onToggleArchiveConversation(item.id);
   };
 
+  const handleToggleTrash = (e, item) => {
+    e.stopPropagation();
+    onToggleTrashConversation(item.id);
+  };
+
   const handleMoveFolder = (e, item) => {
     e.stopPropagation();
     onMoveConversationToFolder(item.id, e.target.value);
@@ -128,6 +136,7 @@ export default function Sidebar({
     <div style={style} className="px-4">
       <div
         onClick={() => {
+          if (showTrash) return;
           onSelectConversation(item.id);
           setOpen(false);
         }}
@@ -179,11 +188,11 @@ export default function Sidebar({
               ))}
             </select>
             <button
-              onClick={(e) => handleDelete(e, item)}
-              title={t("sidebar.deleteTitle")}
+              onClick={(e) => handleToggleTrash(e, item)}
+              title={showTrash ? t("sidebar.deleteTitle") : t("sidebar.trashTitle")}
               className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-red-100 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-slate-400"
             >
-              ✕
+              {showTrash ? "✕" : "🗑"}
             </button>
           </div>
         </div>
@@ -258,7 +267,10 @@ export default function Sidebar({
           >
             {t("newChat")}
           </button>
-          <button type="button" onClick={() => onShowArchived(!showArchived)} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">{showArchived ? t("sidebar.backToChats") : t("sidebar.archivedTitle")}</button>
+          <div className="mt-2 flex gap-2">
+            <button type="button" onClick={() => onShowArchived(!showArchived)} className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">{showArchived ? t("sidebar.backToChats") : t("sidebar.archivedTitle")}</button>
+            <button type="button" onClick={() => onShowTrash(!showTrash)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">{showTrash ? t("sidebar.backToChats") : t("sidebar.trashTitle")}</button>
+          </div>
 
           <div className="mt-3 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
             <div className="mb-2 flex items-center justify-between gap-2">
@@ -383,7 +395,7 @@ export default function Sidebar({
                   onClick={onBulkDelete}
                   className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
                 >
-                  {t("sidebar.bulkDelete")}
+                  {showTrash ? t("sidebar.bulkDelete") : t("sidebar.bulkTrash")}
                 </button>
                 <select
                   aria-label={t("sidebar.bulkMoveTitle")}
