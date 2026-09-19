@@ -24,6 +24,7 @@ from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.chat import (
     ChatEditRequest,
     ChatRequest,
+    ChatModelOut,
     ChatResponse,
     MessageFeedbackRequest,
     MessageFeedbackOut,
@@ -49,6 +50,28 @@ logger = get_logger("chat")
 MAX_HISTORY_MESSAGES = 20  # يحدّ من نمو الاستعلام وتكلفة/زمن استدعاء AI بمحادثة طويلة جدًا
 MAX_FILE_CONTEXT_CHARS = 24_000
 MAX_FILE_CONTEXT_PER_FILE_CHARS = 8_000
+
+
+@router.get("/models", response_model=list[ChatModelOut])
+def list_ai_models(current_user: User = Depends(get_current_user)):
+    return [
+        {
+            "id": model,
+            "label": model,
+            "is_default": model == settings.AI_MODEL,
+        }
+        for model in settings.AI_ALLOWED_MODELS
+    ]
+
+
+def _resolve_requested_model(model: str | None) -> str:
+    selected = (model or settings.AI_MODEL).strip()
+    if selected not in settings.AI_ALLOWED_MODELS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="نموذج الذكاء الاصطناعي غير متاح في الإعدادات الحالية",
+        )
+    return selected
 
 
 def _get_owned_assistant(
@@ -119,6 +142,7 @@ def _get_or_create_conversation(
         if payload.workspace_id is not None
         else _get_default_workspace(current_user, db)
     )
+    selected_model = _resolve_requested_model(payload.model)
 
     if payload.conversation_id:
         conversation = (
@@ -135,8 +159,14 @@ def _get_or_create_conversation(
                 status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة"
             )
 
+        changed = False
         if selected_assistant is not None and conversation.assistant_id != selected_assistant.id:
             conversation.assistant_id = selected_assistant.id
+            changed = True
+        if payload.model is not None and conversation.ai_model != selected_model:
+            conversation.ai_model = selected_model
+            changed = True
+        if changed:
             db.commit()
             db.refresh(conversation)
 
@@ -147,6 +177,7 @@ def _get_or_create_conversation(
         workspace_id=selected_workspace.id,
         title=payload.message[:50],
         assistant_id=selected_assistant.id if selected_assistant else None,
+        ai_model=selected_model,
     )
     db.add(conversation)
     db.commit()
@@ -406,6 +437,7 @@ async def analyze_attached_image(
             prompt,
             image_data_url,
             history,
+            conversation.ai_model,
         )
     except OSError as exc:
         raise HTTPException(
@@ -516,6 +548,7 @@ async def chat(
                 conversation,
                 current_user,
                 db,
+                conversation.ai_model,
             )
         except AgentModeError as exc:
             raise HTTPException(
@@ -662,7 +695,7 @@ async def chat(
         Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
     )
 
-    reply = await get_ai_reply(ai_message, history)
+    reply = await get_ai_reply(ai_message, history, conversation.ai_model)
 
     db.add(
         Message(conversation_id=conversation.id, role=MessageRole.assistant, content=reply.text, sources=sources or None)
@@ -895,7 +928,7 @@ async def chat_stream(
         yield f"event: sources\ndata: {json.dumps(sources, ensure_ascii=False)}\n\n"
         full_reply = ""
         try:
-            async for chunk in stream_ai_reply(ai_message, history):
+            async for chunk in stream_ai_reply(ai_message, history, conversation.ai_model):
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
@@ -1030,7 +1063,7 @@ async def regenerate_chat_stream(
         yield f"event: sources\ndata: {json.dumps(sources, ensure_ascii=False)}\n\n"
         full_reply = ""
         try:
-            async for chunk in stream_ai_reply(ai_message, history):
+            async for chunk in stream_ai_reply(ai_message, history, conversation.ai_model):
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
