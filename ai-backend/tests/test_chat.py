@@ -207,7 +207,7 @@ def test_edit_user_message_replaces_turn_and_truncates_following_history(client,
     )
     assert second.status_code == 200
 
-    async def fake_stream(message, history):
+    async def fake_stream(message, history, model=None):
         assert message == "ما هي بايثون؟ باختصار"
         assert history == [
             {"role": "user", "content": "ما هو لينكس؟"},
