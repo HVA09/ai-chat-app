@@ -92,3 +92,8 @@ export async function summarizeConversation(id) {
   const { data } = await api.post(`/conversations/${id}/summary`);
   return data;
 }
+
+export async function duplicateConversation(id) {
+  const { data } = await api.post(`/conversations/${id}/duplicate`);
+  return data;
+}
