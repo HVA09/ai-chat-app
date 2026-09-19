@@ -478,10 +478,14 @@ export default function App() {
   const handleBulkMoveToFolder = async (folderValue) => {
     if (!selectedConversationIds.length || folderValue === "") return;
     const folderId = folderValue === "__none__" ? null : Number(folderValue);
+    const selectedIds = [...selectedConversationIds];
     const results = await Promise.allSettled(
-      selectedConversationIds.map((id) => moveConversationToFolder(id, folderId))
+      selectedIds.map((id) => moveConversationToFolder(id, folderId))
     );
     const failed = results.filter((result) => result.status === "rejected").length;
+    if (selectedIds.includes(conversationId) && folderId !== selectedFolderId) {
+      startNewChat();
+    }
     setSelectedConversationIds([]);
     await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
     if (failed) {
