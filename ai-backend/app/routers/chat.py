@@ -202,52 +202,48 @@ async def _build_file_context(
     conversation: Conversation, message: str, db: Session
 ) -> tuple[str, list[dict]]:
     """يرجع سياق RAG ومصادره، مع fallback للنص المستخرج الكامل."""
-    has_indexed_chunks = (
-        db.query(FileChunk.id)
-        .join(ConversationFileLink, ConversationFileLink.file_id == FileChunk.file_id)
-        .filter(
-            ConversationFileLink.conversation_id == conversation.id,
-            FileChunk.embedding.isnot(None),
+    try:
+        rows = await retrieve_relevant_chunks(
+            db,
+            conversation.user_id,
+            conversation.id,
+            message,
+            workspace_id=conversation.workspace_id,
         )
-        .first()
-        is not None
-    )
+        context, sources = build_retrieval_context(rows)
+        if context:
+            return context, list(sources)
+    except EmbeddingServiceError as exc:
+        logger.warning(
+            "تعذر تنفيذ RAG لمحادثة %s، سيتم استخدام السياق الكامل: %s",
+            conversation.id,
+            exc,
+        )
 
-    if has_indexed_chunks:
-        try:
-            rows = await retrieve_relevant_chunks(
-                db,
-                conversation.user_id,
-                conversation.id,
-                message,
-            )
-            context, sources = build_retrieval_context(rows)
-            if context:
-                return context, list(sources)
-        except EmbeddingServiceError as exc:
-            logger.warning(
-                "تعذر تنفيذ RAG لمحادثة %s، سيتم استخدام السياق الكامل: %s",
-                conversation.id,
-                exc,
-            )
-
-    files = (
+    from sqlalchemy import or_
+    files_query = (
         db.query(FileAttachment)
-        .join(
+        .outerjoin(
             ConversationFileLink,
             ConversationFileLink.file_id == FileAttachment.id,
         )
         .filter(
-            ConversationFileLink.conversation_id == conversation.id,
-            FileAttachment.user_id == conversation.user_id,
+            or_(
+                (
+                    (FileAttachment.workspace_id.is_(None))
+                    & (FileAttachment.user_id == conversation.user_id)
+                    & (ConversationFileLink.conversation_id == conversation.id)
+                ),
+                FileAttachment.workspace_id == conversation.workspace_id,
+            ),
             FileAttachment.extracted_text.isnot(None),
         )
-        .order_by(ConversationFileLink.created_at.asc())
-        .all()
+        .order_by(FileAttachment.created_at.asc(), FileAttachment.id.asc())
+        .limit(20)
     )
+    files = files_query.all()
     context, sources = build_fallback_file_context(files)
     return context, list(sources)
-
 
 def _build_memory_context(current_user_id: int, db: Session) -> str:
     memories = (
