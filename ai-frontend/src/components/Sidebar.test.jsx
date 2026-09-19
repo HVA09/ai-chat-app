@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import Sidebar from "./Sidebar";
@@ -88,6 +88,8 @@ function renderSidebar(overrides = {}) {
     onBulkMoveToFolder: vi.fn(),
     showArchived: false,
     onShowArchived: vi.fn(),
+    searchValue: "",
+    onSearchChange: vi.fn(),
     loading: false,
     ...overrides,
   };
@@ -116,6 +118,22 @@ describe("Sidebar", () => {
     const { onSelectConversation } = renderSidebar();
     await user.click(screen.getByText("محادثة أولى"));
     expect(onSelectConversation).toHaveBeenCalledWith(1);
+  });
+
+  it("بحث المحادثات يرسل القيمة إلى المعالج بعد مهلة قصيرة", () => {
+    vi.useFakeTimers();
+    try {
+      const onSearchChange = vi.fn();
+      renderSidebar({ onSearchChange });
+
+      const input = screen.getByRole("searchbox");
+      fireEvent.change(input, { target: { value: "عمل" } });
+      vi.advanceTimersByTime(350);
+
+      expect(onSearchChange).toHaveBeenLastCalledWith("عمل");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("زر محادثة جديدة ينادي onNewChat", async () => {

@@ -97,6 +97,7 @@ export default function App() {
   const [conversationId, setConversationId] = useState(null);
   const [conversations, setConversations] = useState([]);
   const [selectedConversationIds, setSelectedConversationIds] = useState([]);
+  const [conversationSearch, setConversationSearch] = useState("");
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [showArchivedConversations, setShowArchivedConversations] = useState(false);
   const [folders, setFolders] = useState([]);
@@ -196,11 +197,17 @@ export default function App() {
   const refreshConversations = async (
     includeArchived = showArchivedConversations,
     folderId = selectedFolderId,
-    workspaceId = selectedWorkspaceId
+    workspaceId = selectedWorkspaceId,
+    search = conversationSearch
   ) => {
     setConversationsLoading(true);
     try {
-      const list = await listConversations(includeArchived, folderId, workspaceId);
+      const list = await listConversations(
+        includeArchived,
+        folderId,
+        workspaceId,
+        search
+      );
       setConversations(list);
     } catch {
       // فشل تحميل القائمة لا يوقف الشات نفسه — نتجاهله بصمت
@@ -208,6 +215,19 @@ export default function App() {
       setConversationsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!authed) return;
+    const timer = window.setTimeout(() => {
+      refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        conversationSearch
+      );
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [conversationSearch, authed]);
 
   const refreshWorkspaces = async () => {
     try {
@@ -1102,6 +1122,8 @@ export default function App() {
         onCreateWorkspace={handleCreateWorkspace}
         onRenameWorkspace={handleRenameWorkspace}
         onOpenWorkspaceMembers={handleOpenWorkspaceMembers}
+        searchValue={conversationSearch}
+        onSearchChange={setConversationSearch}
         showArchived={showArchivedConversations}
         onShowArchived={(value) => {
           setShowArchivedConversations(value);

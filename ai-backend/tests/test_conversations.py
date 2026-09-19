@@ -21,6 +21,41 @@ def test_list_conversations_empty(client):
     assert response.json() == []
 
 
+def test_list_conversations_supports_title_search(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "search@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post("/chat", json={"message": "بحث في تقرير المبيعات"}, headers=headers)
+    second = client.post("/chat", json={"message": "محادثة السفر"}, headers=headers)
+
+    first_id = first.json()["conversation_id"]
+    second_id = second.json()["conversation_id"]
+
+    client.patch(
+        f"/conversations/{first_id}",
+        json={"title": "تقرير المبيعات 2026"},
+        headers=headers,
+    )
+    client.patch(
+        f"/conversations/{second_id}",
+        json={"title": "خطط السفر"},
+        headers=headers,
+    )
+
+    response = client.get(
+        "/conversations",
+        params={"search": "المبيعات"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [first_id]
+
+
 def test_list_and_get_conversation_after_chat(client, monkeypatch):
     monkeypatch.setattr(chat_router_module, "get_ai_reply", AsyncMock(return_value=AIReply(text="رد تجريبي")))
     token = _register_and_login(client)
