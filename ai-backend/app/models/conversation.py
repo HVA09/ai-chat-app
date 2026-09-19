@@ -42,6 +42,7 @@ class Conversation(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     owner = relationship("User", back_populates="conversations")
     folder = relationship("ConversationFolder", back_populates="conversations")
