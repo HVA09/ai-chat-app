@@ -15,6 +15,7 @@ export default function Sidebar({
   onRenameConversation,
   onDeleteConversation,
   onTogglePinConversation,
+  onDuplicateConversation = () => {},
   onToggleArchiveConversation,
   onToggleTrashConversation = () => {},
   showTrash = false,
@@ -213,6 +214,17 @@ export default function Sidebar({
                               className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
                             >
                               {showArchived ? "↩" : "▱"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDuplicateConversation(item.id);
+                              }}
+                              title={t("sidebar.duplicateTitle")}
+                              className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                            >
+                              ⧉
                             </button>
                             <button
                               onClick={(e) => handleRename(e, item)}
