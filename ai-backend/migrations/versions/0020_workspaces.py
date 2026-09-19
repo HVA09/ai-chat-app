@@ -51,7 +51,17 @@ def upgrade() -> None:
         unique=False,
     )
 
-    workspace_role = sa.Enum("owner", "admin", "member", name="workspacerole")
+    bind = op.get_bind()
+    workspace_role = sa.Enum(
+        "owner",
+        "admin",
+        "member",
+        name="workspacerole",
+        create_type=False,
+    )
+    # Render/PostgreSQL can retain the enum type after an interrupted migration.
+    # Create it only when it does not already exist, then reuse it for the table.
+    workspace_role.create(bind=bind, checkfirst=True)
     op.create_table(
         "workspace_members",
         sa.Column("id", sa.Integer(), primary_key=True),
@@ -113,7 +123,6 @@ def upgrade() -> None:
         ondelete="CASCADE",
     )
 
-    bind = op.get_bind()
     user_rows = bind.execute(
         sa.text("SELECT id FROM users ORDER BY id")
     ).mappings().all()
