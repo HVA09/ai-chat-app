@@ -7,7 +7,7 @@ import re
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import func
+from sqlalchemy import func, select, over
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
@@ -19,6 +19,7 @@ from app.models.conversation_tag import ConversationTag
 from app.models.user import User
 from app.models.usage_log import UsageLog
 from app.models.workspace import Workspace, WorkspaceMember
+from app.schemas.bookmarks import BookmarkedMessageOut
 from app.schemas.chat import ConversationDetail, ConversationOut, ConversationRename, ConversationSummaryOut
 from app.schemas.folders import ConversationFolderUpdate
 from app.schemas.tags import ConversationTagsUpdate
@@ -158,6 +159,52 @@ def list_conversations(
         .limit(limit)
         .all()
     )
+
+
+@router.get("/bookmarks", response_model=list[BookmarkedMessageOut])
+def list_bookmarked_messages(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    message_index = over(
+        func.row_number(),
+        partition_by=Message.conversation_id,
+        order_by=(Message.created_at, Message.id),
+    ).label("message_index")
+
+    rows = (
+        db.query(
+            Message.id,
+            Message.conversation_id,
+            Conversation.title,
+            message_index,
+            Message.role,
+            Message.content,
+            Message.created_at,
+        )
+        .join(Conversation, Conversation.id == Message.conversation_id)
+        .filter(
+            Conversation.user_id == current_user.id,
+            Conversation.deleted_at.is_(None),
+            Message.is_bookmarked.is_(True),
+        )
+        .order_by(Message.created_at.desc(), Message.id.desc())
+        .limit(100)
+        .all()
+    )
+
+    return [
+        BookmarkedMessageOut(
+            message_id=row.id,
+            conversation_id=row.conversation_id,
+            conversation_title=row.title,
+            message_index=int(row.message_index),
+            role=row.role.value,
+            content=row.content,
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetail)
