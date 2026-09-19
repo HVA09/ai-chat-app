@@ -18,6 +18,11 @@ def _register_and_login(client, email="vision@example.com", password="StrongPass
 def test_analyze_attached_image(client, monkeypatch):
     monkeypatch.setattr(
         chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تمهيدي")),
+    )
+    monkeypatch.setattr(
+        chat_router_module,
         "get_ai_vision_reply",
         AsyncMock(return_value=AIReply(text="الصورة تحتوي على عنصر تجريبي.")),
     )
@@ -58,7 +63,12 @@ def test_analyze_attached_image(client, monkeypatch):
     assert vision_call.args[2]
 
 
-def test_analyze_image_requires_attachment_to_conversation(client):
+def test_analyze_image_requires_attachment_to_conversation(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تمهيدي")),
+    )
     token = _register_and_login(client, "vision-owner@example.com")
     headers = {"Authorization": f"Bearer {token}"}
 
