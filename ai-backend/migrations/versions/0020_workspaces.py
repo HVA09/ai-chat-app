@@ -52,6 +52,17 @@ def upgrade() -> None:
     )
 
     bind = op.get_bind()
+    # CREATE TYPE is guarded explicitly because a previous interrupted deployment
+    # may have left the enum behind even when Alembic did not record revision 0020.
+    op.execute(
+        """DO $
+BEGIN
+    CREATE TYPE workspacerole AS ENUM ('owner', 'admin', 'member');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END
+$;"""
+    )
     workspace_role = sa.Enum(
         "owner",
         "admin",
@@ -59,9 +70,6 @@ def upgrade() -> None:
         name="workspacerole",
         create_type=False,
     )
-    # Render/PostgreSQL can retain the enum type after an interrupted migration.
-    # Create it only when it does not already exist, then reuse it for the table.
-    workspace_role.create(bind=bind, checkfirst=True)
     op.create_table(
         "workspace_members",
         sa.Column("id", sa.Integer(), primary_key=True),
