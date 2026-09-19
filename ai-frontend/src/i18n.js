@@ -206,6 +206,8 @@ const resources = {
         attach: "إرفاق بالمحادثة",
         detach: "إزالة من المحادثة",
         attachmentError: "تعذر تحديث ارتباط الملف بالمحادثة",
+        analyzeImage: "تحليل الصورة",
+        analyzePrompt: "ماذا تريد أن تعرف عن الصورة؟",
       },
 
       sidebar: {
@@ -583,6 +585,8 @@ const resources = {
         noFiles: "No files yet",
         download: "Download",
         delete: "Delete",
+        analyzeImage: "Analyze image",
+        analyzePrompt: "What would you like to know about this image?",
         attach: "Attach to conversation",
         detach: "Remove from conversation",
         attachmentError: "Couldn't update the file attachment",
