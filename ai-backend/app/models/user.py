@@ -43,6 +43,9 @@ class User(Base):
     assistants = relationship(
         "Assistant", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )
+    conversation_tags = relationship(
+        "ConversationTag", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
+    )
     conversation_folders = relationship(
         "ConversationFolder", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )
