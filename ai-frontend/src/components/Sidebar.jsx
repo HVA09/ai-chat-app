@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { FixedSizeList } from "react-window";
 import AutoSizer from "react-virtualized-auto-sizer";
 
-const ROW_HEIGHT = 68;
+const ROW_HEIGHT = 92;
 // نفعّل الفرز الافتراضي (بدون virtualization) لقوائم صغيرة — أبسط وكافي.
 // الـ virtualization يفيد فعليًا لما تكبر القائمة (مستخدم عنده مئات المحادثات)
 const VIRTUALIZE_THRESHOLD = 30;
@@ -131,9 +131,9 @@ export default function Sidebar({
           onSelectConversation(item.id);
           setOpen(false);
         }}
-        className="group h-full cursor-pointer rounded-xl border border-slate-200 px-3 py-3 hover:bg-slate-50"
+        className="group h-full cursor-pointer rounded-xl border border-slate-200 px-3 py-3 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
       >
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <span className="flex min-w-0 items-center gap-2 truncate font-medium">
             <input
               type="checkbox"
@@ -143,10 +143,8 @@ export default function Sidebar({
               onClick={(e) => e.stopPropagation()}
               className="h-4 w-4 shrink-0 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
             />{item.is_pinned ? <span aria-hidden="true">★</span> : null}<span className="truncate">{item.title}</span></span>
-          <div className="flex shrink-0 items-center gap-1">
-            <span className="text-xs text-slate-400">
-              {new Date(item.created_at).toLocaleDateString()}
-            </span>
+          <div className="flex flex-wrap items-center justify-end gap-1">
+            <span className="hidden text-xs text-slate-400 sm:inline">{new Date(item.created_at).toLocaleDateString()}</span>
             <button
               onClick={(e) => handleTogglePin(e, item)}
               title={item.is_pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}
@@ -173,7 +171,7 @@ export default function Sidebar({
               value={item.folder_id ?? ""}
               onChange={(e) => handleMoveFolder(e, item)}
               onClick={(e) => e.stopPropagation()}
-              className="max-w-[120px] rounded-lg border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+              className="min-w-[110px] max-w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 sm:max-w-[140px]"
             >
               <option value="">{t("sidebar.noFolder")}</option>
               {folders.map((folder) => (
@@ -203,7 +201,7 @@ export default function Sidebar({
       </button>
 
       <aside
-        className={`fixed inset-y-0 start-0 z-40 w-80 border-e border-slate-200 bg-white transition-transform dark:border-slate-700 dark:bg-slate-900 md:static md:flex md:flex-col ${
+        className={`fixed inset-y-0 start-0 z-40 w-[min(92vw,20rem)] border-e border-slate-200 bg-white transition-transform dark:border-slate-700 dark:bg-slate-900 md:static md:flex md:flex-col ${
           open ? "translate-x-0" : "-translate-x-full rtl:translate-x-full md:translate-x-0"
         }`}
       >

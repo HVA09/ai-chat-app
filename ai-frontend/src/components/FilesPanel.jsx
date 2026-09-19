@@ -132,8 +132,8 @@ export default function FilesPanel({ onClose, conversationId = null, onAnalyzeIm
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/30 p-4">
-      <div className="my-8 w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-2 sm:p-4">
+      <div className="my-0 flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900 sm:my-8 sm:max-h-[calc(100dvh-3rem)] sm:max-w-lg sm:rounded-3xl sm:p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">{t("files.title")}</h2>
           <button
@@ -189,7 +189,7 @@ export default function FilesPanel({ onClose, conversationId = null, onAnalyzeIm
           </div>
         )}
 
-        <div className="max-h-72 space-y-2 overflow-y-auto">
+        <div className="min-h-0 max-h-[45dvh] space-y-2 overflow-y-auto pe-1 sm:max-h-72">
           {loading ? (
             <p className="text-sm text-slate-400">...</p>
           ) : files.length === 0 ? (
@@ -258,11 +258,11 @@ export default function FilesPanel({ onClose, conversationId = null, onAnalyzeIm
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
           onClick={closePreview}
         >
-          <div className="max-h-[85vh] max-w-3xl overflow-auto rounded-2xl bg-white p-3">
+          <div className="max-h-[calc(100dvh-1rem)] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-2 sm:p-3">
             {preview.contentType.startsWith("image/") ? (
-              <img src={preview.url} alt={preview.name} className="max-h-[75vh] rounded-xl" />
+              <img src={preview.url} alt={preview.name} className="max-h-[80dvh] max-w-full rounded-xl object-contain" />
             ) : (
-              <iframe title={preview.name} src={preview.url} className="h-[75vh] w-[70vw]" />
+              <iframe title={preview.name} src={preview.url} className="h-[80dvh] w-full sm:w-[70vw]" />
             )}
           </div>
         </div>
