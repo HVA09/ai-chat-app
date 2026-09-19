@@ -167,14 +167,13 @@ describe("Sidebar", () => {
     expect(onRenameConversation).not.toHaveBeenCalled();
   });
 
-  it("نقل المحادثة إلى سلة المحذوفات يستدعي onDeleteConversation بعد التأكيد", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("نقل المحادثة إلى سلة المحذوفات يستدعي onToggleTrashConversation", async () => {
     const user = userEvent.setup();
-    const { onDeleteConversation, onSelectConversation } = renderSidebar();
+    const { onToggleTrashConversation, onSelectConversation } = renderSidebar();
 
     await user.click(screen.getAllByTitle("سلة المحذوفات")[0]);
 
-    expect(onDeleteConversation).toHaveBeenCalledWith(1);
+    expect(onToggleTrashConversation).toHaveBeenCalledWith(1);
     expect(onSelectConversation).not.toHaveBeenCalled();
   });
 
