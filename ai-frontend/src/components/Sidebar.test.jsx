@@ -88,6 +88,8 @@ function renderSidebar(overrides = {}) {
     onBulkMoveToFolder: vi.fn(),
     showArchived: false,
     onShowArchived: vi.fn(),
+    searchValue: "",
+    onSearchChange: vi.fn(),
     loading: false,
     ...overrides,
   };
@@ -116,6 +118,20 @@ describe("Sidebar", () => {
     const { onSelectConversation } = renderSidebar();
     await user.click(screen.getByText("محادثة أولى"));
     expect(onSelectConversation).toHaveBeenCalledWith(1);
+  });
+
+  it("بحث المحادثات يرسل القيمة إلى المعالج بعد مهلة قصيرة", async () => {
+    vi.useFakeTimers();
+    const onSearchChange = vi.fn();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderSidebar({ onSearchChange });
+
+    const input = screen.getByPlaceholderText("ابحث في المحادثات...");
+    await user.type(input, "عمل");
+    vi.advanceTimersByTime(350);
+
+    expect(onSearchChange).toHaveBeenLastCalledWith("عمل");
+    vi.useRealTimers();
   });
 
   it("زر محادثة جديدة ينادي onNewChat", async () => {
