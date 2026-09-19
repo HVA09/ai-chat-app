@@ -1,6 +1,7 @@
 """
-اختبارات مسارات المحادثات: القائمة والتفاصيل
+اختبارات مسارات المحادثات: القائمة والتفاصيل والتصدير
 """
+import json
 from unittest.mock import AsyncMock
 
 from app.routers import chat as chat_router_module
@@ -212,6 +213,41 @@ def test_export_conversation_markdown(client, monkeypatch):
     assert "Created: " in response.text
     assert "أول رسالة للتصدير" in response.text
     assert "رد تجريبي" in response.text
+
+
+def test_export_conversation_json(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد JSON")),
+    )
+    token = _register_and_login(client, "export-json@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    chat_response = client.post(
+        "/chat",
+        json={"message": "بيانات JSON"},
+        headers=headers,
+    )
+    conversation_id = chat_response.json()["conversation_id"]
+
+    response = client.get(
+        f"/conversations/{conversation_id}/export",
+        params={"format": "json"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.headers["content-disposition"].endswith(".json\"")
+
+    payload = json.loads(response.text)
+    assert payload["id"] == conversation_id
+    assert payload["title"]
+    assert payload["is_archived"] is False
+    assert payload["folder_id"] is None
+    assert payload["messages"][0]["role"] == "user"
+    assert payload["messages"][0]["content"] == "بيانات JSON"
+    assert payload["messages"][1]["role"] == "assistant"
+    assert payload["messages"][1]["content"] == "رد JSON"
 
 
 def test_cannot_export_other_users_conversation(client, monkeypatch):

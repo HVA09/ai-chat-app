@@ -1,7 +1,9 @@
 """
 مسارات إدارة محادثات المستخدم الحالي: عرض، تعديل الاسم، حذف، وتصدير
 """
+import json
 import re
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, selectinload
@@ -238,8 +240,9 @@ def set_conversation_assistant(
 
 
 @router.get("/{conversation_id}/export")
-def export_conversation_markdown(
+def export_conversation(
     conversation_id: int,
+    format: Literal["markdown", "json"] = "markdown",
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -259,6 +262,37 @@ def export_conversation_markdown(
         )
 
     safe_title = re.sub(r"[^A-Za-z0-9_-]+", "_", conversation.title).strip("_") or "conversation"
+
+    if format == "json":
+        payload = {
+            "id": conversation.id,
+            "title": conversation.title,
+            "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
+            "is_pinned": conversation.is_pinned,
+            "is_archived": conversation.is_archived,
+            "folder_id": conversation.folder_id,
+            "workspace_id": conversation.workspace_id,
+            "assistant_id": conversation.assistant_id,
+            "ai_model": conversation.ai_model,
+            "messages": [
+                {
+                    "id": message.id,
+                    "role": message.role.value,
+                    "content": message.content,
+                    "created_at": message.created_at.isoformat() if message.created_at else None,
+                    "sources": message.sources or [],
+                    "feedback": message.feedback,
+                }
+                for message in conversation.messages
+            ],
+        }
+        body = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+        return Response(
+            content=body,
+            media_type="application/json; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{safe_title}.json"'},
+        )
+
     lines = [f"# {conversation.title}", "", f"Created: {conversation.created_at}", ""]
 
     for message in conversation.messages:
