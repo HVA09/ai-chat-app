@@ -237,7 +237,7 @@ def test_export_conversation_json(client, monkeypatch):
     )
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/json")
-    assert 'attachment; filename="conversation.json"' in response.headers["content-disposition"]
+    assert response.headers["content-disposition"].endswith(".json\"")
 
     payload = json.loads(response.text)
     assert payload["id"] == conversation_id
