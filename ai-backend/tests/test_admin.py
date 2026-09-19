@@ -194,6 +194,8 @@ ation": f"Bearer {token}"}
 
 
 def test_feedback_analytics_requires_admin_and_counts_ratings(client, monkeypatch, db_session):
+    from app.models.conversation import Conversation, Message, MessageRole
+    from app.models.user import User, UserRole
     from app.routers import chat as chat_router_module
     from app.services.ai_providers.base import AIReply
     from unittest.mock import AsyncMock
@@ -231,8 +233,6 @@ def test_feedback_analytics_requires_admin_and_counts_ratings(client, monkeypatc
 
     user_response = client.get("/admin/analytics/feedback", headers=headers)
     assert user_response.status_code == 403
-
-    from app.models.user import User, UserRole
 
     user = db_session.get(User, conversation.user_id)
     user.role = UserRole.admin
