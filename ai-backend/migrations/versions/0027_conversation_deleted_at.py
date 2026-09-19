@@ -1,7 +1,7 @@
 """إضافة سلة محذوفات للمحادثات.
 
 Revision ID: 0027_conversation_deleted_at
-Revises: 0026_conversation_last_activity_default
+Revises: 0026_activity_default
 """
 from typing import Sequence, Union
 
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision: str = "0027_conversation_deleted_at"
-down_revision: Union[str, None] = "0026_conversation_last_activity_default"
+down_revision: Union[str, None] = "0026_activity_default"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
