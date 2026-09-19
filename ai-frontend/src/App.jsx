@@ -164,6 +164,7 @@ export default function App() {
     setShowAdmin(false);
     setShowBilling(false);
     setShowWorkspaceMembers(false);
+    setShowTrashConversations(false);
     setNotifications([]);
   }, [t]);
 
@@ -1132,6 +1133,8 @@ export default function App() {
         onDeleteConversation={handleDeleteConversation}
         onTogglePinConversation={handleTogglePinConversation}
         onToggleArchiveConversation={handleToggleArchiveConversation}
+        onToggleTrashConversation={handleToggleTrashConversation}
+        showTrash={showTrashConversations}
         assistants={assistants}
         selectedAssistantId={selectedAssistantId}
         onSelectAssistant={handleSelectAssistant}
