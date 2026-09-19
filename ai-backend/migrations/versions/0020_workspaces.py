@@ -55,13 +55,13 @@ def upgrade() -> None:
     # CREATE TYPE is guarded explicitly because a previous interrupted deployment
     # may have left the enum behind even when Alembic did not record revision 0020.
     op.execute(
-        """DO $
+        """DO $$
 BEGIN
     CREATE TYPE workspacerole AS ENUM ('owner', 'admin', 'member');
 EXCEPTION
     WHEN duplicate_object THEN NULL;
 END
-$;"""
+$$;"""
     )
     workspace_role = sa.Enum(
         "owner",
