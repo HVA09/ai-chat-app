@@ -15,6 +15,7 @@ vi.mock("react-i18next", () => ({
       "tools.agent": "وضع الوكيل",
       "tools.voiceInput": "إدخال صوتي",
       "tools.voiceStop": "إيقاف الإدخال الصوتي",
+      "tools.modelSelector": "نموذج الذكاء الاصطناعي",
     })[key] ?? key,
   }),
 }));
@@ -119,6 +120,37 @@ describe("ChatComposer tools", () => {
 
     await user.click(screen.getByTitle("إدخال صوتي"));
     expect(currentValue).toBe("اختبار صوتي");
+  });
+
+  it("يتيح اختيار نموذج الذكاء الاصطناعي", async () => {
+    const user = userEvent.setup();
+    const onSelectModel = vi.fn();
+
+    render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onInsertCalculator={vi.fn()}
+        onInsertWebSearch={vi.fn()}
+        onInsertDataAnalysis={vi.fn()}
+        onInsertAgent={vi.fn()}
+        models={[
+          { id: "gemini-2.5-flash", label: "gemini-2.5-flash", is_default: true },
+          { id: "gemini-test", label: "gemini-test", is_default: false },
+        ]}
+        selectedModel="gemini-2.5-flash"
+        onSelectModel={onSelectModel}
+      />
+    );
+
+    const select = screen.getByLabelText("نموذج الذكاء الاصطناعي");
+    expect(screen.getByRole("option", { name: "gemini-2.5-flash" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "gemini-test" })).toBeInTheDocument();
+
+    await user.selectOptions(select, "gemini-test");
+    expect(onSelectModel).toHaveBeenCalledWith("gemini-test");
   });
 
   it("زر وضع الوكيل يمرر المعالج", async () => {

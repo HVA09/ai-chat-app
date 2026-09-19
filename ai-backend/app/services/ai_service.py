@@ -12,9 +12,9 @@ from app.services.ai_providers.openai_provider import OpenAICompatibleProvider
 from app.services.ai_providers.factory import get_provider
 
 
-async def get_ai_reply(message: str, history: list[dict[str, str]] | None = None) -> AIReply:
+async def get_ai_reply(message: str, history: list[dict[str, str]] | None = None, model: str | None = None) -> AIReply:
     """رد كامل دفعة وحدة (نص + عدد توكنز لو متوفر) — تُستخدم في /chat"""
-    provider = get_provider()
+    provider = get_provider(model)
     try:
         return await provider.get_reply(message, history)
     except httpx.HTTPStatusError as exc:
@@ -30,11 +30,13 @@ async def get_ai_reply(message: str, history: list[dict[str, str]] | None = None
 
 
 async def stream_ai_reply(
-    message: str, history: list[dict[str, str]] | None = None
+    message: str,
+    history: list[dict[str, str]] | None = None,
+    model: str | None = None,
 ) -> AsyncIterator[str]:
     """رد يُبَث تدريجيًا — تُستخدم في /chat/stream. الأخطاء تُترك للمستدعي يمسكها
     لأنها تصير أثناء البث نفسه (بعد ما الاستجابة بدأت)، مو قبل إرسالها."""
-    provider = get_provider()
+    provider = get_provider(model)
     async for chunk in provider.stream_reply(message, history):
         yield chunk
 
@@ -43,9 +45,10 @@ async def get_ai_vision_reply(
     message: str,
     image_data_url: str,
     history: list[dict] | None = None,
+    model: str | None = None,
 ) -> AIReply:
     """رد متعدد الوسائط لصورة واحدة عبر المزوّد المتوافق مع OpenAI."""
-    provider = get_provider()
+    provider = get_provider(model)
     if not isinstance(provider, OpenAICompatibleProvider):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -6,13 +6,15 @@ export async function sendChatMessage(
   message,
   conversationId = null,
   assistantId = null,
-  workspaceId = null
+  workspaceId = null,
+  model = null
 ) {
   const { data } = await api.post("/chat", {
     message,
     conversation_id: conversationId,
     assistant_id: assistantId,
     workspace_id: workspaceId,
+    model,
   });
   return data;
 }
@@ -25,7 +27,16 @@ export async function streamChatMessage(
   message,
   conversationId,
   assistantId = null,
-  { onChunk, onConversationId, onSources, onDone, onError, signal, workspaceId = null } = {}
+  {
+    onChunk,
+    onConversationId,
+    onSources,
+    onDone,
+    onError,
+    signal,
+    workspaceId = null,
+    model = null,
+  } = {}
 ) {
   const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -42,6 +53,7 @@ export async function streamChatMessage(
         conversation_id: conversationId,
         assistant_id: assistantId,
         workspace_id: workspaceId,
+        model,
       }),
       signal,
     });
@@ -289,5 +301,11 @@ export async function analyzeImage(conversationId, fileId, message) {
     file_id: fileId,
     message,
   });
+  return data;
+}
+
+
+export async function listAiModels() {
+  const { data } = await api.get("/chat/models");
   return data;
 }

@@ -773,6 +773,8 @@ const resources = {
         agent: "Agent mode — let the assistant choose safe tools",
         voiceInput: "Voice input",
         voiceStop: "Stop voice input",
+        modelSelector: "AI model",
+        defaultModel: "Default model",
       },
     },
   },

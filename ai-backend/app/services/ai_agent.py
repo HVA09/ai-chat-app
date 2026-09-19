@@ -211,8 +211,9 @@ async def run_agent(
     conversation: Conversation,
     current_user: User,
     db: Session,
+    model: str | None = None,
 ) -> tuple[str, list[dict], int | None, int | None]:
-    provider = get_provider()
+    provider = get_provider(model)
     if not isinstance(provider, OpenAICompatibleProvider):
         raise AgentModeError(
             "وضع الوكيل متاح حاليًا مع المزوّدات المتوافقة مع OpenAI فقط."

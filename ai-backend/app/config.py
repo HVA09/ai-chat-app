@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     AI_API_KEY: str
     AI_API_BASE_URL: str = "https://api.openai.com/v1"
     AI_MODEL: str = "gpt-4o-mini"
+    AI_ALLOWED_MODELS: list[str] = []
     AI_PROVIDER: str = "openai"
     EMBEDDING_MODEL: str = "gemini-embedding-001"
     EMBEDDING_DIMENSIONS: int = 768
@@ -80,6 +81,20 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    @field_validator("AI_ALLOWED_MODELS", mode="before")
+    @classmethod
+    def parse_allowed_models(cls, value):
+        if value is None or value == "":
+            return []
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return [str(item).strip() for item in parsed if str(item).strip()]
+            except json.JSONDecodeError:
+                return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors(cls, value):
@@ -95,6 +110,13 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production(self):
+        normalized_models = []
+        for model in [*self.AI_ALLOWED_MODELS, self.AI_MODEL]:
+            value = model.strip()
+            if value and value not in normalized_models:
+                normalized_models.append(value)
+        self.AI_ALLOWED_MODELS = normalized_models
+
         if self.ENVIRONMENT == "production":
             if self.DEBUG:
                 raise ValueError("DEBUG must be false in production")

@@ -7,7 +7,7 @@ import ChatComposer from "./components/ChatComposer";
 import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
-import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage } from "./lib/chatApi";
+import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, listAiModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
 
@@ -104,6 +104,8 @@ export default function App() {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(null);
   const [assistants, setAssistants] = useState([]);
   const [selectedAssistantId, setSelectedAssistantId] = useState(null);
+  const [aiModels, setAiModels] = useState([]);
+  const [selectedModel, setSelectedModel] = useState("");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -142,6 +144,8 @@ export default function App() {
     setSelectedWorkspaceId(null);
     setSelectedFolderId(null);
     setAssistants([]);
+    setAiModels([]);
+    setSelectedModel("");
     setSelectedFolderId(null);
     setSelectedAssistantId(null);
     setConversationId(null);
@@ -172,6 +176,20 @@ export default function App() {
     window.addEventListener("auth:unauthorized", handleUnauthorized);
     return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
   }, [logout, t]);
+
+  const refreshAiModels = async () => {
+    try {
+      const data = await listAiModels();
+      const models = Array.isArray(data) ? data : data.models || [];
+      setAiModels(models);
+      const fallback = models.find((model) => model.is_default)?.id || models[0]?.id || "";
+      setSelectedModel((current) =>
+        current && models.some((model) => model.id === current) ? current : fallback
+      );
+    } catch {
+      // فشل تحميل النماذج لا يمنع استخدام النموذج الافتراضي.
+    }
+  };
 
   const refreshConversations = async (
     includeArchived = showArchivedConversations,
@@ -460,6 +478,12 @@ export default function App() {
       setSelectedAssistantId(data.assistant_id ?? null);
       setSelectedWorkspaceId(data.workspace_id ?? null);
       setSelectedFolderId(data.folder_id ?? null);
+      setSelectedModel(
+        data.ai_model ||
+          aiModels.find((model) => model.is_default)?.id ||
+          aiModels[0]?.id ||
+          ""
+      );
       setMessages(
         data.messages.map((m) => ({
           role: m.role,
@@ -775,6 +799,7 @@ export default function App() {
     await streamChatMessage(userText, conversationId, selectedAssistantId, {
       signal: controller.signal,
       workspaceId: selectedWorkspaceId,
+      model: selectedModel || null,
       onConversationId: (id) => setConversationId(id),
       onSources: (sources) => {
         setMessages((prev) => prev.map((message, index) =>
@@ -1115,6 +1140,9 @@ export default function App() {
           isEditing={editingMessageIndex !== null}
           onCancelEdit={cancelEditing}
           onVoiceError={(message) => setToast({ message, type: "error" })}
+          models={aiModels}
+          selectedModel={selectedModel}
+          onSelectModel={setSelectedModel}
         />
       </main>
 

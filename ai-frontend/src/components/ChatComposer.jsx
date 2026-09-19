@@ -18,6 +18,9 @@ export default function ChatComposer({
   onInsertDataAnalysis,
   onInsertAgent,
   onVoiceError,
+  models = [],
+  selectedModel = "",
+  onSelectModel,
 }) {
   const { t } = useTranslation();
   const recognitionRef = useRef(null);
@@ -133,6 +136,21 @@ export default function ChatComposer({
         </div>
         {!loading && !isEditing ? (
           <>
+            {models.length > 0 ? (
+              <select
+                value={selectedModel || ""}
+                onChange={(event) => onSelectModel?.(event.target.value || null)}
+                title={t("tools.modelSelector")}
+                aria-label={t("tools.modelSelector")}
+                className="max-w-[180px] rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+              >
+                {models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             {voiceSupported ? (
               <button
                 type="button"

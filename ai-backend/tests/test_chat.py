@@ -16,6 +16,61 @@ def _register_and_login(client, email="chat@example.com", password="StrongPass12
     return client.cookies.get("access_token")
 
 
+def test_list_ai_models_returns_allowed_models(client, monkeypatch):
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
+    monkeypatch.setattr(app_settings, "AI_MODEL", "gemini-2.5-flash")
+    monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["gemini-2.5-flash", "gemini-test"])
+
+    token = _register_and_login(client, "models@example.com")
+    response = client.get("/chat/models", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {"id": "gemini-2.5-flash", "label": "gemini-2.5-flash", "is_default": True},
+        {"id": "gemini-test", "label": "gemini-test", "is_default": False},
+    ]
+
+
+def test_chat_persists_selected_model(client, monkeypatch, db_session):
+    from app.config import settings as app_settings
+    from app.models.conversation import Conversation
+
+    monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["gemini-2.5-flash", "gemini-test"])
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "selected-model@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/chat",
+        json={"message": "سؤال", "model": "gemini-test"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    conversation_id = response.json()["conversation_id"]
+    conversation = db_session.query(Conversation).filter(Conversation.id == conversation_id).one()
+    assert conversation.ai_model == "gemini-test"
+
+
+def test_chat_rejects_disallowed_model(client, monkeypatch):
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["gemini-2.5-flash"])
+    token = _register_and_login(client, "bad-model@example.com")
+    response = client.post(
+        "/chat",
+        json={"message": "سؤال", "model": "not-allowed"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 400
+
+
 def test_chat_creates_conversation_and_returns_reply(client, monkeypatch):
     mock_reply = AsyncMock(return_value=AIReply(text="رد تجريبي من المساعد"))
     monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
@@ -104,7 +159,7 @@ def test_regenerate_replaces_last_assistant_without_duplicate_user_message(clien
     assert first.status_code == 200
     conversation_id = first.json()["conversation_id"]
 
-    async def fake_stream(message, history):
+    async def fake_stream(message, history, model=None):
         assert message == "ما هو لينكس؟"
         assert history == []
         yield "الرد الجديد"
@@ -152,7 +207,7 @@ def test_edit_user_message_replaces_turn_and_truncates_following_history(client,
     )
     assert second.status_code == 200
 
-    async def fake_stream(message, history):
+    async def fake_stream(message, history, model=None):
         assert message == "ما هي بايثون؟ باختصار"
         assert history == [
             {"role": "user", "content": "ما هو لينكس؟"},
