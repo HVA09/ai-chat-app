@@ -1,4 +1,5 @@
 from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict
 
 from app.models.subscription import SubscriptionStatus
@@ -23,6 +24,17 @@ class SubscriptionOut(BaseModel):
     provider: str
     status: SubscriptionStatus
     current_period_end: datetime | None
+
+
+class UsageOut(BaseModel):
+    window_hours: int
+    window_start: datetime
+    used_requests: int
+    daily_limit: int | None
+    remaining_requests: int | None
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
 
 
 class CheckoutRequest(BaseModel):

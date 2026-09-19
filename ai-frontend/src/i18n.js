@@ -129,6 +129,14 @@ const resources = {
         free: "مجاني",
         perMonth: "شهر",
         perYear: "سنة",
+        usageTitle: "استخدام الذكاء الاصطناعي",
+        usageLast24h: "آخر 24 ساعة",
+        usageRequests: "الطلبات",
+        usageRemaining: "طلب متبقٍ",
+        usageUnlimited: "غير محدود",
+        usageTokens: "إجمالي التوكنز",
+        usageInputTokens: "إدخال",
+        usageOutputTokens: "إخراج",
       },
 
       admin: {
@@ -487,6 +495,14 @@ const resources = {
         free: "Free",
         perMonth: "month",
         perYear: "year",
+        usageTitle: "AI usage",
+        usageLast24h: "Last 24 hours",
+        usageRequests: "Requests",
+        usageRemaining: "requests remaining",
+        usageUnlimited: "unlimited",
+        usageTokens: "Total tokens",
+        usageInputTokens: "Input",
+        usageOutputTokens: "Output",
       },
 
       admin: {
