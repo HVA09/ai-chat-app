@@ -96,6 +96,7 @@ export default function App() {
   const [messages, setMessages] = useState(() => [getWelcomeMessage(t)]);
   const [conversationId, setConversationId] = useState(null);
   const [conversations, setConversations] = useState([]);
+  const [selectedConversationIds, setSelectedConversationIds] = useState([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [showArchivedConversations, setShowArchivedConversations] = useState(false);
   const [folders, setFolders] = useState([]);
@@ -139,6 +140,7 @@ export default function App() {
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
     setAuthed(false);
     setConversations([]);
+    setSelectedConversationIds([]);
     setFolders([]);
     setWorkspaces([]);
     setSelectedWorkspaceId(null);
@@ -414,6 +416,82 @@ export default function App() {
     }
   };
 
+  const toggleConversationSelection = (id) => {
+    setSelectedConversationIds((prev) =>
+      prev.includes(id) ? prev.filter((itemId) => itemId !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAllVisibleConversations = (ids) => {
+    setSelectedConversationIds((prev) => {
+      const visible = new Set(ids);
+      const allSelected = ids.length > 0 && ids.every((id) => prev.includes(id));
+      if (allSelected) {
+        return prev.filter((id) => !visible.has(id));
+      }
+      return Array.from(new Set([...prev, ...ids]));
+    });
+  };
+
+  const clearSelectedConversations = () => setSelectedConversationIds([]);
+
+  const handleBulkArchive = async () => {
+    if (!selectedConversationIds.length) return;
+    const results = await Promise.allSettled(
+      selectedConversationIds.map((id) => toggleArchiveConversation(id))
+    );
+    const failed = results.filter((result) => result.status === "rejected").length;
+    if (selectedConversationIds.includes(conversationId)) startNewChat();
+    setSelectedConversationIds([]);
+    await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
+    if (failed) {
+      setToast({
+        message: t("app.bulkActionError", { count: failed }),
+        type: "error",
+      });
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!selectedConversationIds.length) return;
+    const confirmed = window.confirm(
+      t("sidebar.bulkDeleteConfirm", { count: selectedConversationIds.length })
+    );
+    if (!confirmed) return;
+
+    const selectedIds = [...selectedConversationIds];
+    const results = await Promise.allSettled(
+      selectedIds.map((id) => deleteConversation(id))
+    );
+    const failed = results.filter((result) => result.status === "rejected").length;
+    if (selectedIds.includes(conversationId)) startNewChat();
+    setSelectedConversationIds([]);
+    await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
+    if (failed) {
+      setToast({
+        message: t("app.bulkActionError", { count: failed }),
+        type: "error",
+      });
+    }
+  };
+
+  const handleBulkMoveToFolder = async (folderValue) => {
+    if (!selectedConversationIds.length || folderValue === "") return;
+    const folderId = folderValue === "__none__" ? null : Number(folderValue);
+    const results = await Promise.allSettled(
+      selectedConversationIds.map((id) => moveConversationToFolder(id, folderId))
+    );
+    const failed = results.filter((result) => result.status === "rejected").length;
+    setSelectedConversationIds([]);
+    await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
+    if (failed) {
+      setToast({
+        message: t("app.bulkActionError", { count: failed }),
+        type: "error",
+      });
+    }
+  };
+
   const refreshCurrentUser = async () => {
     try {
       const user = await getCurrentUser();
@@ -461,6 +539,7 @@ export default function App() {
   };
 
   const startNewChat = () => {
+    setSelectedConversationIds([]);
     setConversationId(null);
     setMessages([getWelcomeMessage(t)]);
     setInput("");
@@ -469,6 +548,7 @@ export default function App() {
   };
 
   const openConversation = async (id) => {
+    setSelectedConversationIds([]);
     setError("");
     setInput("");
     setEditingMessageIndex(null);
@@ -1005,6 +1085,13 @@ export default function App() {
         onRenameFolder={handleRenameFolder}
         onDeleteFolder={handleDeleteFolder}
         onMoveConversationToFolder={handleMoveConversationToFolder}
+        selectedConversationIds={selectedConversationIds}
+        onToggleConversationSelection={toggleConversationSelection}
+        onToggleSelectAllVisible={toggleSelectAllVisibleConversations}
+        onClearSelectedConversations={clearSelectedConversations}
+        onBulkArchive={handleBulkArchive}
+        onBulkDelete={handleBulkDelete}
+        onBulkMoveToFolder={handleBulkMoveToFolder}
         workspaces={workspaces}
         selectedWorkspaceId={selectedWorkspaceId}
         onSelectWorkspace={handleSelectWorkspace}
