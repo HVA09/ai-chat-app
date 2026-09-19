@@ -267,7 +267,7 @@ describe("Sidebar", () => {
     const user = userEvent.setup();
     const { onDeleteConversation } = renderSidebar();
 
-    await user.click(screen.getAllByTitle("حذف")[0]);
+    await user.click(screen.getAllByTitle("سلة المحذوفات")[0]);
     expect(onDeleteConversation).not.toHaveBeenCalled();
   });
 });
