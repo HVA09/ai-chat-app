@@ -5,7 +5,8 @@ import Sidebar from "./Sidebar";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key) => ({
+    t: (key, variables = {}) => {
+      const value = ({
       appName: "مساعد الذكاء الاصطناعي",
       newChat: "محادثة جديدة",
       noChats: "لا توجد محادثات بعد",
@@ -34,7 +35,13 @@ vi.mock("react-i18next", () => ({
       "sidebar.workspaceSelectTitle": "مساحة العمل",
       "sidebar.workspaceCreateTitle": "إنشاء مساحة عمل",
       "sidebar.workspaceRenameTitle": "إعادة تسمية مساحة العمل",
-    })[key] ?? key,
+      "sidebar.bulkDeleteConfirm": "حذف {{count}} محادثات؟",
+    })[key] ?? key;
+
+      return value.replace(/\{\{(\w+)\}\}/g, (_, name) =>
+        variables[name] === undefined ? `{{${name}}}` : String(variables[name])
+      );
+    },
   }),
 }));
 
