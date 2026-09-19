@@ -22,7 +22,12 @@ def upgrade() -> None:
     op.execute(
         "UPDATE conversations SET updated_at = created_at WHERE updated_at IS NULL"
     )
-    op.alter_column("conversations", "updated_at", nullable=False)
+    op.alter_column(
+        "conversations",
+        "updated_at",
+        nullable=False,
+        server_default=sa.text("CURRENT_TIMESTAMP"),
+    )
     op.create_index(
         "ix_conversations_user_id_updated_at",
         "conversations",
