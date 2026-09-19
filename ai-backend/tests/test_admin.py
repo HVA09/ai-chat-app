@@ -159,39 +159,6 @@ def test_export_analytics_csv(client):
     assert "date,new_users" in response.text
 
 
-ation": f"Bearer {token}"}
-
-    me = client.get("/users/me", headers=headers).json()
-    conversation = Conversation(user_id=me["id"], title="Feedback", workspace_id=1)
-    db_session.add(conversation)
-    db_session.flush()
-    db_session.add_all(
-        [
-            Message(
-                conversation_id=conversation.id,
-                role=MessageRole.user,
-                content="سؤال",
-            ),
-            Message(
-                conversation_id=conversation.id,
-                role=MessageRole.assistant,
-                content="رد جيد",
-                feedback=1,
-            ),
-            Message(
-                conversation_id=conversation.id,
-                role=MessageRole.assistant,
-                content="رد سيئ",
-                feedback=-1,
-            ),
-        ]
-    )
-    db_session.commit()
-
-    non_admin = client.get("/admin/analytics/feedback", headers=headers)
-    assert non_admin.status_code == 403
-
-
 
 def test_feedback_analytics_requires_admin_and_counts_ratings(client, monkeypatch, db_session):
     from app.models.conversation import Conversation, Message, MessageRole
