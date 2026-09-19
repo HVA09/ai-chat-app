@@ -63,50 +63,20 @@ EXCEPTION
 END
 $$;"""
     )
-    op.create_table(
-        "workspace_members",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("workspace_id", sa.Integer(), nullable=False),
-        sa.Column("user_id", sa.Integer(), nullable=False),
-        sa.Column("role", sa.String(length=20), nullable=False, server_default="member"),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(
-            ["workspace_id"],
-            ["workspaces.id"],
-            name="fk_workspace_members_workspace_id_workspaces",
-            ondelete="CASCADE",
-        ),
-        sa.ForeignKeyConstraint(
-            ["user_id"],
-            ["users.id"],
-            name="fk_workspace_members_user_id_users",
-            ondelete="CASCADE",
-        ),
-        sa.UniqueConstraint(
-            "workspace_id",
-            "user_id",
-            name="uq_workspace_members_workspace_user",
-        ),
-    )
-    # Convert the temporary text column to the already-created PostgreSQL enum
-    # without letting SQLAlchemy emit a second CREATE TYPE.
     op.execute(
-        "ALTER TABLE workspace_members "
-        "ALTER COLUMN role DROP DEFAULT"
-    )
-    op.execute(
-        "ALTER TABLE workspace_members "
-        "ALTER COLUMN role TYPE workspacerole "
-        "USING role::text::workspacerole"
-    )
-    op.execute(
-        "ALTER TABLE workspace_members "
-        "ALTER COLUMN role SET DEFAULT 'member'"
+        """CREATE TABLE workspace_members (
+            id INTEGER PRIMARY KEY,
+            workspace_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            role workspacerole NOT NULL DEFAULT 'member',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT fk_workspace_members_workspace_id_workspaces
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+            CONSTRAINT fk_workspace_members_user_id_users
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CONSTRAINT uq_workspace_members_workspace_user
+                UNIQUE (workspace_id, user_id)
+        )"""
     )
     op.create_index(
         "ix_workspace_members_user_id",
