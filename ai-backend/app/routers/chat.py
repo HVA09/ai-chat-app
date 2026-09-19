@@ -988,6 +988,40 @@ async def chat_stream(
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
+@router.patch("/{conversation_id}/messages/{message_index}/bookmark")
+def toggle_message_bookmark(
+    conversation_id: int,
+    message_index: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conversation = (
+        db.query(Conversation)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+            Conversation.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
+
+    messages = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation.id)
+        .order_by(Message.created_at.asc(), Message.id.asc())
+        .all()
+    )
+    if message_index < 1 or message_index > len(messages):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="الرسالة غير موجودة")
+
+    target = messages[message_index - 1]
+    target.is_bookmarked = not target.is_bookmarked
+    db.commit()
+    return {"message_index": message_index, "bookmarked": target.is_bookmarked}
+
+
 @router.delete("/{conversation_id}/messages/{message_index}")
 async def delete_chat_message(
     conversation_id: int,
