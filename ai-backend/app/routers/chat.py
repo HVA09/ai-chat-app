@@ -735,6 +735,7 @@ async def chat_stream(
                 conversation,
                 current_user,
                 db,
+                conversation.ai_model,
             )
         except AgentModeError as exc:
             raise HTTPException(
@@ -1136,7 +1137,7 @@ async def edit_chat_stream(
         yield f"event: sources\ndata: {json.dumps(sources, ensure_ascii=False)}\n\n"
         full_reply = ""
         try:
-            async for chunk in stream_ai_reply(ai_message, history):
+            async for chunk in stream_ai_reply(ai_message, history, conversation.ai_model):
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
