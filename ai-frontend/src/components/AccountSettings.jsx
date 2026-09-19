@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   requestEmailVerification,
@@ -7,6 +7,7 @@ import {
   disableTwoFactor,
 } from "../lib/authApi";
 import { updateProfile, changePassword, deleteAccount } from "../lib/usersApi";
+import { listMemories, createMemory, updateMemory, deleteMemory } from "../lib/memoriesApi";
 import { getErrorMessage } from "../lib/errors";
 
 function Section({ title, children }) {
@@ -31,9 +32,23 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
   const [newPassword, setNewPassword] = useState("");
 
   const [deletePassword, setDeletePassword] = useState("");
+  const [memories, setMemories] = useState([]);
+  const [memoryDraft, setMemoryDraft] = useState("");
 
   const [setupData, setSetupData] = useState(null);
   const [code, setCode] = useState("");
+
+  const loadMemories = async () => {
+    try {
+      setMemories(await listMemories());
+    } catch (err) {
+      setError(getErrorMessage(err, t("account.memoryLoadError")));
+    }
+  };
+
+  useEffect(() => {
+    loadMemories();
+  }, []);
 
   const runAction = async (action) => {
     setError("");
@@ -47,6 +62,31 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
       setLoading(false);
     }
   };
+
+  const handleAddMemory = () =>
+    runAction(async () => {
+      await createMemory(memoryDraft);
+      setMemoryDraft("");
+      await loadMemories();
+      setMessage(t("account.memorySaved"));
+    });
+
+  const handleEditMemory = (memory) =>
+    runAction(async () => {
+      const content = window.prompt(t("account.memoryEditPrompt"), memory.content);
+      if (!content?.trim()) return;
+      await updateMemory(memory.id, content.trim());
+      await loadMemories();
+      setMessage(t("account.memorySaved"));
+    });
+
+  const handleDeleteMemory = (memory) =>
+    runAction(async () => {
+      if (!window.confirm(t("account.memoryDeleteConfirm", { content: memory.content }))) return;
+      await deleteMemory(memory.id);
+      await loadMemories();
+      setMessage(t("account.memoryDeleted"));
+    });
 
   const handleSaveProfile = () =>
     runAction(async () => {
@@ -146,6 +186,52 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
             >
               {t("account.save")}
             </button>
+          </div>
+        </Section>
+
+        <Section title={t("account.memorySection")}>
+          <div className="space-y-2">
+            <p className="text-xs text-slate-500">{t("account.memoryDescription")}</p>
+            <textarea
+              value={memoryDraft}
+              onChange={(e) => setMemoryDraft(e.target.value)}
+              maxLength={500}
+              rows={3}
+              placeholder={t("account.memoryPlaceholder")}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-400"
+            />
+            <button
+              onClick={handleAddMemory}
+              disabled={loading || !memoryDraft.trim()}
+              className="w-full rounded-xl bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              {t("account.memoryAdd")}
+            </button>
+            {memories.length > 0 && (
+              <div className="space-y-2 pt-2">
+                {memories.map((memory) => (
+                  <div key={memory.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                    <p className="whitespace-pre-wrap text-sm text-slate-700">{memory.content}</p>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={() => handleEditMemory(memory)}
+                        disabled={loading}
+                        className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        {t("account.memoryEdit")}
+                      </button>
+                      <button
+                        onClick={() => handleDeleteMemory(memory)}
+                        disabled={loading}
+                        className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {t("account.memoryDelete")}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </Section>
 
