@@ -172,32 +172,41 @@ def list_bookmarked_messages(
         order_by=(Message.created_at, Message.id),
     ).label("message_index")
 
-    rows = (
+    indexed_messages = (
         db.query(
-            Message.id,
-            Message.conversation_id,
-            Conversation.title,
+            Message.id.label("message_id"),
+            Message.conversation_id.label("conversation_id"),
+            Conversation.title.label("conversation_title"),
             message_index,
-            Message.role,
-            Message.content,
-            Message.created_at,
+            Message.role.label("role"),
+            Message.content.label("content"),
+            Message.created_at.label("created_at"),
+            Message.is_bookmarked.label("is_bookmarked"),
         )
         .join(Conversation, Conversation.id == Message.conversation_id)
         .filter(
             Conversation.user_id == current_user.id,
             Conversation.deleted_at.is_(None),
-            Message.is_bookmarked.is_(True),
         )
-        .order_by(Message.created_at.desc(), Message.id.desc())
+        .subquery()
+    )
+
+    rows = (
+        db.query(indexed_messages)
+        .filter(indexed_messages.c.is_bookmarked.is_(True))
+        .order_by(
+            indexed_messages.c.created_at.desc(),
+            indexed_messages.c.message_id.desc(),
+        )
         .limit(100)
         .all()
     )
 
     return [
         BookmarkedMessageOut(
-            message_id=row.id,
+            message_id=row.message_id,
             conversation_id=row.conversation_id,
-            conversation_title=row.title,
+            conversation_title=row.conversation_title,
             message_index=int(row.message_index),
             role=row.role.value,
             content=row.content,
