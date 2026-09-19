@@ -14,6 +14,7 @@ vi.mock("react-i18next", () => ({
       "sidebar.renameTitle": "إعادة تسمية",
       "sidebar.deleteTitle": "حذف",
       "sidebar.trashTitle": "سلة المحذوفات",
+      "sidebar.permanentDeleteConfirm": "حذف نهائي للمحادثة {{title}}؟",
       "sidebar.bulkTrash": "نقل المحدد إلى سلة المحذوفات",
       "sidebar.confirmDelete": "حذف المحادثة؟",
       "sidebar.foldersTitle": "المجلدات",
