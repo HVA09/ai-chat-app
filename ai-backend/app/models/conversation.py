@@ -36,6 +36,7 @@ class Conversation(Base):
     workspace_id: Mapped[int] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    ai_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     assistant_id: Mapped[int | None] = mapped_column(
         ForeignKey("assistants.id", ondelete="SET NULL"), nullable=True, index=True
     )
