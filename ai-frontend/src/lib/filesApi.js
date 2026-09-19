@@ -1,9 +1,11 @@
 import api from "./api";
 
-export async function uploadFile(file, onProgress, conversationId = null) {
+export async function uploadFile(file, onProgress, conversationId = null, workspaceId = null) {
   const formData = new FormData();
   formData.append("file", file);
-  const params = conversationId ? { conversation_id: conversationId } : {};
+  const params = {};
+  if (conversationId) params.conversation_id = conversationId;
+  if (workspaceId) params.workspace_id = workspaceId;
   const { data } = await api.post("/files/upload", formData, {
     headers: { "Content-Type": "multipart/form-data" },
     params,
@@ -16,12 +18,17 @@ export async function uploadFile(file, onProgress, conversationId = null) {
   return data;
 }
 
-export async function listFiles(conversationId = null, includeUnattached = false) {
+export async function listFiles(
+  conversationId = null,
+  includeUnattached = false,
+  workspaceId = null
+) {
   const params = {};
   if (conversationId) {
     params.conversation_id = conversationId;
     params.include_unattached = includeUnattached;
   }
+  if (workspaceId) params.workspace_id = workspaceId;
   const { data } = await api.get("/files", { params });
   return data;
 }

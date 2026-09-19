@@ -1614,6 +1614,7 @@ export default function App() {
         <Suspense fallback={<ModalLoadingFallback />}>
           <FilesPanel
             conversationId={conversationId}
+            workspaceId={selectedWorkspaceId}
             onAnalyzeImage={handleAnalyzeImage}
             onClose={() => setShowFiles(false)}
           />

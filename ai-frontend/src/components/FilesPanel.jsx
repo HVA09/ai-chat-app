@@ -29,7 +29,7 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function FilesPanel({ onClose, conversationId = null, onAnalyzeImage }) {
+export default function FilesPanel({ onClose, conversationId = null, workspaceId = null, onAnalyzeImage }) {
   const { t } = useTranslation();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -38,12 +38,19 @@ export default function FilesPanel({ onClose, conversationId = null, onAnalyzeIm
   const [dragOver, setDragOver] = useState(false);
   const [preview, setPreview] = useState(null); // { url, contentType, name }
   const [analyzingId, setAnalyzingId] = useState(null);
+  const [showWorkspaceFiles, setShowWorkspaceFiles] = useState(false);
   const fileInputRef = useRef(null);
 
   const refresh = async () => {
     setLoading(true);
     try {
-      setFiles(await listFiles(conversationId, Boolean(conversationId)));
+      setFiles(
+        await listFiles(
+          showWorkspaceFiles ? null : conversationId,
+          showWorkspaceFiles ? false : Boolean(conversationId),
+          showWorkspaceFiles ? workspaceId : null
+        )
+      );
     } catch {
       setError(t("files.listError"));
     } finally {
@@ -53,7 +60,7 @@ export default function FilesPanel({ onClose, conversationId = null, onAnalyzeIm
 
   useEffect(() => {
     refresh();
-  }, [conversationId]);
+  }, [conversationId, showWorkspaceFiles, workspaceId]);
 
   const handleUpload = async (fileList) => {
     const file = fileList?.[0];
@@ -61,7 +68,12 @@ export default function FilesPanel({ onClose, conversationId = null, onAnalyzeIm
     setError("");
     setUploadProgress(0);
     try {
-      await uploadFile(file, setUploadProgress, conversationId);
+      await uploadFile(
+        file,
+        setUploadProgress,
+        showWorkspaceFiles ? null : conversationId,
+        showWorkspaceFiles ? workspaceId : null
+      );
       await refresh();
     } catch (err) {
       setError(getErrorMessage(err, t("files.uploadError")));
@@ -135,7 +147,9 @@ export default function FilesPanel({ onClose, conversationId = null, onAnalyzeIm
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-2 sm:p-4">
       <div className="my-0 flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900 sm:my-8 sm:max-h-[calc(100dvh-3rem)] sm:max-w-lg sm:rounded-3xl sm:p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">{t("files.title")}</h2>
+          <h2 className="text-lg font-semibold text-slate-900">
+            {showWorkspaceFiles ? t("files.workspaceTitle") : t("files.title")}
+          </h2>
           <button
             onClick={onClose}
             className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
@@ -143,6 +157,31 @@ export default function FilesPanel({ onClose, conversationId = null, onAnalyzeIm
             ✕
           </button>
         </div>
+
+        {workspaceId !== null && (
+          <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 p-1 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={() => setShowWorkspaceFiles(false)}
+              className={`rounded-lg px-3 py-2 text-xs font-medium ${!showWorkspaceFiles ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
+            >
+              {t("files.myFiles")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowWorkspaceFiles(true)}
+              className={`rounded-lg px-3 py-2 text-xs font-medium ${showWorkspaceFiles ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
+            >
+              {t("files.workspaceFiles")}
+            </button>
+          </div>
+        )}
+
+        {showWorkspaceFiles && workspaceId === null ? (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            {t("files.workspaceUnavailable")}
+          </div>
+        ) : null}
 
         {/* منطقة السحب والإفلات */}
         <div
@@ -167,7 +206,9 @@ export default function FilesPanel({ onClose, conversationId = null, onAnalyzeIm
             className="hidden"
             onChange={(e) => handleUpload(e.target.files)}
           />
-          <p className="text-sm text-slate-500">{t("files.dropHint")}</p>
+          <p className="text-sm text-slate-500">
+            {showWorkspaceFiles ? t("files.workspaceDropHint") : t("files.dropHint")}
+          </p>
           <p className="mt-1 text-xs text-slate-400">{t("files.typesHint")}</p>
         </div>
 
@@ -230,7 +271,7 @@ export default function FilesPanel({ onClose, conversationId = null, onAnalyzeIm
                       {analyzingId === file.id ? "..." : "🔎"}
                     </button>
                   )}
-                  {conversationId && (
+                  {!showWorkspaceFiles && conversationId && (
                     <button
                       onClick={() => handleToggleAttachment(file)}
                       title={file.is_attached ? t("files.detach") : t("files.attach")}
@@ -239,6 +280,7 @@ export default function FilesPanel({ onClose, conversationId = null, onAnalyzeIm
                       {file.is_attached ? "↩" : "＋"}
                     </button>
                   )}
+                  {file.can_delete && (
                   <button
                     onClick={() => handleDelete(file.id)}
                     title={t("files.delete")}
@@ -246,6 +288,7 @@ export default function FilesPanel({ onClose, conversationId = null, onAnalyzeIm
                   >
                     ✕
                   </button>
+                  )}
                 </div>
               </div>
             ))

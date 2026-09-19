@@ -20,6 +20,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.user import User
+from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.file import FileOut
 from app.services.embeddings import EmbeddingServiceError
 from app.services.file_text_extractor import FileTextExtractionError, extract_text
@@ -128,26 +129,78 @@ def _get_owned_conversation(conversation_id: int, current_user: User, db: Sessio
     return conversation
 
 
-def _get_owned_file(file_id: int, current_user: User, db: Session) -> FileAttachment:
-    file = (
-        db.query(FileAttachment)
-        .filter(FileAttachment.id == file_id, FileAttachment.user_id == current_user.id)
+def _get_workspace_membership(
+    workspace_id: int, current_user: User, db: Session
+) -> WorkspaceMember:
+    membership = (
+        db.query(WorkspaceMember)
+        .filter(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == current_user.id,
+        )
         .first()
     )
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="مساحة العمل غير موجودة",
+        )
+    return membership
+
+
+def _get_accessible_file(
+    file_id: int, current_user: User, db: Session
+) -> FileAttachment:
+    file = db.query(FileAttachment).filter(FileAttachment.id == file_id).first()
     if not file:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
+
+    if file.workspace_id is None:
+        if file.user_id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
+        return file
+
+    _get_workspace_membership(file.workspace_id, current_user, db)
     return file
+
+
+def _file_response(
+    file: FileAttachment,
+    current_user: User,
+    db: Session,
+    *,
+    is_attached: bool = False,
+) -> FileOut:
+    response = FileOut.model_validate(file)
+    response.is_attached = is_attached
+    response.workspace_id = file.workspace_id
+    response.is_owner = file.user_id == current_user.id
+
+    can_delete = response.is_owner
+    if file.workspace_id is not None and not can_delete:
+        membership = _get_workspace_membership(file.workspace_id, current_user, db)
+        can_delete = membership.role in {WorkspaceRole.owner, WorkspaceRole.admin}
+    response.can_delete = can_delete
+    return response
 
 
 @router.post("/upload", response_model=FileOut, status_code=status.HTTP_201_CREATED)
 async def upload_file(
     file: UploadFile,
     conversation_id: int | None = None,
+    workspace_id: int | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     if conversation_id is not None:
-        _get_owned_conversation(conversation_id, current_user, db)
+        conversation = _get_owned_conversation(conversation_id, current_user, db)
+        if workspace_id is not None and workspace_id != conversation.workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="مساحة العمل لا تطابق مساحة عمل المحادثة",
+            )
+    if workspace_id is not None:
+        _get_workspace_membership(workspace_id, current_user, db)
 
     max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
     max_storage = settings.MAX_STORAGE_PER_USER_MB * 1024 * 1024
@@ -209,6 +262,7 @@ async def upload_file(
 
     attachment = FileAttachment(
         user_id=current_user.id,
+        workspace_id=workspace_id,
         original_filename=(file.filename or stored_filename)[:255],
         stored_filename=stored_filename,
         content_type=sniffed,
@@ -251,27 +305,48 @@ async def upload_file(
         f"رفع ملف: {attachment.original_filename} بواسطة {current_user.email}",
         current_user.id,
     )
-    response = FileOut.model_validate(attachment)
-    response.is_attached = conversation_id is not None
-    return response
+    return _file_response(
+        attachment,
+        current_user,
+        db,
+        is_attached=conversation_id is not None,
+    )
 
 
 @router.get("", response_model=list[FileOut])
 def list_files(
     conversation_id: int | None = None,
     include_unattached: bool = False,
+    workspace_id: int | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if conversation_id is None:
-        return (
+    if workspace_id is not None:
+        _get_workspace_membership(workspace_id, current_user, db)
+        files = (
             db.query(FileAttachment)
-            .filter(FileAttachment.user_id == current_user.id)
-            .order_by(FileAttachment.created_at.desc())
+            .filter(FileAttachment.workspace_id == workspace_id)
+            .order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc())
             .all()
         )
+        return [
+            _file_response(file, current_user, db)
+            for file in files
+        ]
 
-    _get_owned_conversation(conversation_id, current_user, db)
+    if conversation_id is None:
+        files = (
+            db.query(FileAttachment)
+            .filter(
+                FileAttachment.user_id == current_user.id,
+                FileAttachment.workspace_id.is_(None),
+            )
+            .order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc())
+            .all()
+        )
+        return [_file_response(file, current_user, db) for file in files]
+
+    conversation = _get_owned_conversation(conversation_id, current_user, db)
 
     if not include_unattached:
         files = (
@@ -289,9 +364,7 @@ def list_files(
         )
         results = []
         for file in files:
-            item = FileOut.model_validate(file)
-            item.is_attached = True
-            results.append(item)
+            results.append(_file_response(file, current_user, db, is_attached=True))
         return results
 
     rows = (
@@ -309,15 +382,18 @@ def list_files(
                 ConversationFileLink.conversation_id == conversation_id,
             ),
         )
-        .filter(FileAttachment.user_id == current_user.id)
-        .order_by(FileAttachment.created_at.desc())
+        .filter(
+            FileAttachment.user_id == current_user.id,
+            FileAttachment.workspace_id.is_(None),
+        )
+        .order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc())
         .all()
     )
     results = []
     for file, is_attached in rows:
-        item = FileOut.model_validate(file)
-        item.is_attached = bool(is_attached)
-        results.append(item)
+        results.append(
+            _file_response(file, current_user, db, is_attached=bool(is_attached))
+        )
     return results
 
 
@@ -328,8 +404,13 @@ def attach_file_to_conversation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    file = _get_owned_file(file_id, current_user, db)
-    _get_owned_conversation(conversation_id, current_user, db)
+    file = _get_accessible_file(file_id, current_user, db)
+    conversation = _get_owned_conversation(conversation_id, current_user, db)
+    if file.workspace_id is not None and file.workspace_id != conversation.workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ملف مساحة العمل لا ينتمي إلى مساحة عمل المحادثة",
+        )
     link = (
         db.query(ConversationFileLink)
         .filter(
@@ -346,9 +427,7 @@ def attach_file_to_conversation(
             )
         )
         db.commit()
-    response = FileOut.model_validate(file)
-    response.is_attached = True
-    return response
+    return _file_response(file, current_user, db, is_attached=True)
 
 
 @router.delete("/{file_id}/attach/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -358,8 +437,13 @@ def detach_file_from_conversation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    file = _get_owned_file(file_id, current_user, db)
-    _get_owned_conversation(conversation_id, current_user, db)
+    file = _get_accessible_file(file_id, current_user, db)
+    conversation = _get_owned_conversation(conversation_id, current_user, db)
+    if file.workspace_id is not None and file.workspace_id != conversation.workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ملف مساحة العمل لا ينتمي إلى مساحة عمل المحادثة",
+        )
     link = (
         db.query(ConversationFileLink)
         .filter(
@@ -383,8 +467,8 @@ def download_file(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    attachment = _get_owned_file(file_id, current_user, db)
-    path = _user_upload_dir(current_user.id) / attachment.stored_filename
+    attachment = _get_accessible_file(file_id, current_user, db)
+    path = _user_upload_dir(attachment.user_id) / attachment.stored_filename
     if not path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود على القرص")
     return FileResponse(
@@ -398,8 +482,13 @@ def delete_file(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    attachment = _get_owned_file(file_id, current_user, db)
-    path = _user_upload_dir(current_user.id) / attachment.stored_filename
+    attachment = _get_accessible_file(file_id, current_user, db)
+    if not _file_response(attachment, current_user, db).can_delete:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="ليس لديك صلاحية حذف هذا الملف",
+        )
+    path = _user_upload_dir(attachment.user_id) / attachment.stored_filename
     path.unlink(missing_ok=True)
     db.delete(attachment)
     db.commit()

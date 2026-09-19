@@ -160,3 +160,124 @@ def test_build_retrieval_context_returns_stable_sources(db_session):
     context, sources = build_retrieval_context([(chunk, file)])
     assert "[SOURCE S1: report.pdf | CHUNK: 3]" in context
     assert sources == [{"id": "S1", "filename": "report.pdf", "chunk": 3}]
+
+
+def test_workspace_knowledge_chunks_are_retrievable_without_conversation_link(
+    db_session, monkeypatch
+):
+    import asyncio
+    from app.models.conversation import Conversation
+    from app.models.workspace import Workspace
+
+    user = User(email="workspace-rag@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+
+    workspace = Workspace(owner_id=user.id, name="Research")
+    db_session.add(workspace)
+    db_session.flush()
+
+    conversation = Conversation(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        title="Research chat",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+
+    file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        original_filename="knowledge.txt",
+        stored_filename="knowledge.txt",
+        content_type="text/plain",
+        size_bytes=20,
+        extracted_text="workspace knowledge",
+    )
+    db_session.add(file)
+    db_session.flush()
+    chunk = FileChunk(
+        file_id=file.id,
+        chunk_index=0,
+        content="shared workspace evidence",
+        embedding=[0.1] * 768,
+    )
+    db_session.add(chunk)
+    db_session.commit()
+
+    async def fake_embed_query(_query):
+        return [0.1] * 768
+
+    monkeypatch.setattr(rag, "embed_query", fake_embed_query)
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            user.id,
+            conversation.id,
+            "evidence",
+            workspace_id=workspace.id,
+        )
+    )
+
+    assert len(rows) == 1
+    assert rows[0][0].content == "shared workspace evidence"
+    assert rows[0][1].id == file.id
+
+
+def test_workspace_knowledge_does_not_cross_workspace_scope(db_session, monkeypatch):
+    import asyncio
+    from app.models.conversation import Conversation
+    from app.models.workspace import Workspace
+
+    user = User(email="workspace-rag-isolation@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+
+    workspace_a = Workspace(owner_id=user.id, name="A")
+    workspace_b = Workspace(owner_id=user.id, name="B")
+    db_session.add_all([workspace_a, workspace_b])
+    db_session.flush()
+
+    conversation = Conversation(
+        user_id=user.id,
+        workspace_id=workspace_a.id,
+        title="A chat",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+
+    file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace_b.id,
+        original_filename="other.txt",
+        stored_filename="other.txt",
+        content_type="text/plain",
+        size_bytes=20,
+        extracted_text="other workspace knowledge",
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(
+        FileChunk(
+            file_id=file.id,
+            chunk_index=0,
+            content="other workspace evidence",
+            embedding=[0.1] * 768,
+        )
+    )
+    db_session.commit()
+
+    async def fake_embed_query(_query):
+        return [0.1] * 768
+
+    monkeypatch.setattr(rag, "embed_query", fake_embed_query)
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            user.id,
+            conversation.id,
+            "evidence",
+            workspace_id=workspace_a.id,
+        )
+    )
+    assert rows == []
