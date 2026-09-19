@@ -27,6 +27,70 @@ def test_chat_creates_conversation_and_returns_reply(client, monkeypatch):
     assert "conversation_id" in body
 
 
+def test_message_feedback_persists_and_can_be_cleared(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد مساعد")),
+    )
+    token = _register_and_login(client, "feedback@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post("/chat", json={"message": "سؤال"}, headers=headers)
+    assert response.status_code == 200
+    conversation_id = response.json()["conversation_id"]
+
+    saved = client.patch(
+        f"/chat/{conversation_id}/messages/2/feedback",
+        json={"rating": 1},
+        headers=headers,
+    )
+    assert saved.status_code == 200
+    assert saved.json() == {"message_index": 2, "feedback": 1}
+
+    detail = client.get(f"/conversations/{conversation_id}", headers=headers)
+    assert detail.status_code == 200
+    assert detail.json()["messages"][1]["feedback"] == 1
+
+    cleared = client.patch(
+        f"/chat/{conversation_id}/messages/2/feedback",
+        json={"rating": None},
+        headers=headers,
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["feedback"] is None
+
+    user_message = client.patch(
+        f"/chat/{conversation_id}/messages/1/feedback",
+        json={"rating": -1},
+        headers=headers,
+    )
+    assert user_message.status_code == 400
+
+
+def test_message_feedback_respects_conversation_ownership(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token_a = _register_and_login(client, "feedback-owner@example.com")
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "خاص"},
+        headers=headers_a,
+    ).json()["conversation_id"]
+
+    token_b = _register_and_login(client, "feedback-other@example.com")
+    response = client.patch(
+        f"/chat/{conversation_id}/messages/2/feedback",
+        json={"rating": 1},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
+
+
 def test_regenerate_replaces_last_assistant_without_duplicate_user_message(client, monkeypatch, db_session):
     monkeypatch.setattr(
         chat_router_module,
