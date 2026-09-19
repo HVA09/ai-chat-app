@@ -27,7 +27,6 @@ from app.routers.files import router as files_router
 from app.routers.folders import router as folders_router
 from app.routers.notifications import router as notifications_router
 from app.routers.shared_conversations import router as shared_conversations_router
-from app.routers.shared_conversations import router as shared_conversations_router
 from app.routers.users import router as users_router
 from app.routers.workspaces import router as workspaces_router
 from app.routers.workspace_members import router as workspace_members_router
@@ -38,8 +37,6 @@ logger = get_logger("main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # الجداول تُدار الآن عبر Alembic (migrations/) مو create_all —
-    # شغّل "alembic upgrade head" قبل تشغيل السيرفر (الـ Dockerfile يسويها تلقائيًا)
     logger.info("التطبيق بدأ التشغيل (%s)", settings.ENVIRONMENT)
     yield
 
@@ -85,10 +82,7 @@ async def cookie_csrf_middleware(request: Request, call_next):
             origin = request.headers.get("origin")
             allowed_origins = {origin.rstrip("/") for origin in settings.CORS_ORIGINS if origin}
             if not origin or origin.rstrip("/") not in allowed_origins:
-                return JSONResponse(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    content={"detail": "CSRF validation failed"},
-                )
+                return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content={"detail": "CSRF validation failed"})
     return await call_next(request)
 
 
@@ -100,19 +94,14 @@ async def security_headers_middleware(request: Request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
     if settings.ENVIRONMENT == "production":
-        # فقط بالإنتاج (خلف HTTPS) — بالتطوير المحلي (HTTP) تكسر المتصفح لو فعّلناها
         response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
     return response
 
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    """يمسك أي خطأ غير متوقع (مو HTTPException) — يسجّله ويرجّع رد نظيف بدون تفاصيل داخلية"""
     logger.exception("خطأ غير متوقع في %s %s", request.method, request.url.path)
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "حدث خطأ غير متوقع في الخادم"},
-    )
+    return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": "حدث خطأ غير متوقع في الخادم"})
 
 
 @app.get("/health", tags=["Health"])
@@ -123,13 +112,7 @@ def health_check(db: Session = Depends(get_db)):
     except Exception:
         logger.exception("فحص الصحة: قاعدة البيانات غير متاحة")
         db_status = "error"
-
-    return {
-        "status": "ok" if db_status == "ok" else "degraded",
-        "database": db_status,
-        "environment": settings.ENVIRONMENT,
-        "app": settings.APP_NAME,
-    }
+    return {"status": "ok" if db_status == "ok" else "degraded", "database": db_status, "environment": settings.ENVIRONMENT, "app": settings.APP_NAME}
 
 
 app.include_router(auth_router)
@@ -143,7 +126,6 @@ app.include_router(files_router)
 app.include_router(folders_router)
 app.include_router(billing_router)
 app.include_router(notifications_router)
-app.include_router(shared_conversations_router)
 app.include_router(shared_conversations_router)
 app.include_router(admin_router)
 app.include_router(assistants_router)
