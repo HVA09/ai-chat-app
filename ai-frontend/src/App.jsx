@@ -180,10 +180,11 @@ export default function App() {
   const refreshAiModels = async () => {
     try {
       const data = await listAiModels();
-      setAiModels(data.models || []);
-      const fallback = data.default_model || data.models?.[0]?.id || "";
+      const models = Array.isArray(data) ? data : data.models || [];
+      setAiModels(models);
+      const fallback = models.find((model) => model.is_default)?.id || models[0]?.id || "";
       setSelectedModel((current) =>
-        current && data.models?.some((model) => model.id === current) ? current : fallback
+        current && models.some((model) => model.id === current) ? current : fallback
       );
     } catch {
       // فشل تحميل النماذج لا يمنع استخدام النموذج الافتراضي.
@@ -477,6 +478,12 @@ export default function App() {
       setSelectedAssistantId(data.assistant_id ?? null);
       setSelectedWorkspaceId(data.workspace_id ?? null);
       setSelectedFolderId(data.folder_id ?? null);
+      setSelectedModel(
+        data.ai_model ||
+          aiModels.find((model) => model.is_default)?.id ||
+          aiModels[0]?.id ||
+          ""
+      );
       setMessages(
         data.messages.map((m) => ({
           role: m.role,
