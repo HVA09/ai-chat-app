@@ -13,6 +13,8 @@ vi.mock("react-i18next", () => ({
       "tools.webSearch": "بحث الويب",
       "tools.dataAnalysis": "تحليل البيانات",
       "tools.agent": "وضع الوكيل",
+      "tools.voiceInput": "إدخال صوتي",
+      "tools.voiceStop": "إيقاف الإدخال الصوتي",
     })[key] ?? key,
   }),
 }));
@@ -73,6 +75,50 @@ describe("ChatComposer tools", () => {
 
     await user.click(screen.getByTitle("الآلة الحاسبة"));
     expect(onInsertCalculator).toHaveBeenCalled();
+  });
+
+  it("زر الإدخال الصوتي يضيف النص الناتج", async () => {
+    class MockRecognition {
+      start() {
+        this.onstart?.();
+        this.onresult?.({
+          results: [[{ transcript: "اختبار صوتي" }]],
+        });
+        this.onend?.();
+      }
+      stop() {
+        this.onend?.();
+      }
+    }
+
+    Object.defineProperty(window, "SpeechRecognition", {
+      configurable: true,
+      writable: true,
+      value: MockRecognition,
+    });
+
+    const user = userEvent.setup();
+    let currentValue = "";
+    const setValue = vi.fn((updater) => {
+      currentValue =
+        typeof updater === "function" ? updater(currentValue) : updater;
+    });
+
+    render(
+      <ChatComposer
+        value={currentValue}
+        setValue={setValue}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onInsertCalculator={vi.fn()}
+        onInsertWebSearch={vi.fn()}
+        onInsertDataAnalysis={vi.fn()}
+        onInsertAgent={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByTitle("إدخال صوتي"));
+    expect(currentValue).toBe("اختبار صوتي");
   });
 
   it("زر وضع الوكيل يمرر المعالج", async () => {
