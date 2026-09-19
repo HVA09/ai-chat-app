@@ -116,6 +116,8 @@ export default function App() {
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
     setAuthed(false);
     setConversations([]);
+    setFolders([]);
+    setSelectedFolderId(null);
     setConversationId(null);
     setMessages([getWelcomeMessage(t)]);
     setInput("");
