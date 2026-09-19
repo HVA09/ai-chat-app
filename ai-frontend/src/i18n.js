@@ -182,6 +182,12 @@ const resources = {
         noConversations: "لا توجد محادثات",
         logsLoadError: "تعذر تحميل السجل",
         noLogs: "لا توجد أحداث بعد",
+        feedbackTitle: "جودة ردود الذكاء الاصطناعي",
+        feedbackLast30Days: "آخر 30 يوم",
+        feedbackRated: "ردود مقيّمة",
+        feedbackPositive: "مفيد",
+        feedbackNegative: "غير مفيد",
+        feedbackPositiveRate: "نسبة التقييم الإيجابي",
       },
 
       files: {
@@ -555,6 +561,12 @@ const resources = {
         noConversations: "No conversations",
         logsLoadError: "Couldn't load the log",
         noLogs: "No events yet",
+        feedbackTitle: "AI response quality",
+        feedbackLast30Days: "Last 30 days",
+        feedbackRated: "Rated responses",
+        feedbackPositive: "Helpful",
+        feedbackNegative: "Not helpful",
+        feedbackPositiveRate: "Positive rate",
       },
 
       files: {
