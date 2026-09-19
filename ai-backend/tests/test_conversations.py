@@ -151,6 +151,55 @@ def test_rename_rejects_blank_title(client, monkeypatch):
     assert response.status_code == 422
 
 
+def test_export_conversation_markdown(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تجريبي")),
+    )
+    token = _register_and_login(client, "export@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    chat_response = client.post(
+        "/chat",
+        json={"message": "أول رسالة للتصدير"},
+        headers=headers,
+    )
+    conversation_id = chat_response.json()["conversation_id"]
+
+    response = client.get(
+        f"/conversations/{conversation_id}/export",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert "attachment; filename=" in response.headers["content-disposition"]
+    assert "# محادثة جديدة" in response.text
+    assert "أول رسالة للتصدير" in response.text
+    assert "رد تجريبي" in response.text
+
+
+def test_cannot_export_other_users_conversation(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token_a = _register_and_login(client, "export-owner@example.com")
+    chat_response = client.post(
+        "/chat",
+        json={"message": "خاص"},
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    conversation_id = chat_response.json()["conversation_id"]
+
+    token_b = _register_and_login(client, "export-other@example.com")
+    response = client.get(
+        f"/conversations/{conversation_id}/export",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
+
+
 def test_delete_conversation(client, monkeypatch):
     monkeypatch.setattr(chat_router_module, "get_ai_reply", AsyncMock(return_value=AIReply(text="رد")))
     token = _register_and_login(client)
