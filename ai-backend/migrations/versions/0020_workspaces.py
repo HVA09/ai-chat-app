@@ -65,7 +65,7 @@ $$;"""
     )
     op.execute(
         """CREATE TABLE workspace_members (
-            id INTEGER PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             workspace_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
             role workspacerole NOT NULL DEFAULT 'member',
