@@ -266,6 +266,71 @@ def test_cannot_duplicate_other_users_conversation(client, monkeypatch):
     assert response.status_code == 404
 
 
+def test_toggle_message_bookmark_and_list_bookmarks(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد محفوظ")),
+    )
+    token = _register_and_login(client, "bookmark@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "رسالة مهمة للحفظ"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    first = client.patch(
+        f"/chat/{conversation_id}/messages/2/bookmark",
+        headers=headers,
+    )
+    assert first.status_code == 200
+    assert first.json() == {"message_index": 2, "bookmarked": True}
+
+    listed = client.get("/conversations/bookmarks", headers=headers)
+    assert listed.status_code == 200
+    payload = listed.json()
+    assert len(payload) == 1
+    assert payload[0]["conversation_id"] == conversation_id
+    assert payload[0]["message_index"] == 2
+    assert payload[0]["role"] == "assistant"
+    assert payload[0]["content"] == "رد محفوظ"
+
+    detail = client.get(f"/conversations/{conversation_id}", headers=headers)
+    assert detail.status_code == 200
+    assert detail.json()["messages"][1]["is_bookmarked"] is True
+
+    second = client.patch(
+        f"/chat/{conversation_id}/messages/2/bookmark",
+        headers=headers,
+    )
+    assert second.status_code == 200
+    assert second.json()["bookmarked"] is False
+    assert client.get("/conversations/bookmarks", headers=headers).json() == []
+
+
+def test_cannot_bookmark_other_users_message(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token_a = _register_and_login(client, "bookmark-owner@example.com")
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "خاص"},
+        headers={"Authorization": f"Bearer {token_a}"},
+    ).json()["conversation_id"]
+
+    token_b = _register_and_login(client, "bookmark-other@example.com")
+    response = client.patch(
+        f"/chat/{conversation_id}/messages/2/bookmark",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
+
+
 def test_rename_conversation(client, monkeypatch):
     monkeypatch.setattr(chat_router_module, "get_ai_reply", AsyncMock(return_value=AIReply(text="رد")))
     token = _register_and_login(client)
