@@ -7,7 +7,7 @@ import ChatComposer from "./components/ChatComposer";
 import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
-import { streamChatMessage, streamRegenerateMessage, streamEditMessage } from "./lib/chatApi";
+import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
 
@@ -466,10 +466,35 @@ export default function App() {
           text: m.content,
           time: new Date(m.created_at).toLocaleTimeString(),
           sources: m.sources ?? [],
+          feedback: m.feedback ?? null,
         }))
       );
     } catch {
       setError(t("app.conversationLoadError"));
+    }
+  };
+
+  const handleMessageFeedback = async (index, rating) => {
+    if (!conversationId || loading) return;
+
+    const nextRating = rating === messages[index]?.feedback ? null : rating;
+    const previousRating = messages[index]?.feedback ?? null;
+
+    setMessages((prev) =>
+      prev.map((message, messageIndex) =>
+        messageIndex === index ? { ...message, feedback: nextRating } : message
+      )
+    );
+
+    try {
+      await setMessageFeedback(conversationId, index + 1, nextRating);
+    } catch {
+      setMessages((prev) =>
+        prev.map((message, messageIndex) =>
+          messageIndex === index ? { ...message, feedback: previousRating } : message
+        )
+      );
+      setToast({ message: t("app.feedbackError"), type: "error" });
     }
   };
 
@@ -686,7 +711,7 @@ export default function App() {
     setMessages((prev) => [
       ...prev,
       { role: "user", text: userText, time: new Date().toLocaleTimeString() },
-      { role: "assistant", text: "", time: new Date().toLocaleTimeString() },
+      { role: "assistant", text: "", time: new Date().toLocaleTimeString(), feedback: null },
     ]);
     setInput("");
     setLoading(true);
@@ -751,7 +776,7 @@ export default function App() {
     setError("");
     setMessages((prev) =>
       prev.map((message, index) =>
-        index === targetIndex ? { ...message, text: "" } : message
+        index === targetIndex ? { ...message, text: "", feedback: null } : message
       )
     );
     setLoading(true);
@@ -969,6 +994,14 @@ export default function App() {
                     text={msg.text}
                     time={msg.time}
                     sources={msg.sources}
+                    feedback={msg.feedback ?? null}
+                    canFeedback={
+                      msg.role === "assistant" &&
+                      !loading &&
+                      editingMessageIndex === null &&
+                      conversationId !== null
+                    }
+                    onFeedback={(rating) => handleMessageFeedback(index, rating)}
                     canEdit={
                       msg.role === "user" &&
                       !loading &&
