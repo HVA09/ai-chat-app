@@ -71,6 +71,32 @@ def test_chat_rejects_disallowed_model(client, monkeypatch):
     assert response.status_code == 400
 
 
+def test_chat_includes_saved_user_memory_in_ai_context(client, monkeypatch):
+    mock_reply = AsyncMock(return_value=AIReply(text="رد"))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
+
+    token = _register_and_login(client, "memory-context@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    memory = client.post(
+        "/memories",
+        json={"content": "أفضل الإجابات المختصرة وبالعربية."},
+        headers=headers,
+    )
+    assert memory.status_code == 201
+
+    response = client.post(
+        "/chat",
+        json={"message": "اشرح لينكس ببساطة"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    sent_message = mock_reply.await_args.args[0]
+    assert "[USER MEMORY]" in sent_message
+    assert "أفضل الإجابات المختصرة وبالعربية." in sent_message
+    assert "USER REQUEST:" in sent_message
+
+
 def test_chat_creates_conversation_and_returns_reply(client, monkeypatch):
     mock_reply = AsyncMock(return_value=AIReply(text="رد تجريبي من المساعد"))
     monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
