@@ -19,7 +19,7 @@ def upgrade() -> None:
     # Use raw SQL here so SQLAlchemy cannot emit an implicit CREATE TYPE again.
     op.execute(
         """CREATE TABLE workspace_invitations (
-            id INTEGER PRIMARY KEY,
+            id SERIAL PRIMARY KEY,
             workspace_id INTEGER NOT NULL,
             invited_by_user_id INTEGER NOT NULL,
             invited_user_id INTEGER NOT NULL,
