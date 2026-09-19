@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import Sidebar from "./Sidebar";
@@ -120,15 +120,14 @@ describe("Sidebar", () => {
     expect(onSelectConversation).toHaveBeenCalledWith(1);
   });
 
-  it("بحث المحادثات يرسل القيمة إلى المعالج بعد مهلة قصيرة", async () => {
+  it("بحث المحادثات يرسل القيمة إلى المعالج بعد مهلة قصيرة", () => {
     vi.useFakeTimers();
     try {
       const onSearchChange = vi.fn();
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
       renderSidebar({ onSearchChange });
 
       const input = screen.getByRole("searchbox");
-      await user.type(input, "عمل");
+      fireEvent.change(input, { target: { value: "عمل" } });
       vi.advanceTimersByTime(350);
 
       expect(onSearchChange).toHaveBeenLastCalledWith("عمل");
