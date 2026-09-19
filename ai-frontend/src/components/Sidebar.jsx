@@ -144,7 +144,7 @@ export default function Sidebar({
               className="h-4 w-4 shrink-0 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
             />{item.is_pinned ? <span aria-hidden="true">★</span> : null}<span className="truncate">{item.title}</span></span>
           <div className="flex flex-wrap items-center justify-end gap-1">
-            <span className="hidden text-xs text-slate-400 sm:inline">{new Date(item.created_at).toLocaleDateString()}</span>
+            <span className="hidden text-xs text-slate-400 sm:inline">{new Date(item.updated_at ?? item.created_at).toLocaleDateString()}</span>
             <button
               onClick={(e) => handleTogglePin(e, item)}
               title={item.is_pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}
