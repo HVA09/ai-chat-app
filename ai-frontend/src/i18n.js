@@ -21,6 +21,8 @@ const resources = {
       noChats: "لا توجد محادثات بعد",
       exportConversation: "تصدير",
       exportConversationDisabled: "ابدأ محادثة أولًا",
+      exportMarkdown: "Markdown",
+      exportJson: "JSON",
       exportConversationSuccess: "تم تصدير المحادثة",
       exportConversationError: "تعذر تصدير المحادثة",
 
@@ -418,6 +420,8 @@ const resources = {
       noChats: "No conversations yet",
       exportConversation: "Export",
       exportConversationDisabled: "Start a conversation first",
+      exportMarkdown: "Markdown",
+      exportJson: "JSON",
       exportConversationSuccess: "Conversation exported",
       exportConversationError: "Couldn't export the conversation",
 
