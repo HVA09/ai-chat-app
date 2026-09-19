@@ -20,6 +20,7 @@ from app.models.file_attachment import FileAttachment
 from app.models.file_chunk import FileChunk
 from app.models.usage_log import UsageLog
 from app.models.user import User
+from app.models.user_memory import UserMemory
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.chat import (
     ChatEditRequest,
@@ -248,6 +249,26 @@ async def _build_file_context(
     return context, list(sources)
 
 
+def _build_memory_context(current_user_id: int, db: Session) -> str:
+    memories = (
+        db.query(UserMemory)
+        .filter(UserMemory.user_id == current_user_id)
+        .order_by(UserMemory.updated_at.desc(), UserMemory.id.desc())
+        .limit(20)
+        .all()
+    )
+    if not memories:
+        return ""
+    lines = "\n".join(f"- {memory.content}" for memory in memories)
+    return (
+        "[USER MEMORY]\n"
+        f"{lines}\n"
+        "Use these saved preferences only when relevant to the user's request. "
+        "Do not mention this memory block unless it directly helps answer the user.\n"
+        "[END USER MEMORY]"
+    )
+
+
 def _build_assistant_context(
     conversation: Conversation, db: Session
 ) -> str:
@@ -341,9 +362,14 @@ async def _augment_message(
     message: str, conversation: Conversation, db: Session
 ) -> tuple[str, list[dict]]:
     assistant_context = _build_assistant_context(conversation, db)
+    memory_context = _build_memory_context(conversation.user_id, db)
     file_context, sources = await _build_file_context(conversation, message, db)
 
-    context_parts = [part for part in (assistant_context, file_context) if part]
+    context_parts = [
+        part
+        for part in (memory_context, assistant_context, file_context)
+        if part
+    ]
     if not context_parts:
         return message, []
 
@@ -423,9 +449,11 @@ async def analyze_attached_image(
 
     history = _build_history(conversation, db)
     assistant_context = _build_assistant_context(conversation, db)
+    memory_context = _build_memory_context(conversation.user_id, db)
     prompt = payload.message
-    if assistant_context:
-        prompt = f"{assistant_context}\n\nUSER REQUEST:\n{payload.message}"
+    context_parts = [part for part in (memory_context, assistant_context) if part]
+    if context_parts:
+        prompt = f"{'\n\n'.join(context_parts)}\n\nUSER REQUEST:\n{payload.message}"
 
     try:
         raw = image_path.read_bytes()
