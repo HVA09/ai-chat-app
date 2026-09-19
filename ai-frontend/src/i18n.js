@@ -283,6 +283,18 @@ const resources = {
         chunkTooltip: "المقطع {{chunk}} من الملف",
       },
 
+      feedback: {
+        helpful: "مفيد",
+        notHelpful: "غير مفيد",
+        saved: "تم حفظ التقييم",
+      },
+
+      feedback: {
+        helpful: "Helpful",
+        notHelpful: "Not helpful",
+        saved: "Feedback saved",
+      },
+
       notif: {
         title: "الإشعارات",
         markAllRead: "تعليم الكل كمقروء",
