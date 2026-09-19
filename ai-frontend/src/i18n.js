@@ -48,6 +48,8 @@ const resources = {
         workspaceRenameError: "تعذر إعادة تسمية مساحة العمل",
         loginSuccess: "تم تسجيل الدخول بنجاح",
         connectionError: "تعذر الاتصال بالخادم",
+        voiceNotSupported: "الإدخال الصوتي غير مدعوم في هذا المتصفح",
+        voiceError: "تعذر استخدام الإدخال الصوتي",
         sendMessageError: "تعذر إرسال الرسالة إلى الخادم.",
       },
 
@@ -383,6 +385,8 @@ const resources = {
         webSearch: "بحث الويب — ابحث في المصادر المتاحة عبر الويب",
         dataAnalysis: "تحليل البيانات — حلل ملف CSV أو XLSX مرفق بالمحادثة",
         agent: "وضع الوكيل — دع المساعد يختار الأدوات الآمنة",
+        voiceInput: "إدخال صوتي",
+        voiceStop: "إيقاف الإدخال الصوتي",
       },
     },
   },
@@ -431,6 +435,8 @@ const resources = {
         loginSuccess: "Logged in successfully",
         connectionError: "Couldn't connect to the server",
         sendMessageError: "Couldn't send the message to the server.",
+        voiceNotSupported: "Voice input is not supported in this browser",
+        voiceError: "Couldn't use voice input",
       },
 
       header: {
@@ -765,6 +771,8 @@ const resources = {
         webSearch: "Web search — search available web sources",
         dataAnalysis: "Data analysis — analyze an attached CSV or XLSX file",
         agent: "Agent mode — let the assistant choose safe tools",
+        voiceInput: "Voice input",
+        voiceStop: "Stop voice input",
       },
     },
   },
