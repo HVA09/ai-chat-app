@@ -4,6 +4,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.conversation import MessageRole
+from app.schemas.tags import TagOut
 
 
 class ChatRequest(BaseModel):
@@ -107,6 +108,7 @@ class ConversationOut(BaseModel):
     workspace_id: int
     ai_model: str | None
     deleted_at: datetime | None
+    tags: list[TagOut] = Field(default_factory=list)
 
 
 class ConversationDetail(ConversationOut):
