@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
+from app.models.conversation_tag import conversation_tag_links
 
 
 class MessageRole(str, enum.Enum):
@@ -48,6 +49,12 @@ class Conversation(Base):
     folder = relationship("ConversationFolder", back_populates="conversations")
     workspace = relationship("Workspace", back_populates="conversations")
     assistant = relationship("Assistant", back_populates="conversations")
+    tags = relationship(
+        "ConversationTag",
+        secondary=conversation_tag_links,
+        back_populates="conversations",
+        passive_deletes=True,
+    )
     shares = relationship(
         "ConversationShare", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
     )
