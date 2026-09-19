@@ -49,6 +49,7 @@ const resources = {
         savedPromptCreateError: "تعذر إنشاء الموجه المحفوظ",
         savedPromptUpdateError: "تعذر تعديل الموجه المحفوظ",
         savedPromptDeleteError: "تعذر حذف الموجه المحفوظ",
+        bookmarkError: "تعذر تحديث المحفوظات",
         archiveConversationError: "تعذر أرشفة المحادثة",
         trashConversationError: "تعذر نقل المحادثة إلى سلة المحذوفات",
         folderCreateError: "تعذر إنشاء المجلد",
@@ -356,6 +357,13 @@ const resources = {
         backToApp: "العودة للتطبيق",
       },
 
+      bookmarks: {
+        title: "المحفوظات",
+        empty: "لا توجد رسائل محفوظة بعد",
+        save: "حفظ الرسالة",
+        remove: "إزالة من المحفوظات",
+      },
+
       sources: {
         title: "المصادر",
         chunkShort: "مقطع {{chunk}}",
@@ -504,6 +512,7 @@ const resources = {
         savedPromptCreateError: "Couldn't create the saved prompt",
         savedPromptUpdateError: "Couldn't update the saved prompt",
         savedPromptDeleteError: "Couldn't delete the saved prompt",
+        bookmarkError: "Couldn't update bookmarks",
         archiveConversationError: "Couldn't archive the conversation",
         trashConversationError: "Couldn't move the conversation to trash",
         folderCreateError: "Couldn't create the folder",
@@ -808,6 +817,13 @@ const resources = {
         accepted: "Invitation accepted. You joined {{workspace}}.",
         error: "Couldn't accept the invitation. It may be expired or revoked.",
         backToApp: "Back to app",
+      },
+
+      bookmarks: {
+        title: "Bookmarks",
+        empty: "No bookmarked messages yet",
+        save: "Save message",
+        remove: "Remove from bookmarks",
       },
 
       sources: {
