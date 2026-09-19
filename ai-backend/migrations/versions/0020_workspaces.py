@@ -51,41 +51,32 @@ def upgrade() -> None:
         unique=False,
     )
 
-    workspace_role = sa.Enum("owner", "admin", "member", name="workspacerole")
-    op.create_table(
-        "workspace_members",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("workspace_id", sa.Integer(), nullable=False),
-        sa.Column("user_id", sa.Integer(), nullable=False),
-        sa.Column(
-            "role",
-            workspace_role,
-            nullable=False,
-            server_default="member",
-        ),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(
-            ["workspace_id"],
-            ["workspaces.id"],
-            name="fk_workspace_members_workspace_id_workspaces",
-            ondelete="CASCADE",
-        ),
-        sa.ForeignKeyConstraint(
-            ["user_id"],
-            ["users.id"],
-            name="fk_workspace_members_user_id_users",
-            ondelete="CASCADE",
-        ),
-        sa.UniqueConstraint(
-            "workspace_id",
-            "user_id",
-            name="uq_workspace_members_workspace_user",
-        ),
+    bind = op.get_bind()
+    # CREATE TYPE is guarded explicitly because a previous interrupted deployment
+    # may have left the enum behind even when Alembic did not record revision 0020.
+    op.execute(
+        """DO $$
+BEGIN
+    CREATE TYPE workspacerole AS ENUM ('owner', 'admin', 'member');
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END
+$$;"""
+    )
+    op.execute(
+        """CREATE TABLE workspace_members (
+            id SERIAL PRIMARY KEY,
+            workspace_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            role workspacerole NOT NULL DEFAULT 'member',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT fk_workspace_members_workspace_id_workspaces
+                FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+            CONSTRAINT fk_workspace_members_user_id_users
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CONSTRAINT uq_workspace_members_workspace_user
+                UNIQUE (workspace_id, user_id)
+        )"""
     )
     op.create_index(
         "ix_workspace_members_user_id",
@@ -113,7 +104,6 @@ def upgrade() -> None:
         ondelete="CASCADE",
     )
 
-    bind = op.get_bind()
     user_rows = bind.execute(
         sa.text("SELECT id FROM users ORDER BY id")
     ).mappings().all()
