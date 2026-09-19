@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FixedSizeList } from "react-window";
 import AutoSizer from "react-virtualized-auto-sizer";
@@ -31,6 +31,8 @@ export default function Sidebar({
   onMoveConversationToFolder,
   selectedConversationIds = [],
   onToggleConversationSelection = () => {},
+  searchValue = "",
+  onSearchChange = () => {},
   onToggleSelectAllVisible = () => {},
   onClearSelectedConversations = () => {},
   onBulkArchive = () => {},
@@ -48,15 +50,20 @@ export default function Sidebar({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(searchValue);
 
-  const filteredConversations = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase();
-    if (!query) return conversations;
-    return conversations.filter((item) =>
-      (item.title || "").toLocaleLowerCase().includes(query)
-    );
-  }, [conversations, search]);
+  useEffect(() => {
+    setSearch(searchValue);
+  }, [searchValue]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      onSearchChange(search);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search, onSearchChange]);
+
+  const filteredConversations = conversations;
 
   const filteredConversationIds = useMemo(
     () => filteredConversations.map((item) => item.id),
