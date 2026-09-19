@@ -55,6 +55,13 @@ import {
   updateAssistant,
   deleteAssistant,
 } from "./lib/assistantsApi";
+import {
+  listTags,
+  createTag,
+  updateTag,
+  deleteTag,
+  setConversationTags,
+} from "./lib/tagsApi";
 import { getCurrentUser } from "./lib/usersApi";
 import {
   listNotifications,
@@ -104,6 +111,8 @@ export default function App() {
   const [showTrashConversations, setShowTrashConversations] = useState(false);
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState(null);
+  const [tags, setTags] = useState([]);
+  const [selectedTagId, setSelectedTagId] = useState(null);
   const [workspaces, setWorkspaces] = useState([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(null);
   const [assistants, setAssistants] = useState([]);
@@ -148,6 +157,8 @@ export default function App() {
     setWorkspaces([]);
     setSelectedWorkspaceId(null);
     setSelectedFolderId(null);
+    setTags([]);
+    setSelectedTagId(null);
     setAssistants([]);
     setAiModels([]);
     setSelectedModel("");
@@ -202,7 +213,8 @@ export default function App() {
     folderId = selectedFolderId,
     workspaceId = selectedWorkspaceId,
     search = conversationSearch,
-    includeDeleted = showTrashConversations
+    includeDeleted = showTrashConversations,
+    tagId = selectedTagId
   ) => {
     setConversationsLoading(true);
     try {
@@ -211,7 +223,8 @@ export default function App() {
         folderId,
         workspaceId,
         search,
-        includeDeleted
+        includeDeleted,
+        tagId
       );
       setConversations(list);
     } catch {
@@ -233,6 +246,108 @@ export default function App() {
     }, 300);
     return () => window.clearTimeout(timer);
   }, [conversationSearch, authed]);
+
+  const refreshTags = async () => {
+    try {
+      setTags(await listTags());
+    } catch {
+      // فشل تحميل الوسوم لا يوقف الشات.
+    }
+  };
+
+  const handleCreateTag = async () => {
+    const name = window.prompt(t("sidebar.tagCreatePrompt"));
+    if (!name?.trim()) return;
+    try {
+      const tag = await createTag(name.trim());
+      await refreshTags();
+      setSelectedTagId(tag.id);
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        conversationSearch,
+        showTrashConversations,
+        tag.id
+      );
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.tagCreateError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleRenameTag = async (id, currentName, currentColor) => {
+    const name = window.prompt(t("sidebar.tagRenamePrompt"), currentName);
+    if (!name?.trim()) return;
+    try {
+      await updateTag(id, name.trim(), currentColor);
+      await refreshTags();
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.tagRenameError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleDeleteTag = async (id, name) => {
+    if (!window.confirm(t("sidebar.tagDeleteConfirm", { name }))) return;
+    const wasSelected = id === selectedTagId;
+    try {
+      await deleteTag(id);
+      if (wasSelected) setSelectedTagId(null);
+      await refreshTags();
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        conversationSearch,
+        showTrashConversations,
+        wasSelected ? null : selectedTagId
+      );
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.tagDeleteError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleSelectTag = async (id) => {
+    const tagId = id === null || id === undefined ? null : Number(id);
+    setSelectedTagId(tagId);
+    setSelectedConversationIds([]);
+    startNewChat();
+    await refreshConversations(
+      showArchivedConversations,
+      selectedFolderId,
+      selectedWorkspaceId,
+      conversationSearch,
+      showTrashConversations,
+      tagId
+    );
+  };
+
+  const handleSetConversationTags = async (id, tagIds) => {
+    try {
+      await setConversationTags(id, tagIds);
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        conversationSearch,
+        showTrashConversations,
+        selectedTagId
+      );
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.conversationTagError"),
+        type: "error",
+      });
+    }
+  };
 
   const refreshWorkspaces = async () => {
     try {
@@ -543,6 +658,7 @@ export default function App() {
     if (authed) {
       refreshWorkspaces();
       refreshFolders();
+      refreshTags();
       refreshAssistants();
       refreshCurrentUser();
       refreshNotifications();
@@ -1148,6 +1264,13 @@ export default function App() {
         onRenameFolder={handleRenameFolder}
         onDeleteFolder={handleDeleteFolder}
         onMoveConversationToFolder={handleMoveConversationToFolder}
+        tags={tags}
+        selectedTagId={selectedTagId}
+        onSelectTag={handleSelectTag}
+        onCreateTag={handleCreateTag}
+        onRenameTag={handleRenameTag}
+        onDeleteTag={handleDeleteTag}
+        onSetConversationTags={handleSetConversationTags}
         selectedConversationIds={selectedConversationIds}
         onToggleConversationSelection={toggleConversationSelection}
         onToggleSelectAllVisible={toggleSelectAllVisibleConversations}
