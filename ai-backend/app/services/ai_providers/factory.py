@@ -12,7 +12,9 @@ SUPPORTED_PROVIDERS = ("openai", "deepseek", "anthropic", "gemini")
 def get_provider(model: str | None = None) -> AIProvider:
     provider_name = settings.AI_PROVIDER.lower().strip()
     selected_model = (model or settings.AI_MODEL).strip()
-    if selected_model not in settings.AI_ALLOWED_MODELS:
+    allowed_models = set(settings.AI_ALLOWED_MODELS or [])
+    allowed_models.add(settings.AI_MODEL)
+    if selected_model not in allowed_models:
         raise ValueError(
             f"AI_MODEL='{selected_model}' غير مسموح — الخيارات: {', '.join(settings.AI_ALLOWED_MODELS)}"
         )
