@@ -123,6 +123,16 @@ const resources = {
         deleteAccountWarning: "هذا الإجراء نهائي — يحذف حسابك وكل محادثاتك بدون رجعة.",
         confirmPasswordPlaceholder: "كلمة المرور للتأكيد",
         deletePermanently: "حذف الحساب نهائيًا",
+        memorySection: "ذاكرة المساعد",
+        memoryDescription: "احفظ معلومات تهمك عبر المحادثات. لا تحفظ كلمات المرور أو المعلومات شديدة الحساسية.",
+        memoryPlaceholder: "مثال: أفضل الشرح بالعربية مع أمثلة عملية.",
+        memoryAdd: "حفظ في الذاكرة",
+        memorySaved: "تم تحديث الذاكرة",
+        memoryEdit: "تعديل",
+        memoryDelete: "حذف",
+        memoryDeleteConfirm: "حذف هذه الذاكرة؟",
+        memoryDeleted: "تم حذف الذاكرة",
+        memoryLoadError: "تعذر تحميل الذاكرة",
       },
 
       billing: {
@@ -540,6 +550,16 @@ const resources = {
         deleteAccountWarning: "This is permanent — it deletes your account and all your conversations with no way back.",
         confirmPasswordPlaceholder: "Password to confirm",
         deletePermanently: "Permanently delete account",
+        memorySection: "Assistant memory",
+        memoryDescription: "Save useful preferences across conversations. Do not store passwords or highly sensitive information.",
+        memoryPlaceholder: "Example: I prefer concise explanations with practical examples.",
+        memoryAdd: "Save to memory",
+        memorySaved: "Memory updated",
+        memoryEdit: "Edit",
+        memoryDelete: "Delete",
+        memoryDeleteConfirm: "Delete this memory?",
+        memoryDeleted: "Memory deleted",
+        memoryLoadError: "Couldn't load memory",
       },
 
       billing: {
