@@ -44,6 +44,11 @@ export async function toggleArchiveConversation(id) {
   return data;
 }
 
+export async function toggleTrashConversation(id) {
+  const { data } = await api.patch(`/conversations/${id}/trash`);
+  return data;
+}
+
 export async function moveConversationToFolder(id, folderId) {
   const { data } = await api.patch(`/conversations/${id}/folder`, {
     folder_id: folderId,
