@@ -157,3 +157,91 @@ def test_export_analytics_csv(client):
     assert response.status_code == 200
     assert "text/csv" in response.headers["content-type"]
     assert "date,new_users" in response.text
+
+
+ation": f"Bearer {token}"}
+
+    me = client.get("/users/me", headers=headers).json()
+    conversation = Conversation(user_id=me["id"], title="Feedback", workspace_id=1)
+    db_session.add(conversation)
+    db_session.flush()
+    db_session.add_all(
+        [
+            Message(
+                conversation_id=conversation.id,
+                role=MessageRole.user,
+                content="سؤال",
+            ),
+            Message(
+                conversation_id=conversation.id,
+                role=MessageRole.assistant,
+                content="رد جيد",
+                feedback=1,
+            ),
+            Message(
+                conversation_id=conversation.id,
+                role=MessageRole.assistant,
+                content="رد سيئ",
+                feedback=-1,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    non_admin = client.get("/admin/analytics/feedback", headers=headers)
+    assert non_admin.status_code == 403
+
+
+
+def test_feedback_analytics_requires_admin_and_counts_ratings(client, monkeypatch, db_session):
+    from app.routers import chat as chat_router_module
+    from app.services.ai_providers.base import AIReply
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "feedback-admin@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "سؤال"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    conversation = db_session.get(Conversation, conversation_id)
+    messages = (
+        db_session.query(Message)
+        .filter(Message.conversation_id == conversation_id)
+        .order_by(Message.id.asc())
+        .all()
+    )
+    messages[1].feedback = 1
+    db_session.add(
+        Message(
+            conversation_id=conversation.id,
+            role=MessageRole.assistant,
+            content="رد ثاني",
+            feedback=-1,
+        )
+    )
+    db_session.commit()
+
+    user_response = client.get("/admin/analytics/feedback", headers=headers)
+    assert user_response.status_code == 403
+
+    from app.models.user import User, UserRole
+
+    user = db_session.get(User, conversation.user_id)
+    user.role = UserRole.admin
+    db_session.commit()
+
+    response = client.get("/admin/analytics/feedback?days=30", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_rated"] == 2
+    assert data["positive"] == 1
+    assert data["negative"] == 1
+    assert data["positive_rate"] == 50.0
