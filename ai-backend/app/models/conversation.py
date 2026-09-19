@@ -4,7 +4,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, JSON, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, JSON, String, Text, event, update
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -41,6 +41,7 @@ class Conversation(Base):
         ForeignKey("assistants.id", ondelete="SET NULL"), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     owner = relationship("User", back_populates="conversations")
     folder = relationship("ConversationFolder", back_populates="conversations")
@@ -78,3 +79,13 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     conversation = relationship("Conversation", back_populates="messages")
+
+
+@event.listens_for(Message, "after_insert")
+@event.listens_for(Message, "after_delete")
+def _touch_conversation_activity(mapper, connection, target):
+    connection.execute(
+        update(Conversation)
+        .where(Conversation.id == target.conversation_id)
+        .values(updated_at=func.now())
+    )

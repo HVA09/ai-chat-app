@@ -117,7 +117,7 @@ def list_conversations(
 
     return (
         query
-        .order_by(Conversation.is_pinned.desc(), Conversation.created_at.desc())
+        .order_by(Conversation.is_pinned.desc(), Conversation.updated_at.desc())
         .offset(skip)
         .limit(limit)
         .all()
