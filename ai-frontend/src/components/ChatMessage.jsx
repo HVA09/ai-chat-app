@@ -30,6 +30,8 @@ export default function ChatMessage({
   feedback = null,
   canFeedback = false,
   onFeedback,
+  isBookmarked = false,
+  onToggleBookmark,
 }) {
   const isUser = role === "user";
   const { t } = useTranslation();
@@ -62,6 +64,9 @@ export default function ChatMessage({
     : "Regenerate";
   const goodFeedbackLabel = t("feedback.helpful");
   const badFeedbackLabel = t("feedback.notHelpful");
+  const bookmarkLabel = isBookmarked
+    ? t("bookmarks.remove")
+    : t("bookmarks.save");
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -92,6 +97,17 @@ export default function ChatMessage({
                   {editLabel}
                 </button>
               ) : null}
+              {onToggleBookmark ? (
+                <button
+                  type="button"
+                  onClick={onToggleBookmark}
+                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  aria-label={bookmarkLabel}
+                  title={bookmarkLabel}
+                >
+                  {isBookmarked ? "★" : "☆"}
+                </button>
+              ) : null}
               {canDelete && onDelete ? (
                 <button
                   type="button"
@@ -117,6 +133,17 @@ export default function ChatMessage({
               >
                 {copyLabel}
               </button>
+              {onToggleBookmark ? (
+                <button
+                  type="button"
+                  onClick={onToggleBookmark}
+                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  aria-label={bookmarkLabel}
+                  title={bookmarkLabel}
+                >
+                  {isBookmarked ? "★" : "☆"}
+                </button>
+              ) : null}
               {canRegenerate && onRegenerate ? (
                 <button
                   type="button"
