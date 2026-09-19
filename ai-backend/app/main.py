@@ -26,6 +26,7 @@ from app.routers.conversations import router as conversations_router
 from app.routers.files import router as files_router
 from app.routers.folders import router as folders_router
 from app.routers.notifications import router as notifications_router
+from app.routers.memories import router as memories_router
 from app.routers.shared_conversations import router as shared_conversations_router
 from app.routers.shared_conversations import router as shared_conversations_router
 from app.routers.users import router as users_router
@@ -145,6 +146,7 @@ app.include_router(files_router)
 app.include_router(folders_router)
 app.include_router(billing_router)
 app.include_router(notifications_router)
+app.include_router(memories_router)
 app.include_router(shared_conversations_router)
 app.include_router(shared_conversations_router)
 app.include_router(admin_router)
