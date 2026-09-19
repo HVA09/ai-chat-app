@@ -29,6 +29,13 @@ export default function Sidebar({
   onRenameFolder,
   onDeleteFolder,
   onMoveConversationToFolder,
+  selectedConversationIds = [],
+  onToggleConversationSelection = () => {},
+  onToggleSelectAllVisible = () => {},
+  onClearSelectedConversations = () => {},
+  onBulkArchive = () => {},
+  onBulkDelete = () => {},
+  onBulkMoveToFolder = () => {},
   workspaces = [],
   selectedWorkspaceId = null,
   onSelectWorkspace = () => {},
@@ -50,6 +57,15 @@ export default function Sidebar({
       (item.title || "").toLocaleLowerCase().includes(query)
     );
   }, [conversations, search]);
+
+  const filteredConversationIds = useMemo(
+    () => filteredConversations.map((item) => item.id),
+    [filteredConversations]
+  );
+
+  const allVisibleSelected =
+    filteredConversationIds.length > 0 &&
+    filteredConversationIds.every((id) => selectedConversationIds.includes(id));
 
   const handleRename = (e, item) => {
     e.stopPropagation();
@@ -89,6 +105,11 @@ export default function Sidebar({
     }
   };
 
+  const handleSelectConversationCheckbox = (e, item) => {
+    e.stopPropagation();
+    onToggleConversationSelection(item.id);
+  };
+
   const handleDelete = (e, item) => {
     e.stopPropagation();
     if (window.confirm(t("sidebar.confirmDelete", { title: item.title }))) {
@@ -106,7 +127,15 @@ export default function Sidebar({
         className="group h-full cursor-pointer rounded-xl border border-slate-200 px-3 py-3 hover:bg-slate-50"
       >
         <div className="flex items-center justify-between gap-2">
-          <span className="flex min-w-0 items-center gap-1 truncate font-medium">{item.is_pinned ? <span aria-hidden="true">★</span> : null}<span className="truncate">{item.title}</span></span>
+          <span className="flex min-w-0 items-center gap-2 truncate font-medium">
+            <input
+              type="checkbox"
+              aria-label={t("sidebar.selectConversation", { title: item.title })}
+              checked={selectedConversationIds.includes(item.id)}
+              onChange={(e) => handleSelectConversationCheckbox(e, item)}
+              onClick={(e) => e.stopPropagation()}
+              className="h-4 w-4 shrink-0 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+            />{item.is_pinned ? <span aria-hidden="true">★</span> : null}<span className="truncate">{item.title}</span></span>
           <div className="flex shrink-0 items-center gap-1">
             <span className="text-xs text-slate-400">
               {new Date(item.created_at).toLocaleDateString()}
@@ -314,6 +343,68 @@ export default function Sidebar({
               ))}
             </div>
           </div>
+
+          <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">
+            <label className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+              <input
+                type="checkbox"
+                aria-label={t("sidebar.selectAllVisible")}
+                checked={allVisibleSelected}
+                disabled={filteredConversationIds.length === 0}
+                onChange={() => onToggleSelectAllVisible(filteredConversationIds)}
+                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+              />
+              <span>{t("sidebar.selectAllVisible")}</span>
+            </label>
+            {selectedConversationIds.length > 0 && (
+              <span className="font-medium text-slate-700 dark:text-slate-200">
+                {t("sidebar.bulkSelected", { count: selectedConversationIds.length })}
+              </span>
+            )}
+          </div>
+
+          {selectedConversationIds.length > 0 && (
+            <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onBulkArchive}
+                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  {showArchived ? t("sidebar.bulkUnarchive") : t("sidebar.bulkArchive")}
+                </button>
+                <button
+                  type="button"
+                  onClick={onBulkDelete}
+                  className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                >
+                  {t("sidebar.bulkDelete")}
+                </button>
+                <select
+                  aria-label={t("sidebar.bulkMoveTitle")}
+                  defaultValue=""
+                  onChange={(e) => {
+                    onBulkMoveToFolder(e.target.value);
+                    e.target.value = "";
+                  }}
+                  className="max-w-[170px] rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  <option value="">{t("sidebar.bulkMoveTitle")}</option>
+                  <option value="__none__">{t("sidebar.noFolder")}</option>
+                  {folders.map((folder) => (
+                    <option key={folder.id} value={folder.id}>{folder.name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={onClearSelectedConversations}
+                  className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-700"
+                >
+                  {t("sidebar.clearSelection")}
+                </button>
+              </div>
+            </div>
+          )}
 
           <label className="mt-3 block">
             <span className="sr-only">
