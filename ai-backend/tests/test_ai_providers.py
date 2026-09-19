@@ -60,7 +60,7 @@ def test_gemini_maps_assistant_role_to_model():
 
 
 def test_stream_chat_returns_sse_events(client, monkeypatch):
-    async def fake_stream(message, history=None):
+    async def fake_stream(message, history=None, model=None):
         for chunk in ["مرحبا", " بك"]:
             yield chunk
     monkeypatch.setattr(chat_router_module, "stream_ai_reply", fake_stream)
