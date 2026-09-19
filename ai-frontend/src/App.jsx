@@ -579,7 +579,6 @@ export default function App() {
 
   const handleOpenBookmarkedMessage = async (item) => {
     await openConversation(item.conversation_id);
-    setOpen(false);
   };
 
   const handleUseSavedPrompt = (content) => {
