@@ -97,6 +97,13 @@ export default function Sidebar({
 
   const handleToggleTrash = (e, item) => {
     e.stopPropagation();
+    if (showTrash) {
+      const confirmed = window.confirm(
+        t("sidebar.permanentDeleteConfirm", { title: item.title })
+      );
+      if (confirmed) onDeleteConversation(item.id);
+      return;
+    }
     onToggleTrashConversation(item.id);
   };
 
