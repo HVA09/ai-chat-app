@@ -5,7 +5,8 @@ import Sidebar from "./Sidebar";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key) => ({
+    t: (key, variables = {}) => {
+      const value = ({
       appName: "مساعد الذكاء الاصطناعي",
       newChat: "محادثة جديدة",
       noChats: "لا توجد محادثات بعد",
@@ -23,10 +24,24 @@ vi.mock("react-i18next", () => ({
       "sidebar.folderDeleteConfirm": "حذف المجلد {{name}}؟",
       "sidebar.moveFolderTitle": "نقل إلى مجلد",
       "sidebar.noFolder": "بدون مجلد",
+      "sidebar.selectConversation": "تحديد {{title}}",
+      "sidebar.selectAllVisible": "تحديد الكل الظاهر",
+      "sidebar.bulkSelected": "{{count}} محددة",
+      "sidebar.bulkArchive": "أرشفة المحدد",
+      "sidebar.bulkUnarchive": "إلغاء أرشفة المحدد",
+      "sidebar.bulkDelete": "حذف المحدد",
+      "sidebar.bulkMoveTitle": "نقل المحدد إلى...",
+      "sidebar.clearSelection": "إلغاء التحديد",
       "sidebar.workspaceSelectTitle": "مساحة العمل",
       "sidebar.workspaceCreateTitle": "إنشاء مساحة عمل",
       "sidebar.workspaceRenameTitle": "إعادة تسمية مساحة العمل",
-    })[key] ?? key,
+      "sidebar.bulkDeleteConfirm": "حذف {{count}} محادثات؟",
+    })[key] ?? key;
+
+      return value.replace(/\{\{(\w+)\}\}/g, (_, name) =>
+        variables[name] === undefined ? `{{${name}}}` : String(variables[name])
+      );
+    },
   }),
 }));
 
@@ -64,6 +79,13 @@ function renderSidebar(overrides = {}) {
     onRenameFolder: vi.fn(),
     onDeleteFolder: vi.fn(),
     onMoveConversationToFolder: vi.fn(),
+    selectedConversationIds: [],
+    onToggleConversationSelection: vi.fn(),
+    onToggleSelectAllVisible: vi.fn(),
+    onClearSelectedConversations: vi.fn(),
+    onBulkArchive: vi.fn(),
+    onBulkDelete: vi.fn(),
+    onBulkMoveToFolder: vi.fn(),
     showArchived: false,
     onShowArchived: vi.fn(),
     loading: false,
@@ -167,6 +189,33 @@ describe("Sidebar", () => {
     const { onCreateFolder } = renderSidebar();
     await user.click(screen.getByTitle("إنشاء مجلد"));
     expect(onCreateFolder).toHaveBeenCalled();
+  });
+
+  it("يستطيع تحديد محادثة للم actions الجماعية", async () => {
+    const user = userEvent.setup();
+    const { onToggleConversationSelection } = renderSidebar();
+    await user.click(screen.getByRole("checkbox", { name: "تحديد محادثة أولى" }));
+    expect(onToggleConversationSelection).toHaveBeenCalledWith(1);
+  });
+
+  it("يستطيع تحديد كل المحادثات الظاهرة", async () => {
+    const user = userEvent.setup();
+    const { onToggleSelectAllVisible } = renderSidebar();
+    await user.click(screen.getByRole("checkbox", { name: "تحديد الكل الظاهر" }));
+    expect(onToggleSelectAllVisible).toHaveBeenCalledWith([1, 2]);
+  });
+
+  it("يعرض أدوات الإجراءات الجماعية عند وجود تحديد", () => {
+    renderSidebar({ selectedConversationIds: [1] });
+    expect(screen.getByText("أرشفة المحدد")).toBeInTheDocument();
+    expect(screen.getByText("حذف المحدد")).toBeInTheDocument();
+  });
+
+  it("يستطيع نقل المحدد إلى مجلد", async () => {
+    const user = userEvent.setup();
+    const { onBulkMoveToFolder } = renderSidebar({ selectedConversationIds: [1] });
+    await user.selectOptions(screen.getByRole("combobox", { name: "نقل المحدد إلى..." }), "20");
+    expect(onBulkMoveToFolder).toHaveBeenCalledWith("20");
   });
 
   it("الحذف ما يصير لو المستخدم ألغى التأكيد", async () => {
