@@ -12,6 +12,7 @@ vi.mock("react-i18next", () => ({
       noChats: "لا توجد محادثات بعد",
       "sidebar.renamePrompt": "اسم المحادثة الجديد:",
       "sidebar.renameTitle": "إعادة تسمية",
+      "sidebar.duplicateTitle": "نسخ المحادثة",
       "sidebar.deleteTitle": "حذف",
       "sidebar.trashTitle": "سلة المحذوفات",
       "sidebar.permanentDeleteConfirm": "حذف نهائي للمحادثة {{title}}؟",
@@ -74,6 +75,7 @@ function renderSidebar(overrides = {}) {
     onRenameConversation: vi.fn(),
     onDeleteConversation: vi.fn(),
     onTogglePinConversation: vi.fn(),
+    onDuplicateConversation: vi.fn(),
     savedPrompts: [{ id: 10, name: "تلخيص", content: "لخص النص في 5 نقاط." }],
     onCreateSavedPrompt: vi.fn(),
     onRenameSavedPrompt: vi.fn(),
@@ -133,6 +135,13 @@ describe("Sidebar", () => {
     const { onSelectConversation } = renderSidebar();
     await user.click(screen.getByText("محادثة أولى"));
     expect(onSelectConversation).toHaveBeenCalledWith(1);
+  });
+
+  it("نسخ المحادثة يستدعي المعالج بالمعرف الصحيح", async () => {
+    const user = userEvent.setup();
+    const { onDuplicateConversation } = renderSidebar();
+    await user.click(screen.getAllByTitle("نسخ المحادثة")[0]);
+    expect(onDuplicateConversation).toHaveBeenCalledWith(1);
   });
 
   it("بحث المحادثات يرسل القيمة إلى المعالج بعد مهلة قصيرة", () => {

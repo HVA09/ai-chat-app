@@ -205,6 +205,67 @@ def test_toggle_archive_conversation_and_filter(client, monkeypatch):
     assert response.json()["is_archived"] is False
 
 
+def test_duplicate_conversation_copies_messages_and_metadata(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "duplicate@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    chat_response = client.post(
+        "/chat",
+        json={"message": "رسالة أصلية"},
+        headers=headers,
+    )
+    original_id = chat_response.json()["conversation_id"]
+
+    duplicate = client.post(
+        f"/conversations/{original_id}/duplicate",
+        headers=headers,
+    )
+    assert duplicate.status_code == 201
+    payload = duplicate.json()
+
+    assert payload["id"] != original_id
+    assert payload["title"].startswith("نسخة من")
+    assert payload["is_pinned"] is False
+    assert payload["is_archived"] is False
+    assert len(payload["messages"]) == 2
+    assert payload["messages"][0]["content"] == "رسالة أصلية"
+    assert payload["messages"][1]["content"] == "رد"
+
+    original = client.get(
+        f"/conversations/{original_id}",
+        headers=headers,
+    ).json()
+    assert original["id"] == original_id
+    assert [m["content"] for m in original["messages"]] == ["رسالة أصلية", "رد"]
+
+
+def test_cannot_duplicate_other_users_conversation(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token_a = _register_and_login(client, "duplicate-owner@example.com")
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    original_id = client.post(
+        "/chat",
+        json={"message": "خاص"},
+        headers=headers_a,
+    ).json()["conversation_id"]
+
+    token_b = _register_and_login(client, "duplicate-other@example.com")
+    response = client.post(
+        f"/conversations/{original_id}/duplicate",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
+
+
 def test_rename_conversation(client, monkeypatch):
     monkeypatch.setattr(chat_router_module, "get_ai_reply", AsyncMock(return_value=AIReply(text="رد")))
     token = _register_and_login(client)

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.database import get_db
 from app.dependencies import enforce_daily_ai_limit, get_current_user
 from app.models.assistant import Assistant
-from app.models.conversation import Conversation
+from app.models.conversation import Conversation, Message
 from app.models.conversation_folder import ConversationFolder
 from app.models.conversation_tag import ConversationTag
 from app.models.user import User
@@ -281,6 +281,63 @@ async def summarize_conversation(
         summary=summary,
         summary_updated_at=updated_at,
     )
+
+
+@router.post("/{conversation_id}/duplicate", response_model=ConversationDetail, status_code=status.HTTP_201_CREATED)
+def duplicate_conversation(
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    source = (
+        db.query(Conversation)
+        .options(selectinload(Conversation.messages), selectinload(Conversation.tags))
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+            Conversation.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المحادثة غير موجودة",
+        )
+
+    copy_title = f"نسخة من {source.title}".strip()
+    if len(copy_title) > 255:
+        copy_title = copy_title[:255].rstrip()
+
+    duplicate = Conversation(
+        user_id=current_user.id,
+        title=copy_title or "نسخة من المحادثة",
+        is_pinned=False,
+        is_archived=False,
+        folder_id=source.folder_id,
+        workspace_id=source.workspace_id,
+        ai_model=source.ai_model,
+        assistant_id=source.assistant_id,
+        summary=source.summary,
+        summary_updated_at=source.summary_updated_at,
+        deleted_at=None,
+        tags=list(source.tags),
+    )
+
+    for message in source.messages:
+        duplicate.messages.append(
+            Message(
+                role=message.role,
+                content=message.content,
+                sources=message.sources,
+                feedback=None,
+            )
+        )
+
+    db.add(duplicate)
+    db.commit()
+    db.refresh(duplicate)
+    return duplicate
 
 
 @router.patch("/{conversation_id}", response_model=ConversationOut)

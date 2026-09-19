@@ -36,6 +36,7 @@ import {
   toggleArchiveConversation,
   toggleTrashConversation,
   moveConversationToFolder,
+  duplicateConversation,
   exportConversation,
   summarizeConversation,
 } from "./lib/conversationsApi";
@@ -973,6 +974,27 @@ export default function App() {
     }
   };
 
+  const handleDuplicateConversation = async (id) => {
+    try {
+      const duplicate = await duplicateConversation(id);
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        conversationSearch,
+        showTrashConversations,
+        selectedTagId
+      );
+      await openConversation(duplicate.id);
+      setToast({ message: t("app.duplicateConversationSuccess"), type: "success" });
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.duplicateConversationError"),
+        type: "error",
+      });
+    }
+  };
+
   const handleTogglePinConversation = async (id) => {
     try {
       await togglePinConversation(id);
@@ -1352,6 +1374,7 @@ export default function App() {
         onRenameConversation={handleRenameConversation}
         onDeleteConversation={handleDeleteConversation}
         onTogglePinConversation={handleTogglePinConversation}
+        onDuplicateConversation={handleDuplicateConversation}
         onToggleArchiveConversation={handleToggleArchiveConversation}
         onToggleTrashConversation={handleToggleTrashConversation}
         showTrash={showTrashConversations}
