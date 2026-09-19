@@ -57,6 +57,44 @@ def test_list_conversations_supports_title_search(client, monkeypatch):
     assert [item["id"] for item in response.json()] == [first_id]
 
 
+def test_list_conversations_sorts_by_last_activity(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "activity@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post(
+        "/chat",
+        json={"message": "المحادثة الأولى"},
+        headers=headers,
+    )
+    first_id = first.json()["conversation_id"]
+
+    second = client.post(
+        "/chat",
+        json={"message": "المحادثة الثانية"},
+        headers=headers,
+    )
+    second_id = second.json()["conversation_id"]
+
+    response = client.get("/conversations", headers=headers)
+    assert [item["id"] for item in response.json()] == [second_id, first_id]
+
+    follow_up = client.post(
+        "/chat",
+        json={"message": "رسالة أحدث للمحادثة الأولى", "conversation_id": first_id},
+        headers=headers,
+    )
+    assert follow_up.status_code == 200
+
+    response = client.get("/conversations", headers=headers)
+    assert [item["id"] for item in response.json()] == [first_id, second_id]
+    assert response.json()[0]["updated_at"] >= response.json()[1]["updated_at"]
+
+
 def test_list_and_get_conversation_after_chat(client, monkeypatch):
     monkeypatch.setattr(chat_router_module, "get_ai_reply", AsyncMock(return_value=AIReply(text="رد تجريبي")))
     token = _register_and_login(client)
