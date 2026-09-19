@@ -34,7 +34,7 @@ class FakeToolProvider(OpenAICompatibleProvider):
 def test_agent_mode_selects_calculator_and_returns_final_answer(client, monkeypatch):
     monkeypatch.setattr(
         "app.services.ai_agent.get_provider",
-        lambda: FakeToolProvider(),
+        lambda model=None: FakeToolProvider(),
     )
     token = _register_and_login(client)
     headers = {"Authorization": f"Bearer {token}"}
