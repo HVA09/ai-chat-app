@@ -34,6 +34,7 @@ import {
   deleteConversation,
   togglePinConversation,
   toggleArchiveConversation,
+  toggleTrashConversation,
   moveConversationToFolder,
   exportConversation,
 } from "./lib/conversationsApi";
@@ -100,6 +101,7 @@ export default function App() {
   const [conversationSearch, setConversationSearch] = useState("");
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [showArchivedConversations, setShowArchivedConversations] = useState(false);
+  const [showTrashConversations, setShowTrashConversations] = useState(false);
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState(null);
   const [workspaces, setWorkspaces] = useState([]);
@@ -198,7 +200,8 @@ export default function App() {
     includeArchived = showArchivedConversations,
     folderId = selectedFolderId,
     workspaceId = selectedWorkspaceId,
-    search = conversationSearch
+    search = conversationSearch,
+    includeDeleted = showTrashConversations
   ) => {
     setConversationsLoading(true);
     try {
@@ -206,7 +209,8 @@ export default function App() {
         includeArchived,
         folderId,
         workspaceId,
-        search
+        search,
+        includeDeleted
       );
       setConversations(list);
     } catch {
@@ -480,8 +484,9 @@ export default function App() {
     if (!confirmed) return;
 
     const selectedIds = [...selectedConversationIds];
+    const action = showTrashConversations ? deleteConversation : toggleTrashConversation;
     const results = await Promise.allSettled(
-      selectedIds.map((id) => deleteConversation(id))
+      selectedIds.map((id) => action(id))
     );
     const failed = results.filter((result) => result.status === "rejected").length;
     if (selectedIds.includes(conversationId)) startNewChat();
@@ -721,6 +726,22 @@ export default function App() {
     }
   };
 
+  const handleToggleTrashConversation = async (id) => {
+    try {
+      await toggleTrashConversation(id);
+      if (id === conversationId) startNewChat();
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        conversationSearch,
+        showTrashConversations
+      );
+    } catch {
+      setToast({ message: t("app.trashConversationError"), type: "error" });
+    }
+  };
+
   const handleToggleArchiveConversation = async (id) => {
     try {
       const result = await toggleArchiveConversation(id);
@@ -742,11 +763,26 @@ export default function App() {
 
   const handleDeleteConversation = async (id) => {
     try {
-      await deleteConversation(id);
+      if (showTrashConversations) {
+        await deleteConversation(id);
+      } else {
+        await toggleTrashConversation(id);
+      }
       if (id === conversationId) startNewChat();
-      await refreshConversations(showArchivedConversations, selectedFolderId);
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        conversationSearch,
+        showTrashConversations
+      );
     } catch {
-      setToast({ message: t("app.deleteConversationError"), type: "error" });
+      setToast({
+        message: showTrashConversations
+          ? t("app.deleteConversationError")
+          : t("app.trashConversationError"),
+        type: "error",
+      });
     }
   };
 
@@ -1127,8 +1163,19 @@ export default function App() {
         showArchived={showArchivedConversations}
         onShowArchived={(value) => {
           setShowArchivedConversations(value);
-          refreshConversations(value, selectedFolderId, selectedWorkspaceId);
+          if (value) setShowTrashConversations(false);
+          refreshConversations(value, selectedFolderId, selectedWorkspaceId, conversationSearch, false);
           if (value) startNewChat();
+        }}
+        onShowTrash={(value) => {
+          setShowTrashConversations(value);
+          if (value) setShowArchivedConversations(false);
+          if (value) {
+            setSelectedFolderId(null);
+            setSelectedConversationIds([]);
+            startNewChat();
+          }
+          refreshConversations(false, value ? null : selectedFolderId, selectedWorkspaceId, conversationSearch, value);
         }}
         loading={conversationsLoading}
       />
