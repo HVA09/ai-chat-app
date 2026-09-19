@@ -44,6 +44,8 @@ const resources = {
         renameConversationError: "تعذر إعادة تسمية المحادثة",
         deleteConversationError: "تعذر حذف المحادثة",
         pinConversationError: "تعذر تثبيت المحادثة",
+        duplicateConversationSuccess: "تم نسخ المحادثة",
+        duplicateConversationError: "تعذر نسخ المحادثة",
         savedPromptCreateError: "تعذر إنشاء الموجه المحفوظ",
         savedPromptUpdateError: "تعذر تعديل الموجه المحفوظ",
         savedPromptDeleteError: "تعذر حذف الموجه المحفوظ",
@@ -245,6 +247,7 @@ const resources = {
       sidebar: {
         renamePrompt: "اسم المحادثة الجديد:",
         renameTitle: "إعادة تسمية",
+        duplicateTitle: "نسخ المحادثة",
         deleteTitle: "حذف",
         pinTitle: "تثبيت",
         unpinTitle: "إلغاء التثبيت",
@@ -496,6 +499,8 @@ const resources = {
         renameConversationError: "Couldn't rename the conversation",
         deleteConversationError: "Couldn't delete the conversation",
         pinConversationError: "Couldn't pin the conversation",
+        duplicateConversationSuccess: "Conversation duplicated",
+        duplicateConversationError: "Couldn't duplicate the conversation",
         savedPromptCreateError: "Couldn't create the saved prompt",
         savedPromptUpdateError: "Couldn't update the saved prompt",
         savedPromptDeleteError: "Couldn't delete the saved prompt",
@@ -695,6 +700,7 @@ const resources = {
       sidebar: {
         renamePrompt: "New conversation name:",
         renameTitle: "Rename",
+        duplicateTitle: "Duplicate conversation",
         deleteTitle: "Delete",
         pinTitle: "Pin",
         unpinTitle: "Unpin",
