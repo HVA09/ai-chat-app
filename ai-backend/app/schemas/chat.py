@@ -99,6 +99,7 @@ class ConversationOut(BaseModel):
     id: int
     title: str
     created_at: datetime
+    updated_at: datetime
     is_pinned: bool
     is_archived: bool
     folder_id: int | None
