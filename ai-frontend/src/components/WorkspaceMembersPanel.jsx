@@ -7,12 +7,14 @@ import {
   removeWorkspaceMember,
   revokeWorkspaceInvitation,
   updateWorkspaceMemberRole,
+  listWorkspaceAuditLogs,
 } from "../lib/workspaceMembersApi";
 
 export default function WorkspaceMembersPanel({ workspaceId, workspaceName, workspaceRole, onClose }) {
   const { t } = useTranslation();
   const [members, setMembers] = useState([]);
   const [invitations, setInvitations] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("member");
   const [loading, setLoading] = useState(true);
@@ -24,12 +26,14 @@ export default function WorkspaceMembersPanel({ workspaceId, workspaceName, work
   const load = async () => {
     setLoading(true);
     try {
-      const [memberList, inviteList] = await Promise.all([
+      const [memberList, inviteList, auditList] = await Promise.all([
         listWorkspaceMembers(workspaceId),
         manager ? listWorkspaceInvitations(workspaceId) : Promise.resolve([]),
+        manager ? listWorkspaceAuditLogs(workspaceId) : Promise.resolve([]),
       ]);
       setMembers(memberList);
       setInvitations(inviteList);
+      setAuditLogs(auditList);
     } finally {
       setLoading(false);
     }
@@ -193,6 +197,27 @@ export default function WorkspaceMembersPanel({ workspaceId, workspaceName, work
                 </div>
               ))}
               {invitations.length === 0 && <p className="text-sm text-slate-400">{t("workspaceMembers.noPending")}</p>}
+            </div>
+          </div>
+        )}
+
+        {manager && (
+          <div className="mt-5">
+            <h3 className="font-medium">{t("workspaceMembers.activityTitle")}</h3>
+            <div className="mt-3 space-y-2">
+              {auditLogs.map((log) => (
+                <div key={log.id} className="rounded-2xl border border-slate-200 p-3 dark:border-slate-700">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{log.event_type}</span>
+                    <span className="text-xs text-slate-400">{new Date(log.created_at).toLocaleString()}</span>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-700 dark:text-slate-200">{log.description}</p>
+                  {log.actor_email && <p className="mt-1 text-xs text-slate-400">{log.actor_email}</p>}
+                </div>
+              ))}
+              {auditLogs.length === 0 && (
+                <p className="text-sm text-slate-400">{t("workspaceMembers.noActivity")}</p>
+              )}
             </div>
           </div>
         )}
