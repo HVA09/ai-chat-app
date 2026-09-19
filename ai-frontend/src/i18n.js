@@ -19,6 +19,10 @@ const resources = {
       you: "أنت",
       logout: "خروج",
       noChats: "لا توجد محادثات بعد",
+      exportConversation: "تصدير",
+      exportConversationDisabled: "ابدأ محادثة أولًا",
+      exportConversationSuccess: "تم تصدير المحادثة",
+      exportConversationError: "تعذر تصدير المحادثة",
 
       app: {
         welcomeMessage: "مرحبًا، كيف أساعدك اليوم؟",
@@ -375,6 +379,10 @@ const resources = {
       you: "You",
       logout: "Logout",
       noChats: "No conversations yet",
+      exportConversation: "Export",
+      exportConversationDisabled: "Start a conversation first",
+      exportConversationSuccess: "Conversation exported",
+      exportConversationError: "Couldn't export the conversation",
 
       app: {
         welcomeMessage: "Hi, how can I help you today?",
