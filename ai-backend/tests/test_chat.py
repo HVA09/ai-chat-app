@@ -159,7 +159,7 @@ def test_regenerate_replaces_last_assistant_without_duplicate_user_message(clien
     assert first.status_code == 200
     conversation_id = first.json()["conversation_id"]
 
-    async def fake_stream(message, history):
+    async def fake_stream(message, history, model=None):
         assert message == "ما هو لينكس؟"
         assert history == []
         yield "الرد الجديد"
