@@ -24,6 +24,11 @@ export default function Sidebar({
   onCreateAssistant = () => {},
   onRenameAssistant = () => {},
   onDeleteAssistant = () => {},
+  savedPrompts = [],
+  onCreateSavedPrompt = () => {},
+  onRenameSavedPrompt = () => {},
+  onDeleteSavedPrompt = () => {},
+  onUseSavedPrompt = () => {},
   folders,
   selectedFolderId,
   onSelectFolder,
@@ -134,6 +139,22 @@ export default function Sidebar({
     if (newName && newName.trim() && newName.trim() !== folder.name) {
       onRenameFolder(folder.id, newName.trim());
     }
+  };
+
+  const handleRenameSavedPrompt = (e, prompt) => {
+    e.stopPropagation();
+    onRenameSavedPrompt(prompt.id, prompt.name, prompt.content);
+  };
+
+  const handleDeleteSavedPrompt = (e, prompt) => {
+    e.stopPropagation();
+    onDeleteSavedPrompt(prompt.id, prompt.name);
+  };
+
+  const handleUseSavedPrompt = (e, prompt) => {
+    e.stopPropagation();
+    onUseSavedPrompt(prompt.content);
+    setOpen(false);
   };
 
   const handleDeleteFolder = (e, folder) => {
@@ -487,6 +508,63 @@ export default function Sidebar({
                   <button type="button" onClick={(e) => handleDeleteFolder(e, folder)} title={t("sidebar.deleteFolderTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-red-100 hover:text-red-600">✕</button>
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                {t("sidebar.savedPromptsTitle")}
+              </span>
+              <button
+                type="button"
+                onClick={onCreateSavedPrompt}
+                title={t("sidebar.createSavedPromptTitle")}
+                className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800"
+              >
+                +
+              </button>
+            </div>
+            <div className="max-h-48 space-y-1 overflow-y-auto">
+              {savedPrompts.length === 0 ? (
+                <p className="px-2 py-1 text-xs text-slate-400">
+                  {t("sidebar.noSavedPrompts")}
+                </p>
+              ) : (
+                savedPrompts.map((prompt) => (
+                  <div key={prompt.id} className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => handleUseSavedPrompt(e, prompt)}
+                      title={prompt.content}
+                      className="min-w-0 flex-1 rounded-lg px-2 py-1.5 text-start hover:bg-slate-50 dark:hover:bg-slate-800"
+                    >
+                      <span className="block truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+                        📝 {prompt.name}
+                      </span>
+                      <span className="block truncate text-xs text-slate-400">
+                        {prompt.content}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => handleRenameSavedPrompt(e, prompt)}
+                      title={t("sidebar.editSavedPromptTitle")}
+                      className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    >
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteSavedPrompt(e, prompt)}
+                      title={t("sidebar.deleteSavedPromptTitle")}
+                      className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-red-100 hover:text-red-600"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
