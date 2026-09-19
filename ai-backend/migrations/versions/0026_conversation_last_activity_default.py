@@ -1,6 +1,6 @@
 """إضافة default لوقت آخر نشاط للمحادثات.
 
-Revision ID: 0026_conversation_last_activity_default
+Revision ID: 0026_activity_default
 Revises: 0025_conversation_last_activity
 """
 from typing import Sequence, Union
@@ -8,7 +8,7 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
-revision: str = "0026_conversation_last_activity_default"
+revision: str = "0026_activity_default"
 down_revision: Union[str, None] = "0025_conversation_last_activity"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
