@@ -154,39 +154,44 @@ export default function Sidebar({
             />{item.is_pinned ? <span aria-hidden="true">★</span> : null}<span className="truncate">{item.title}</span></span>
           <div className="flex flex-wrap items-center justify-end gap-1">
             <span className="hidden text-xs text-slate-400 sm:inline">{new Date(item.updated_at ?? item.created_at).toLocaleDateString()}</span>
-            <button
-              onClick={(e) => handleTogglePin(e, item)}
-              title={item.is_pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}
-              className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
-            >
-              {item.is_pinned ? "★" : "☆"}
-            </button>
-            <button
-              onClick={(e) => handleToggleArchive(e, item)}
-              title={showArchived ? t("sidebar.unarchiveTitle") : t("sidebar.archiveTitle")}
-              className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
-            >
-              {showArchived ? "↩" : "▱"}
-            </button>
-            <button
-              onClick={(e) => handleRename(e, item)}
-              title={t("sidebar.renameTitle")}
-              className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
-            >
-              ✎
-            </button>
-            <select
-              aria-label={t("sidebar.moveFolderTitle")}
-              value={item.folder_id ?? ""}
-              onChange={(e) => handleMoveFolder(e, item)}
-              onClick={(e) => e.stopPropagation()}
-              className="min-w-[110px] max-w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 sm:max-w-[140px]"
-            >
-              <option value="">{t("sidebar.noFolder")}</option>
-              {folders.map((folder) => (
-                <option key={folder.id} value={folder.id}>{folder.name}</option>
-              ))}
-            </select>
+{!showTrash && (
+              <>
+                            <button
+                              onClick={(e) => handleTogglePin(e, item)}
+                              title={item.is_pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}
+                              className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                            >
+                              {item.is_pinned ? "★" : "☆"}
+                            </button>
+                            <button
+                              onClick={(e) => handleToggleArchive(e, item)}
+                              title={showArchived ? t("sidebar.unarchiveTitle") : t("sidebar.archiveTitle")}
+                              className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                            >
+                              {showArchived ? "↩" : "▱"}
+                            </button>
+                            <button
+                              onClick={(e) => handleRename(e, item)}
+                              title={t("sidebar.renameTitle")}
+                              className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                            >
+                              ✎
+                            </button>
+                            <select
+                              aria-label={t("sidebar.moveFolderTitle")}
+                              value={item.folder_id ?? ""}
+                              onChange={(e) => handleMoveFolder(e, item)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="min-w-[110px] max-w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 sm:max-w-[140px]"
+                            >
+                              <option value="">{t("sidebar.noFolder")}</option>
+                              {folders.map((folder) => (
+                                <option key={folder.id} value={folder.id}>{folder.name}</option>
+                              ))}
+                            </select>
+                
+              </>
+            )}
             <button
               onClick={(e) => handleToggleTrash(e, item)}
               title={showTrash ? t("sidebar.deleteTitle") : t("sidebar.trashTitle")}
