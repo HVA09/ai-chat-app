@@ -27,6 +27,13 @@ export default function Sidebar({
   folders,
   selectedFolderId,
   onSelectFolder,
+  tags = [],
+  selectedTagId = null,
+  onSelectTag = () => {},
+  onCreateTag = () => {},
+  onRenameTag = () => {},
+  onDeleteTag = () => {},
+  onSetConversationTags = () => {},
   onCreateFolder,
   onRenameFolder,
   onDeleteFolder,
@@ -54,6 +61,7 @@ export default function Sidebar({
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState(searchValue);
+  const [tagPickerConversationId, setTagPickerConversationId] = useState(null);
 
   useEffect(() => {
     setSearch(searchValue);
@@ -107,6 +115,14 @@ export default function Sidebar({
     onToggleTrashConversation(item.id);
   };
 
+  const handleToggleConversationTag = (e, item, tagId) => {
+    e.stopPropagation();
+    const current = new Set((item.tags || []).map((tag) => tag.id));
+    if (current.has(tagId)) current.delete(tagId);
+    else current.add(tagId);
+    onSetConversationTags(item.id, Array.from(current));
+  };
+
   const handleMoveFolder = (e, item) => {
     e.stopPropagation();
     onMoveConversationToFolder(item.id, e.target.value);
@@ -147,7 +163,7 @@ export default function Sidebar({
           onSelectConversation(item.id);
           setOpen(false);
         }}
-        className="group h-full cursor-pointer rounded-xl border border-slate-200 px-3 py-3 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+        className="group relative h-full cursor-pointer rounded-xl border border-slate-200 px-3 py-3 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
       >
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <span className="flex min-w-0 items-center gap-2 truncate font-medium">
@@ -196,8 +212,58 @@ export default function Sidebar({
                                 <option key={folder.id} value={folder.id}>{folder.name}</option>
                               ))}
                             </select>
+                            <button
+                              type="button"
+                              title={t("sidebar.tagConversationTitle")}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTagPickerConversationId((current) =>
+                                  current === item.id ? null : item.id
+                                );
+                              }}
+                              className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                            >
+                              🏷
+                            </button>
                 
               </>
+            )}
+            {!showTrash && tagPickerConversationId === item.id && (
+              <div
+                className="absolute end-3 top-12 z-50 w-56 rounded-xl border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <p className="mb-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {t("sidebar.tagPickerTitle")}
+                </p>
+                {tags.length === 0 ? (
+                  <p className="text-xs text-slate-400">{t("sidebar.noTags")}</p>
+                ) : (
+                  <div className="max-h-48 space-y-1 overflow-y-auto">
+                    {tags.map((tag) => {
+                      const checked = (item.tags || []).some((itemTag) => itemTag.id === tag.id);
+                      return (
+                        <label key={tag.id} className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-slate-50 dark:hover:bg-slate-800">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => handleToggleConversationTag(e, item, tag.id)}
+                            className="h-4 w-4 rounded border-slate-300"
+                          />
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ backgroundColor: tag.color }}
+                            aria-hidden="true"
+                          />
+                          <span className="min-w-0 flex-1 truncate text-xs text-slate-600 dark:text-slate-300">
+                            {tag.name}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
             <button
               onClick={(e) => handleToggleTrash(e, item)}
@@ -328,6 +394,57 @@ export default function Sidebar({
                     type="button"
                     onClick={() => onDeleteAssistant(assistant.id, assistant.name)}
                     title={t("sidebar.deleteAssistantTitle")}
+                    className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-red-100 hover:text-red-600"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t("sidebar.tagsTitle")}</span>
+              <button
+                type="button"
+                onClick={onCreateTag}
+                title={t("sidebar.createTagTitle")}
+                className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800"
+              >
+                +
+              </button>
+            </div>
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => onSelectTag(null)}
+                className={`w-full rounded-lg px-2 py-1.5 text-start text-sm ${selectedTagId === null ? "bg-slate-100 font-medium text-slate-900 dark:bg-slate-800 dark:text-slate-100" : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"}`}
+              >
+                {t("sidebar.allTags")}
+              </button>
+              {tags.map((tag) => (
+                <div key={tag.id} className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onSelectTag(tag.id)}
+                    className={`min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-start text-sm ${selectedTagId === tag.id ? "bg-slate-100 font-medium text-slate-900 dark:bg-slate-800 dark:text-slate-100" : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"}`}
+                  >
+                    <span className="me-2 inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tag.color }} aria-hidden="true" />
+                    {tag.name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRenameTag(tag.id, tag.name, tag.color)}
+                    title={t("sidebar.renameTagTitle")}
+                    className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDeleteTag(tag.id, tag.name)}
+                    title={t("sidebar.deleteTagTitle")}
                     className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-red-100 hover:text-red-600"
                   >
                     ✕
