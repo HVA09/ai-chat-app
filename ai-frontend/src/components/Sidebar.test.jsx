@@ -275,7 +275,7 @@ describe("Sidebar", () => {
   it("استخدام موجه محفوظ يستدعي المعالج بالنص", async () => {
     const user = userEvent.setup();
     const { onUseSavedPrompt } = renderSidebar();
-    await user.click(screen.getByText("تلخيص"));
+    await user.click(screen.getByRole("button", { name: /تلخيص/ }));
     expect(onUseSavedPrompt).toHaveBeenCalledWith("لخص النص في 5 نقاط.");
   });
 
