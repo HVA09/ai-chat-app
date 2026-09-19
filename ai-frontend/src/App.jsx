@@ -62,13 +62,6 @@ import {
   deleteTag,
   setConversationTags,
 } from "./lib/tagsApi";
-import {
-  listTags,
-  createTag,
-  updateTag,
-  deleteTag,
-  setConversationTags,
-} from "./lib/tagsApi";
 import { getCurrentUser } from "./lib/usersApi";
 import {
   listNotifications,
