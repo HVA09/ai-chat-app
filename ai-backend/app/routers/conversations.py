@@ -1,7 +1,9 @@
 """
-مسارات إدارة محادثات المستخدم الحالي: عرض، تعديل الاسم، حذف
+مسارات إدارة محادثات المستخدم الحالي: عرض، تعديل الاسم، حذف، وتصدير
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+import re
+
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
@@ -218,6 +220,52 @@ def set_conversation_assistant(
     db.commit()
     db.refresh(conversation)
     return conversation
+
+
+@router.get("/{conversation_id}/export")
+def export_conversation_markdown(
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conversation = (
+        db.query(Conversation)
+        .options(selectinload(Conversation.messages))
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المحادثة غير موجودة",
+        )
+
+    safe_title = re.sub(r"[^A-Za-z0-9_-]+", "_", conversation.title).strip("_") or "conversation"
+    lines = [f"# {conversation.title}", "", f"Created: {conversation.created_at}", ""]
+
+    for message in conversation.messages:
+        role = "User" if message.role.value == "user" else "Assistant"
+        lines.extend([f"## {role}", "", message.content, ""])
+        if message.sources:
+            lines.extend(["### Sources", ""])
+            for source in message.sources:
+                title = source.get("title") or source.get("name") or source.get("url") or "Source"
+                url = source.get("url")
+                if url:
+                    lines.append(f"- [{title}]({url})")
+                else:
+                    lines.append(f"- {title}")
+            lines.append("")
+
+    body = "\n".join(lines).rstrip() + "\n"
+    return Response(
+        content=body,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{safe_title}.md"'},
+    )
 
 
 @router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)

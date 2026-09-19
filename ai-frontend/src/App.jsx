@@ -35,6 +35,7 @@ import {
   togglePinConversation,
   toggleArchiveConversation,
   moveConversationToFolder,
+  exportConversation,
 } from "./lib/conversationsApi";
 import {
   listFolders,
@@ -478,6 +479,19 @@ export default function App() {
       await refreshConversations();
     } catch {
       setToast({ message: t("app.renameConversationError"), type: "error" });
+    }
+  };
+
+  const handleExportConversation = async () => {
+    if (!conversationId || loading) return;
+    try {
+      await exportConversation(conversationId);
+      setToast({ message: t("exportConversationSuccess"), type: "success" });
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("exportConversationError"),
+        type: "error",
+      });
     }
   };
 
@@ -925,6 +939,8 @@ export default function App() {
           onOpenBilling={() => setShowBilling(true)}
           onShareConversation={handleShareConversation}
           canShareConversation={conversationId !== null && !loading}
+          onExportConversation={handleExportConversation}
+          canExportConversation={conversationId !== null && !loading}
           isAdmin={currentUser?.role === "admin"}
           notifications={notifications}
           onMarkNotificationRead={handleMarkNotificationRead}

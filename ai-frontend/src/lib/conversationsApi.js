@@ -46,3 +46,25 @@ export async function moveConversationToFolder(id, folderId) {
   });
   return data;
 }
+
+export async function exportConversation(id) {
+  const response = await api.get(`/conversations/${id}/export`, {
+    responseType: "blob",
+  });
+
+  const contentDisposition = response.headers["content-disposition"] || "";
+  const match = contentDisposition.match(/filename="([^"]+)"/i);
+  const filename = match?.[1] || "conversation.md";
+  const url = URL.createObjectURL(response.data);
+
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}

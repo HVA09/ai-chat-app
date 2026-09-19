@@ -13,6 +13,8 @@ export default function ChatHeader({
   onOpenBilling,
   onShareConversation,
   canShareConversation = false,
+  onExportConversation,
+  canExportConversation = false,
   isAdmin,
   notifications,
   onMarkNotificationRead,
@@ -41,6 +43,14 @@ export default function ChatHeader({
           className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-slate-400"
         >
           {t("sharing.shareButton")}
+        </button>
+        <button
+          onClick={onExportConversation}
+          disabled={!canExportConversation}
+          title={canExportConversation ? t("exportConversation") : t("exportConversationDisabled")}
+          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-slate-400"
+        >
+          {t("exportConversation")}
         </button>
         {isAdmin && (
           <button
