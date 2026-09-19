@@ -20,7 +20,13 @@ from app.models.file_chunk import FileChunk
 from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
-from app.schemas.chat import ChatEditRequest, ChatRequest, ChatResponse
+from app.schemas.chat import (
+    ChatEditRequest,
+    ChatRequest,
+    ChatResponse,
+    MessageFeedbackRequest,
+    MessageFeedbackOut,
+)
 from app.services.ai_agent import AgentModeError, extract_agent_request, run_agent
 from app.services.ai_service import get_ai_reply, stream_ai_reply
 from app.services.embeddings import EmbeddingServiceError
@@ -309,6 +315,62 @@ async def _augment_message(
 
     combined_context = "\n\n".join(context_parts)
     return f"{combined_context}\n\nUSER REQUEST:\n{message}", sources
+
+
+@router.patch("/{conversation_id}/messages/{message_index}/feedback", response_model=MessageFeedbackOut)
+def set_message_feedback(
+    conversation_id: int,
+    message_index: int,
+    payload: MessageFeedbackRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conversation = (
+        db.query(Conversation)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المحادثة غير موجودة",
+        )
+
+    if message_index < 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="رقم الرسالة غير صالح",
+        )
+
+    messages = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation.id)
+        .order_by(Message.created_at.asc(), Message.id.asc())
+        .all()
+    )
+    if message_index > len(messages):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الرسالة غير موجودة",
+        )
+
+    message = messages[message_index - 1]
+    if message.role != MessageRole.assistant:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="يمكن تقييم رد المساعد فقط",
+        )
+
+    message.feedback = payload.rating
+    db.commit()
+
+    return MessageFeedbackOut(
+        message_index=message_index,
+        feedback=message.feedback,
+    )
 
 
 @router.post("", response_model=ChatResponse)
