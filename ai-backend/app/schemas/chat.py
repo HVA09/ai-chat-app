@@ -11,6 +11,15 @@ class ChatRequest(BaseModel):
     conversation_id: int | None = None
     assistant_id: int | None = None
     workspace_id: int | None = None
+    model: str | None = Field(default=None, max_length=100)
+
+    @field_validator("model")
+    @classmethod
+    def model_name_normalize(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
 
     @field_validator("message")
     @classmethod
@@ -72,6 +81,12 @@ class VisionResponse(BaseModel):
     reply: str
 
 
+class ChatModelOut(BaseModel):
+    id: str
+    label: str
+    is_default: bool
+
+
 class ChatResponse(BaseModel):
     conversation_id: int
     reply: str
@@ -89,6 +104,7 @@ class ConversationOut(BaseModel):
     folder_id: int | None
     assistant_id: int | None
     workspace_id: int
+    ai_model: str | None
 
 
 class ConversationDetail(ConversationOut):
