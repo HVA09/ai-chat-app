@@ -27,6 +27,7 @@ const PricingPage = lazy(() => import("./components/PricingPage"));
 const SharedConversationPage = lazy(() => import("./components/SharedConversationPage"));
 const WorkspaceMembersPanel = lazy(() => import("./components/WorkspaceMembersPanel"));
 const WorkspaceInvitePage = lazy(() => import("./components/WorkspaceInvitePage"));
+const AssistantEditor = lazy(() => import("./components/AssistantEditor"));
 import {
   listConversations,
   getConversation,
@@ -129,6 +130,7 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showBilling, setShowBilling] = useState(false);
   const [showWorkspaceMembers, setShowWorkspaceMembers] = useState(false);
+  const [assistantEditor, setAssistantEditor] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const bottomRef = useRef(null);
@@ -477,42 +479,43 @@ export default function App() {
     }
   };
 
-  const handleCreateAssistant = async () => {
-    const name = window.prompt(t("sidebar.assistantCreateNamePrompt"));
-    if (!name?.trim()) return;
-    const instructions = window.prompt(t("sidebar.assistantCreateInstructionsPrompt"));
-    if (!instructions?.trim()) return;
-    const description = window.prompt(t("sidebar.assistantCreateDescriptionPrompt"));
-    try {
-      const assistant = await createAssistant({
-        name: name.trim(),
-        description: description?.trim() || null,
-        instructions: instructions.trim(),
-      });
-      await refreshAssistants();
-      setSelectedAssistantId(assistant.id);
-      startNewChat();
-    } catch (err) {
-      setToast({
-        message:
-          err?.response?.data?.detail || t("app.assistantCreateError"),
-        type: "error",
-      });
+  const handleCreateAssistant = () => {
+    setAssistantEditor({ mode: "create", assistant: null });
+  };
+
+  const handleRenameAssistant = (id) => {
+    const assistant = assistants.find((item) => item.id === id);
+    if (assistant) {
+      setAssistantEditor({ mode: "edit", assistant });
     }
   };
 
-  const handleRenameAssistant = async (id, currentName) => {
-    const name = window.prompt(t("sidebar.assistantRenamePrompt"), currentName);
-    if (!name?.trim() || name.trim() === currentName) return;
+  const handleSaveAssistant = async (payload) => {
     try {
-      await updateAssistant(id, { name: name.trim() });
+      if (assistantEditor?.mode === "edit" && assistantEditor.assistant) {
+        await updateAssistant(assistantEditor.assistant.id, payload);
+        await refreshAssistants();
+        setAssistantEditor(null);
+        setToast({ message: t("app.assistantUpdated"), type: "success" });
+        return;
+      }
+
+      const assistant = await createAssistant(payload);
       await refreshAssistants();
+      setSelectedAssistantId(assistant.id);
+      startNewChat();
+      setAssistantEditor(null);
+      setToast({ message: t("app.assistantCreated"), type: "success" });
     } catch (err) {
       setToast({
         message:
-          err?.response?.data?.detail || t("app.assistantRenameError"),
+          err?.response?.data?.detail ||
+          (assistantEditor?.mode === "edit"
+            ? t("app.assistantRenameError")
+            : t("app.assistantCreateError")),
         type: "error",
       });
+      throw err;
     }
   };
 
@@ -1255,7 +1258,7 @@ export default function App() {
         selectedAssistantId={selectedAssistantId}
         onSelectAssistant={handleSelectAssistant}
         onCreateAssistant={handleCreateAssistant}
-        onRenameAssistant={handleRenameAssistant}
+        onRenameAssistant={(id) => handleRenameAssistant(id)}
         onDeleteAssistant={handleDeleteAssistant}
         folders={folders}
         selectedFolderId={selectedFolderId}
@@ -1464,6 +1467,17 @@ export default function App() {
       {showBilling && (
         <Suspense fallback={<ModalLoadingFallback />}>
           <BillingPanel onClose={() => setShowBilling(false)} />
+        </Suspense>
+      )}
+
+      {assistantEditor && (
+        <Suspense fallback={<ModalLoadingFallback />}>
+          <AssistantEditor
+            assistant={assistantEditor.assistant}
+            loading={false}
+            onClose={() => setAssistantEditor(null)}
+            onSave={handleSaveAssistant}
+          />
         </Suspense>
       )}
 
