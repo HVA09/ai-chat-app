@@ -52,6 +52,9 @@ class User(Base):
     conversation_folders = relationship(
         "ConversationFolder", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )
+    saved_prompts = relationship(
+        "SavedPrompt", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
+    )
     conversations = relationship(
         "Conversation", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )
