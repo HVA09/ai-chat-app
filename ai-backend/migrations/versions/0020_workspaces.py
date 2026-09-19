@@ -7,6 +7,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0020_workspaces"
 down_revision: Union[str, None] = "0019_conversation_shares"
@@ -63,7 +64,7 @@ EXCEPTION
 END
 $$;"""
     )
-    workspace_role = sa.Enum(
+    workspace_role = postgresql.ENUM(
         "owner",
         "admin",
         "member",
