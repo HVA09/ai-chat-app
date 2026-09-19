@@ -676,10 +676,10 @@ export default function App() {
     }
   };
 
-  const handleExportConversation = async () => {
+  const handleExportConversation = async (format = "markdown") => {
     if (!conversationId || loading) return;
     try {
-      await exportConversation(conversationId);
+      await exportConversation(conversationId, format);
       setToast({ message: t("exportConversationSuccess"), type: "success" });
     } catch (err) {
       setToast({
