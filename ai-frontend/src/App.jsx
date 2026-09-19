@@ -37,6 +37,7 @@ import {
   toggleTrashConversation,
   moveConversationToFolder,
   exportConversation,
+  summarizeConversation,
 } from "./lib/conversationsApi";
 import {
   listFolders,
@@ -129,6 +130,9 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showBilling, setShowBilling] = useState(false);
   const [showWorkspaceMembers, setShowWorkspaceMembers] = useState(false);
+  const [conversationSummary, setConversationSummary] = useState(null);
+  const [conversationSummaryUpdatedAt, setConversationSummaryUpdatedAt] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const bottomRef = useRef(null);
@@ -165,6 +169,8 @@ export default function App() {
     setSelectedFolderId(null);
     setSelectedAssistantId(null);
     setConversationId(null);
+    setConversationSummary(null);
+    setConversationSummaryUpdatedAt(null);
     setMessages([getWelcomeMessage(t)]);
     setInput("");
     setEditingMessageIndex(null);
@@ -176,6 +182,9 @@ export default function App() {
     setShowBilling(false);
     setShowWorkspaceMembers(false);
     setShowTrashConversations(false);
+    setConversationSummary(null);
+    setConversationSummaryUpdatedAt(null);
+    setSummaryLoading(false);
     setNotifications([]);
   }, [t]);
 
@@ -701,6 +710,8 @@ export default function App() {
     try {
       const data = await getConversation(id);
       setConversationId(data.id);
+      setConversationSummary(data.summary ?? null);
+      setConversationSummaryUpdatedAt(data.summary_updated_at ?? null);
       setSelectedAssistantId(data.assistant_id ?? null);
       setSelectedWorkspaceId(data.workspace_id ?? null);
       setSelectedFolderId(data.folder_id ?? null);
@@ -786,6 +797,25 @@ export default function App() {
         )
       );
       setToast({ message: t("app.feedbackError"), type: "error" });
+    }
+  };
+
+  const handleSummarizeConversation = async () => {
+    if (!conversationId || loading || summaryLoading) return;
+    setSummaryLoading(true);
+    setError("");
+    try {
+      const result = await summarizeConversation(conversationId);
+      setConversationSummary(result.summary);
+      setConversationSummaryUpdatedAt(result.summary_updated_at);
+      setToast({ message: t("summary.saved"), type: "success" });
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("summary.error"),
+        type: "error",
+      });
+    } finally {
+      setSummaryLoading(false);
     }
   };
 
@@ -1318,6 +1348,9 @@ export default function App() {
           canShareConversation={conversationId !== null && !loading}
           onExportConversation={handleExportConversation}
           canExportConversation={conversationId !== null && !loading}
+          onSummarizeConversation={handleSummarizeConversation}
+          canSummarizeConversation={conversationId !== null && !loading}
+          summaryLoading={summaryLoading}
           isAdmin={currentUser?.role === "admin"}
           notifications={notifications}
           onMarkNotificationRead={handleMarkNotificationRead}
@@ -1325,6 +1358,36 @@ export default function App() {
         />
 
         <section className="flex flex-1 flex-col p-4">
+          {conversationId && (conversationSummary || summaryLoading) ? (
+            <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {t("summary.title")}
+                  </h3>
+                  {conversationSummaryUpdatedAt ? (
+                    <p className="mt-1 text-xs text-slate-400">
+                      {t("summary.updatedAt", {
+                        date: new Date(conversationSummaryUpdatedAt).toLocaleString(),
+                      })}
+                    </p>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSummarizeConversation}
+                  disabled={loading || summaryLoading}
+                  className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  {summaryLoading ? t("summary.loading") : t("summary.refresh")}
+                </button>
+              </div>
+              <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-200">
+                {summaryLoading && !conversationSummary ? t("summary.loading") : conversationSummary}
+              </div>
+            </div>
+          ) : null}
+
           <div className="flex-1 space-y-4 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             {empty ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-slate-500">

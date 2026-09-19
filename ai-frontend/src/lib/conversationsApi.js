@@ -87,3 +87,8 @@ export async function exportConversation(id, format = "markdown") {
     URL.revokeObjectURL(url);
   }
 }
+
+export async function summarizeConversation(id) {
+  const { data } = await api.post(`/conversations/${id}/summary`);
+  return data;
+}

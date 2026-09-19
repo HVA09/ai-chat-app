@@ -25,6 +25,16 @@ const resources = {
       exportJson: "JSON",
       exportConversationSuccess: "تم تصدير المحادثة",
       exportConversationError: "تعذر تصدير المحادثة",
+      summary: {
+        title: "ملخص المحادثة",
+        button: "تلخيص",
+        refresh: "تحديث الملخص",
+        loading: "جارٍ التلخيص...",
+        saved: "تم تحديث ملخص المحادثة",
+        error: "تعذر إنشاء ملخص المحادثة",
+        disabled: "افتح محادثة أولاً",
+        updatedAt: "آخر تحديث: {{date}}",
+      },
 
       app: {
         welcomeMessage: "مرحبًا، كيف أساعدك اليوم؟",
@@ -454,6 +464,16 @@ const resources = {
       exportJson: "JSON",
       exportConversationSuccess: "Conversation exported",
       exportConversationError: "Couldn't export the conversation",
+      summary: {
+        title: "Conversation summary",
+        button: "Summarize",
+        refresh: "Refresh summary",
+        loading: "Summarizing...",
+        saved: "Conversation summary updated",
+        error: "Couldn't create the conversation summary",
+        disabled: "Open a conversation first",
+        updatedAt: "Updated: {{date}}",
+      },
 
       app: {
         welcomeMessage: "Hi, how can I help you today?",

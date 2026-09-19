@@ -5,6 +5,7 @@ import json
 from unittest.mock import AsyncMock
 
 from app.routers import chat as chat_router_module
+from app.routers import conversations as conversations_router_module
 from app.services.ai_providers.base import AIReply
 
 
@@ -399,3 +400,66 @@ def test_cannot_rename_or_delete_other_users_conversation(client, monkeypatch):
     assert rename_response.status_code == 404
     delete_response = client.delete(f"/conversations/{conversation_id}", headers=headers_b)
     assert delete_response.status_code == 404
+
+
+def test_create_conversation_summary(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تجريبي")),
+    )
+    monkeypatch.setattr(
+        conversations_router_module,
+        "get_ai_reply",
+        AsyncMock(
+            return_value=AIReply(
+                text="- Topic: مناقشة مشروع\n- Key points: تم الاتفاق على الخطوات التالية",
+                input_tokens=32,
+                output_tokens=18,
+            )
+        ),
+    )
+    token = _register_and_login(client, "summary@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "أريد تلخيص هذه المحادثة عن المشروع"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    response = client.post(
+        f"/conversations/{conversation_id}/summary",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["conversation_id"] == conversation_id
+    assert "Topic" in payload["summary"]
+    assert payload["summary_updated_at"]
+
+    detail = client.get(f"/conversations/{conversation_id}", headers=headers)
+    assert detail.status_code == 200
+    assert detail.json()["summary"] == payload["summary"]
+    assert detail.json()["summary_updated_at"] == payload["summary_updated_at"]
+
+
+def test_cannot_summarize_other_users_conversation(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تجريبي")),
+    )
+    token_a = _register_and_login(client, "summary-owner@example.com")
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "محادثة خاصة"},
+        headers={"Authorization": f"Bearer {token_a}"},
+    ).json()["conversation_id"]
+
+    token_b = _register_and_login(client, "summary-other@example.com")
+    response = client.post(
+        f"/conversations/{conversation_id}/summary",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
