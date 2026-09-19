@@ -27,6 +27,11 @@ vi.mock("react-i18next", () => ({
       "sidebar.folderDeleteConfirm": "حذف المجلد {{name}}؟",
       "sidebar.moveFolderTitle": "نقل إلى مجلد",
       "sidebar.noFolder": "بدون مجلد",
+      "sidebar.savedPromptsTitle": "الموجهات المحفوظة",
+      "sidebar.createSavedPromptTitle": "إنشاء موجه محفوظ",
+      "sidebar.editSavedPromptTitle": "تعديل الموجه المحفوظ",
+      "sidebar.deleteSavedPromptTitle": "حذف الموجه المحفوظ",
+      "sidebar.noSavedPrompts": "لا توجد موجهات محفوظة",
       "sidebar.selectConversation": "تحديد {{title}}",
       "sidebar.selectAllVisible": "تحديد الكل الظاهر",
       "sidebar.bulkSelected": "{{count}} محددة",
@@ -69,6 +74,11 @@ function renderSidebar(overrides = {}) {
     onRenameConversation: vi.fn(),
     onDeleteConversation: vi.fn(),
     onTogglePinConversation: vi.fn(),
+    savedPrompts: [{ id: 10, name: "تلخيص", content: "لخص النص في 5 نقاط." }],
+    onCreateSavedPrompt: vi.fn(),
+    onRenameSavedPrompt: vi.fn(),
+    onDeleteSavedPrompt: vi.fn(),
+    onUseSavedPrompt: vi.fn(),
     onToggleArchiveConversation: vi.fn(),
     onToggleTrashConversation: vi.fn(),
     folders: sampleFolders,
@@ -260,6 +270,27 @@ describe("Sidebar", () => {
 
     expect(onDeleteConversation).toHaveBeenCalledWith(1);
     expect(onToggleTrashConversation).not.toHaveBeenCalled();
+  });
+
+  it("استخدام موجه محفوظ يستدعي المعالج بالنص", async () => {
+    const user = userEvent.setup();
+    const { onUseSavedPrompt } = renderSidebar();
+    await user.click(screen.getByRole("button", { name: /تلخيص/ }));
+    expect(onUseSavedPrompt).toHaveBeenCalledWith("لخص النص في 5 نقاط.");
+  });
+
+  it("زر إنشاء موجه محفوظ يستدعي المعالج", async () => {
+    const user = userEvent.setup();
+    const { onCreateSavedPrompt } = renderSidebar();
+    await user.click(screen.getByTitle("إنشاء موجه محفوظ"));
+    expect(onCreateSavedPrompt).toHaveBeenCalled();
+  });
+
+  it("حذف موجه محفوظ يستدعي المعالج", async () => {
+    const user = userEvent.setup();
+    const { onDeleteSavedPrompt } = renderSidebar();
+    await user.click(screen.getByTitle("حذف الموجه المحفوظ"));
+    expect(onDeleteSavedPrompt).toHaveBeenCalledWith(10, "تلخيص");
   });
 
   it("الحذف ما يصير لو المستخدم ألغى التأكيد", async () => {

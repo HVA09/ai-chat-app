@@ -6,6 +6,7 @@ from app.models.assistant import Assistant
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.conversation_share import ConversationShare
 from app.models.conversation_folder import ConversationFolder
+from app.models.saved_prompt import SavedPrompt
 from app.models.conversation_tag import ConversationTag
 from app.models.conversation_share import ConversationShare
 from app.models.usage_log import UsageLog
@@ -32,6 +33,7 @@ __all__ = [
     "Message",
     "MessageRole",
     "ConversationFolder",
+    "SavedPrompt",
     "ConversationTag",
     "ConversationShare",
     "UsageLog",
