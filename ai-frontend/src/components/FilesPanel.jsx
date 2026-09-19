@@ -29,7 +29,7 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function FilesPanel({ onClose, conversationId = null }) {
+export default function FilesPanel({ onClose, conversationId = null, onAnalyzeImage }) {
   const { t } = useTranslation();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +37,7 @@ export default function FilesPanel({ onClose, conversationId = null }) {
   const [uploadProgress, setUploadProgress] = useState(null); // 0-100 أثناء الرفع، null لو ما فيه رفع جارٍ
   const [dragOver, setDragOver] = useState(false);
   const [preview, setPreview] = useState(null); // { url, contentType, name }
+  const [analyzingId, setAnalyzingId] = useState(null);
   const fileInputRef = useRef(null);
 
   const refresh = async () => {
@@ -80,6 +81,22 @@ export default function FilesPanel({ onClose, conversationId = null }) {
       await refresh();
     } catch (err) {
       setError(getErrorMessage(err, t("files.attachmentError")));
+    }
+  };
+
+  const handleAnalyzeImage = async (file) => {
+    if (!conversationId || !file.content_type.startsWith("image/") || !onAnalyzeImage) return;
+    const prompt = window.prompt(t("files.analyzePrompt"));
+    if (!prompt?.trim()) return;
+
+    setError("");
+    setAnalyzingId(file.id);
+    try {
+      await onAnalyzeImage(file, prompt.trim());
+    } catch (err) {
+      setError(getErrorMessage(err, t("files.imageAnalyzeError")));
+    } finally {
+      setAnalyzingId(null);
     }
   };
 
@@ -203,6 +220,16 @@ export default function FilesPanel({ onClose, conversationId = null }) {
                   >
                     ⬇
                   </button>
+                  {conversationId && file.content_type.startsWith("image/") && onAnalyzeImage && (
+                    <button
+                      onClick={() => handleAnalyzeImage(file)}
+                      disabled={analyzingId === file.id}
+                      title={t("files.analyzeImage")}
+                      className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                    >
+                      {analyzingId === file.id ? "..." : "🔎"}
+                    </button>
+                  )}
                   {conversationId && (
                     <button
                       onClick={() => handleToggleAttachment(file)}
