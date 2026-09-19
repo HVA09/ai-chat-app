@@ -16,6 +16,9 @@ export default function ChatHeader({
   canShareConversation = false,
   onExportConversation,
   canExportConversation = false,
+  onSummarizeConversation,
+  canSummarizeConversation = false,
+  summaryLoading = false,
   isAdmin,
   notifications,
   onMarkNotificationRead,
@@ -80,6 +83,14 @@ export default function ChatHeader({
             </div>
           )}
         </div>
+        <button
+          onClick={onSummarizeConversation}
+          disabled={!canSummarizeConversation || summaryLoading}
+          title={canSummarizeConversation ? t("summary.button") : t("summary.disabled")}
+          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-900"
+        >
+          {summaryLoading ? t("summary.loading") : t("summary.button")}
+        </button>
         {isAdmin && (
           <button
             onClick={onOpenAdmin}
