@@ -7,7 +7,6 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 revision: str = "0020_workspaces"
 down_revision: Union[str, None] = "0019_conversation_shares"
@@ -64,24 +63,12 @@ EXCEPTION
 END
 $$;"""
     )
-    workspace_role = postgresql.ENUM(
-        "owner",
-        "admin",
-        "member",
-        name="workspacerole",
-        create_type=False,
-    )
     op.create_table(
         "workspace_members",
         sa.Column("id", sa.Integer(), primary_key=True),
         sa.Column("workspace_id", sa.Integer(), nullable=False),
         sa.Column("user_id", sa.Integer(), nullable=False),
-        sa.Column(
-            "role",
-            workspace_role,
-            nullable=False,
-            server_default="member",
-        ),
+        sa.Column("role", sa.String(length=20), nullable=False, server_default="member"),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -105,6 +92,21 @@ $$;"""
             "user_id",
             name="uq_workspace_members_workspace_user",
         ),
+    )
+    # Convert the temporary text column to the already-created PostgreSQL enum
+    # without letting SQLAlchemy emit a second CREATE TYPE.
+    op.execute(
+        "ALTER TABLE workspace_members "
+        "ALTER COLUMN role DROP DEFAULT"
+    )
+    op.execute(
+        "ALTER TABLE workspace_members "
+        "ALTER COLUMN role TYPE workspacerole "
+        "USING role::text::workspacerole"
+    )
+    op.execute(
+        "ALTER TABLE workspace_members "
+        "ALTER COLUMN role SET DEFAULT 'member'"
     )
     op.create_index(
         "ix_workspace_members_user_id",
