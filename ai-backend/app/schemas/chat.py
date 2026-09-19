@@ -21,6 +21,20 @@ class ChatRequest(BaseModel):
         return v
 
 
+class VisionRequest(BaseModel):
+    conversation_id: int
+    file_id: int
+    message: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("message")
+    @classmethod
+    def vision_message_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("سؤال الصورة لا يمكن أن يكون فارغًا")
+        return v
+
+
 class ChatEditRequest(BaseModel):
     message_index: int = Field(ge=1)
     message: str = Field(min_length=1, max_length=4000)
@@ -51,6 +65,11 @@ class MessageOut(BaseModel):
     created_at: datetime
     sources: list[dict[str, Any]] | None = None
     feedback: int | None = None
+
+
+class VisionResponse(BaseModel):
+    conversation_id: int
+    reply: str
 
 
 class ChatResponse(BaseModel):

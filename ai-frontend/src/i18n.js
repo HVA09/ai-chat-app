@@ -38,6 +38,7 @@ const resources = {
         folderDeleteError: "تعذر حذف المجلد",
         conversationMoveError: "تعذر نقل المحادثة",
         feedbackError: "تعذر حفظ التقييم",
+        imageAnalyzeError: "تعذر تحليل الصورة",
         workspaceCreateError: "تعذر إنشاء مساحة العمل",
         workspaceRenameError: "تعذر إعادة تسمية مساحة العمل",
         assistantCreateError: "تعذر إنشاء المساعد",
@@ -205,6 +206,8 @@ const resources = {
         attach: "إرفاق بالمحادثة",
         detach: "إزالة من المحادثة",
         attachmentError: "تعذر تحديث ارتباط الملف بالمحادثة",
+        analyzeImage: "تحليل الصورة",
+        analyzePrompt: "ماذا تريد أن تعرف عن الصورة؟",
       },
 
       sidebar: {
@@ -419,6 +422,7 @@ const resources = {
         folderDeleteError: "Couldn't delete the folder",
         conversationMoveError: "Couldn't move the conversation",
         feedbackError: "Couldn't save the feedback",
+        imageAnalyzeError: "Couldn't analyze the image",
         assistantCreateError: "Couldn't create the assistant",
         assistantRenameError: "Couldn't rename the assistant",
         assistantDeleteError: "Couldn't delete the assistant",
@@ -581,6 +585,8 @@ const resources = {
         noFiles: "No files yet",
         download: "Download",
         delete: "Delete",
+        analyzeImage: "Analyze image",
+        analyzePrompt: "What would you like to know about this image?",
         attach: "Attach to conversation",
         detach: "Remove from conversation",
         attachmentError: "Couldn't update the file attachment",

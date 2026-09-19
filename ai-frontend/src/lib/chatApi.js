@@ -281,3 +281,13 @@ export async function setMessageFeedback(conversationId, messageIndex, rating) {
   );
   return data;
 }
+
+
+export async function analyzeImage(conversationId, fileId, message) {
+  const { data } = await api.post("/chat/vision", {
+    conversation_id: conversationId,
+    file_id: fileId,
+    message,
+  });
+  return data;
+}

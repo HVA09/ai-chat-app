@@ -7,7 +7,7 @@ import ChatComposer from "./components/ChatComposer";
 import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
-import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback } from "./lib/chatApi";
+import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
 
@@ -471,6 +471,47 @@ export default function App() {
       );
     } catch {
       setError(t("app.conversationLoadError"));
+    }
+  };
+
+  const handleAnalyzeImage = async (file, prompt) => {
+    if (!conversationId || loading) return;
+    setError("");
+    setShowFiles(false);
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        text: "[صورة: " + file.original_filename + "] " + prompt,
+        time: new Date().toLocaleTimeString(),
+      },
+      {
+        role: "assistant",
+        text: "",
+        time: new Date().toLocaleTimeString(),
+      },
+    ]);
+    setLoading(true);
+
+    try {
+      const result = await analyzeImage(conversationId, file.id, prompt);
+      setConversationId(result.conversation_id);
+      setMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = {
+          ...next[next.length - 1],
+          text: result.reply,
+        };
+        return next;
+      });
+      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
+    } catch (err) {
+      setMessages((prev) => prev.slice(0, -2));
+      setToast({ message: t("app.imageAnalyzeError"), type: "error" });
+      throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1093,6 +1134,7 @@ export default function App() {
         <Suspense fallback={<ModalLoadingFallback />}>
           <FilesPanel
             conversationId={conversationId}
+            onAnalyzeImage={handleAnalyzeImage}
             onClose={() => setShowFiles(false)}
           />
         </Suspense>

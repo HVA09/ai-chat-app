@@ -1,6 +1,7 @@
 """
 مسارات المحادثة مع الذكاء الاصطناعي: عادي (/chat) ومباشر تدريجيًا (/chat/stream)
 """
+import base64
 import json
 from pathlib import Path
 
@@ -26,9 +27,11 @@ from app.schemas.chat import (
     ChatResponse,
     MessageFeedbackRequest,
     MessageFeedbackOut,
+    VisionRequest,
+    VisionResponse,
 )
 from app.services.ai_agent import AgentModeError, extract_agent_request, run_agent
-from app.services.ai_service import get_ai_reply, stream_ai_reply
+from app.services.ai_service import get_ai_reply, get_ai_vision_reply, stream_ai_reply
 from app.services.embeddings import EmbeddingServiceError
 from app.services.rag import build_fallback_file_context, build_retrieval_context, retrieve_relevant_chunks
 from app.services.tools.calculator import CalculatorError, calculate_expression, extract_calculator_expression
@@ -315,6 +318,129 @@ async def _augment_message(
 
     combined_context = "\n\n".join(context_parts)
     return f"{combined_context}\n\nUSER REQUEST:\n{message}", sources
+
+
+
+
+def _get_attached_image(
+    conversation_id: int,
+    file_id: int,
+    current_user: User,
+    db: Session,
+) -> tuple[FileAttachment, Path]:
+    row = (
+        db.query(FileAttachment)
+        .join(
+            ConversationFileLink,
+            ConversationFileLink.file_id == FileAttachment.id,
+        )
+        .filter(
+            ConversationFileLink.conversation_id == conversation_id,
+            ConversationFileLink.file_id == file_id,
+            FileAttachment.user_id == current_user.id,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الصورة غير موجودة أو غير مرفقة بهذه المحادثة",
+        )
+
+    if not row.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="يمكن تحليل الصور فقط",
+        )
+
+    path = Path(settings.UPLOAD_DIR) / str(current_user.id) / row.stored_filename
+    if not path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="ملف الصورة غير موجود على القرص",
+        )
+
+    return row, path
+
+
+@router.post("/vision", response_model=VisionResponse)
+async def analyze_attached_image(
+    payload: VisionRequest,
+    current_user: User = Depends(enforce_daily_ai_limit),
+    db: Session = Depends(get_db),
+):
+    conversation = (
+        db.query(Conversation)
+        .filter(
+            Conversation.id == payload.conversation_id,
+            Conversation.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المحادثة غير موجودة",
+        )
+
+    attachment, image_path = _get_attached_image(
+        payload.conversation_id,
+        payload.file_id,
+        current_user,
+        db,
+    )
+
+    history = _build_history(conversation, db)
+    assistant_context = _build_assistant_context(conversation, db)
+    prompt = payload.message
+    if assistant_context:
+        prompt = f"{assistant_context}\n\nUSER REQUEST:\n{payload.message}"
+
+    try:
+        raw = image_path.read_bytes()
+        image_data_url = (
+            f"data:{attachment.content_type};base64,"
+            f"{base64.b64encode(raw).decode('ascii')}"
+        )
+        reply = await get_ai_vision_reply(
+            prompt,
+            image_data_url,
+            history,
+        )
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="تعذر قراءة الصورة",
+        ) from exc
+
+    db.add(
+        Message(
+            conversation_id=conversation.id,
+            role=MessageRole.user,
+            content=f"[تحليل صورة: {attachment.original_filename}] {payload.message}",
+        )
+    )
+    db.add(
+        Message(
+            conversation_id=conversation.id,
+            role=MessageRole.assistant,
+            content=reply.text,
+        )
+    )
+    db.add(
+        UsageLog(
+            user_id=current_user.id,
+            endpoint="/chat/vision",
+            input_tokens=reply.input_tokens,
+            output_tokens=reply.output_tokens,
+        )
+    )
+    db.commit()
+
+    return VisionResponse(
+        conversation_id=conversation.id,
+        reply=reply.text,
+    )
 
 
 @router.patch("/{conversation_id}/messages/{message_index}/feedback", response_model=MessageFeedbackOut)
