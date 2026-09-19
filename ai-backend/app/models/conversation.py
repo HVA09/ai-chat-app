@@ -82,7 +82,6 @@ class Message(Base):
 
 
 @event.listens_for(Message, "after_insert")
-@event.listens_for(Message, "after_update")
 @event.listens_for(Message, "after_delete")
 def _touch_conversation_activity(mapper, connection, target):
     connection.execute(
