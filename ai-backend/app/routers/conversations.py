@@ -39,6 +39,7 @@ def list_conversations(
     folder_id: int | None = None,
     assistant_id: int | None = None,
     workspace_id: int | None = None,
+    search: str | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -49,6 +50,20 @@ def list_conversations(
         Conversation.user_id == current_user.id,
         Conversation.is_archived == include_archived,
     )
+
+    if search and search.strip():
+        escaped_search = (
+            search.strip()[:100]
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        query = query.filter(
+            Conversation.title.ilike(
+                f"%{escaped_search}%",
+                escape="\\",
+            )
+        )
 
     if workspace_id is not None:
         membership = (
