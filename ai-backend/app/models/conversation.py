@@ -19,58 +19,34 @@ class MessageRole(str, enum.Enum):
 class Conversation(Base):
     __tablename__ = "conversations"
     __table_args__ = (
-        # يخدم GET /conversations: فلترة حسب user_id + ترتيب حسب created_at في استعلام واحد
         Index("ix_conversations_user_id_created_at", "user_id", "created_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     title: Mapped[str] = mapped_column(String(255), default="محادثة جديدة")
     is_pinned: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
     is_archived: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
-    folder_id: Mapped[int | None] = mapped_column(
-        ForeignKey("conversation_folders.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    workspace_id: Mapped[int] = mapped_column(
-        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    folder_id: Mapped[int | None] = mapped_column(ForeignKey("conversation_folders.id", ondelete="SET NULL"), nullable=True, index=True)
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
     ai_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    assistant_id: Mapped[int | None] = mapped_column(
-        ForeignKey("assistants.id", ondelete="SET NULL"), nullable=True, index=True
-    )
+    assistant_id: Mapped[int | None] = mapped_column(ForeignKey("assistants.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     owner = relationship("User", back_populates="conversations")
     folder = relationship("ConversationFolder", back_populates="conversations")
     workspace = relationship("Workspace", back_populates="conversations")
     assistant = relationship("Assistant", back_populates="conversations")
-    shares = relationship(
-        "ConversationShare", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
-    )
-    shares = relationship(
-        "ConversationShare", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
-    )
-    file_links = relationship(
-        "ConversationFileLink", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
-    )
-    messages = relationship(
-        "Message",
-        back_populates="conversation",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-        order_by="Message.created_at",
-    )
+    shares = relationship("ConversationShare", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True)
+    file_links = relationship("ConversationFileLink", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True)
+    messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True, order_by="Message.created_at")
 
 
 class Message(Base):
     __tablename__ = "messages"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    conversation_id: Mapped[int] = mapped_column(
-        ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
-    )
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True)
     role: Mapped[MessageRole] = mapped_column(Enum(MessageRole), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     sources: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
