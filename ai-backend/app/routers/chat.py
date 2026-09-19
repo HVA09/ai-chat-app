@@ -453,7 +453,7 @@ async def analyze_attached_image(
     prompt = payload.message
     context_parts = [part for part in (memory_context, assistant_context) if part]
     if context_parts:
-        prompt = f"{'\n\n'.join(context_parts)}\n\nUSER REQUEST:\n{payload.message}"
+        prompt = "\n\n".join(context_parts) + f"\n\nUSER REQUEST:\n{payload.message}"
 
     try:
         raw = image_path.read_bytes()
