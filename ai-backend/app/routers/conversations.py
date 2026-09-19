@@ -14,10 +14,12 @@ from app.dependencies import get_current_user
 from app.models.assistant import Assistant
 from app.models.conversation import Conversation
 from app.models.conversation_folder import ConversationFolder
+from app.models.conversation_tag import ConversationTag
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.chat import ConversationDetail, ConversationOut, ConversationRename
 from app.schemas.folders import ConversationFolderUpdate
+from app.schemas.tags import ConversationTagsUpdate
 
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
@@ -30,7 +32,7 @@ def _get_owned_conversation(
     *,
     include_deleted: bool = False,
 ) -> Conversation:
-    query = db.query(Conversation).filter(
+    query = db.query(Conversation).options(selectinload(Conversation.tags)).filter(
         Conversation.id == conversation_id,
         Conversation.user_id == current_user.id,
     )
@@ -49,6 +51,7 @@ def list_conversations(
     include_archived: bool = False,
     folder_id: int | None = None,
     assistant_id: int | None = None,
+    tag_id: int | None = None,
     include_deleted: bool = False,
     workspace_id: int | None = None,
     search: str | None = None,
@@ -113,6 +116,22 @@ def list_conversations(
             )
         query = query.filter(Conversation.folder_id == folder_id)
 
+    if tag_id is not None:
+        owned_tag = (
+            db.query(ConversationTag)
+            .filter(
+                ConversationTag.id == tag_id,
+                ConversationTag.user_id == current_user.id,
+            )
+            .first()
+        )
+        if not owned_tag:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="الوسم غير موجود",
+            )
+        query = query.filter(Conversation.tags.any(ConversationTag.id == tag_id))
+
     if assistant_id is not None:
         owned_assistant = (
             db.query(Assistant)
@@ -146,7 +165,7 @@ def get_conversation(
 ):
     conversation = (
         db.query(Conversation)
-        .options(selectinload(Conversation.messages))
+        .options(selectinload(Conversation.messages), selectinload(Conversation.tags))
         .filter(
             Conversation.id == conversation_id,
             Conversation.user_id == current_user.id,
@@ -224,6 +243,39 @@ def set_conversation_folder(
             )
 
     conversation.folder_id = payload.folder_id
+    db.commit()
+    db.refresh(conversation)
+    return conversation
+
+
+@router.put("/{conversation_id}/tags", response_model=ConversationOut)
+def set_conversation_tags(
+    conversation_id: int,
+    payload: ConversationTagsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conversation = _get_owned_conversation(conversation_id, current_user, db)
+
+    unique_ids = list(dict.fromkeys(payload.tag_ids))
+    if unique_ids:
+        tags = (
+            db.query(ConversationTag)
+            .filter(
+                ConversationTag.user_id == current_user.id,
+                ConversationTag.id.in_(unique_ids),
+            )
+            .all()
+        )
+        if len(tags) != len(unique_ids):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="أحد الوسوم غير موجود",
+            )
+        conversation.tags = tags
+    else:
+        conversation.tags = []
+
     db.commit()
     db.refresh(conversation)
     return conversation

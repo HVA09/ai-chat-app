@@ -5,7 +5,8 @@ export async function listConversations(
   folderId = null,
   workspaceId = null,
   search = "",
-  includeDeleted = false
+  includeDeleted = false,
+  tagId = null
 ) {
   const params = {
     include_archived: includeArchived,
@@ -19,6 +20,9 @@ export async function listConversations(
   }
   if (search?.trim()) {
     params.search = search.trim();
+  }
+  if (tagId !== null && tagId !== undefined) {
+    params.tag_id = tagId;
   }
   const { data } = await api.get("/conversations", { params });
   return data;

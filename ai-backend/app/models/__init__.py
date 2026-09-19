@@ -5,6 +5,7 @@ from app.models.assistant import Assistant
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.conversation_share import ConversationShare
 from app.models.conversation_folder import ConversationFolder
+from app.models.conversation_tag import ConversationTag
 from app.models.conversation_share import ConversationShare
 from app.models.usage_log import UsageLog
 from app.models.file_attachment import FileAttachment
@@ -29,6 +30,7 @@ __all__ = [
     "Message",
     "MessageRole",
     "ConversationFolder",
+    "ConversationTag",
     "ConversationShare",
     "UsageLog",
     "FileAttachment",
