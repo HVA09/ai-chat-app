@@ -113,6 +113,14 @@ class ConversationOut(BaseModel):
 
 class ConversationDetail(ConversationOut):
     messages: list[MessageOut]
+    summary: str | None
+    summary_updated_at: datetime | None
+
+
+class ConversationSummaryOut(BaseModel):
+    conversation_id: int
+    summary: str
+    summary_updated_at: datetime
 
 
 class ConversationRename(BaseModel):
