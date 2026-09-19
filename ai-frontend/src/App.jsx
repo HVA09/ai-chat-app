@@ -63,6 +63,12 @@ import {
   deleteTag,
   setConversationTags,
 } from "./lib/tagsApi";
+import {
+  listSavedPrompts,
+  createSavedPrompt,
+  updateSavedPrompt,
+  deleteSavedPrompt,
+} from "./lib/savedPromptsApi";
 import { getCurrentUser } from "./lib/usersApi";
 import {
   listNotifications,
@@ -118,6 +124,7 @@ export default function App() {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(null);
   const [assistants, setAssistants] = useState([]);
   const [selectedAssistantId, setSelectedAssistantId] = useState(null);
+  const [savedPrompts, setSavedPrompts] = useState([]);
   const [aiModels, setAiModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [input, setInput] = useState("");
@@ -164,6 +171,7 @@ export default function App() {
     setTags([]);
     setSelectedTagId(null);
     setAssistants([]);
+    setSavedPrompts([]);
     setAiModels([]);
     setSelectedModel("");
     setSelectedFolderId(null);
@@ -476,6 +484,71 @@ export default function App() {
     setSelectedFolderId(id);
     startNewChat();
     await refreshConversations(showArchivedConversations, id, selectedWorkspaceId);
+  };
+
+  const refreshSavedPrompts = async () => {
+    try {
+      setSavedPrompts(await listSavedPrompts());
+    } catch {
+      // فشل تحميل الموجهات المحفوظة لا يوقف الشات.
+    }
+  };
+
+  const handleCreateSavedPrompt = async () => {
+    const name = window.prompt(t("sidebar.savedPromptCreateNamePrompt"));
+    if (!name?.trim()) return;
+    const content = window.prompt(t("sidebar.savedPromptCreateContentPrompt"));
+    if (!content?.trim()) return;
+    try {
+      await createSavedPrompt(name.trim(), content.trim());
+      await refreshSavedPrompts();
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.savedPromptCreateError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleRenameSavedPrompt = async (id, currentName, currentContent) => {
+    const name = window.prompt(
+      t("sidebar.savedPromptRenameNamePrompt"),
+      currentName
+    );
+    if (!name?.trim()) return;
+    const content = window.prompt(
+      t("sidebar.savedPromptRenameContentPrompt"),
+      currentContent
+    );
+    if (!content?.trim()) return;
+    try {
+      await updateSavedPrompt(id, name.trim(), content.trim());
+      await refreshSavedPrompts();
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.savedPromptUpdateError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleDeleteSavedPrompt = async (id, name) => {
+    if (!window.confirm(t("sidebar.savedPromptDeleteConfirm", { name }))) return;
+    try {
+      await deleteSavedPrompt(id);
+      await refreshSavedPrompts();
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.savedPromptDeleteError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleUseSavedPrompt = (content) => {
+    setInput(content);
+    setEditingMessageIndex(null);
+    setError("");
   };
 
   const refreshAssistants = async () => {
@@ -1287,6 +1360,11 @@ export default function App() {
         onCreateAssistant={handleCreateAssistant}
         onRenameAssistant={handleRenameAssistant}
         onDeleteAssistant={handleDeleteAssistant}
+        savedPrompts={savedPrompts}
+        onCreateSavedPrompt={handleCreateSavedPrompt}
+        onRenameSavedPrompt={handleRenameSavedPrompt}
+        onDeleteSavedPrompt={handleDeleteSavedPrompt}
+        onUseSavedPrompt={handleUseSavedPrompt}
         folders={folders}
         selectedFolderId={selectedFolderId}
         onSelectFolder={handleSelectFolder}
