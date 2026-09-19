@@ -56,7 +56,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
-def _daily_ai_limit_for(current_user: User, db: Session) -> int:
+def get_daily_ai_limit(current_user: User, db: Session) -> int:
     subscription = (
         db.query(Subscription)
         .filter(Subscription.user_id == current_user.id, Subscription.status == SubscriptionStatus.active)
@@ -70,7 +70,7 @@ def _daily_ai_limit_for(current_user: User, db: Session) -> int:
 def enforce_daily_ai_limit(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> User:
     if current_user.role == UserRole.admin:
         return current_user
-    daily_limit = _daily_ai_limit_for(current_user, db)
+    daily_limit = get_daily_ai_limit(current_user, db)
     since = datetime.now(timezone.utc) - timedelta(days=1)
     count = db.query(func.count(UsageLog.id)).filter(
         UsageLog.user_id == current_user.id, UsageLog.created_at >= since
