@@ -122,16 +122,19 @@ describe("Sidebar", () => {
 
   it("بحث المحادثات يرسل القيمة إلى المعالج بعد مهلة قصيرة", async () => {
     vi.useFakeTimers();
-    const onSearchChange = vi.fn();
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    renderSidebar({ onSearchChange });
+    try {
+      const onSearchChange = vi.fn();
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderSidebar({ onSearchChange });
 
-    const input = screen.getByPlaceholderText("ابحث في المحادثات...");
-    await user.type(input, "عمل");
-    vi.advanceTimersByTime(350);
+      const input = screen.getByRole("searchbox");
+      await user.type(input, "عمل");
+      vi.advanceTimersByTime(350);
 
-    expect(onSearchChange).toHaveBeenLastCalledWith("عمل");
-    vi.useRealTimers();
+      expect(onSearchChange).toHaveBeenLastCalledWith("عمل");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("زر محادثة جديدة ينادي onNewChat", async () => {
