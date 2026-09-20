@@ -38,6 +38,7 @@ from app.services.ai_service import get_ai_reply, get_ai_vision_reply, stream_ai
 from app.services.embeddings import EmbeddingServiceError
 from app.services.rag import build_fallback_file_context, build_retrieval_context, retrieve_relevant_chunks
 from app.services.tools.calculator import CalculatorError, calculate_expression, extract_calculator_expression
+from app.services.tools.code_execution import CodeExecutionError, execute_python_code, extract_code_request
 from app.services.tools.data_analysis import (
     DataAnalysisError,
     DataFile,
@@ -679,6 +680,44 @@ async def chat(
             sources=[],
         )
 
+    code_request = extract_code_request(payload.message)
+    if code_request is not None:
+        try:
+            code_result = execute_python_code(code_request)
+        except CodeExecutionError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+        db.add(
+            Message(
+                conversation_id=conversation.id,
+                role=MessageRole.user,
+                content=payload.message,
+            )
+        )
+        db.add(
+            Message(
+                conversation_id=conversation.id,
+                role=MessageRole.assistant,
+                content=code_result,
+            )
+        )
+        db.add(
+            UsageLog(
+                user_id=current_user.id,
+                workspace_id=conversation.workspace_id,
+                endpoint="/chat/tool/python",
+            )
+        )
+        db.commit()
+        return ChatResponse(
+            conversation_id=conversation.id,
+            reply=code_result,
+            sources=[],
+        )
+
     analysis_filename = extract_data_analysis_request(payload.message)
     if analysis_filename is not None:
         try:
@@ -886,6 +925,55 @@ async def chat_stream(
             yield "event: done\ndata: {}\n\n"
 
         return StreamingResponse(calculator_event_generator(), media_type="text/event-stream")
+
+    code_request = extract_code_request(payload.message)
+    if code_request is not None:
+        try:
+            code_result = execute_python_code(code_request)
+        except CodeExecutionError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+        db.add(
+            Message(
+                conversation_id=conversation.id,
+                role=MessageRole.user,
+                content=payload.message,
+            )
+        )
+        db.commit()
+        safe_code_result = code_result.replace("\n", "\\n")
+
+        async def python_event_generator():
+            yield f"event: conversation\ndata: {conversation.id}\n\n"
+            yield "event: sources\ndata: []\n\n"
+            yield f"event: chunk\ndata: {safe_code_result}\n\n"
+            try:
+                db.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        role=MessageRole.assistant,
+                        content=code_result,
+                    )
+                )
+                db.add(
+                    UsageLog(
+                        user_id=current_user.id,
+                        workspace_id=conversation.workspace_id,
+                        endpoint="/chat/tool/python",
+                    )
+                )
+                db.commit()
+            except Exception:
+                logger.exception("فشل حفظ نتيجة مفسّر بايثون لمحادثة %s", conversation.id)
+                db.rollback()
+                yield "event: error\ndata: تعذر حفظ نتيجة الكود\n\n"
+                return
+            yield "event: done\ndata: {}\n\n"
+
+        return StreamingResponse(python_event_generator(), media_type="text/event-stream")
 
     analysis_filename = extract_data_analysis_request(payload.message)
     if analysis_filename is not None:

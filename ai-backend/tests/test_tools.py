@@ -98,3 +98,54 @@ def test_chat_stream_calculator_command_does_not_call_ai(client, monkeypatch):
     assert "event: chunk\ndata: 42" in response.text
     assert "event: done" in response.text
 
+
+
+def test_chat_python_command_does_not_call_ai(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(side_effect=AssertionError("AI provider must not be called")),
+    )
+    token = _register_and_login(client, "tool-python@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/chat",
+        json={"message": "/python print(sum([1, 2, 3]))"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert "6" in response.json()["reply"]
+
+
+def test_chat_stream_python_command_does_not_call_ai(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "stream_ai_reply",
+        AsyncMock(side_effect=AssertionError("AI provider must not be called")),
+    )
+    token = _register_and_login(client, "tool-python-stream@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/chat/stream",
+        json={"message": "/python print(7 * 6)"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert "event: chunk" in response.text
+    assert "42" in response.text
+    assert "event: done" in response.text
+
+
+def test_chat_python_unsafe_command_returns_400(client):
+    token = _register_and_login(client, "tool-python-unsafe@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post(
+        "/chat",
+        json={"message": "/python import os"},
+        headers=headers,
+    )
+    assert response.status_code == 400
