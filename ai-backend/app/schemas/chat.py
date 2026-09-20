@@ -137,3 +137,40 @@ class ConversationRename(BaseModel):
         if not v:
             raise ValueError("العنوان لا يمكن أن يكون فارغًا")
         return v
+
+
+class ConversationImportMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=12000)
+    sources: list[dict[str, Any]] = Field(default_factory=list)
+
+    @field_validator("content")
+    @classmethod
+    def imported_content_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("محتوى الرسالة لا يمكن أن يكون فارغًا")
+        return v
+
+
+class ConversationImportRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    messages: list[ConversationImportMessage] = Field(min_length=1, max_length=500)
+    folder_id: int | None = None
+    project_id: int | None = None
+
+    @field_validator("title")
+    @classmethod
+    def imported_title_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("عنوان المحادثة لا يمكن أن يكون فارغًا")
+        return v
+
+    @field_validator("messages")
+    @classmethod
+    def imported_messages_size(cls, v: list[ConversationImportMessage]) -> list[ConversationImportMessage]:
+        total_chars = sum(len(message.content) for message in v)
+        if total_chars > 200_000:
+            raise ValueError("حجم المحادثة المستوردة كبير جدًا")
+        return v
