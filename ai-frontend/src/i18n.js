@@ -368,6 +368,23 @@ const resources = {
         save: "حفظ",
       },
 
+      workspaceUsage: {
+        title: "استخدام الذكاء الاصطناعي في مساحة العمل",
+        window: "آخر {{hours}} ساعة",
+        requests: "الطلبات",
+        inputTokens: "توكنز الإدخال",
+        outputTokens: "توكنز الإخراج",
+        totalTokens: "إجمالي التوكنز",
+        byMember: "الاستخدام حسب العضو",
+        noData: "لا توجد بيانات استخدام في هذه الفترة",
+        requestsShort: "طلبات",
+        inputShort: "إدخال",
+        outputShort: "إخراج",
+        totalShort: "الإجمالي",
+        exportCsv: "تصدير CSV",
+        exportError: "تعذر تصدير بيانات الاستخدام",
+      },
+
       workspaceInvite: {
         title: "دعوة مساحة العمل",
         invalid: "رابط الدعوة غير صالح أو ناقص.",
@@ -926,6 +943,8 @@ const resources = {
         inputShort: "input",
         outputShort: "output",
         totalShort: "total",
+        exportCsv: "Export CSV",
+        exportError: "Couldn’t export usage data",
       },
 
       workspaceInvite: {
