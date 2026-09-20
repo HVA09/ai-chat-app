@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FixedSizeList } from "react-window";
 import AutoSizer from "react-virtualized-auto-sizer";
+import WorkspaceSharedConversationsPanel from "./WorkspaceSharedConversationsPanel";
 
 const ROW_HEIGHT = 92;
 // نفعّل الفرز الافتراضي (بدون virtualization) لقوائم صغيرة — أبسط وكافي.
@@ -61,6 +62,7 @@ export default function Sidebar({
   onCreateWorkspace = () => {},
   onRenameWorkspace = () => {},
   onOpenWorkspaceMembers = () => {},
+  onOpenWorkspaceSharedConversation = () => {},
   showArchived,
   onShowArchived,
   onShowTrash = () => {},
@@ -379,6 +381,11 @@ export default function Sidebar({
               👥
             </button>
           </div>
+
+          <WorkspaceSharedConversationsPanel
+            workspaceId={selectedWorkspaceId}
+            onOpenConversation={onOpenWorkspaceSharedConversation}
+          />
 
           <button
             onClick={() => {
