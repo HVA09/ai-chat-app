@@ -346,6 +346,7 @@ export default function App() {
         showArchivedConversations,
         selectedFolderId,
         selectedWorkspaceId,
+        selectedProjectId,
         conversationSearch
       );
     }, 300);
@@ -431,6 +432,7 @@ export default function App() {
       showArchivedConversations,
       selectedFolderId,
       selectedWorkspaceId,
+      selectedProjectId,
       conversationSearch,
       showTrashConversations,
       tagId
@@ -583,7 +585,7 @@ export default function App() {
       await refreshFolders(selectedWorkspaceId);
       setSelectedFolderId(folder.id);
       startNewChat();
-      await refreshConversations(showArchivedConversations, folder.id, selectedWorkspaceId);
+      await refreshConversations(showArchivedConversations, folder.id, selectedWorkspaceId, null);
     } catch {
       setToast({ message: t("app.folderCreateError"), type: "error" });
     }
@@ -611,7 +613,8 @@ export default function App() {
       await refreshConversations(
         showArchivedConversations,
         wasSelected ? null : selectedFolderId,
-        selectedWorkspaceId
+        selectedWorkspaceId,
+        selectedProjectId
       );
     } catch {
       setToast({ message: t("app.folderDeleteError"), type: "error" });
@@ -1421,7 +1424,7 @@ export default function App() {
   const handleTogglePinConversation = async (id) => {
     try {
       await togglePinConversation(id);
-      await refreshConversations(showArchivedConversations, selectedFolderId);
+      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
     } catch {
       setToast({ message: t("app.pinConversationError"), type: "error" });
     }
