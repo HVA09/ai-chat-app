@@ -3,9 +3,10 @@
 """
 import hashlib
 import inspect
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -13,14 +14,15 @@ from app.audit import log_event
 from app.cache import cache_get, cache_set
 from app.config import settings as app_settings
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, get_daily_ai_limit
 from app.logging_config import get_logger
 from app.models.plan import Plan
 from app.models.subscription import Subscription, SubscriptionStatus
-from app.models.user import User
+from app.models.user import User, UserRole
+from app.models.usage_log import UsageLog
 from app.models.webhook_event import WebhookEvent
 from app.notifications import notify_realtime
-from app.schemas.billing import CheckoutRequest, CheckoutResponse, PlanOut, SubscriptionOut
+from app.schemas.billing import CheckoutRequest, CheckoutResponse, PlanOut, SubscriptionOut, UsageOut
 from app.services.email_service import send_subscription_activated_email, send_subscription_canceled_email
 from app.services.payment_providers.factory import get_payment_provider
 from app.services.payment_providers.paypal_provider import PayPalProvider
@@ -47,6 +49,49 @@ def get_my_subscription(
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     return db.query(Subscription).filter(Subscription.user_id == current_user.id).first()
+
+
+@router.get("/usage", response_model=UsageOut)
+def get_my_usage(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    window_hours = 24
+    window_start = datetime.now(timezone.utc) - timedelta(hours=window_hours)
+    usage = (
+        db.query(
+            func.count(UsageLog.id),
+            func.coalesce(func.sum(UsageLog.input_tokens), 0),
+            func.coalesce(func.sum(UsageLog.output_tokens), 0),
+        )
+        .filter(
+            UsageLog.user_id == current_user.id,
+            UsageLog.created_at >= window_start,
+        )
+        .one()
+    )
+
+    used_requests = int(usage[0] or 0)
+    input_tokens = int(usage[1] or 0)
+    output_tokens = int(usage[2] or 0)
+
+    if current_user.role == UserRole.admin:
+        daily_limit = None
+        remaining_requests = None
+    else:
+        daily_limit = get_daily_ai_limit(current_user, db)
+        remaining_requests = max(daily_limit - used_requests, 0)
+
+    return UsageOut(
+        window_hours=window_hours,
+        window_start=window_start,
+        used_requests=used_requests,
+        daily_limit=daily_limit,
+        remaining_requests=remaining_requests,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+    )
 
 
 @router.post("/checkout", response_model=CheckoutResponse)

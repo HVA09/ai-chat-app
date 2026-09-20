@@ -84,3 +84,81 @@ def test_cannot_access_other_users_file(client, tmp_path, monkeypatch):
 def test_files_require_authentication(client):
     assert client.get("/files").status_code == 401
     assert client.post("/files/upload", files={"file": ("a.png", b"x", "image/png")}).status_code == 401
+
+
+def test_workspace_file_is_shared_with_members_but_personal_files_are_not(client, db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+
+    token_owner = _register_and_login(client, "workspace-file-owner@example.com")
+    from app.models.user import User
+    owner = db_session.query(User).filter_by(email="workspace-file-owner@example.com").one()
+    workspace = owner.owned_workspaces[0]
+    owner_headers = {"Authorization": f"Bearer {token_owner}"}
+
+    upload_response = client.post(
+        "/files/upload",
+        params={"workspace_id": workspace.id},
+        files={"file": ("shared.txt", b"shared knowledge", "text/plain")},
+        headers=owner_headers,
+    )
+    assert upload_response.status_code == 201
+    shared_id = upload_response.json()["id"]
+    assert upload_response.json()["workspace_id"] == workspace.id
+    assert upload_response.json()["is_owner"] is True
+
+    token_member = _register_and_login(client, "workspace-file-member@example.com")
+    member = db_session.query(User).filter_by(email="workspace-file-member@example.com").one()
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    db_session.commit()
+    member_headers = {"Authorization": f"Bearer {token_member}"}
+
+    listed = client.get(
+        "/files",
+        params={"workspace_id": workspace.id},
+        headers=member_headers,
+    )
+    assert listed.status_code == 200
+    assert listed.json()[0]["id"] == shared_id
+    assert listed.json()[0]["is_owner"] is False
+    assert listed.json()[0]["can_delete"] is False
+
+    downloaded = client.get(f"/files/{shared_id}", headers=member_headers)
+    assert downloaded.status_code == 200
+    assert downloaded.content == b"shared knowledge"
+
+    assert client.delete(f"/files/{shared_id}", headers=member_headers).status_code == 403
+
+    personal = client.post(
+        "/files/upload",
+        files={"file": ("private.txt", b"private", "text/plain")},
+        headers=owner_headers,
+    )
+    private_id = personal.json()["id"]
+
+    assert client.get(f"/files/{private_id}", headers=member_headers).status_code == 404
+    assert client.delete(f"/files/{private_id}", headers=member_headers).status_code == 404
+
+
+def test_workspace_file_requires_workspace_membership(client, db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    token_owner = _register_and_login(client, "workspace-scope-owner@example.com")
+    from app.models.user import User
+    owner = db_session.query(User).filter_by(email="workspace-scope-owner@example.com").one()
+    workspace = owner.owned_workspaces[0]
+
+    token_other = _register_and_login(client, "workspace-scope-other@example.com")
+    headers = {"Authorization": f"Bearer {token_other}"}
+
+    response = client.get(
+        "/files",
+        params={"workspace_id": workspace.id},
+        headers=headers,
+    )
+    assert response.status_code == 404
