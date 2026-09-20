@@ -14,6 +14,10 @@ vi.mock("react-i18next", () => ({
       "sidebar.renameTitle": "إعادة تسمية",
       "sidebar.duplicateTitle": "نسخ المحادثة",
       "sidebar.deleteTitle": "حذف",
+      "sidebar.editAssistantTitle": "تعديل المساعد",
+      "sidebar.deleteAssistantTitle": "حذف المساعد",
+      "sidebar.shareAssistantTitle": "مشاركة المساعد مع مساحة العمل",
+      "sidebar.unshareAssistantTitle": "إلغاء مشاركة المساعد",
       "sidebar.trashTitle": "سلة المحذوفات",
       "sidebar.permanentDeleteConfirm": "حذف نهائي للمحادثة {{title}}؟",
       "sidebar.bulkTrash": "نقل المحدد إلى سلة المحذوفات",
@@ -74,10 +78,13 @@ const sampleFolders = [
 function renderSidebar(overrides = {}) {
   const props = {
     conversations: sampleConversations,
+    assistants: [{ id: 10, name: "مساعد الفريق", description: "مساعد", is_shared: false, can_edit: true }],
     onSelectConversation: vi.fn(),
     onNewChat: vi.fn(),
     onRenameConversation: vi.fn(),
     onDeleteConversation: vi.fn(),
+    onToggleShareAssistant: vi.fn(),
+    selectedWorkspaceId: 7,
     onTogglePinConversation: vi.fn(),
     onDuplicateConversation: vi.fn(),
     savedPrompts: [{ id: 10, name: "تلخيص", content: "لخص النص في 5 نقاط." }],
@@ -326,6 +333,23 @@ describe("Sidebar", () => {
     const { onDeleteSavedPrompt } = renderSidebar();
     await user.click(screen.getByTitle("حذف الموجه المحفوظ"));
     expect(onDeleteSavedPrompt).toHaveBeenCalledWith(10, "تلخيص");
+  });
+
+  it("مشاركة المساعد تنادي onToggleShareAssistant", async () => {
+    const user = userEvent.setup();
+    const { onToggleShareAssistant } = renderSidebar();
+    await user.click(screen.getByTitle("مشاركة المساعد مع مساحة العمل"));
+    expect(onToggleShareAssistant).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 10, name: "مساعد الفريق" })
+    );
+  });
+
+  it("المساعد المشترك لا يعرض تعديل وحذف", () => {
+    renderSidebar({
+      assistants: [{ id: 10, name: "مساعد مشترك", description: "مشترك", is_shared: true, can_edit: false }],
+    });
+    expect(screen.queryByTitle("تعديل المساعد")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("حذف المساعد")).not.toBeInTheDocument();
   });
 
   it("الحذف ما يصير لو المستخدم ألغى التأكيد", async () => {
