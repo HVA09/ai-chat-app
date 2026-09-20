@@ -60,7 +60,7 @@ def test_gemini_maps_assistant_role_to_model():
 
 
 def test_stream_chat_returns_sse_events(client, monkeypatch):
-    async def fake_stream(message, history=None, model=None):
+    async def fake_stream(message, history=None):
         for chunk in ["مرحبا", " بك"]:
             yield chunk
     monkeypatch.setattr(chat_router_module, "stream_ai_reply", fake_stream)
@@ -77,22 +77,3 @@ def test_stream_chat_returns_sse_events(client, monkeypatch):
 def test_stream_chat_requires_authentication(client):
     with client.stream("POST", "/chat/stream", json={"message": "أهلا"}) as response:
         assert response.status_code == 401
-
-
-def test_factory_accepts_an_allowed_model(monkeypatch):
-    monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
-    monkeypatch.setattr(app_settings, "AI_API_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
-    monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["gemini-2.5-flash", "gemini-test"])
-    provider = get_provider("gemini-test")
-    assert provider.model == "gemini-test"
-
-
-def test_factory_rejects_disallowed_model(monkeypatch):
-    monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
-    monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["gemini-2.5-flash"])
-    try:
-        get_provider("not-allowed")
-    except ValueError as exc:
-        assert "غير مسموح" in str(exc)
-    else:
-        raise AssertionError("Expected get_provider to reject a disallowed model")

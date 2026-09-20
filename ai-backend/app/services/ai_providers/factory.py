@@ -9,15 +9,8 @@ from app.services.ai_providers.openai_provider import OpenAICompatibleProvider
 SUPPORTED_PROVIDERS = ("openai", "deepseek", "anthropic", "gemini")
 
 
-def get_provider(model: str | None = None) -> AIProvider:
+def get_provider() -> AIProvider:
     provider_name = settings.AI_PROVIDER.lower().strip()
-    selected_model = (model or settings.AI_MODEL).strip()
-    allowed_models = set(settings.AI_ALLOWED_MODELS or [])
-    allowed_models.add(settings.AI_MODEL)
-    if selected_model not in allowed_models:
-        raise ValueError(
-            f"AI_MODEL='{selected_model}' غير مسموح — الخيارات: {', '.join(settings.AI_ALLOWED_MODELS)}"
-        )
 
     if provider_name in ("openai", "deepseek", "gemini"):
         # Gemini يدعم واجهة OpenAI-compatible، لذلك نستخدم نفس العميل
@@ -25,10 +18,10 @@ def get_provider(model: str | None = None) -> AIProvider:
         return OpenAICompatibleProvider(
             api_key=settings.AI_API_KEY,
             base_url=settings.AI_API_BASE_URL,
-            model=selected_model,
+            model=settings.AI_MODEL,
         )
     if provider_name == "anthropic":
-        return AnthropicProvider(api_key=settings.AI_API_KEY, model=selected_model)
+        return AnthropicProvider(api_key=settings.AI_API_KEY, model=settings.AI_MODEL)
 
     raise ValueError(
         f"AI_PROVIDER='{provider_name}' غير مدعوم — الخيارات: {', '.join(SUPPORTED_PROVIDERS)}"

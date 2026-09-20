@@ -4,27 +4,12 @@
 """
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
 class AIReply:
     text: str
-    input_tokens: int | None = None
-    output_tokens: int | None = None
-
-
-@dataclass
-class AIToolCall:
-    id: str
-    name: str
-    arguments: dict
-
-
-@dataclass
-class AIToolReply:
-    text: str | None = None
-    tool_calls: list[AIToolCall] = field(default_factory=list)
     input_tokens: int | None = None
     output_tokens: int | None = None
 

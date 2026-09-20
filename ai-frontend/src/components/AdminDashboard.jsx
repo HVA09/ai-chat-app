@@ -12,7 +12,6 @@ import {
 import {
   getAdminStats,
   getDailyAnalytics,
-  getFeedbackAnalytics,
   downloadAnalyticsCsv,
   listAllUsers,
   updateUser,
@@ -40,16 +39,14 @@ function StatsTab() {
   const { t } = useTranslation();
   const [stats, setStats] = useState(null);
   const [daily, setDaily] = useState([]);
-  const [feedback, setFeedback] = useState(null);
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    Promise.all([getAdminStats(), getDailyAnalytics(30), getFeedbackAnalytics(30)])
-      .then(([statsData, dailyData, feedbackData]) => {
+    Promise.all([getAdminStats(), getDailyAnalytics(30)])
+      .then(([statsData, dailyData]) => {
         setStats(statsData);
         setDaily(dailyData.map((p) => ({ ...p, dateLabel: p.date.slice(5) })));
-        setFeedback(feedbackData);
       })
       .catch(() => setError(t("admin.statsError")));
   }, [t]);
@@ -87,35 +84,6 @@ function StatsTab() {
           </div>
         ))}
       </div>
-
-      {feedback && (
-        <div className="rounded-2xl border border-slate-200 p-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-slate-900">{t("admin.feedbackTitle")}</p>
-            <span className="text-xs text-slate-400">{t("admin.feedbackLast30Days")}</span>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-xl bg-slate-50 p-3 text-center">
-              <p className="text-lg font-semibold text-slate-900">{feedback.total_rated}</p>
-              <p className="text-xs text-slate-500">{t("admin.feedbackRated")}</p>
-            </div>
-            <div className="rounded-xl bg-emerald-50 p-3 text-center">
-              <p className="text-lg font-semibold text-emerald-700">{feedback.positive}</p>
-              <p className="text-xs text-emerald-700">{t("admin.feedbackPositive")}</p>
-            </div>
-            <div className="rounded-xl bg-red-50 p-3 text-center">
-              <p className="text-lg font-semibold text-red-700">{feedback.negative}</p>
-              <p className="text-xs text-red-700">{t("admin.feedbackNegative")}</p>
-            </div>
-            <div className="rounded-xl bg-blue-50 p-3 text-center">
-              <p className="text-lg font-semibold text-blue-700">
-                {feedback.positive_rate === null ? "—" : String(feedback.positive_rate) + "%"}
-              </p>
-              <p className="text-xs text-blue-700">{t("admin.feedbackPositiveRate")}</p>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-slate-900">{t("admin.last30Days")}</p>

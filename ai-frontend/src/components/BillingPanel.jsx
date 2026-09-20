@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { cancelSubscription, createCheckout, getMySubscription, getPlans, getUsage } from "../lib/billingApi";
+import { cancelSubscription, createCheckout, getMySubscription, getPlans } from "../lib/billingApi";
 import { getErrorMessage } from "../lib/errors";
 
 function formatPrice(cents, currency, interval, t) {
@@ -14,7 +14,6 @@ export default function BillingPanel({ onClose }) {
   const { t } = useTranslation();
   const [plans, setPlans] = useState([]);
   const [subscription, setSubscription] = useState(null);
-  const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busyPlanId, setBusyPlanId] = useState(null);
   const [error, setError] = useState("");
@@ -22,14 +21,9 @@ export default function BillingPanel({ onClose }) {
   const refresh = async () => {
     setLoading(true);
     try {
-      const [plansData, subData, usageData] = await Promise.all([
-        getPlans(),
-        getMySubscription(),
-        getUsage(),
-      ]);
+      const [plansData, subData] = await Promise.all([getPlans(), getMySubscription()]);
       setPlans(plansData);
       setSubscription(subData);
-      setUsage(usageData);
     } catch {
       setError(t("billing.loadError"));
     } finally {
@@ -81,50 +75,6 @@ export default function BillingPanel({ onClose }) {
           <p className="text-sm text-slate-400">...</p>
         ) : (
           <>
-            {usage && (
-              <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{t("billing.usageTitle")}</p>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">{t("billing.usageLast24h")}</span>
-                </div>
-                <div className="mt-3">
-                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                    <span>{t("billing.usageRequests")}</span>
-                    <span>
-                      {usage.used_requests}
-                      {usage.daily_limit !== null ? " / " + usage.daily_limit : " / " + t("billing.usageUnlimited")}
-                    </span>
-                  </div>
-                  {usage.daily_limit !== null && (
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                      <div
-                        className="h-full rounded-full bg-slate-900 transition-all dark:bg-slate-100"
-                        style={{ width: Math.min(100, (usage.used_requests / Math.max(usage.daily_limit, 1)) * 100) + "%" }}
-                      />
-                    </div>
-                  )}
-                  {usage.remaining_requests !== null && (
-                    <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                      {usage.remaining_requests} {t("billing.usageRemaining")}
-                    </p>
-                  )}
-                </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
-                  <div className="rounded-xl bg-white p-2 dark:bg-slate-900">
-                    <div className="font-semibold text-slate-900 dark:text-slate-100">{usage.total_tokens}</div>
-                    <div className="mt-1 text-slate-400">{t("billing.usageTokens")}</div>
-                  </div>
-                  <div className="rounded-xl bg-white p-2 dark:bg-slate-900">
-                    <div className="font-semibold text-slate-900 dark:text-slate-100">{usage.input_tokens}</div>
-                    <div className="mt-1 text-slate-400">{t("billing.usageInputTokens")}</div>
-                  </div>
-                  <div className="rounded-xl bg-white p-2 dark:bg-slate-900">
-                    <div className="font-semibold text-slate-900 dark:text-slate-100">{usage.output_tokens}</div>
-                    <div className="mt-1 text-slate-400">{t("billing.usageOutputTokens")}</div>
-                  </div>
-                </div>
-              </div>
-            )}
             {subscription && subscription.status === "active" && (
               <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                 <p className="text-sm text-emerald-800">

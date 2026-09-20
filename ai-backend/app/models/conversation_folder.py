@@ -1,7 +1,7 @@
-"""نموذج مجلدات تنظيم المحادثات للمستخدم ومساحة العمل."""
+"""نموذج مجلدات تنظيم المحادثات للمستخدم."""
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, text
+from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -11,29 +11,13 @@ from app.database import Base
 class ConversationFolder(Base):
     __tablename__ = "conversation_folders"
     __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_conversation_folders_user_name"),
         Index("ix_conversation_folders_user_id_created_at", "user_id", "created_at"),
-        Index(
-            "uq_conversation_folders_user_personal_name",
-            "user_id",
-            "name",
-            unique=True,
-            postgresql_where=text("workspace_id IS NULL"),
-        ),
-        Index(
-            "uq_conversation_folders_workspace_name",
-            "workspace_id",
-            "name",
-            unique=True,
-            postgresql_where=text("workspace_id IS NOT NULL"),
-        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    workspace_id: Mapped[int | None] = mapped_column(
-        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -41,7 +25,6 @@ class ConversationFolder(Base):
     )
 
     owner = relationship("User", back_populates="conversation_folders")
-    workspace = relationship("Workspace", back_populates="conversation_folders")
     conversations = relationship(
         "Conversation", back_populates="folder", passive_deletes=True
     )

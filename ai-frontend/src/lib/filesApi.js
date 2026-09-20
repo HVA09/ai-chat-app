@@ -1,14 +1,10 @@
 import api from "./api";
 
-export async function uploadFile(file, onProgress, conversationId = null, workspaceId = null) {
+export async function uploadFile(file, onProgress) {
   const formData = new FormData();
   formData.append("file", file);
-  const params = {};
-  if (conversationId) params.conversation_id = conversationId;
-  if (workspaceId) params.workspace_id = workspaceId;
   const { data } = await api.post("/files/upload", formData, {
     headers: { "Content-Type": "multipart/form-data" },
-    params,
     onUploadProgress: (event) => {
       if (onProgress && event.total) {
         onProgress(Math.round((event.loaded / event.total) * 100));
@@ -18,18 +14,8 @@ export async function uploadFile(file, onProgress, conversationId = null, worksp
   return data;
 }
 
-export async function listFiles(
-  conversationId = null,
-  includeUnattached = false,
-  workspaceId = null
-) {
-  const params = {};
-  if (conversationId) {
-    params.conversation_id = conversationId;
-    params.include_unattached = includeUnattached;
-  }
-  if (workspaceId) params.workspace_id = workspaceId;
-  const { data } = await api.get("/files", { params });
+export async function listFiles() {
+  const { data } = await api.get("/files");
   return data;
 }
 
@@ -54,14 +40,4 @@ export async function downloadFile(id, filename) {
   link.click();
   link.remove();
   window.URL.revokeObjectURL(url);
-}
-
-
-export async function attachFileToConversation(fileId, conversationId) {
-  const { data } = await api.post(`/files/${fileId}/attach/${conversationId}`);
-  return data;
-}
-
-export async function detachFileFromConversation(fileId, conversationId) {
-  await api.delete(`/files/${fileId}/attach/${conversationId}`);
 }

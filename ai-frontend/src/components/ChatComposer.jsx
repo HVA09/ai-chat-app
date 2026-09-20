@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 // لازم يطابق حد ChatRequest.message بالباكيند (Field max_length=4000) — بدونه المستخدم
@@ -13,88 +12,12 @@ export default function ChatComposer({
   loading,
   isEditing = false,
   onCancelEdit,
-  onInsertCalculator,
-  onInsertWebSearch,
-  onInsertDataAnalysis,
-  onInsertAgent,
-  onInsertPython,
-  onVoiceError,
-  models = [],
-  selectedModel = "",
-  onSelectModel,
 }) {
   const { t } = useTranslation();
-  const recognitionRef = useRef(null);
-  const [isListening, setIsListening] = useState(false);
-  const [voiceSupported, setVoiceSupported] = useState(false);
   const nearLimit = value.length > MAX_MESSAGE_LENGTH - 200;
   const lang = document.documentElement.lang;
   const saveEditLabel = lang === "ar" ? "حفظ التعديل" : "Save edit";
   const cancelEditLabel = lang === "ar" ? "إلغاء" : "Cancel";
-
-  useEffect(() => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    setVoiceSupported(Boolean(SpeechRecognition));
-
-    return () => {
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
-    };
-  }, []);
-
-  const toggleVoiceInput = () => {
-    if (!voiceSupported || loading || isEditing) return;
-
-    if (isListening) {
-      recognitionRef.current?.stop();
-      return;
-    }
-
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      onVoiceError?.(t("app.voiceNotSupported"));
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = lang === "ar" ? "ar-SA" : "en-US";
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => {
-      setIsListening(false);
-      recognitionRef.current = null;
-    };
-    recognition.onerror = () => {
-      setIsListening(false);
-      recognitionRef.current = null;
-      onVoiceError?.(t("app.voiceError"));
-    };
-    recognition.onresult = (event) => {
-      const transcript = Array.from(event.results)
-        .map((result) => result[0]?.transcript || "")
-        .join(" ")
-        .trim();
-      if (transcript) {
-        setValue((current) =>
-          [current.trim(), transcript].filter(Boolean).join(" ")
-        );
-      }
-    };
-
-    recognitionRef.current = recognition;
-    try {
-      recognition.start();
-    } catch {
-      recognitionRef.current = null;
-      setIsListening(false);
-      onVoiceError?.(t("app.voiceError"));
-    }
-  };
 
   return (
     <form
@@ -135,77 +58,6 @@ export default function ChatComposer({
             </p>
           )}
         </div>
-        {!loading && !isEditing ? (
-          <>
-            {models.length > 0 ? (
-              <select
-                value={selectedModel || ""}
-                onChange={(event) => onSelectModel?.(event.target.value || null)}
-                title={t("tools.modelSelector")}
-                aria-label={t("tools.modelSelector")}
-                className="max-w-[180px] rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-              >
-                {models.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.label}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-            {voiceSupported ? (
-              <button
-                type="button"
-                onClick={toggleVoiceInput}
-                title={isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
-                aria-label={isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
-                aria-pressed={isListening}
-                className={`rounded-2xl border px-3 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-slate-400 ${isListening ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-300" : "border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"}`}
-              >
-                {isListening ? "⏹️" : "🎙️"}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={onInsertCalculator}
-              title={t("tools.calculator")}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
-            >
-              🧮
-            </button>
-            <button
-              type="button"
-              onClick={onInsertWebSearch}
-              title={t("tools.webSearch")}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
-            >
-              🔎
-            </button>
-            <button
-              type="button"
-              onClick={onInsertAgent}
-              title={t("tools.agent")}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
-            >
-              🤖
-            </button>
-            <button
-              type="button"
-              onClick={onInsertPython}
-              title={t("tools.python")}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
-            >
-              🐍
-            </button>
-            <button
-              type="button"
-              onClick={onInsertDataAnalysis}
-              title={t("tools.dataAnalysis")}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
-            >
-              📊
-            </button>
-          </>
-        ) : null}
         {loading ? (
           <button
             type="button"

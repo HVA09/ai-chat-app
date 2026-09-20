@@ -16,7 +16,6 @@ from app.logging_config import get_logger
 from app.models.subscription import Subscription, SubscriptionStatus
 from app.models.usage_log import UsageLog
 from app.models.user import User, UserRole
-from app.models.workspace import Workspace, WorkspaceMember
 
 logger = get_logger("dependencies")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
@@ -57,7 +56,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
-def get_daily_ai_limit(current_user: User, db: Session) -> int:
+def _daily_ai_limit_for(current_user: User, db: Session) -> int:
     subscription = (
         db.query(Subscription)
         .filter(Subscription.user_id == current_user.id, Subscription.status == SubscriptionStatus.active)
@@ -71,7 +70,7 @@ def get_daily_ai_limit(current_user: User, db: Session) -> int:
 def enforce_daily_ai_limit(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> User:
     if current_user.role == UserRole.admin:
         return current_user
-    daily_limit = get_daily_ai_limit(current_user, db)
+    daily_limit = _daily_ai_limit_for(current_user, db)
     since = datetime.now(timezone.utc) - timedelta(days=1)
     count = db.query(func.count(UsageLog.id)).filter(
         UsageLog.user_id == current_user.id, UsageLog.created_at >= since
@@ -83,53 +82,3 @@ def enforce_daily_ai_limit(current_user: User = Depends(get_current_user), db: S
             detail=f"وصلت للحد اليومي المسموح ({daily_limit} طلب) — يمكنك ترقية خطتك لحد أعلى",
         )
     return current_user
-
-
-def enforce_workspace_daily_ai_limit(
-    workspace_id: int,
-    current_user: User,
-    db: Session,
-) -> None:
-    """يطبق حد الطلبات اليومي الاختياري لمساحة العمل."""
-    if current_user.role == UserRole.admin:
-        return
-
-    workspace = (
-        db.query(Workspace)
-        .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
-        .filter(
-            Workspace.id == workspace_id,
-            WorkspaceMember.user_id == current_user.id,
-        )
-        .first()
-    )
-    if workspace is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="مساحة العمل غير موجودة",
-        )
-
-    limit = workspace.daily_ai_request_limit
-    if limit is None:
-        return
-
-    since = datetime.now(timezone.utc) - timedelta(days=1)
-    used = (
-        db.query(func.count(UsageLog.id))
-        .filter(
-            UsageLog.workspace_id == workspace_id,
-            UsageLog.created_at >= since,
-        )
-        .scalar()
-        or 0
-    )
-    if used >= limit:
-        logger.warning(
-            "تجاوز حد مساحة العمل: workspace_id=%s user=%s",
-            workspace_id,
-            current_user.email,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"تم الوصول إلى حد مساحة العمل اليومي ({limit} طلب).",
-        )

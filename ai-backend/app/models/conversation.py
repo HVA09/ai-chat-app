@@ -2,14 +2,13 @@
 نماذج المحادثة والرسائل (Conversation / Message)
 """
 import enum
-from datetime import datetime, timezone
+from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, JSON, String, Text, event, update
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
-from app.models.conversation_tag import conversation_tag_links
 
 
 class MessageRole(str, enum.Enum):
@@ -34,42 +33,10 @@ class Conversation(Base):
     folder_id: Mapped[int | None] = mapped_column(
         ForeignKey("conversation_folders.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    project_id: Mapped[int | None] = mapped_column(
-        ForeignKey("workspace_projects.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    workspace_id: Mapped[int] = mapped_column(
-        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    ai_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    assistant_id: Mapped[int | None] = mapped_column(
-        ForeignKey("assistants.id", ondelete="SET NULL"), nullable=True, index=True
-    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
-    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
-    summary_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     owner = relationship("User", back_populates="conversations")
     folder = relationship("ConversationFolder", back_populates="conversations")
-    project = relationship("WorkspaceProject", back_populates="conversations")
-    workspace = relationship("Workspace", back_populates="conversations")
-    assistant = relationship("Assistant", back_populates="conversations")
-    tags = relationship(
-        "ConversationTag",
-        secondary=conversation_tag_links,
-        back_populates="conversations",
-        passive_deletes=True,
-    )
-    shares = relationship(
-        "ConversationShare", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
-    )
-    workspace_shares = relationship(
-        "ConversationWorkspaceShare", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
-    )
-    file_links = relationship(
-        "ConversationFileLink", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
-    )
     messages = relationship(
         "Message",
         back_populates="conversation",
@@ -88,19 +55,6 @@ class Message(Base):
     )
     role: Mapped[MessageRole] = mapped_column(Enum(MessageRole), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    sources: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
-    feedback: Mapped[int | None] = mapped_column(nullable=True)
-    is_bookmarked: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     conversation = relationship("Conversation", back_populates="messages")
-
-
-@event.listens_for(Message, "after_insert")
-@event.listens_for(Message, "after_delete")
-def _touch_conversation_activity(mapper, connection, target):
-    connection.execute(
-        update(Conversation)
-        .where(Conversation.id == target.conversation_id)
-        .values(updated_at=datetime.now(timezone.utc))
-    )

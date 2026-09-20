@@ -1,10 +1,7 @@
 """
 اختبارات المرحلة الثامنة: الاشتراكات والدفع (مزوّد الدفع مموّه دائمًا — بدون اتصال حقيقي)
 """
-from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
-
-from app.models.usage_log import UsageLog
 
 from app.config import settings as app_settings
 from app.routers import billing as billing_router_module
@@ -31,50 +28,6 @@ def test_get_subscription_returns_null_when_none(client):
     response = client.get("/billing/subscription", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     assert response.json() is None
-
-
-def test_get_usage_counts_requests_and_tokens_last_24h(client, db_session):
-    token = _register_and_login(client, "usage@example.com")
-    headers = {"Authorization": f"Bearer {token}"}
-    me = client.get("/users/me", headers=headers).json()
-    now = datetime.now(timezone.utc)
-    db_session.add_all(
-        [
-            UsageLog(
-                user_id=me["id"],
-                endpoint="/chat",
-                input_tokens=10,
-                output_tokens=20,
-                created_at=now - timedelta(hours=1),
-            ),
-            UsageLog(
-                user_id=me["id"],
-                endpoint="/chat",
-                input_tokens=7,
-                output_tokens=13,
-                created_at=now - timedelta(hours=23),
-            ),
-            UsageLog(
-                user_id=me["id"],
-                endpoint="/chat",
-                input_tokens=100,
-                output_tokens=200,
-                created_at=now - timedelta(hours=25),
-            ),
-        ]
-    )
-    db_session.commit()
-
-    response = client.get("/billing/usage", headers=headers)
-    assert response.status_code == 200
-    data = response.json()
-    assert data["window_hours"] == 24
-    assert data["used_requests"] == 2
-    assert data["daily_limit"] == 20
-    assert data["remaining_requests"] == 18
-    assert data["input_tokens"] == 17
-    assert data["output_tokens"] == 33
-    assert data["total_tokens"] == 50
 
 
 def test_checkout_returns_url_from_provider(client, monkeypatch):
@@ -135,7 +88,6 @@ def test_cancel_subscription(client, monkeypatch):
 
 def test_billing_requires_authentication(client):
     assert client.get("/billing/subscription").status_code == 401
-    assert client.get("/billing/usage").status_code == 401
     assert client.post("/billing/cancel").status_code == 401
 
 

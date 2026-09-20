@@ -11,7 +11,3 @@ class FileOut(BaseModel):
     content_type: str
     size_bytes: int
     created_at: datetime
-    is_attached: bool = False
-    workspace_id: int | None = None
-    is_owner: bool = False
-    can_delete: bool = False

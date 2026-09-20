@@ -8,13 +8,12 @@ import httpx
 from fastapi import HTTPException, status
 
 from app.services.ai_providers.base import AIReply
-from app.services.ai_providers.openai_provider import OpenAICompatibleProvider
 from app.services.ai_providers.factory import get_provider
 
 
-async def get_ai_reply(message: str, history: list[dict[str, str]] | None = None, model: str | None = None) -> AIReply:
+async def get_ai_reply(message: str, history: list[dict[str, str]] | None = None) -> AIReply:
     """رد كامل دفعة وحدة (نص + عدد توكنز لو متوفر) — تُستخدم في /chat"""
-    provider = get_provider(model)
+    provider = get_provider()
     try:
         return await provider.get_reply(message, history)
     except httpx.HTTPStatusError as exc:
@@ -30,39 +29,10 @@ async def get_ai_reply(message: str, history: list[dict[str, str]] | None = None
 
 
 async def stream_ai_reply(
-    message: str,
-    history: list[dict[str, str]] | None = None,
-    model: str | None = None,
+    message: str, history: list[dict[str, str]] | None = None
 ) -> AsyncIterator[str]:
     """رد يُبَث تدريجيًا — تُستخدم في /chat/stream. الأخطاء تُترك للمستدعي يمسكها
     لأنها تصير أثناء البث نفسه (بعد ما الاستجابة بدأت)، مو قبل إرسالها."""
-    provider = get_provider(model)
+    provider = get_provider()
     async for chunk in provider.stream_reply(message, history):
         yield chunk
-
-
-async def get_ai_vision_reply(
-    message: str,
-    image_data_url: str,
-    history: list[dict] | None = None,
-    model: str | None = None,
-) -> AIReply:
-    """رد متعدد الوسائط لصورة واحدة عبر المزوّد المتوافق مع OpenAI."""
-    provider = get_provider(model)
-    if not isinstance(provider, OpenAICompatibleProvider):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="تحليل الصور غير مدعوم مع مزوّد الذكاء الاصطناعي الحالي",
-        )
-    try:
-        return await provider.get_vision_reply(message, image_data_url, history)
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"خطأ من محرك الذكاء الاصطناعي: {exc.response.status_code}",
-        ) from exc
-    except httpx.RequestError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="تعذر الوصول لمحرك الذكاء الاصطناعي",
-        ) from exc

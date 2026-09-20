@@ -1,36 +1,9 @@
 import api from "./api";
 
-export async function listConversations(
-  includeArchived = false,
-  folderId = null,
-  workspaceId = null,
-  projectId = null,
-  search = "",
-  includeDeleted = false,
-  tagId = null,
-  skip = 0,
-  limit = 50
-) {
-  const params = {
-    include_archived: includeArchived,
-    include_deleted: includeDeleted,
-    skip,
-    limit,
-  };
+export async function listConversations(includeArchived = false, folderId = null) {
+  const params = { include_archived: includeArchived };
   if (folderId !== null && folderId !== undefined) {
     params.folder_id = folderId;
-  }
-  if (workspaceId !== null && workspaceId !== undefined) {
-    params.workspace_id = workspaceId;
-  }
-  if (projectId !== null && projectId !== undefined) {
-    params.project_id = projectId;
-  }
-  if (search?.trim()) {
-    params.search = search.trim();
-  }
-  if (tagId !== null && tagId !== undefined) {
-    params.tag_id = tagId;
   }
   const { data } = await api.get("/conversations", { params });
   return data;
@@ -60,48 +33,9 @@ export async function toggleArchiveConversation(id) {
   return data;
 }
 
-export async function toggleTrashConversation(id) {
-  const { data } = await api.patch(`/conversations/${id}/trash`);
-  return data;
-}
-
 export async function moveConversationToFolder(id, folderId) {
   const { data } = await api.patch(`/conversations/${id}/folder`, {
     folder_id: folderId,
   });
-  return data;
-}
-
-export async function exportConversation(id, format = "markdown") {
-  const response = await api.get(`/conversations/${id}/export`, {
-    params: { format },
-    responseType: "blob",
-  });
-
-  const contentDisposition = response.headers["content-disposition"] || "";
-  const match = contentDisposition.match(/filename="([^"]+)"/i);
-  const fallbackExtension = format === "json" ? "json" : "md";
-  const filename = match?.[1] || `conversation.${fallbackExtension}`;
-  const url = URL.createObjectURL(response.data);
-
-  try {
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-export async function summarizeConversation(id) {
-  const { data } = await api.post(`/conversations/${id}/summary`);
-  return data;
-}
-
-export async function duplicateConversation(id) {
-  const { data } = await api.post(`/conversations/${id}/duplicate`);
   return data;
 }

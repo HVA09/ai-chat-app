@@ -51,9 +51,3 @@ export async function listAuditLogs() {
   const { data } = await api.get("/admin/logs");
   return data;
 }
-
-
-export async function getFeedbackAnalytics(days = 30) {
-  const { data } = await api.get("/admin/analytics/feedback", { params: { days } });
-  return data;
-}
