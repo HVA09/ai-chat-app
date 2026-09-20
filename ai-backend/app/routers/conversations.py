@@ -9,6 +9,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, over
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.database import get_db
 from app.dependencies import enforce_daily_ai_limit, get_current_user
@@ -224,8 +225,6 @@ def get_conversation(
 ):
     conversation = (
         db.query(Conversation)
-        .populate_existing()
-        .options(selectinload(Conversation.messages), selectinload(Conversation.tags))
         .filter(
             Conversation.id == conversation_id,
             Conversation.user_id == current_user.id,
@@ -235,6 +234,26 @@ def get_conversation(
     )
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
+
+    # قد تكون Session الحالية قد حمّلت الرسائل قبل تغيير is_bookmarked/feedback.
+    # نعيد تحميل العلاقات من قاعدة البيانات باستخدام populate_existing حتى لا نعيد
+    # كائنات قديمة من identity map عند تسلسل ConversationDetail.
+    messages = (
+        db.query(Message)
+        .populate_existing()
+        .filter(Message.conversation_id == conversation.id)
+        .order_by(Message.created_at.asc(), Message.id.asc())
+        .all()
+    )
+    tags = (
+        db.query(ConversationTag)
+        .populate_existing()
+        .join(conversation_tag_links, ConversationTag.id == conversation_tag_links.c.tag_id)
+        .filter(conversation_tag_links.c.conversation_id == conversation.id)
+        .all()
+    )
+    set_committed_value(conversation, "messages", messages)
+    set_committed_value(conversation, "tags", tags)
     return conversation
 
 
