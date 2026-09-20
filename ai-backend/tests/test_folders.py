@@ -1,6 +1,8 @@
 """اختبارات مجلدات المحادثات ونقل المحادثات بينها."""
 from unittest.mock import AsyncMock
 
+from app.models.user import User
+from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
 
@@ -170,10 +172,9 @@ def test_workspace_members_can_use_but_not_manage_workspace_folder(client, db_se
     workspace = _create_workspace(client, headers_owner, "Shared Team")
 
     token_member = _register_and_login(client, "folder-ws-member@example.com")
-    user_row = db_session.query(__import__("app.models.user", fromlist=["User"]).User).filter_by(
+    user_row = db_session.query(User).filter_by(
         email="folder-ws-member@example.com"
     ).first()
-    from app.models.workspace import WorkspaceMember, WorkspaceRole
 
     db_session.add(
         WorkspaceMember(
