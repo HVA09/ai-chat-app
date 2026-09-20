@@ -610,6 +610,14 @@ const resources = {
         manageButton: "إدارة الروابط",
       },
 
+      chat: {
+        branches: "الفروع",
+        branchListTitle: "عرض فروع المحادثة",
+        branchListEmpty: "لا توجد فروع لهذه المحادثة",
+        branchPoint: "بدءًا من الرسالة {{index}}",
+        branchOpenError: "تعذر فتح فرع المحادثة",
+      },
+
       tools: {
         branchConversation: "تفريع المحادثة",
         calculator: "الآلة الحاسبة — أدخل تعبيرًا مثل /calc (12 + 8) * 3",
@@ -1194,6 +1202,14 @@ const resources = {
         revokeConfirm: "Revoke this share link? It will stop working.",
         revokeError: "Couldn't revoke the share link",
         manageButton: "Manage links",
+      },
+
+      chat: {
+        branches: "Branches",
+        branchListTitle: "View conversation branches",
+        branchListEmpty: "This conversation has no branches",
+        branchPoint: "Starting from message {{index}}",
+        branchOpenError: "Couldn't open the conversation branch",
       },
 
       tools: {
