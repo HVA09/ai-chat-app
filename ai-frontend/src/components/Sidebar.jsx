@@ -65,6 +65,9 @@ export default function Sidebar({
   onShowArchived,
   onShowTrash = () => {},
   loading,
+  loadingMore = false,
+  hasMore = false,
+  onLoadMore = () => {},
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -698,7 +701,8 @@ export default function Sidebar({
           </label>
         </div>
 
-        <div className="min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1">
           {loading ? (
             <p className="px-5 py-4 text-sm text-slate-400">...</p>
           ) : filteredConversations.length === 0 ? (
@@ -730,6 +734,19 @@ export default function Sidebar({
                 </FixedSizeList>
               )}
             </AutoSizer>
+          )}
+          </div>
+          {hasMore && (
+            <div className="border-t border-slate-200 p-3 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={onLoadMore}
+                disabled={loadingMore}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                {loadingMore ? t("sidebar.loadingMore") : t("sidebar.loadMore")}
+              </button>
+            </div>
           )}
         </div>
       </aside>
