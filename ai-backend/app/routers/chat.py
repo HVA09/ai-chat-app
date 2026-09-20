@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import enforce_daily_ai_limit, get_current_user
+from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_current_user
 from app.logging_config import get_logger
 from app.models.assistant import Assistant
 from app.models.assistant_workspace_share import AssistantWorkspaceShare
@@ -463,6 +463,8 @@ async def analyze_attached_image(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="المحادثة غير موجودة",
         )
+    if conversation.workspace_id is not None:
+        enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
 
     attachment, image_path = _get_attached_image(
         payload.conversation_id,
@@ -591,6 +593,8 @@ async def chat(
     db: Session = Depends(get_db),
 ):
     conversation = _get_or_create_conversation(payload, current_user, db)
+    if conversation.workspace_id is not None:
+        enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
     agent_task = extract_agent_request(payload.message)
     if agent_task is not None:
         try:
@@ -781,6 +785,8 @@ async def chat_stream(
     الأسطر الجديدة داخل chunk تُستبدل بـ \\\n نصية عشان ما تكسر صيغة السطر الواحد لكل حدث.
     """
     conversation = _get_or_create_conversation(payload, current_user, db)
+    if conversation.workspace_id is not None:
+        enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
     agent_task = extract_agent_request(payload.message)
     if agent_task is not None:
         try:
@@ -1036,6 +1042,8 @@ def toggle_message_bookmark(
     )
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
+    if conversation.workspace_id is not None:
+        enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
 
     messages = (
         db.query(Message)
@@ -1070,6 +1078,8 @@ async def delete_chat_message(
     )
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
+    if conversation.workspace_id is not None:
+        enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
 
     messages = (
         db.query(Message)
