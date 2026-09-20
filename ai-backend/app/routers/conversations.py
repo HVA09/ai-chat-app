@@ -23,7 +23,13 @@ from app.models.user import User
 from app.models.usage_log import UsageLog
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.bookmarks import BookmarkedMessageOut
-from app.schemas.chat import ConversationDetail, ConversationOut, ConversationRename, ConversationSummaryOut
+from app.schemas.chat import (
+    ConversationDetail,
+    ConversationImportRequest,
+    ConversationOut,
+    ConversationRename,
+    ConversationSummaryOut,
+)
 from app.schemas.folders import ConversationFolderUpdate
 from app.schemas.projects import ConversationProjectUpdate
 from app.schemas.tags import ConversationTagsUpdate
@@ -756,6 +762,90 @@ def set_conversation_assistant(
                 detail="المساعد غير موجود",
             )
     conversation.assistant_id = assistant_id
+    db.commit()
+    db.refresh(conversation)
+    return conversation
+
+
+@router.post("/import", response_model=ConversationDetail, status_code=status.HTTP_201_CREATED)
+def import_conversation(
+    payload: ConversationImportRequest,
+    workspace_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = (
+        db.query(WorkspaceMember)
+        .filter(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="مساحة العمل غير موجودة",
+        )
+
+    folder_id = None
+    if payload.folder_id is not None:
+        folder = db.get(ConversationFolder, payload.folder_id)
+        if folder:
+            can_use_folder = (
+                folder.user_id == current_user.id
+                and (
+                    folder.workspace_id is None
+                    or folder.workspace_id == workspace_id
+                )
+            )
+            if can_use_folder:
+                folder_id = folder.id
+
+    project_id = None
+    if payload.project_id is not None:
+        project = db.get(WorkspaceProject, payload.project_id)
+        if project and project.workspace_id == workspace_id:
+            project_membership = (
+                db.query(WorkspaceMember)
+                .filter(
+                    WorkspaceMember.workspace_id == workspace_id,
+                    WorkspaceMember.user_id == current_user.id,
+                )
+                .first()
+            )
+            if project_membership:
+                project_id = project.id
+
+    conversation = Conversation(
+        user_id=current_user.id,
+        title=payload.title,
+        is_pinned=False,
+        is_archived=False,
+        folder_id=folder_id,
+        project_id=project_id,
+        workspace_id=workspace_id,
+        ai_model=None,
+        assistant_id=None,
+        deleted_at=None,
+        summary=None,
+        summary_updated_at=None,
+        parent_conversation_id=None,
+        branched_from_message_index=None,
+    )
+
+    for imported_message in payload.messages:
+        conversation.messages.append(
+            Message(
+                role=MessageRole(imported_message.role),
+                content=imported_message.content,
+                sources=imported_message.sources or [],
+                feedback=None,
+                is_bookmarked=False,
+            )
+        )
+
+    db.add(conversation)
     db.commit()
     db.refresh(conversation)
     return conversation
