@@ -33,6 +33,7 @@ from app.routers.users import router as users_router
 from app.routers.tags import router as tags_router
 from app.routers.workspaces import router as workspaces_router
 from app.routers.workspace_members import router as workspace_members_router
+from app.routers.workspace_conversation_shares import router as workspace_conversation_shares_router
 
 configure_logging()
 logger = get_logger("main")
@@ -140,6 +141,7 @@ app.include_router(users_router)
 app.include_router(tags_router)
 app.include_router(workspaces_router)
 app.include_router(workspace_members_router)
+app.include_router(workspace_conversation_shares_router)
 app.include_router(chat_router)
 app.include_router(conversations_router)
 app.include_router(files_router)
