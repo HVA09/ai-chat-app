@@ -346,6 +346,7 @@ async def summarize_conversation(
     db.add(
         UsageLog(
             user_id=current_user.id,
+            workspace_id=conversation.workspace_id,
             endpoint="/conversations/summary",
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
