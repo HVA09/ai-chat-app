@@ -121,6 +121,7 @@ def create_workspace(
         name=workspace.name,
         role=WorkspaceRole.owner,
         default_ai_model=workspace.default_ai_model,
+        daily_ai_request_limit=workspace.daily_ai_request_limit,
         created_at=workspace.created_at,
     )
 
@@ -162,6 +163,7 @@ def rename_workspace(
         name=workspace.name,
         role=membership.role,
         default_ai_model=workspace.default_ai_model,
+        daily_ai_request_limit=workspace.daily_ai_request_limit,
         created_at=workspace.created_at,
     )
 
@@ -196,6 +198,7 @@ def update_workspace_default_model(
         name=workspace.name,
         role=membership.role,
         default_ai_model=workspace.default_ai_model,
+        daily_ai_request_limit=workspace.daily_ai_request_limit,
         created_at=workspace.created_at,
     )
 
