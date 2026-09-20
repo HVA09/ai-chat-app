@@ -26,6 +26,8 @@ export default function ChatMessage({
   onEdit,
   canDelete = false,
   onDelete,
+  canBranch = false,
+  onBranch,
   sources = [],
   feedback = null,
   canFeedback = false,
@@ -62,6 +64,7 @@ export default function ChatMessage({
   const regenerateLabel = document.documentElement.lang === "ar"
     ? "إعادة التوليد"
     : "Regenerate";
+  const branchLabel = t("chat.branchConversation");
   const goodFeedbackLabel = t("feedback.helpful");
   const badFeedbackLabel = t("feedback.notHelpful");
   const bookmarkLabel = isBookmarked
@@ -84,7 +87,7 @@ export default function ChatMessage({
             <span>{time}</span>
           </div>
 
-          {isUser && (canEdit || canDelete) ? (
+          {isUser && (canEdit || canDelete || canBranch) ? (
             <div className="flex items-center gap-1">
               {canEdit && onEdit ? (
                 <button
@@ -117,6 +120,17 @@ export default function ChatMessage({
                   title={deleteLabel}
                 >
                   {deleteLabel}
+                </button>
+              ) : null}
+              {canBranch && onBranch ? (
+                <button
+                  type="button"
+                  onClick={onBranch}
+                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  aria-label={branchLabel}
+                  title={branchLabel}
+                >
+                  {branchLabel}
                 </button>
               ) : null}
             </div>
@@ -164,6 +178,17 @@ export default function ChatMessage({
                   title={deleteLabel}
                 >
                   {deleteLabel}
+                </button>
+              ) : null}
+              {canBranch && onBranch ? (
+                <button
+                  type="button"
+                  onClick={onBranch}
+                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                  aria-label={branchLabel}
+                  title={branchLabel}
+                >
+                  {branchLabel}
                 </button>
               ) : null}
             </div>

@@ -101,6 +101,13 @@ export async function summarizeConversation(id) {
   return data;
 }
 
+export async function branchConversation(id, messageIndex) {
+  const { data } = await api.post("/conversations/" + id + "/branch", null, {
+    params: { message_index: messageIndex },
+  });
+  return data;
+}
+
 export async function duplicateConversation(id) {
   const { data } = await api.post(`/conversations/${id}/duplicate`);
   return data;

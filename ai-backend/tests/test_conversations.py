@@ -393,6 +393,101 @@ def test_rename_rejects_blank_title(client, monkeypatch):
     assert response.status_code == 422
 
 
+def test_branch_conversation_copies_messages_up_to_selected_message(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد 1")),
+    )
+    token = _register_and_login(client, "branch@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "السؤال الأول"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد 2")),
+    )
+    client.post(
+        "/chat",
+        json={"message": "السؤال الثاني", "conversation_id": conversation_id},
+        headers=headers,
+    )
+
+    branch = client.post(
+        f"/conversations/{conversation_id}/branch",
+        params={"message_index": 2},
+        headers=headers,
+    )
+    assert branch.status_code == 201
+    payload = branch.json()
+    assert payload["id"] != conversation_id
+    assert payload["title"].startswith("فرع من")
+    assert payload["is_pinned"] is False
+    assert payload["is_archived"] is False
+    assert payload["deleted_at"] is None
+    assert len(payload["messages"]) == 2
+    assert [item["content"] for item in payload["messages"]] == ["السؤال الأول", "رد 1"]
+    assert payload["messages"][0]["is_bookmarked"] is False
+    assert payload["messages"][1]["feedback"] is None
+
+
+def test_branch_conversation_rejects_invalid_message_index(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "branch-invalid@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "رسالة"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    low = client.post(
+        f"/conversations/{conversation_id}/branch",
+        params={"message_index": 0},
+        headers=headers,
+    )
+    assert low.status_code == 422
+
+    high = client.post(
+        f"/conversations/{conversation_id}/branch",
+        params={"message_index": 99},
+        headers=headers,
+    )
+    assert high.status_code == 422
+
+
+def test_cannot_branch_other_users_conversation(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token_a = _register_and_login(client, "branch-owner@example.com")
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "خاص"},
+        headers={"Authorization": f"Bearer {token_a}"},
+    ).json()["conversation_id"]
+
+    token_b = _register_and_login(client, "branch-other@example.com")
+    response = client.post(
+        f"/conversations/{conversation_id}/branch",
+        params={"message_index": 1},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
+
+
 def test_export_conversation_markdown(client, monkeypatch):
     monkeypatch.setattr(
         chat_router_module,

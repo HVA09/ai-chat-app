@@ -502,6 +502,79 @@ def duplicate_conversation(
     return duplicate
 
 
+@router.post("/{conversation_id}/branch", response_model=ConversationDetail, status_code=status.HTTP_201_CREATED)
+def branch_conversation(
+    conversation_id: int,
+    message_index: int = 1,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if message_index < 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="رقم الرسالة يجب أن يبدأ من 1",
+        )
+
+    source = (
+        db.query(Conversation)
+        .options(selectinload(Conversation.messages), selectinload(Conversation.tags))
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+            Conversation.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not source:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المحادثة غير موجودة",
+        )
+
+    ordered_messages = sorted(
+        source.messages,
+        key=lambda message: (message.created_at, message.id),
+    )
+    if message_index > len(ordered_messages):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="رقم الرسالة خارج نطاق المحادثة",
+        )
+
+    branch_title = f"فرع من {source.title}".strip()[:255] or "فرع من المحادثة"
+    branch = Conversation(
+        user_id=current_user.id,
+        title=branch_title,
+        is_pinned=False,
+        is_archived=False,
+        folder_id=source.folder_id,
+        project_id=source.project_id,
+        workspace_id=source.workspace_id,
+        ai_model=source.ai_model,
+        assistant_id=source.assistant_id,
+        summary=None,
+        summary_updated_at=None,
+        deleted_at=None,
+        tags=list(source.tags),
+    )
+
+    for message in ordered_messages[:message_index]:
+        branch.messages.append(
+            Message(
+                role=message.role,
+                content=message.content,
+                sources=message.sources,
+                feedback=None,
+                is_bookmarked=False,
+            )
+        )
+
+    db.add(branch)
+    db.commit()
+    db.refresh(branch)
+    return branch
+
+
 @router.patch("/{conversation_id}", response_model=ConversationOut)
 def rename_conversation(
     conversation_id: int,
