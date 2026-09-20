@@ -13,6 +13,7 @@ import {
   getAdminStats,
   getDailyAnalytics,
   getFeedbackAnalytics,
+  getModelAnalytics,
   downloadAnalyticsCsv,
   listAllUsers,
   updateUser,
@@ -41,15 +42,22 @@ function StatsTab() {
   const [stats, setStats] = useState(null);
   const [daily, setDaily] = useState([]);
   const [feedback, setFeedback] = useState(null);
+  const [modelUsage, setModelUsage] = useState([]);
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    Promise.all([getAdminStats(), getDailyAnalytics(30), getFeedbackAnalytics(30)])
-      .then(([statsData, dailyData, feedbackData]) => {
+    Promise.all([
+      getAdminStats(),
+      getDailyAnalytics(30),
+      getFeedbackAnalytics(30),
+      getModelAnalytics(30),
+    ])
+      .then(([statsData, dailyData, feedbackData, modelUsageData]) => {
         setStats(statsData);
         setDaily(dailyData.map((p) => ({ ...p, dateLabel: p.date.slice(5) })));
         setFeedback(feedbackData);
+        setModelUsage(modelUsageData);
       })
       .catch(() => setError(t("admin.statsError")));
   }, [t]);
@@ -116,6 +124,30 @@ function StatsTab() {
           </div>
         </div>
       )}
+
+      <div className="rounded-2xl border border-slate-200 p-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium text-slate-900">{t("admin.modelUsageTitle")}</p>
+          <span className="text-xs text-slate-400">{t("admin.modelUsageLast30Days")}</span>
+        </div>
+        {modelUsage.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-400">{t("admin.modelUsageEmpty")}</p>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {modelUsage.map((item) => (
+              <div
+                key={item.model}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs"
+              >
+                <span className="font-medium text-slate-700">{item.model}</span>
+                <span className="text-slate-500">
+                  {item.requests} {t("admin.modelUsageRequests")} · {item.total_tokens} {t("admin.modelUsageTokens")}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-slate-900">{t("admin.last30Days")}</p>
