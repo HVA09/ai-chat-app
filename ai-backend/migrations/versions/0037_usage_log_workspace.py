@@ -40,6 +40,24 @@ def upgrade() -> None:
         ondelete="SET NULL",
     )
 
+    # السجلات القديمة لم تكن تحمل مساحة عمل. نربطها بأول مساحة يملكها
+    # المستخدم (عادةً مساحته الشخصية) حتى لا تختفي من تقارير الاستخدام.
+    op.execute(
+        sa.text(
+            """
+            UPDATE usage_logs AS u
+            SET workspace_id = (
+                SELECT w.id
+                FROM workspaces AS w
+                WHERE w.owner_id = u.user_id
+                ORDER BY w.created_at ASC, w.id ASC
+                LIMIT 1
+            )
+            WHERE u.workspace_id IS NULL
+            """
+        )
+    )
+
 
 def downgrade() -> None:
     op.drop_constraint(
