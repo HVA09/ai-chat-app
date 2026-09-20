@@ -447,6 +447,7 @@ export default function Sidebar({
               ref={importFileInputRef}
               type="file"
               accept=".json,application/json"
+              aria-label={t("sidebar.importConversation")}
               className="hidden"
               onChange={(event) => {
                 const file = event.target.files?.[0];
