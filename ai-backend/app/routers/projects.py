@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.models.conversation import Conversation
 from app.models.project import WorkspaceProject
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
@@ -136,8 +137,8 @@ def delete_project(
     membership = _get_membership(project.workspace_id, current_user, db)
     _can_manage(project, membership)
 
-    db.query(project.conversations.property.mapper.class_).filter(
-        project.conversations.property.mapper.class_.project_id == project.id
+    db.query(Conversation).filter(
+        Conversation.project_id == project.id
     ).update({"project_id": None}, synchronize_session=False)
     db.delete(project)
     db.commit()
