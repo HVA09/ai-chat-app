@@ -43,6 +43,12 @@ class Workspace(Base):
         back_populates="workspace",
         passive_deletes=True,
     )
+    conversation_shares = relationship(
+        "ConversationWorkspaceShare",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     file_attachments = relationship(
         "FileAttachment",
         back_populates="workspace",
