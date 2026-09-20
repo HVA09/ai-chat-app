@@ -172,6 +172,7 @@ export default function App() {
   const [conversationSummary, setConversationSummary] = useState(null);
   const [conversationSummaryUpdatedAt, setConversationSummaryUpdatedAt] = useState(null);
   const [conversationBranches, setConversationBranches] = useState([]);
+  const [parentConversationId, setParentConversationId] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
@@ -213,6 +214,7 @@ export default function App() {
     setSelectedFolderId(null);
     setSelectedAssistantId(null);
     setConversationId(null);
+    setParentConversationId(null);
     setConversationSummary(null);
     setConversationSummaryUpdatedAt(null);
     setMessages([getWelcomeMessage(t)]);
@@ -1126,6 +1128,8 @@ export default function App() {
     setReadOnlyConversation(false);
     setSelectedConversationIds([]);
     setConversationId(null);
+    setConversationBranches([]);
+    setParentConversationId(null);
     setMessages([getWelcomeMessage(t)]);
     setInput("");
     setEditingMessageIndex(null);
@@ -1142,6 +1146,7 @@ export default function App() {
     try {
       const data = await getConversation(id);
       setConversationId(data.id);
+      setParentConversationId(data.parent_conversation_id ?? null);
       try {
         setConversationBranches(await listConversationBranches(data.id));
       } catch {
@@ -1952,6 +1957,8 @@ export default function App() {
           summaryLoading={summaryLoading}
           conversationBranches={conversationBranches}
           onOpenConversationBranch={openConversation}
+          parentConversationId={parentConversationId}
+          onOpenParentConversation={openConversation}
           isAdmin={currentUser?.role === "admin"}
           notifications={notifications}
           onMarkNotificationRead={handleMarkNotificationRead}
