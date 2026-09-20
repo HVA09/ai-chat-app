@@ -28,3 +28,4 @@ class APIKey(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     owner = relationship("User", back_populates="api_keys")
+    usage_logs = relationship("UsageLog", back_populates="api_key", passive_deletes=True)
