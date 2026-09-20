@@ -56,6 +56,13 @@ import {
   deleteFolder,
 } from "./lib/foldersApi";
 import {
+  listProjects,
+  createProject,
+  updateProject,
+  deleteProject,
+  moveConversationToProject,
+} from "./lib/projectsApi";
+import {
   listWorkspaces,
   createWorkspace,
   renameWorkspace,
@@ -133,6 +140,8 @@ export default function App() {
   const [showTrashConversations, setShowTrashConversations] = useState(false);
   const [folders, setFolders] = useState([]);
   const [selectedFolderId, setSelectedFolderId] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [tags, setTags] = useState([]);
   const [selectedTagId, setSelectedTagId] = useState(null);
   const [workspaces, setWorkspaces] = useState([]);
@@ -186,9 +195,11 @@ export default function App() {
     setConversations([]);
     setSelectedConversationIds([]);
     setFolders([]);
+    setProjects([]);
     setWorkspaces([]);
     setSelectedWorkspaceId(null);
     setSelectedFolderId(null);
+    setSelectedProjectId(null);
     setTags([]);
     setSelectedTagId(null);
     setAssistants([]);
@@ -254,6 +265,7 @@ export default function App() {
     includeArchived = showArchivedConversations,
     folderId = selectedFolderId,
     workspaceId = selectedWorkspaceId,
+    projectId = selectedProjectId,
     search = conversationSearch,
     includeDeleted = showTrashConversations,
     tagId = selectedTagId,
@@ -268,6 +280,7 @@ export default function App() {
         includeArchived,
         folderId,
         workspaceId,
+        projectId,
         search,
         includeDeleted,
         tagId,
@@ -294,12 +307,31 @@ export default function App() {
     }
   };
 
+  const refreshProjects = async (workspaceId = selectedWorkspaceId) => {
+    if (workspaceId === null || workspaceId === undefined) {
+      setProjects([]);
+      setSelectedProjectId(null);
+      return;
+    }
+    try {
+      const list = await listProjects(workspaceId);
+      setProjects(list);
+      setSelectedProjectId((current) =>
+        current && list.some((project) => project.id === current) ? current : null
+      );
+    } catch {
+      setProjects([]);
+      setSelectedProjectId(null);
+    }
+  };
+
   const loadMoreConversations = async () => {
     if (!hasMoreConversations || conversationsLoading || conversationsLoadingMore) return;
     await refreshConversations(
       showArchivedConversations,
       selectedFolderId,
       selectedWorkspaceId,
+      selectedProjectId,
       conversationSearch,
       showTrashConversations,
       selectedTagId,
@@ -339,6 +371,7 @@ export default function App() {
         showArchivedConversations,
         selectedFolderId,
         selectedWorkspaceId,
+        selectedProjectId,
         conversationSearch,
         showTrashConversations,
         tag.id
@@ -439,9 +472,11 @@ export default function App() {
           ""
       );
       setSelectedFolderId(null);
+      setSelectedProjectId(null);
       await refreshFolders(nextId);
+      await refreshProjects(nextId);
       await refreshAssistants(nextId);
-      await refreshConversations(showArchivedConversations, null, nextId);
+      await refreshConversations(showArchivedConversations, null, nextId, null);
     } catch {
       // فشل تحميل مساحات العمل لا يوقف الشات.
     }
@@ -456,10 +491,12 @@ export default function App() {
       setWorkspaces(nextList);
       setSelectedWorkspaceId(workspace.id);
       setSelectedFolderId(null);
+      setSelectedProjectId(null);
       startNewChat();
       await refreshFolders(workspace.id);
+      await refreshProjects(workspace.id);
       await refreshAssistants(workspace.id);
-      await refreshConversations(showArchivedConversations, null, workspace.id);
+      await refreshConversations(showArchivedConversations, null, workspace.id, null);
     } catch {
       setToast({ message: t("app.workspaceCreateError"), type: "error" });
     }
@@ -514,6 +551,7 @@ export default function App() {
     const workspace = workspaces.find((item) => item.id === workspaceId);
     setSelectedWorkspaceId(workspaceId);
     setSelectedFolderId(null);
+    setSelectedProjectId(null);
     setSelectedModel(
       workspace?.default_ai_model ||
         aiModels.find((model) => model.is_default)?.id ||
@@ -522,8 +560,9 @@ export default function App() {
     );
     startNewChat();
     await refreshFolders(workspaceId);
+    await refreshProjects(workspaceId);
     await refreshAssistants(workspaceId);
-    await refreshConversations(showArchivedConversations, null, workspaceId);
+    await refreshConversations(showArchivedConversations, null, workspaceId, null);
   };
 
   const refreshFolders = async (workspaceId = selectedWorkspaceId) => {
@@ -579,8 +618,119 @@ export default function App() {
 
   const handleSelectFolder = async (id) => {
     setSelectedFolderId(id);
+    setSelectedProjectId(null);
     startNewChat();
-    await refreshConversations(showArchivedConversations, id, selectedWorkspaceId);
+    await refreshConversations(showArchivedConversations, id, selectedWorkspaceId, null);
+  };
+
+  const handleCreateProject = async () => {
+    if (selectedWorkspaceId === null) return;
+    const name = window.prompt(t("sidebar.projectCreatePrompt"));
+    if (!name?.trim()) return;
+    const description = window.prompt(t("sidebar.projectCreateDescriptionPrompt"), "");
+    try {
+      const project = await createProject(selectedWorkspaceId, name.trim(), description?.trim() || "");
+      await refreshProjects(selectedWorkspaceId);
+      setSelectedProjectId(project.id);
+      setSelectedFolderId(null);
+      startNewChat();
+      await refreshConversations(
+        showArchivedConversations,
+        null,
+        selectedWorkspaceId,
+        project.id
+      );
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.projectCreateError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleRenameProject = async (id, currentName, currentDescription) => {
+    const name = window.prompt(t("sidebar.projectRenamePrompt"), currentName);
+    if (!name?.trim()) return;
+    const description = window.prompt(
+      t("sidebar.projectEditDescriptionPrompt"),
+      currentDescription || ""
+    );
+    try {
+      await updateProject(id, name.trim(), description?.trim() || "");
+      await refreshProjects(selectedWorkspaceId);
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        selectedProjectId
+      );
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.projectUpdateError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleDeleteProject = async (id, name) => {
+    if (!window.confirm(t("sidebar.projectDeleteConfirm", { name }))) return;
+    const wasSelected = id === selectedProjectId;
+    try {
+      await deleteProject(id);
+      if (wasSelected) {
+        setSelectedProjectId(null);
+        startNewChat();
+      }
+      await refreshProjects(selectedWorkspaceId);
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        wasSelected ? null : selectedProjectId
+      );
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.projectDeleteError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleSelectProject = async (id) => {
+    setSelectedProjectId(id);
+    setSelectedFolderId(null);
+    startNewChat();
+    await refreshConversations(
+      showArchivedConversations,
+      null,
+      selectedWorkspaceId,
+      id
+    );
+  };
+
+  const handleMoveConversationToProject = async (id, projectId) => {
+    const normalizedProjectId = projectId === "" ? null : Number(projectId);
+    try {
+      const result = await moveConversationToProject(id, normalizedProjectId);
+      if (
+        id === conversationId &&
+        selectedProjectId !== null &&
+        result.project_id !== selectedProjectId
+      ) {
+        startNewChat();
+      }
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        selectedProjectId
+      );
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.conversationMoveError"),
+        type: "error",
+      });
+    }
   };
 
   const refreshBookmarkedMessages = async () => {
