@@ -1550,16 +1550,7 @@ export default function App() {
 
     await streamEditMessage(conversationId, userMessageIndex, editedText, {
       signal: controller.signal,
-      onConversationId: async (id) => {
-        setConversationId(id);
-        if (isNewConversation && selectedProjectId !== null) {
-          try {
-            await moveConversationToProject(id, selectedProjectId);
-          } catch {
-            setToast({ message: t("app.conversationMoveError"), type: "error" });
-          }
-        }
-      },
+      onConversationId: (id) => setConversationId(id),
       onSources: (sources) => {
         setMessages((prev) => prev.map((message, index) =>
           index === targetIndex + 1 ? { ...message, sources } : message
@@ -1620,7 +1611,22 @@ export default function App() {
       signal: controller.signal,
       workspaceId: selectedWorkspaceId,
       model: selectedModel || null,
-      onConversationId: (id) => setConversationId(id),
+      onConversationId: async (id) => {
+        setConversationId(id);
+        if (isNewConversation && selectedProjectId !== null) {
+          try {
+            await moveConversationToProject(id, selectedProjectId);
+          } catch {
+            setToast({ message: t("app.conversationMoveError"), type: "error" });
+          }
+        } else if (isNewConversation && selectedFolderId !== null) {
+          try {
+            await moveConversationToFolder(id, selectedFolderId);
+          } catch {
+            setToast({ message: t("app.conversationMoveError"), type: "error" });
+          }
+        }
+      },
       onSources: (sources) => {
         setMessages((prev) => prev.map((message, index) =>
           index === messages.length + 1 ? { ...message, sources } : message
