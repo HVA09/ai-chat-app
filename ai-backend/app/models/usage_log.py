@@ -17,6 +17,7 @@ class UsageLog(Base):
         # يخدم enforce_daily_ai_limit — يشتغل على كل طلب /chat، أهم استعلام بالنظام أداءً
         Index("ix_usage_logs_user_id_created_at", "user_id", "created_at"),
         Index("ix_usage_logs_workspace_id_created_at", "workspace_id", "created_at"),
+        Index("ix_usage_logs_api_key_id_created_at", "api_key_id", "created_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -25,6 +26,9 @@ class UsageLog(Base):
     )
     workspace_id: Mapped[int | None] = mapped_column(
         ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    api_key_id: Mapped[int | None] = mapped_column(
+        ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True, index=True
     )
     endpoint: Mapped[str] = mapped_column(String(100), nullable=False)
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)

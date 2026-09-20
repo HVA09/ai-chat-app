@@ -81,6 +81,8 @@ def create_api_key(
         name=payload.name,
         key_prefix=prefix,
         key_hash=key_hash,
+        daily_request_limit=payload.daily_request_limit,
+        expires_at=payload.expires_at,
     )
     db.add(api_key)
     db.commit()
@@ -93,6 +95,8 @@ def create_api_key(
         created_at=api_key.created_at,
         last_used_at=api_key.last_used_at,
         revoked_at=api_key.revoked_at,
+        daily_request_limit=api_key.daily_request_limit,
+        expires_at=api_key.expires_at,
         secret=secret,
     )
 
@@ -131,6 +135,12 @@ def _get_api_key_auth(
             detail="مفتاح API غير صالح أو مُلغى",
         )
 
+    if api_key.expires_at is not None and api_key.expires_at < datetime.now(timezone.utc).date():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="انتهت صلاحية مفتاح API",
+        )
+
     user = db.get(User, api_key.user_id)
     if user is None or not user.is_active:
         raise HTTPException(
@@ -146,13 +156,38 @@ def _get_api_key_auth(
     return user, api_key
 
 
+def _enforce_api_key_daily_limit(api_key: APIKey, db: Session) -> None:
+    if api_key.daily_request_limit is None:
+        return
+
+    since = datetime.now(timezone.utc) - timedelta(days=1)
+    used = (
+        db.query(func.count(UsageLog.id))
+        .filter(
+            UsageLog.api_key_id == api_key.id,
+            UsageLog.created_at >= since,
+        )
+        .scalar()
+        or 0
+    )
+    if used >= api_key.daily_request_limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"وصل مفتاح API إلى حده اليومي "
+                f"({api_key.daily_request_limit} طلب)."
+            ),
+        )
+
+
 @router.post("/v1/chat", response_model=APIChatResponse)
 async def developer_chat(
     payload: APIChatRequest,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     db: Session = Depends(get_db),
 ):
-    current_user, _api_key = _get_api_key_auth(x_api_key, db)
+    current_user, api_key = _get_api_key_auth(x_api_key, db)
+    _enforce_api_key_daily_limit(api_key, db)
     enforce_daily_ai_limit(current_user=current_user, db=db)
 
     chat_payload = type(
@@ -192,6 +227,7 @@ async def developer_chat(
             user_id=current_user.id,
             workspace_id=conversation.workspace_id,
             endpoint="/v1/chat",
+            api_key_id=api_key.id,
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
         )

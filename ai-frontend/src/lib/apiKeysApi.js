@@ -5,8 +5,12 @@ export async function listApiKeys() {
   return data;
 }
 
-export async function createApiKey(name) {
-  const { data } = await api.post("/api-keys", { name });
+export async function createApiKey(name, dailyRequestLimit = null, expiresAt = null) {
+  const { data } = await api.post("/api-keys", {
+    name,
+    daily_request_limit: dailyRequestLimit,
+    expires_at: expiresAt,
+  });
   return data;
 }
 

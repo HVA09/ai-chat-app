@@ -1,5 +1,8 @@
 """اختبارات مفاتيح API ونقطة المطورين."""
+from datetime import date, timedelta
 from unittest.mock import AsyncMock
+
+from app.models.api_key import APIKey
 
 from app.routers import api_keys as api_keys_router_module
 from app.services.ai_providers.base import AIReply
@@ -22,6 +25,8 @@ def test_create_list_and_revoke_api_key(client):
     assert body["name"] == "CLI"
     assert body["secret"].startswith("ak_live_")
     assert body["key_prefix"] == body["secret"][:16]
+    assert body["daily_request_limit"] is None
+    assert body["expires_at"] is None
 
     listed = client.get("/api-keys", headers=headers)
     assert listed.status_code == 200
@@ -104,3 +109,78 @@ def test_cannot_manage_other_users_api_key(client):
     token_b = _register_and_login(client, "api-key-other@example.com")
     headers_b = {"Authorization": f"Bearer {token_b}"}
     assert client.delete(f"/api-keys/{key_id}", headers=headers_b).status_code == 404
+
+
+def test_api_key_daily_limit_blocks_second_request(client, monkeypatch):
+    monkeypatch.setattr(
+        api_keys_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد API", input_tokens=1, output_tokens=1)),
+    )
+    token = _register_and_login(client, "developer-quota@example.com")
+    session_headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        "/api-keys",
+        json={"name": "Quota key", "daily_request_limit": 1},
+        headers=session_headers,
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["daily_request_limit"] == 1
+
+    secret = body["secret"]
+    response = client.post(
+        "/v1/chat",
+        json={"message": "الأولى"},
+        headers={"X-API-Key": secret},
+    )
+    assert response.status_code == 200
+
+    blocked = client.post(
+        "/v1/chat",
+        json={"message": "الثانية"},
+        headers={"X-API-Key": secret},
+    )
+    assert blocked.status_code == 429
+
+
+def test_expired_api_key_is_rejected(client, db_session):
+    token = _register_and_login(client, "developer-expiry@example.com")
+    session_headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        "/api-keys",
+        json={
+            "name": "Expired key",
+            "expires_at": date.today().isoformat(),
+        },
+        headers=session_headers,
+    )
+    assert created.status_code == 201
+    body = created.json()
+
+    key = db_session.get(APIKey, body["id"])
+    key.expires_at = date.today() - timedelta(days=1)
+    db_session.flush()
+
+    response = client.post(
+        "/v1/chat",
+        json={"message": "انتهى"},
+        headers={"X-API-Key": body["secret"]},
+    )
+    assert response.status_code == 401
+    assert "انتهت صلاحية" in response.json()["detail"]
+
+
+def test_api_key_expiry_in_past_rejected_on_creation(client):
+    token = _register_and_login(client, "developer-expiry-validation@example.com")
+    response = client.post(
+        "/api-keys",
+        json={
+            "name": "Past key",
+            "expires_at": (date.today() - timedelta(days=1)).isoformat(),
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 422
