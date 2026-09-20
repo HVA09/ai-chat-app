@@ -13,6 +13,7 @@ vi.mock("react-i18next", () => ({
       "tools.webSearch": "بحث الويب",
       "tools.dataAnalysis": "تحليل البيانات",
       "tools.agent": "وضع الوكيل",
+      "tools.python": "مفسّر بايثون آمن",
       "tools.voiceInput": "إدخال صوتي",
       "tools.voiceStop": "إيقاف الإدخال الصوتي",
       "tools.modelSelector": "نموذج الذكاء الاصطناعي",
@@ -60,6 +61,28 @@ describe("ChatComposer tools", () => {
 
     await user.click(screen.getByTitle("تحليل البيانات"));
     expect(onInsertDataAnalysis).toHaveBeenCalled();
+  });
+
+  it("زر مفسّر بايثون يمرر المعالج", async () => {
+    const user = userEvent.setup();
+    const onInsertPython = vi.fn();
+
+    render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onInsertCalculator={vi.fn()}
+        onInsertWebSearch={vi.fn()}
+        onInsertDataAnalysis={vi.fn()}
+        onInsertAgent={vi.fn()}
+        onInsertPython={onInsertPython}
+      />
+    );
+
+    await user.click(screen.getByTitle("مفسّر بايثون آمن"));
+    expect(onInsertPython).toHaveBeenCalled();
   });
 
   it("زر الآلة الحاسبة يمرر المعالج", async () => {
