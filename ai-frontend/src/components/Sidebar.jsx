@@ -23,7 +23,7 @@ export default function Sidebar({
   selectedAssistantId = null,
   onSelectAssistant = () => {},
   onCreateAssistant = () => {},
-  onRenameAssistant = () => {},
+  onEditAssistant = () => {},
   onDeleteAssistant = () => {},
   bookmarkedMessages = [],
   onOpenBookmarkedMessage = () => {},
@@ -428,8 +428,8 @@ export default function Sidebar({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onRenameAssistant(assistant.id, assistant.name)}
-                    title={t("sidebar.renameAssistantTitle")}
+                    onClick={() => onEditAssistant(assistant.id)}
+                    title={t("sidebar.editAssistantTitle")}
                     className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                   >
                     ✎
