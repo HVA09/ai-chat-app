@@ -37,6 +37,13 @@ export default function Sidebar({
   folders,
   selectedFolderId,
   onSelectFolder,
+  projects = [],
+  selectedProjectId = null,
+  onSelectProject = () => {},
+  onCreateProject = () => {},
+  onRenameProject = () => {},
+  onDeleteProject = () => {},
+  onMoveConversationToProject = () => {},
   tags = [],
   selectedTagId = null,
   onSelectTag = () => {},
@@ -141,6 +148,21 @@ export default function Sidebar({
   const handleMoveFolder = (e, item) => {
     e.stopPropagation();
     onMoveConversationToFolder(item.id, e.target.value);
+  };
+
+  const handleMoveProject = (e, item) => {
+    e.stopPropagation();
+    onMoveConversationToProject(item.id, e.target.value);
+  };
+
+  const handleRenameProject = (e, project) => {
+    e.stopPropagation();
+    onRenameProject(project.id, project.name, project.description);
+  };
+
+  const handleDeleteProject = (e, project) => {
+    e.stopPropagation();
+    onDeleteProject(project.id, project.name);
   };
 
   const handleRenameFolder = (e, folder) => {
@@ -258,6 +280,18 @@ export default function Sidebar({
                               <option value="">{t("sidebar.noFolder")}</option>
                               {folders.map((folder) => (
                                 <option key={folder.id} value={folder.id}>{folder.name}</option>
+                              ))}
+                            </select>
+                            <select
+                              aria-label={t("sidebar.moveProjectTitle")}
+                              value={item.project_id ?? ""}
+                              onChange={(e) => handleMoveProject(e, item)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="min-w-[110px] max-w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 sm:max-w-[140px]"
+                            >
+                              <option value="">{t("sidebar.noProject")}</option>
+                              {projects.map((project) => (
+                                <option key={project.id} value={project.id}>{project.name}</option>
                               ))}
                             </select>
                             <button
@@ -558,6 +592,61 @@ export default function Sidebar({
                     <>
                       <button type="button" onClick={(e) => handleRenameFolder(e, folder)} title={t("sidebar.renameFolderTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700">✎</button>
                       <button type="button" onClick={(e) => handleDeleteFolder(e, folder)} title={t("sidebar.deleteFolderTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-red-100 hover:text-red-600">✕</button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t("sidebar.projectsTitle")}</span>
+              <button
+                type="button"
+                onClick={onCreateProject}
+                title={t("sidebar.createProjectTitle")}
+                className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800"
+              >
+                +
+              </button>
+            </div>
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => onSelectProject(null)}
+                className={`w-full rounded-lg px-2 py-1.5 text-start text-sm ${selectedProjectId === null ? "bg-slate-100 font-medium text-slate-900 dark:bg-slate-800 dark:text-slate-100" : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"}`}
+              >
+                {t("sidebar.allProjects")}
+              </button>
+              {projects.map((project) => (
+                <div key={project.id} className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => onSelectProject(project.id)}
+                    className={`min-w-0 flex-1 truncate rounded-lg px-2 py-1.5 text-start text-sm ${selectedProjectId === project.id ? "bg-slate-100 font-medium text-slate-900 dark:bg-slate-800 dark:text-slate-100" : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"}`}
+                    title={project.description || project.name}
+                  >
+                    📦 {project.name}
+                  </button>
+                  {(selectedWorkspaceRole === "owner" || selectedWorkspaceRole === "admin") && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={(e) => handleRenameProject(e, project)}
+                        title={t("sidebar.renameProjectTitle")}
+                        className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteProject(e, project)}
+                        title={t("sidebar.deleteProjectTitle")}
+                        className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-red-100 hover:text-red-600"
+                      >
+                        ✕
+                      </button>
                     </>
                   )}
                 </div>
