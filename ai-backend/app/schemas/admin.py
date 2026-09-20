@@ -63,3 +63,11 @@ class FeedbackAnalytics(BaseModel):
     positive: int
     negative: int
     positive_rate: float | None
+
+
+class ModelUsagePoint(BaseModel):
+    model: str
+    requests: int
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
