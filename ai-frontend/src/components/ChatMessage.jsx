@@ -209,13 +209,21 @@ export default function ChatMessage({
               {sources.map((source) => {
                 const label = source.filename || source.title || source.url || source.id;
                 const text = `[${source.id}] ${label}${source.chunk ? ` · ${t("sources.chunkShort", { chunk: source.chunk })}` : ""}`;
-                const content = source.url ? (
+                const fileUrl = source.file_id
+                  ? `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"}/files/${source.file_id}`
+                  : null;
+                const content = source.url || fileUrl ? (
                   <a
-                    href={source.url}
+                    href={source.url || fileUrl}
                     target="_blank"
                     rel="noreferrer noopener"
                     className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 hover:underline dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                    title={source.snippet || (source.chunk ? t("sources.chunkTooltip", { chunk: source.chunk }) : source.url)}
+                    title={
+                      source.snippet ||
+                      (source.chunk
+                        ? t("sources.chunkTooltip", { chunk: source.chunk })
+                        : source.url || t("sources.title"))
+                    }
                   >
                     {text}
                   </a>
