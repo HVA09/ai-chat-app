@@ -15,6 +15,7 @@ vi.mock("react-i18next", () => ({
         "sources.title": "Sources",
         "bookmarks.save": "Save message",
         "bookmarks.remove": "Remove from bookmarks",
+        "chat.branchConversation": "Branch conversation",
       })[key] ?? key,
   }),
 }));
@@ -123,3 +124,22 @@ describe("ChatMessage feedback", () => {
 
 });
 
+describe("ChatMessage branching", () => {
+  it("calls the branch handler for a message", async () => {
+    const user = userEvent.setup();
+    const onBranch = vi.fn();
+
+    render(
+      <ChatMessage
+        role="assistant"
+        text="رد"
+        time="10:00"
+        canBranch
+        onBranch={onBranch}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "Branch conversation" }));
+    expect(onBranch).toHaveBeenCalled();
+  });
+});
