@@ -439,6 +439,7 @@ export default function App() {
           ""
       );
       setSelectedFolderId(null);
+      await refreshFolders(nextId);
       await refreshAssistants(nextId);
       await refreshConversations(showArchivedConversations, null, nextId);
     } catch {
@@ -456,6 +457,7 @@ export default function App() {
       setSelectedWorkspaceId(workspace.id);
       setSelectedFolderId(null);
       startNewChat();
+      await refreshFolders(workspace.id);
       await refreshAssistants(workspace.id);
       await refreshConversations(showArchivedConversations, null, workspace.id);
     } catch {
@@ -519,6 +521,7 @@ export default function App() {
         ""
     );
     startNewChat();
+    await refreshFolders(workspaceId);
     await refreshAssistants(workspaceId);
     await refreshConversations(showArchivedConversations, null, workspaceId);
   };
@@ -931,7 +934,6 @@ export default function App() {
   useEffect(() => {
     if (authed) {
       refreshWorkspaces();
-      refreshFolders();
       refreshTags();
       refreshAssistants(selectedWorkspaceId);
       refreshSavedPrompts();
