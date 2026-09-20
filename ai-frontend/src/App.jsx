@@ -497,6 +497,15 @@ export default function App() {
     setToast({ message: t("app.workspaceModelUpdated"), type: "success" });
   };
 
+  const handleWorkspaceQuotaUpdated = (updated) => {
+    setWorkspaces((prev) =>
+      prev.map((workspace) =>
+        workspace.id === updated.id ? { ...workspace, ...updated } : workspace
+      )
+    );
+    setToast({ message: t("app.workspaceQuotaUpdated"), type: "success" });
+  };
+
   const handleSelectWorkspace = async (id) => {
     const workspaceId = Number(id);
     if (!workspaceId || workspaceId === selectedWorkspaceId) return;
@@ -1957,6 +1966,7 @@ export default function App() {
             }
             availableModels={aiModels}
             onWorkspaceUpdated={handleWorkspaceUpdated}
+            onQuotaUpdated={handleWorkspaceQuotaUpdated}
             onClose={() => setShowWorkspaceMembers(false)}
           />
         </Suspense>
