@@ -46,6 +46,7 @@ import {
   toggleTrashConversation,
   moveConversationToFolder,
   duplicateConversation,
+  branchConversation,
   exportConversation,
   summarizeConversation,
 } from "./lib/conversationsApi";
@@ -1399,6 +1400,29 @@ export default function App() {
     }
   };
 
+  const handleBranchConversation = async (messageIndex) => {
+    if (!conversationId || loading || readOnlyConversation) return;
+    try {
+      const branch = await branchConversation(conversationId, messageIndex + 1);
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        selectedProjectId,
+        conversationSearch,
+        showTrashConversations,
+        selectedTagId
+      );
+      await openConversation(branch.id);
+      setToast({ message: t("app.branchConversationSuccess"), type: "success" });
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.branchConversationError"),
+        type: "error",
+      });
+    }
+  };
+
   const handleDuplicateConversation = async (id) => {
     try {
       const duplicate = await duplicateConversation(id);
@@ -2003,6 +2027,13 @@ export default function App() {
                       !readOnlyConversation
                     }
                     onDelete={() => deleteMessage(index)}
+                    canBranch={
+                      !loading &&
+                      editingMessageIndex === null &&
+                      conversationId !== null &&
+                      !readOnlyConversation
+                    }
+                    onBranch={() => handleBranchConversation(index)}
                     canRegenerate={
                       index === lastAssistantIndex &&
                       !loading &&
