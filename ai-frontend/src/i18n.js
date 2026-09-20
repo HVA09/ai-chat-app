@@ -261,6 +261,11 @@ const resources = {
         feedbackPositive: "مفيد",
         feedbackNegative: "غير مفيد",
         feedbackPositiveRate: "نسبة التقييم الإيجابي",
+        modelUsageTitle: "استخدام الذكاء الاصطناعي حسب النموذج",
+        modelUsageLast30Days: "آخر 30 يوم",
+        modelUsageEmpty: "لا توجد بيانات استخدام مرتبطة بنموذج",
+        modelUsageRequests: "طلب",
+        modelUsageTokens: "توكن",
       },
 
       files: {
@@ -860,6 +865,11 @@ const resources = {
         feedbackPositive: "Helpful",
         feedbackNegative: "Not helpful",
         feedbackPositiveRate: "Positive rate",
+        modelUsageTitle: "AI usage by model",
+        modelUsageLast30Days: "Last 30 days",
+        modelUsageEmpty: "No usage data with a model yet",
+        modelUsageRequests: "requests",
+        modelUsageTokens: "tokens",
       },
 
       files: {
