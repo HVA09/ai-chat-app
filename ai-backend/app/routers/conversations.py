@@ -224,6 +224,7 @@ def get_conversation(
 ):
     conversation = (
         db.query(Conversation)
+        .populate_existing()
         .options(selectinload(Conversation.messages), selectinload(Conversation.tags))
         .filter(
             Conversation.id == conversation_id,
