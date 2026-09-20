@@ -111,6 +111,8 @@ class ConversationOut(BaseModel):
     ai_model: str | None
     deleted_at: datetime | None
     tags: list[TagOut] = Field(default_factory=list)
+    parent_conversation_id: int | None
+    branched_from_message_index: int | None
 
 
 class ConversationDetail(ConversationOut):
