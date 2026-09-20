@@ -1550,7 +1550,16 @@ export default function App() {
 
     await streamEditMessage(conversationId, userMessageIndex, editedText, {
       signal: controller.signal,
-      onConversationId: (id) => setConversationId(id),
+      onConversationId: async (id) => {
+        setConversationId(id);
+        if (isNewConversation && selectedProjectId !== null) {
+          try {
+            await moveConversationToProject(id, selectedProjectId);
+          } catch {
+            setToast({ message: t("app.conversationMoveError"), type: "error" });
+          }
+        }
+      },
       onSources: (sources) => {
         setMessages((prev) => prev.map((message, index) =>
           index === targetIndex + 1 ? { ...message, sources } : message
