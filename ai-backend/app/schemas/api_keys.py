@@ -58,3 +58,12 @@ class APIChatResponse(BaseModel):
     conversation_id: int
     reply: str
     model: str
+
+
+class APIKeyUsageOut(BaseModel):
+    key_id: int
+    window_hours: int
+    used_requests: int
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
