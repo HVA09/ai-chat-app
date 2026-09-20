@@ -7,7 +7,7 @@ import re
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import func, over
+from sqlalchemy import func, or_, over
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
@@ -83,10 +83,13 @@ def list_conversations(
             .replace("%", "\\%")
             .replace("_", "\\_")
         )
+        search_pattern = f"%{escaped_search}%"
         query = query.filter(
-            Conversation.title.ilike(
-                f"%{escaped_search}%",
-                escape="\\",
+            or_(
+                Conversation.title.ilike(search_pattern, escape="\\"),
+                Conversation.messages.any(
+                    Message.content.ilike(search_pattern, escape="\\")
+                ),
             )
         )
 
