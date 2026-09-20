@@ -1,9 +1,9 @@
 """اختبارات مفاتيح API ونقطة المطورين."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 from app.models.api_key import APIKey
-
+from app.models.usage_log import UsageLog
 from app.routers import api_keys as api_keys_router_module
 from app.services.ai_providers.base import AIReply
 
@@ -195,27 +195,24 @@ def test_api_key_usage_endpoint_is_owner_scoped(client, db_session):
     key = created.json()
 
     db_key = db_session.get(APIKey, key["id"])
+    now = datetime.now(timezone.utc)
     db_session.add_all(
         [
-            __import__("app.models.usage_log", fromlist=["UsageLog"]).UsageLog(
+            UsageLog(
                 user_id=db_key.user_id,
                 api_key_id=db_key.id,
                 endpoint="/v1/chat",
                 input_tokens=10,
                 output_tokens=20,
-                created_at=__import__("datetime", fromlist=["datetime"]).datetime.now(
-                    __import__("datetime", fromlist=["timezone"]).timezone.utc
-                ) - __import__("datetime", fromlist=["timedelta"]).timedelta(hours=1),
+                created_at=now - timedelta(hours=1),
             ),
-            __import__("app.models.usage_log", fromlist=["UsageLog"]).UsageLog(
+            UsageLog(
                 user_id=db_key.user_id,
                 api_key_id=db_key.id,
                 endpoint="/v1/chat",
                 input_tokens=3,
                 output_tokens=7,
-                created_at=__import__("datetime", fromlist=["datetime"]).datetime.now(
-                    __import__("datetime", fromlist=["timezone"]).timezone.utc
-                ) - __import__("datetime", fromlist=["timedelta"]).timedelta(days=2),
+                created_at=now - timedelta(days=2),
             ),
         ]
     )
