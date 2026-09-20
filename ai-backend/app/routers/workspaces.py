@@ -1,4 +1,6 @@
 """مسارات مساحة العمل الحالية للمستخدم."""
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -6,10 +8,12 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
+from app.models.usage_log import UsageLog
 from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
 from app.audit import log_event
 from app.schemas.workspace_audit import WorkspaceAuditLogOut
 from app.schemas.workspaces import WorkspaceCreate, WorkspaceOut, WorkspaceRename
+from app.schemas.workspace_usage import WorkspaceUsageMemberOut, WorkspaceUsageOut
 from app.models.audit_log import AuditLog
 
 router = APIRouter(prefix="/workspaces", tags=["Workspaces"])
@@ -145,6 +149,91 @@ def rename_workspace(
         name=workspace.name,
         role=membership.role,
         created_at=workspace.created_at,
+    )
+
+
+@router.get("/{workspace_id}/usage", response_model=WorkspaceUsageOut)
+def get_workspace_usage(
+    workspace_id: int,
+    window_hours: int = 24,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = _get_membership(workspace_id, current_user, db)
+    if membership.role not in {WorkspaceRole.owner, WorkspaceRole.admin}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="هذه العملية تتطلب صلاحية مدير مساحة العمل",
+        )
+
+    window_hours = max(1, min(window_hours, 168))
+    window_start = datetime.now(timezone.utc) - timedelta(hours=window_hours)
+
+    base_query = (
+        db.query(UsageLog)
+        .join(
+            WorkspaceMember,
+            WorkspaceMember.user_id == UsageLog.user_id,
+        )
+        .filter(
+            WorkspaceMember.workspace_id == workspace_id,
+            UsageLog.created_at >= window_start,
+        )
+    )
+
+    totals = base_query.with_entities(
+        func.count(UsageLog.id),
+        func.coalesce(func.sum(UsageLog.input_tokens), 0),
+        func.coalesce(func.sum(UsageLog.output_tokens), 0),
+    ).one()
+
+    member_rows = (
+        db.query(
+            User.id,
+            User.email,
+            User.full_name,
+            func.count(UsageLog.id),
+            func.coalesce(func.sum(UsageLog.input_tokens), 0),
+            func.coalesce(func.sum(UsageLog.output_tokens), 0),
+        )
+        .join(WorkspaceMember, WorkspaceMember.user_id == User.id)
+        .outerjoin(
+            UsageLog,
+            (UsageLog.user_id == User.id)
+            & (UsageLog.created_at >= window_start),
+        )
+        .filter(WorkspaceMember.workspace_id == workspace_id)
+        .group_by(User.id, User.email, User.full_name)
+        .order_by(func.count(UsageLog.id).desc(), User.email.asc())
+        .all()
+    )
+
+    members = [
+        WorkspaceUsageMemberOut(
+            user_id=user_id,
+            email=email,
+            full_name=full_name,
+            used_requests=int(used_requests or 0),
+            input_tokens=int(input_tokens or 0),
+            output_tokens=int(output_tokens or 0),
+            total_tokens=int(input_tokens or 0) + int(output_tokens or 0),
+        )
+        for user_id, email, full_name, used_requests, input_tokens, output_tokens in member_rows
+    ]
+
+    used_requests = int(totals[0] or 0)
+    input_tokens = int(totals[1] or 0)
+    output_tokens = int(totals[2] or 0)
+
+    return WorkspaceUsageOut(
+        workspace_id=workspace_id,
+        window_hours=window_hours,
+        window_start=window_start,
+        used_requests=used_requests,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+        members=members,
     )
 
 
