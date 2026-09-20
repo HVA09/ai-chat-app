@@ -34,6 +34,9 @@ class Conversation(Base):
     folder_id: Mapped[int | None] = mapped_column(
         ForeignKey("conversation_folders.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspace_projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     workspace_id: Mapped[int] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -49,6 +52,7 @@ class Conversation(Base):
 
     owner = relationship("User", back_populates="conversations")
     folder = relationship("ConversationFolder", back_populates="conversations")
+    project = relationship("WorkspaceProject", back_populates="conversations")
     workspace = relationship("Workspace", back_populates="conversations")
     assistant = relationship("Assistant", back_populates="conversations")
     tags = relationship(
