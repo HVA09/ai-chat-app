@@ -21,6 +21,7 @@ export default function WorkspaceMembersPanel({
   dailyAiRequestLimit = null,
   availableModels = [],
   onWorkspaceUpdated,
+  onQuotaUpdated,
   onClose,
 }) {
   const { t } = useTranslation();
@@ -192,7 +193,7 @@ export default function WorkspaceMembersPanel({
                         ? ""
                         : String(updated.daily_ai_request_limit)
                     );
-                    onWorkspaceUpdated?.(updated);
+                    onQuotaUpdated?.(updated);
                   } catch (err) {
                     const message = err?.response?.data?.detail || t("app.workspaceQuotaUpdateError");
                     window.alert(message);
