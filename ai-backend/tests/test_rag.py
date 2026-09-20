@@ -127,7 +127,9 @@ def test_chat_uses_retrieved_rag_context(client, monkeypatch, db_session):
     assert "Linux is an operating system used to run servers." in sent
 
     body = response.json()
-    assert body["sources"] == [{"id": "S1", "filename": "linux.txt", "chunk": 1}]
+    assert body["sources"] == [
+        {"id": "S1", "filename": "linux.txt", "chunk": 1, "file_id": file.id}
+    ]
 
 
 def test_build_retrieval_context_returns_stable_sources(db_session):
