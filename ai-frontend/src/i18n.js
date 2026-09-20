@@ -361,6 +361,13 @@ const resources = {
         noActivity: "لا توجد أحداث مسجلة بعد",
       },
 
+      workspaceModel: {
+        title: "النموذج الافتراضي لمساحة العمل",
+        description: "يُستخدم للمحادثات الجديدة عندما لا تختار نموذجًا آخر.",
+        globalDefault: "النموذج الافتراضي العام",
+        save: "حفظ",
+      },
+
       workspaceInvite: {
         title: "دعوة مساحة العمل",
         invalid: "رابط الدعوة غير صالح أو ناقص.",
@@ -897,13 +904,6 @@ const resources = {
         confirmRemove: "Remove {{email}} from this workspace?",
         activityTitle: "Workspace activity",
         noActivity: "No activity recorded yet",
-      },
-
-      workspaceModel: {
-        title: "النموذج الافتراضي لمساحة العمل",
-        description: "يُستخدم للمحادثات الجديدة عندما لا تختار نموذجًا آخر.",
-        globalDefault: "النموذج الافتراضي العام",
-        save: "حفظ",
       },
 
       workspaceModel: {
