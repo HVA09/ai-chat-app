@@ -38,11 +38,6 @@ def test_workspace_usage_requires_owner_or_admin(client, db_session):
                 user_id=member["id"],
                 role=WorkspaceRole.member,
             ),
-            WorkspaceMember(
-                workspace_id=other_workspace.id,
-                user_id=owner["id"],
-                role=WorkspaceRole.owner,
-            ),
         ]
     )
     db_session.commit()
@@ -83,6 +78,11 @@ def test_workspace_usage_aggregates_members_and_ignores_non_members(client, db_s
                 workspace_id=workspace.id,
                 user_id=member["id"],
                 role=WorkspaceRole.member,
+            ),
+            WorkspaceMember(
+                workspace_id=other_workspace.id,
+                user_id=owner["id"],
+                role=WorkspaceRole.owner,
             ),
             UsageLog(
                 user_id=owner["id"],
