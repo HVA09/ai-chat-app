@@ -15,6 +15,7 @@ from app.database import get_db
 from app.dependencies import enforce_daily_ai_limit, get_current_user
 from app.models.assistant import Assistant
 from app.models.conversation import Conversation, Message
+from app.models.conversation_tag import conversation_tag_links
 from app.models.conversation_folder import ConversationFolder
 from app.models.conversation_tag import ConversationTag
 from app.models.user import User
