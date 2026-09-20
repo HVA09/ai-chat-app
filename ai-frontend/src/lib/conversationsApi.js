@@ -108,6 +108,11 @@ export async function branchConversation(id, messageIndex) {
   return data;
 }
 
+export async function listConversationBranches(id) {
+  const { data } = await api.get(`/conversations/${id}/branches`);
+  return data;
+}
+
 export async function duplicateConversation(id) {
   const { data } = await api.post(`/conversations/${id}/duplicate`);
   return data;
