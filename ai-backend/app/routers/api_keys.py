@@ -26,6 +26,7 @@ from app.schemas.api_keys import (
     APIKeyCreate,
     APIKeyCreatedOut,
     APIKeyOut,
+    APIKeyUsageOut,
 )
 from app.services.ai_service import get_ai_reply
 
@@ -154,6 +155,46 @@ def _get_api_key_auth(
         db.commit()
 
     return user, api_key
+
+
+@router.get("/api-keys/{key_id}/usage", response_model=APIKeyUsageOut)
+def get_api_key_usage(
+    key_id: int,
+    window_hours: int = 24,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if window_hours < 1 or window_hours > 720:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="window_hours يجب أن يكون بين 1 و720",
+        )
+
+    api_key = _get_owned_api_key(key_id, current_user, db)
+    since = datetime.now(timezone.utc) - timedelta(hours=window_hours)
+    used_requests, input_tokens, output_tokens = (
+        db.query(
+            func.count(UsageLog.id),
+            func.coalesce(func.sum(UsageLog.input_tokens), 0),
+            func.coalesce(func.sum(UsageLog.output_tokens), 0),
+        )
+        .filter(
+            UsageLog.api_key_id == api_key.id,
+            UsageLog.created_at >= since,
+        )
+        .one()
+    )
+
+    input_tokens = int(input_tokens or 0)
+    output_tokens = int(output_tokens or 0)
+    return APIKeyUsageOut(
+        key_id=api_key.id,
+        window_hours=window_hours,
+        used_requests=int(used_requests or 0),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+    )
 
 
 def _enforce_api_key_daily_limit(api_key: APIKey, db: Session) -> None:

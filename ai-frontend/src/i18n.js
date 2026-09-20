@@ -183,6 +183,9 @@ const resources = {
         apiKeyEmpty: "لا توجد مفاتيح API بعد",
         apiKeyCopied: "تم نسخ المفتاح",
         apiKeyCopyError: "تعذر نسخ المفتاح",
+        apiKeyUsageRequests: "طلب/24س",
+        apiKeyUsageInputTokens: "إدخال",
+        apiKeyUsageOutputTokens: "إخراج",
       },
 
       billing: {
@@ -779,6 +782,9 @@ const resources = {
         apiKeyEmpty: "No API keys yet",
         apiKeyCopied: "Key copied",
         apiKeyCopyError: "Couldn't copy the key",
+        apiKeyUsageRequests: "requests/24h",
+        apiKeyUsageInputTokens: "input",
+        apiKeyUsageOutputTokens: "output",
       },
 
       billing: {

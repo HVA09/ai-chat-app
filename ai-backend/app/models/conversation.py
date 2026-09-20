@@ -2,7 +2,7 @@
 نماذج المحادثة والرسائل (Conversation / Message)
 """
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Index, JSON, String, Text, event, update
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -98,5 +98,5 @@ def _touch_conversation_activity(mapper, connection, target):
     connection.execute(
         update(Conversation)
         .where(Conversation.id == target.conversation_id)
-        .values(updated_at=func.now())
+        .values(updated_at=datetime.now(timezone.utc))
     )

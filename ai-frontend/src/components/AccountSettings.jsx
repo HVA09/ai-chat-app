@@ -8,7 +8,7 @@ import {
 } from "../lib/authApi";
 import { updateProfile, changePassword, deleteAccount } from "../lib/usersApi";
 import { listMemories, createMemory, updateMemory, deleteMemory } from "../lib/memoriesApi";
-import { listApiKeys, createApiKey, revokeApiKey } from "../lib/apiKeysApi";
+import { listApiKeys, createApiKey, revokeApiKey, getApiKeyUsage } from "../lib/apiKeysApi";
 import { getErrorMessage } from "../lib/errors";
 
 function Section({ title, children }) {
@@ -40,6 +40,7 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
   const [apiKeyDailyLimit, setApiKeyDailyLimit] = useState("");
   const [apiKeyExpiry, setApiKeyExpiry] = useState("");
   const [createdApiKeySecret, setCreatedApiKeySecret] = useState("");
+  const [apiKeyUsage, setApiKeyUsage] = useState({});
 
   const [setupData, setSetupData] = useState(null);
   const [code, setCode] = useState("");
@@ -54,7 +55,18 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
 
   const loadApiKeys = async () => {
     try {
-      setApiKeys(await listApiKeys());
+      const keys = await listApiKeys();
+      setApiKeys(keys);
+      const usageEntries = await Promise.all(
+        keys.map(async (item) => {
+          try {
+            return [item.id, await getApiKeyUsage(item.id, 24)];
+          } catch {
+            return [item.id, null];
+          }
+        })
+      );
+      setApiKeyUsage(Object.fromEntries(usageEntries));
     } catch (err) {
       setError(getErrorMessage(err, t("account.apiKeysLoadError")));
     }
@@ -378,6 +390,13 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
                         ? t("account.apiKeyLastUsed", { date: new Date(item.last_used_at).toLocaleString() })
                         : t("account.apiKeyNeverUsed")}
                     </p>
+                    {apiKeyUsage[item.id] && (
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-slate-500">
+                        <span>{apiKeyUsage[item.id].used_requests} {t("account.apiKeyUsageRequests")}</span>
+                        <span>{apiKeyUsage[item.id].input_tokens} {t("account.apiKeyUsageInputTokens")}</span>
+                        <span>{apiKeyUsage[item.id].output_tokens} {t("account.apiKeyUsageOutputTokens")}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

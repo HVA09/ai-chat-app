@@ -30,3 +30,4 @@ class APIKey(Base):
     expires_at: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     owner = relationship("User", back_populates="api_keys")
+    usage_logs = relationship("UsageLog", back_populates="api_key", passive_deletes=True)
