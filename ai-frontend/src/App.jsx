@@ -47,6 +47,7 @@ import {
   moveConversationToFolder,
   duplicateConversation,
   branchConversation,
+  listConversationBranches,
   exportConversation,
   summarizeConversation,
 } from "./lib/conversationsApi";
@@ -170,6 +171,7 @@ export default function App() {
   const [readOnlyConversation, setReadOnlyConversation] = useState(false);
   const [conversationSummary, setConversationSummary] = useState(null);
   const [conversationSummaryUpdatedAt, setConversationSummaryUpdatedAt] = useState(null);
+  const [conversationBranches, setConversationBranches] = useState([]);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
@@ -1140,6 +1142,11 @@ export default function App() {
     try {
       const data = await getConversation(id);
       setConversationId(data.id);
+      try {
+        setConversationBranches(await listConversationBranches(data.id));
+      } catch {
+        setConversationBranches([]);
+      }
       setConversationSummary(data.summary ?? null);
       setConversationSummaryUpdatedAt(data.summary_updated_at ?? null);
       setSelectedAssistantId(data.assistant_id ?? null);
@@ -1943,6 +1950,8 @@ export default function App() {
           onSummarizeConversation={handleSummarizeConversation}
           canSummarizeConversation={conversationId !== null && !loading}
           summaryLoading={summaryLoading}
+          conversationBranches={conversationBranches}
+          onOpenConversationBranch={openConversation}
           isAdmin={currentUser?.role === "admin"}
           notifications={notifications}
           onMarkNotificationRead={handleMarkNotificationRead}
