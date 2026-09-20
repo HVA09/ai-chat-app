@@ -19,6 +19,7 @@ from app.services.ai_providers.base import AIToolReply
 from app.services.ai_providers.factory import get_provider
 from app.services.ai_providers.openai_provider import OpenAICompatibleProvider
 from app.services.tools.calculator import CalculatorError, calculate_expression
+from app.services.tools.code_execution import CodeExecutionError, execute_python_code
 from app.services.tools.data_analysis import DataAnalysisError, DataFile, analyze_file
 from app.services.tools.web_search import WebSearchError, format_web_search_response, search_web
 
@@ -58,6 +59,23 @@ def _tool_definitions() -> list[dict]:
                         }
                     },
                     "required": ["expression"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "python",
+                "description": "Execute a small, safe Python program for calculations or data transformation. No imports, filesystem, network, or arbitrary builtins are available.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                            "description": "Python code using basic variables, loops, lists/dicts, print(), math/statistics helper functions, and simple expressions."
+                        }
+                    },
+                    "required": ["code"],
                 },
             },
         },
@@ -159,6 +177,13 @@ async def _execute_tool(
             return calculate_expression(expression), []
         except CalculatorError as exc:
             return f"تعذر تنفيذ الحساب: {exc}", []
+
+    if name == "python":
+        code = str(arguments.get("code") or "")
+        try:
+            return execute_python_code(code), []
+        except CodeExecutionError as exc:
+            return f"تعذر تنفيذ كود بايثون: {exc}", []
 
     if name == "web_search":
         query = str(arguments.get("query") or "").strip()
