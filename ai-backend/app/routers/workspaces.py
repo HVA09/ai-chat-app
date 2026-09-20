@@ -220,6 +220,7 @@ def get_workspace_usage(
         )
         .filter(
             WorkspaceMember.workspace_id == workspace_id,
+            UsageLog.workspace_id == workspace_id,
             UsageLog.created_at >= window_start,
         )
     )
@@ -243,6 +244,7 @@ def get_workspace_usage(
         .outerjoin(
             UsageLog,
             (UsageLog.user_id == User.id)
+            & (UsageLog.workspace_id == workspace_id)
             & (UsageLog.created_at >= window_start),
         )
         .filter(WorkspaceMember.workspace_id == workspace_id)
