@@ -24,6 +24,9 @@ export default function ChatHeader({
   onSummarizeConversation,
   canSummarizeConversation = false,
   summaryLoading = false,
+  onGenerateConversationTitle,
+  canGenerateConversationTitle = false,
+  titleLoading = false,
   conversationBranches = [],
   onOpenConversationBranch = () => {},
   parentConversationId = null,
@@ -153,6 +156,20 @@ export default function ChatHeader({
             </div>
           )}
         </div>
+        <button
+          onClick={onGenerateConversationTitle}
+          disabled={!canGenerateConversationTitle || titleLoading}
+          title={
+            canGenerateConversationTitle
+              ? t("conversationTitle.generateButton")
+              : t("conversationTitle.disabled")
+          }
+          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-900"
+        >
+          {titleLoading
+            ? t("conversationTitle.loading")
+            : t("conversationTitle.generateButton")}
+        </button>
         <button
           onClick={onSummarizeConversation}
           disabled={!canSummarizeConversation || summaryLoading}
