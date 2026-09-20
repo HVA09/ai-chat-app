@@ -149,6 +149,10 @@ def get_model_analytics(
     days = max(1, min(days, 365))
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
+    total_tokens_expr = (
+        func.coalesce(func.sum(UsageLog.input_tokens), 0)
+        + func.coalesce(func.sum(UsageLog.output_tokens), 0)
+    )
     rows = (
         db.query(
             UsageLog.model,
@@ -158,7 +162,7 @@ def get_model_analytics(
         )
         .filter(UsageLog.created_at >= since)
         .group_by(UsageLog.model)
-        .order_by(func.coalesce(func.sum(UsageLog.input_tokens), 0).desc() + func.coalesce(func.sum(UsageLog.output_tokens), 0).desc())
+        .order_by(total_tokens_expr.desc())
         .all()
     )
 
