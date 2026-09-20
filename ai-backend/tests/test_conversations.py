@@ -435,6 +435,15 @@ def test_branch_conversation_copies_messages_up_to_selected_message(client, monk
     assert [item["content"] for item in payload["messages"]] == ["السؤال الأول", "رد 1"]
     assert payload["messages"][0]["is_bookmarked"] is False
     assert payload["messages"][1]["feedback"] is None
+    assert payload["parent_conversation_id"] == conversation_id
+    assert payload["branched_from_message_index"] == 2
+
+    branches = client.get(
+        f"/conversations/{conversation_id}/branches",
+        headers=headers,
+    )
+    assert branches.status_code == 200
+    assert [item["id"] for item in branches.json()] == [payload["id"]]
 
 
 def test_branch_conversation_rejects_invalid_message_index(client, monkeypatch):
