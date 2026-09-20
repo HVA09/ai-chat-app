@@ -53,6 +53,8 @@ vi.mock("react-i18next", () => ({
       "sidebar.workspaceCreateTitle": "إنشاء مساحة عمل",
       "sidebar.workspaceRenameTitle": "إعادة تسمية مساحة العمل",
       "sidebar.bulkDeleteConfirm": "حذف {{count}} محادثات؟",
+      "sidebar.importConversation": "استيراد محادثة",
+      "sidebar.importConversationTitle": "استيراد محادثة من ملف JSON",
     })[key] ?? key;
 
       return value.replace(/\{\{(\w+)\}\}/g, (_, name) =>
@@ -81,6 +83,7 @@ function renderSidebar(overrides = {}) {
     assistants: [{ id: 10, name: "مساعد الفريق", description: "مساعد", is_shared: false, can_edit: true }],
     onSelectConversation: vi.fn(),
     onNewChat: vi.fn(),
+    onImportConversation: vi.fn(),
     onRenameConversation: vi.fn(),
     onDeleteConversation: vi.fn(),
     onToggleShareAssistant: vi.fn(),
@@ -182,6 +185,24 @@ describe("Sidebar", () => {
     const { onLoadMore } = renderSidebar({ hasMore: true });
     await user.click(screen.getByText("تحميل المزيد"));
     expect(onLoadMore).toHaveBeenCalled();
+  });
+
+  it("استيراد محادثة يمرر الملف إلى المعالج", async () => {
+    const { onImportConversation } = renderSidebar();
+    const input = screen.getByLabelText("استيراد محادثة");
+    const file = new File(
+      [
+        JSON.stringify({
+          title: "محادثة مستوردة",
+          messages: [{ role: "user", content: "مرحبًا" }],
+        }),
+      ],
+      "conversation.json",
+      { type: "application/json" }
+    );
+
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(onImportConversation).toHaveBeenCalledWith(file);
   });
 
   it("زر محادثة جديدة ينادي onNewChat", async () => {

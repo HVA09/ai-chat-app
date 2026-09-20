@@ -49,6 +49,7 @@ import {
   branchConversation,
   listConversationBranches,
   exportConversation,
+  importConversation,
   summarizeConversation,
 } from "./lib/conversationsApi";
 import {
@@ -1335,6 +1336,71 @@ export default function App() {
     }
   };
 
+  const handleImportConversation = async (file) => {
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setToast({ message: t("importConversationTooLarge"), type: "error" });
+      return;
+    }
+    if (selectedWorkspaceId === null || selectedWorkspaceId === undefined) {
+      setToast({ message: t("importConversationError"), type: "error" });
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      let payload;
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        setToast({ message: t("importConversationInvalidFile"), type: "error" });
+        return;
+      }
+
+      if (
+        !payload ||
+        typeof payload !== "object" ||
+        !Array.isArray(payload.messages) ||
+        payload.messages.length === 0
+      ) {
+        setToast({ message: t("importConversationInvalidFile"), type: "error" });
+        return;
+      }
+
+      const imported = await importConversation(selectedWorkspaceId, {
+        title: payload.title || "Imported conversation",
+        messages: payload.messages,
+        folder_id: payload.folder_id ?? null,
+        project_id: payload.project_id ?? null,
+      });
+
+      setShowArchivedConversations(false);
+      setShowTrashConversations(false);
+      setConversationSearch("");
+      setSelectedTagId(null);
+      setSelectedFolderId(imported.folder_id ?? null);
+      setSelectedProjectId(imported.project_id ?? null);
+
+      await refreshConversations(
+        false,
+        imported.folder_id ?? null,
+        selectedWorkspaceId,
+        imported.project_id ?? null,
+        "",
+        false,
+        null
+      );
+      await openConversation(imported.id);
+      setToast({ message: t("importConversationSuccess"), type: "success" });
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("importConversationError"),
+        type: "error",
+      });
+    }
+  };
+
   const handleExportConversation = async (format = "markdown") => {
     if (!conversationId || loading) return;
     try {
@@ -1850,6 +1916,7 @@ export default function App() {
         conversations={conversations}
         onSelectConversation={openConversation}
         onNewChat={startNewChat}
+        onImportConversation={handleImportConversation}
         onRenameConversation={handleRenameConversation}
         onDeleteConversation={handleDeleteConversation}
         onTogglePinConversation={handleTogglePinConversation}

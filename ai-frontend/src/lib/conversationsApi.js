@@ -72,6 +72,13 @@ export async function moveConversationToFolder(id, folderId) {
   return data;
 }
 
+export async function importConversation(workspaceId, payload) {
+  const { data } = await api.post("/conversations/import", payload, {
+    params: { workspace_id: workspaceId },
+  });
+  return data;
+}
+
 export async function exportConversation(id, format = "markdown") {
   const response = await api.get(`/conversations/${id}/export`, {
     params: { format },
