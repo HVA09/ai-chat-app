@@ -23,9 +23,3 @@ export async function cancelSubscription() {
   const { data } = await api.post("/billing/cancel");
   return data;
 }
-
-
-export async function getUsage() {
-  const { data } = await api.get("/billing/usage");
-  return data;
-}

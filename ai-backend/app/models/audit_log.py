@@ -12,18 +12,12 @@ from app.database import Base
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
-    __table_args__ = (
-        Index("ix_audit_logs_created_at", "created_at"),
-        Index("ix_audit_logs_workspace_id_created_at", "workspace_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_audit_logs_created_at", "created_at"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     # nullable: بعض الأحداث تصير قبل ما نعرف هوية المستخدم (مثلاً محاولة دخول ببريد غير موجود)
     user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
-    )
-    workspace_id: Mapped[int | None] = mapped_column(
-        ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True
     )
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)
     description: Mapped[str] = mapped_column(String(500), nullable=False)

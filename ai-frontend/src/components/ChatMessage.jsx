@@ -26,12 +26,6 @@ export default function ChatMessage({
   onEdit,
   canDelete = false,
   onDelete,
-  sources = [],
-  feedback = null,
-  canFeedback = false,
-  onFeedback,
-  isBookmarked = false,
-  onToggleBookmark,
 }) {
   const isUser = role === "user";
   const { t } = useTranslation();
@@ -62,11 +56,6 @@ export default function ChatMessage({
   const regenerateLabel = document.documentElement.lang === "ar"
     ? "إعادة التوليد"
     : "Regenerate";
-  const goodFeedbackLabel = t("feedback.helpful");
-  const badFeedbackLabel = t("feedback.notHelpful");
-  const bookmarkLabel = isBookmarked
-    ? t("bookmarks.remove")
-    : t("bookmarks.save");
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -97,17 +86,6 @@ export default function ChatMessage({
                   {editLabel}
                 </button>
               ) : null}
-              {onToggleBookmark ? (
-                <button
-                  type="button"
-                  onClick={onToggleBookmark}
-                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  aria-label={bookmarkLabel}
-                  title={bookmarkLabel}
-                >
-                  {isBookmarked ? "★" : "☆"}
-                </button>
-              ) : null}
               {canDelete && onDelete ? (
                 <button
                   type="button"
@@ -133,17 +111,6 @@ export default function ChatMessage({
               >
                 {copyLabel}
               </button>
-              {onToggleBookmark ? (
-                <button
-                  type="button"
-                  onClick={onToggleBookmark}
-                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                  aria-label={bookmarkLabel}
-                  title={bookmarkLabel}
-                >
-                  {isBookmarked ? "★" : "☆"}
-                </button>
-              ) : null}
               {canRegenerate && onRegenerate ? (
                 <button
                   type="button"
@@ -173,73 +140,6 @@ export default function ChatMessage({
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock }}>
           {text}
         </ReactMarkdown>
-
-        {!isUser && canFeedback ? (
-          <div className="mt-3 flex items-center gap-1 border-t border-slate-200 pt-2 dark:border-slate-700">
-            <button
-              type="button"
-              onClick={() => onFeedback?.(1)}
-              className={`rounded-lg px-2 py-1 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 ${feedback === 1 ? "bg-slate-100 dark:bg-slate-800" : ""}`}
-              aria-label={goodFeedbackLabel}
-              title={goodFeedbackLabel}
-            >
-              👍
-            </button>
-            <button
-              type="button"
-              onClick={() => onFeedback?.(-1)}
-              className={`rounded-lg px-2 py-1 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 ${feedback === -1 ? "bg-slate-100 dark:bg-slate-800" : ""}`}
-              aria-label={badFeedbackLabel}
-              title={badFeedbackLabel}
-            >
-              👎
-            </button>
-            {feedback !== null ? (
-              <span className="ms-1 text-xs text-slate-400">{t("feedback.saved")}</span>
-            ) : null}
-          </div>
-        ) : null}
-
-        {!isUser && sources.length > 0 ? (
-          <div className="mt-3 border-t border-slate-200 pt-2 dark:border-slate-700">
-            <div className="mb-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
-              {t("sources.title")}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {sources.map((source) => {
-                const label = source.filename || source.title || source.url || source.id;
-                const text = `[${source.id}] ${label}${source.chunk ? ` · ${t("sources.chunkShort", { chunk: source.chunk })}` : ""}`;
-                const fileUrl = source.file_id
-                  ? `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"}/files/${source.file_id}`
-                  : null;
-                const content = source.url || fileUrl ? (
-                  <a
-                    href={source.url || fileUrl}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 hover:underline dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                    title={
-                      source.snippet ||
-                      (source.chunk
-                        ? t("sources.chunkTooltip", { chunk: source.chunk })
-                        : source.url || t("sources.title"))
-                    }
-                  >
-                    {text}
-                  </a>
-                ) : (
-                  <span
-                    className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                    title={source.snippet || (source.chunk ? t("sources.chunkTooltip", { chunk: source.chunk }) : label)}
-                  >
-                    {text}
-                  </span>
-                );
-                return <span key={source.id}>{content}</span>;
-              })}
-            </div>
-          </div>
-        ) : null}
       </div>
     </div>
   );

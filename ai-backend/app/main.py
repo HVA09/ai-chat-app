@@ -19,24 +19,13 @@ from app.database import get_db
 from app.middleware import AuthRateLimitMiddleware, RequestIdMiddleware
 from app.logging_config import configure_logging, get_logger
 from app.routers.admin import router as admin_router
-from app.routers.assistant_workspace_shares import router as assistant_workspace_shares_router
-from app.routers.assistants import router as assistants_router
 from app.routers.billing import router as billing_router
-from app.routers.api_keys import router as api_keys_router
 from app.routers.chat import router as chat_router
 from app.routers.conversations import router as conversations_router
 from app.routers.files import router as files_router
 from app.routers.folders import router as folders_router
 from app.routers.notifications import router as notifications_router
-from app.routers.projects import router as projects_router
-from app.routers.saved_prompts import router as saved_prompts_router
-from app.routers.memories import router as memories_router
-from app.routers.shared_conversations import router as shared_conversations_router
 from app.routers.users import router as users_router
-from app.routers.tags import router as tags_router
-from app.routers.workspaces import router as workspaces_router
-from app.routers.workspace_members import router as workspace_members_router
-from app.routers.workspace_conversation_shares import router as workspace_conversation_shares_router
 
 configure_logging()
 logger = get_logger("main")
@@ -141,21 +130,10 @@ def health_check(db: Session = Depends(get_db)):
 app.include_router(auth_router)
 app.include_router(two_factor_router)
 app.include_router(users_router)
-app.include_router(tags_router)
-app.include_router(workspaces_router)
-app.include_router(workspace_members_router)
-app.include_router(workspace_conversation_shares_router)
 app.include_router(chat_router)
 app.include_router(conversations_router)
 app.include_router(files_router)
 app.include_router(folders_router)
 app.include_router(billing_router)
-app.include_router(api_keys_router)
 app.include_router(notifications_router)
-app.include_router(projects_router)
-app.include_router(saved_prompts_router)
-app.include_router(memories_router)
-app.include_router(shared_conversations_router)
 app.include_router(admin_router)
-app.include_router(assistant_workspace_shares_router)
-app.include_router(assistants_router)

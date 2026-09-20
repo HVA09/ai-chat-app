@@ -78,15 +78,6 @@ def db_session():
 
 
 @pytest.fixture(autouse=True)
-def isolate_upload_dir(tmp_path, monkeypatch):
-    """Keep file-upload tests inside pytest's writable temporary directory."""
-    from app.config import settings as app_settings
-
-    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
-    yield
-
-
-@pytest.fixture(autouse=True)
 def reset_test_security_state(monkeypatch):
     """Keep security middleware deterministic in pytest without weakening production."""
     from app.config import settings as app_settings

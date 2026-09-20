@@ -2,19 +2,10 @@ import api from "./api";
 import { detailToMessage } from "./errors";
 import i18n from "../i18n";
 
-export async function sendChatMessage(
-  message,
-  conversationId = null,
-  assistantId = null,
-  workspaceId = null,
-  model = null
-) {
+export async function sendChatMessage(message, conversationId = null) {
   const { data } = await api.post("/chat", {
     message,
     conversation_id: conversationId,
-    assistant_id: assistantId,
-    workspace_id: workspaceId,
-    model,
   });
   return data;
 }
@@ -26,17 +17,7 @@ export async function sendChatMessage(
 export async function streamChatMessage(
   message,
   conversationId,
-  assistantId = null,
-  {
-    onChunk,
-    onConversationId,
-    onSources,
-    onDone,
-    onError,
-    signal,
-    workspaceId = null,
-    model = null,
-  } = {}
+  { onChunk, onConversationId, onDone, onError, signal } = {}
 ) {
   const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -48,13 +29,7 @@ export async function streamChatMessage(
         "Content-Type": "application/json",
       },
       credentials: "include",
-      body: JSON.stringify({
-        message,
-        conversation_id: conversationId,
-        assistant_id: assistantId,
-        workspace_id: workspaceId,
-        model,
-      }),
+      body: JSON.stringify({ message, conversation_id: conversationId }),
       signal,
     });
   } catch (err) {
@@ -98,8 +73,7 @@ export async function streamChatMessage(
         const eventType = eventLine.slice("event: ".length);
         const data = dataLine.slice("data: ".length);
 
-        if (eventType === "conversation") onConversationId?.(Number(data));
-        else if (eventType === "sources") onSources?.(JSON.parse(data));
+        if (eventType === "conversation") await onConversationId?.(Number(data));
         else if (eventType === "chunk") onChunk?.(data.replace(/\\n/g, "\n"));
         else if (eventType === "error") onError?.(data);
         else if (eventType === "done") onDone?.();
@@ -125,7 +99,7 @@ export async function streamChatMessage(
  */
 export async function streamRegenerateMessage(
   conversationId,
-  { onChunk, onConversationId, onSources, onDone, onError, signal } = {}
+  { onChunk, onConversationId, onDone, onError, signal } = {}
 ) {
   const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -181,7 +155,7 @@ export async function streamRegenerateMessage(
         const eventType = eventLine.slice("event: ".length);
         const data = dataLine.slice("data: ".length);
 
-        if (eventType === "conversation") onConversationId?.(Number(data));
+        if (eventType === "conversation") await onConversationId?.(Number(data));
         else if (eventType === "chunk") onChunk?.(data.replace(/\\n/g, "\n"));
         else if (eventType === "error") onError?.(data);
         else if (eventType === "done") onDone?.();
@@ -209,7 +183,7 @@ export async function streamEditMessage(
   conversationId,
   messageIndex,
   message,
-  { onChunk, onConversationId, onSources, onDone, onError, signal } = {}
+  { onChunk, onConversationId, onDone, onError, signal } = {}
 ) {
   const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
@@ -265,7 +239,7 @@ export async function streamEditMessage(
         const eventType = eventLine.slice("event: ".length);
         const data = dataLine.slice("data: ".length);
 
-        if (eventType === "conversation") onConversationId?.(Number(data));
+        if (eventType === "conversation") await onConversationId?.(Number(data));
         else if (eventType === "chunk") onChunk?.(data.replace(/\\n/g, "\n"));
         else if (eventType === "error") onError?.(data);
         else if (eventType === "done") onDone?.();
@@ -283,29 +257,4 @@ export async function streamEditMessage(
     }
     throw err;
   }
-}
-
-
-export async function setMessageFeedback(conversationId, messageIndex, rating) {
-  const { data } = await api.patch(
-    `/chat/${conversationId}/messages/${messageIndex}/feedback`,
-    { rating }
-  );
-  return data;
-}
-
-
-export async function analyzeImage(conversationId, fileId, message) {
-  const { data } = await api.post("/chat/vision", {
-    conversation_id: conversationId,
-    file_id: fileId,
-    message,
-  });
-  return data;
-}
-
-
-export async function listAiModels() {
-  const { data } = await api.get("/chat/models");
-  return data;
 }

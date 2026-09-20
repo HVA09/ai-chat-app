@@ -55,11 +55,3 @@ class DailyStatsPoint(BaseModel):
     ai_requests: int
     input_tokens: int
     output_tokens: int
-
-
-class FeedbackAnalytics(BaseModel):
-    days: int
-    total_rated: int
-    positive: int
-    negative: int
-    positive_rate: float | None
