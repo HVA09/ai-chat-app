@@ -16,6 +16,9 @@ export default function ChatHeader({
   canShareConversation = false,
   onManageShares,
   canManageShares = false,
+  onToggleWorkspaceShare,
+  canShareWithWorkspace = false,
+  workspaceShareActive = false,
   onExportConversation,
   canExportConversation = false,
   onSummarizeConversation,
@@ -44,6 +47,14 @@ export default function ChatHeader({
           onMarkAllRead={onMarkAllNotificationsRead}
         />
         <div className="flex items-center gap-1">
+          <button
+            onClick={onToggleWorkspaceShare}
+            disabled={!canShareWithWorkspace}
+            title={canShareWithWorkspace ? t("workspaceSharing.shareButton") : t("workspaceSharing.shareDisabled")}
+            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-slate-400"
+          >
+            {workspaceShareActive ? t("workspaceSharing.unshareButton") : t("workspaceSharing.shareButton")}
+          </button>
           <button
             onClick={onShareConversation}
             disabled={!canShareConversation}
