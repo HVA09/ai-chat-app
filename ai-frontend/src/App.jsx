@@ -1779,7 +1779,8 @@ export default function App() {
           models={aiModels}
           selectedModel={selectedModel}
           onSelectModel={setSelectedModel}
-        />
+          />
+        )}
       </main>
 
       <Toast message={toast?.message} type={toast?.type} onDismiss={() => setToast(null)} />
