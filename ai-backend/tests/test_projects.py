@@ -18,8 +18,7 @@ def _create_workspace(client, headers, name="Workspace"):
     return response.json()
 
 
-def test_project_crud_and_conversation_filter(client):
-    monkeypatch = None
+def test_project_crud_and_conversation_filter(client, monkeypatch):
     token = _register_and_login(client, "project@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     workspace = _create_workspace(client, headers)
@@ -40,9 +39,11 @@ def test_project_crud_and_conversation_filter(client):
     assert listed.status_code == 200
     assert listed.json()[0]["id"] == project["id"]
 
-    monkeypatch = AsyncMock(return_value=AIReply(text="رد"))
-    import app.routers.chat as chat_router_module
-    chat_router_module.get_ai_reply = monkeypatch
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
     conversation = client.post(
         "/chat",
         json={"message": "رسالة", "workspace_id": workspace["id"]},
@@ -82,3 +83,38 @@ def test_project_crud_and_conversation_filter(client):
         params={"workspace_id": workspace["id"]},
         headers=headers,
     ).json() == []
+
+
+def test_cannot_move_conversation_to_other_workspace_project(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    owner_token = _register_and_login(client, "project-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace_a = _create_workspace(client, owner_headers, "A")
+
+    other_token = _register_and_login(client, "project-other@example.com")
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    workspace_b = _create_workspace(client, other_headers, "B")
+
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace_b["id"], "name": "Private"},
+        headers=other_headers,
+    ).json()
+
+    conversation = client.post(
+        "/chat",
+        json={"message": "رسالة", "workspace_id": workspace_a["id"]},
+        headers=owner_headers,
+    )
+    conversation_id = conversation.json()["conversation_id"]
+
+    response = client.patch(
+        f"/conversations/{conversation_id}/project",
+        json={"project_id": project["id"]},
+        headers=owner_headers,
+    )
+    assert response.status_code == 404
