@@ -34,14 +34,14 @@ def test_workspace_usage_requires_owner_or_admin(client, db_session):
                 role=WorkspaceRole.owner,
             ),
             WorkspaceMember(
-                workspace_id=other_workspace.id,
-                user_id=owner["id"],
-                role=WorkspaceRole.owner,
-            ),
-            WorkspaceMember(
                 workspace_id=workspace.id,
                 user_id=member["id"],
                 role=WorkspaceRole.member,
+            ),
+            WorkspaceMember(
+                workspace_id=other_workspace.id,
+                user_id=owner["id"],
+                role=WorkspaceRole.owner,
             ),
         ]
     )
@@ -117,7 +117,7 @@ def test_workspace_usage_aggregates_members_and_ignores_non_members(client, db_s
                 created_at=datetime.now(timezone.utc) - timedelta(hours=25),
             ),
             UsageLog(
-                user_id=outsider["id"],
+                user_id=owner["id"],
                 workspace_id=other_workspace.id,
                 endpoint="/chat",
                 input_tokens=999,
