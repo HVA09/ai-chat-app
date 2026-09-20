@@ -12,6 +12,12 @@ import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessa
 import { listBookmarkedMessages, toggleMessageBookmark } from "./lib/bookmarksApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
+import {
+  getConversationWorkspaceShare,
+  shareConversationWithWorkspace,
+  unshareConversationFromWorkspace,
+  getWorkspaceSharedConversation,
+} from "./lib/workspaceConversationSharesApi";
 
 // مُحمَّلة عند الحاجة فقط (lazy) — كل وحدة تصير ملف منفصل (code splitting)،
 // يقلّل حجم الحزمة الأولى اللي يحمّلها أي زائر
@@ -147,6 +153,8 @@ export default function App() {
   const [showBilling, setShowBilling] = useState(false);
   const [showWorkspaceMembers, setShowWorkspaceMembers] = useState(false);
   const [showShareManager, setShowShareManager] = useState(false);
+  const [workspaceShare, setWorkspaceShare] = useState(null);
+  const [readOnlyConversation, setReadOnlyConversation] = useState(false);
   const [conversationSummary, setConversationSummary] = useState(null);
   const [conversationSummaryUpdatedAt, setConversationSummaryUpdatedAt] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -597,7 +605,7 @@ export default function App() {
   };
 
   const handleToggleMessageBookmark = async (index) => {
-    if (!conversationId || loading) return;
+    if (!conversationId || loading || readOnlyConversation) return;
     try {
       const result = await toggleMessageBookmark(conversationId, index + 1);
       setMessages((prev) =>
@@ -849,6 +857,8 @@ export default function App() {
 
   const startNewChat = () => {
     setShowShareManager(false);
+    setWorkspaceShare(null);
+    setReadOnlyConversation(false);
     setSelectedConversationIds([]);
     setConversationId(null);
     setMessages([getWelcomeMessage(t)]);
@@ -859,6 +869,7 @@ export default function App() {
 
   const openConversation = async (id) => {
     setShowShareManager(false);
+    setReadOnlyConversation(false);
     setSelectedConversationIds([]);
     setError("");
     setInput("");
@@ -877,6 +888,11 @@ export default function App() {
           aiModels[0]?.id ||
           ""
       );
+      try {
+        setWorkspaceShare(await getConversationWorkspaceShare(data.id));
+      } catch {
+        setWorkspaceShare(null);
+      }
       setMessages(
         data.messages.map((m) => ({
           role: m.role,
@@ -892,8 +908,65 @@ export default function App() {
     }
   };
 
+  const handleOpenWorkspaceSharedConversation = async (workspaceId, sharedConversationId) => {
+    try {
+      const data = await getWorkspaceSharedConversation(
+        Number(workspaceId),
+        Number(sharedConversationId)
+      );
+      setShowShareManager(false);
+      setReadOnlyConversation(true);
+      setWorkspaceShare(null);
+      setSelectedWorkspaceId(Number(workspaceId));
+      setConversationId(data.conversation_id);
+      setConversationSummary(null);
+      setConversationSummaryUpdatedAt(null);
+      setSelectedAssistantId(null);
+      setSelectedFolderId(null);
+      setSelectedModel("");
+      setMessages(
+        data.messages.map((message) => ({
+          role: message.role,
+          text: message.content,
+          time: new Date(message.created_at).toLocaleTimeString(),
+          sources: message.sources ?? [],
+          feedback: null,
+          isBookmarked: false,
+        }))
+      );
+      setInput("");
+      setEditingMessageIndex(null);
+      setError("");
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("workspaceSharing.loadError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleToggleWorkspaceShare = async () => {
+    if (!conversationId || !selectedWorkspaceId || loading || readOnlyConversation) return;
+    try {
+      if (workspaceShare) {
+        await unshareConversationFromWorkspace(conversationId);
+        setWorkspaceShare(null);
+        setToast({ message: t("workspaceSharing.unshared"), type: "success" });
+      } else {
+        const share = await shareConversationWithWorkspace(conversationId);
+        setWorkspaceShare(share);
+        setToast({ message: t("workspaceSharing.shared"), type: "success" });
+      }
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("workspaceSharing.updateError"),
+        type: "error",
+      });
+    }
+  };
+
   const handleAnalyzeImage = async (file, prompt) => {
-    if (!conversationId || loading) return;
+    if (!conversationId || loading || readOnlyConversation) return;
     setError("");
     setShowFiles(false);
 
@@ -934,7 +1007,7 @@ export default function App() {
   };
 
   const handleMessageFeedback = async (index, rating) => {
-    if (!conversationId || loading) return;
+    if (!conversationId || loading || readOnlyConversation) return;
 
     const nextRating = rating === messages[index]?.feedback ? null : rating;
     const previousRating = messages[index]?.feedback ?? null;
@@ -958,7 +1031,7 @@ export default function App() {
   };
 
   const handleSummarizeConversation = async () => {
-    if (!conversationId || loading || summaryLoading) return;
+    if (!conversationId || loading || summaryLoading || readOnlyConversation) return;
     setSummaryLoading(true);
     setError("");
     try {
@@ -1117,7 +1190,7 @@ export default function App() {
   };
 
   const deleteMessage = async (index) => {
-    if (!conversationId || loading || editingMessageIndex !== null) return;
+    if (!conversationId || loading || editingMessageIndex !== null || readOnlyConversation) return;
 
     const isArabic = document.documentElement.lang === "ar";
     const confirmed = window.confirm(
@@ -1168,7 +1241,7 @@ export default function App() {
   };
 
   const startEditingMessage = (index) => {
-    if (loading || !conversationId || messages[index]?.role !== "user") return;
+    if (readOnlyConversation || loading || !conversationId || messages[index]?.role !== "user") return;
     setError("");
     setEditingMessageIndex(index);
     setInput(messages[index]?.text ?? "");
@@ -1505,6 +1578,7 @@ export default function App() {
         onCreateWorkspace={handleCreateWorkspace}
         onRenameWorkspace={handleRenameWorkspace}
         onOpenWorkspaceMembers={handleOpenWorkspaceMembers}
+        onOpenWorkspaceSharedConversation={handleOpenWorkspaceSharedConversation}
         searchValue={conversationSearch}
         onSearchChange={setConversationSearch}
         showArchived={showArchivedConversations}
@@ -1541,7 +1615,10 @@ export default function App() {
           onShareConversation={handleShareConversation}
           canShareConversation={conversationId !== null && !loading}
           onManageShares={handleManageConversationShares}
-          canManageShares={conversationId !== null && !loading}
+          canManageShares={conversationId !== null && !loading && !readOnlyConversation}
+          onToggleWorkspaceShare={handleToggleWorkspaceShare}
+          canShareWithWorkspace={conversationId !== null && selectedWorkspaceId !== null && !loading && !readOnlyConversation}
+          workspaceShareActive={Boolean(workspaceShare)}
           onExportConversation={handleExportConversation}
           canExportConversation={conversationId !== null && !loading}
           onSummarizeConversation={handleSummarizeConversation}
@@ -1658,8 +1735,13 @@ export default function App() {
           )}
         </section>
 
-        <ChatComposer
-          value={input}
+        {readOnlyConversation ? (
+          <div className="border-t border-slate-200 bg-white px-4 py-3 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+            {t("workspaceSharing.readOnly")}
+          </div>
+        ) : (
+          <ChatComposer
+            value={input}
           setValue={setInput}
           onInsertCalculator={() =>
             setInput((current) =>
