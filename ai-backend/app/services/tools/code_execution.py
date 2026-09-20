@@ -285,7 +285,12 @@ def _build_worker_script(code_b64: str) -> str:
 def _limit_resources() -> None:
     if platform.system() != "Linux":
         return
-    resource.setrlimit(resource.RLIMIT_CPU, (2, 2))
+    # اجعل مهلة subprocess هي الحاجز الأول؛ حد CPU أعلى قليلًا يمنع الإنهاء
+    # بإشارة CPU قبل أن نعيد خطأ مهلة واضحًا للمستخدم.
+    resource.setrlimit(
+        resource.RLIMIT_CPU,
+        (int(MAX_EXECUTION_SECONDS) + 2, int(MAX_EXECUTION_SECONDS) + 3),
+    )
     resource.setrlimit(resource.RLIMIT_AS, (MAX_MEMORY_BYTES, MAX_MEMORY_BYTES))
     resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_FILE_BYTES, MAX_FILE_BYTES))
     resource.setrlimit(resource.RLIMIT_NOFILE, (MAX_OPEN_FILES, MAX_OPEN_FILES))
