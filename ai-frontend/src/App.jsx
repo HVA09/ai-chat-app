@@ -1252,7 +1252,7 @@ export default function App() {
   const editMessage = async () => {
     const targetIndex = editingMessageIndex;
     const editedText = input.trim();
-    if (targetIndex === null || !conversationId || !editedText || loading) return;
+    if (readOnlyConversation || targetIndex === null || !conversationId || !editedText || loading) return;
 
     const userMessageIndex = messages
       .slice(0, targetIndex + 1)
@@ -1309,6 +1309,7 @@ export default function App() {
   };
 
   const sendMessage = async () => {
+    if (readOnlyConversation) return;
     if (editingMessageIndex !== null) {
       await editMessage();
       return;
@@ -1380,7 +1381,7 @@ export default function App() {
   };
 
   const regenerateLastResponse = async () => {
-    if (!conversationId || loading || lastAssistantIndex < 0) return;
+    if (readOnlyConversation || !conversationId || loading || lastAssistantIndex < 0) return;
 
     const targetIndex = lastAssistantIndex;
     const previousText = messages[targetIndex]?.text ?? "";
