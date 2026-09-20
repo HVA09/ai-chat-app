@@ -1952,6 +1952,9 @@ export default function App() {
             defaultAiModel={
               workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.default_ai_model || ""
             }
+            dailyAiRequestLimit={
+              workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.daily_ai_request_limit ?? null
+            }
             availableModels={aiModels}
             onWorkspaceUpdated={handleWorkspaceUpdated}
             onClose={() => setShowWorkspaceMembers(false)}
