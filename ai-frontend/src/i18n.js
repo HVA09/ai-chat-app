@@ -895,6 +895,21 @@ const resources = {
         noActivity: "No activity recorded yet",
       },
 
+      workspaceUsage: {
+        title: "Workspace AI usage",
+        window: "Last {{hours}} hours",
+        requests: "Requests",
+        inputTokens: "Input tokens",
+        outputTokens: "Output tokens",
+        totalTokens: "Total tokens",
+        byMember: "Usage by member",
+        noData: "No usage recorded in this period",
+        requestsShort: "requests",
+        inputShort: "input",
+        outputShort: "output",
+        totalShort: "total",
+      },
+
       workspaceInvite: {
         title: "Workspace invitation",
         invalid: "The invitation link is invalid or incomplete.",

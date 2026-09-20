@@ -8,6 +8,7 @@ import {
   revokeWorkspaceInvitation,
   updateWorkspaceMemberRole,
   listWorkspaceAuditLogs,
+  getWorkspaceUsage,
 } from "../lib/workspaceMembersApi";
 
 export default function WorkspaceMembersPanel({ workspaceId, workspaceName, workspaceRole, onClose }) {
@@ -15,6 +16,7 @@ export default function WorkspaceMembersPanel({ workspaceId, workspaceName, work
   const [members, setMembers] = useState([]);
   const [invitations, setInvitations] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [usage, setUsage] = useState(null);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("member");
   const [loading, setLoading] = useState(true);
@@ -26,14 +28,16 @@ export default function WorkspaceMembersPanel({ workspaceId, workspaceName, work
   const load = async () => {
     setLoading(true);
     try {
-      const [memberList, inviteList, auditList] = await Promise.all([
+      const [memberList, inviteList, auditList, usageData] = await Promise.all([
         listWorkspaceMembers(workspaceId),
         manager ? listWorkspaceInvitations(workspaceId) : Promise.resolve([]),
         manager ? listWorkspaceAuditLogs(workspaceId) : Promise.resolve([]),
+        manager ? getWorkspaceUsage(workspaceId, 24).catch(() => null) : Promise.resolve(null),
       ]);
       setMembers(memberList);
       setInvitations(inviteList);
       setAuditLogs(auditList);
+      setUsage(usageData);
     } finally {
       setLoading(false);
     }
@@ -197,6 +201,63 @@ export default function WorkspaceMembersPanel({ workspaceId, workspaceName, work
                 </div>
               ))}
               {invitations.length === 0 && <p className="text-sm text-slate-400">{t("workspaceMembers.noPending")}</p>}
+            </div>
+          </div>
+        )}
+
+        {manager && usage && (
+          <div className="mt-5 rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-medium">{t("workspaceUsage.title")}</h3>
+              <span className="text-xs text-slate-400">{t("workspaceUsage.window", { hours: usage.window_hours })}</span>
+            </div>
+
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+                <div className="text-xs text-slate-500">{t("workspaceUsage.requests")}</div>
+                <div className="mt-1 text-lg font-semibold">{usage.used_requests}</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+                <div className="text-xs text-slate-500">{t("workspaceUsage.inputTokens")}</div>
+                <div className="mt-1 text-lg font-semibold">{usage.input_tokens}</div>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+                <div className="text-xs text-slate-500">{t("workspaceUsage.outputTokens")}</div>
+                <div className="mt-1 text-lg font-semibold">{usage.output_tokens}</div>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h4 className="text-sm font-medium">{t("workspaceUsage.byMember")}</h4>
+                <span className="text-xs text-slate-400">
+                  {t("workspaceUsage.totalTokens")}: {usage.total_tokens}
+                </span>
+              </div>
+              {usage.members.length === 0 ? (
+                <p className="text-sm text-slate-400">{t("workspaceUsage.noData")}</p>
+              ) : (
+                <div className="space-y-2">
+                  {usage.members.map((member) => (
+                    <div key={member.user_id} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium">{member.full_name || member.email}</div>
+                          <div className="truncate text-xs text-slate-400">{member.email}</div>
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {member.used_requests} {t("workspaceUsage.requestsShort")}
+                        </div>
+                      </div>
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-slate-500">
+                        <span>{t("workspaceUsage.inputShort")}: {member.input_tokens}</span>
+                        <span>{t("workspaceUsage.outputShort")}: {member.output_tokens}</span>
+                        <span>{t("workspaceUsage.totalShort")}: {member.total_tokens}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

@@ -37,3 +37,11 @@ export async function listWorkspaceAuditLogs(workspaceId) {
   const { data } = await api.get(`/workspaces/${workspaceId}/audit-logs`);
   return data;
 }
+
+
+export async function getWorkspaceUsage(workspaceId, windowHours = 24) {
+  const { data } = await api.get(`/workspaces/${workspaceId}/usage`, {
+    params: { window_hours: windowHours },
+  });
+  return data;
+}
