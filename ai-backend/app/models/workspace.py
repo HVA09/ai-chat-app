@@ -49,6 +49,12 @@ class Workspace(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    assistant_shares = relationship(
+        "AssistantWorkspaceShare",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     file_attachments = relationship(
         "FileAttachment",
         back_populates="workspace",
