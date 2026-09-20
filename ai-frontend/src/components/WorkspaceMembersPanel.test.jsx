@@ -45,6 +45,11 @@ vi.mock("react-i18next", () => ({
         "workspaceUsage.totalShort": "total",
         "workspaceUsage.exportCsv": "Export CSV",
         "workspaceUsage.exportError": "Couldn't export usage data",
+        "workspaceQuota.title": "Workspace AI request limit",
+        "workspaceQuota.description": "Optional workspace cap",
+        "workspaceQuota.unlimited": "No workspace limit",
+        "workspaceQuota.save": "Save limit",
+        "workspaceQuota.hint": "Applies to all workspace members.",
       };
       const value = map[key] ?? key;
       return values
@@ -55,6 +60,16 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("../lib/workspaceMembersApi", () => mocks);
+vi.mock("../lib/workspacesApi", () => ({
+  updateWorkspaceDefaultModel: vi.fn(),
+  updateWorkspaceDailyLimit: vi.fn().mockResolvedValue({
+    id: 7,
+    name: "Demo",
+    role: "owner",
+    default_ai_model: null,
+    daily_ai_request_limit: 40,
+  }),
+}));
 
 describe("WorkspaceMembersPanel", () => {
   beforeEach(() => {
@@ -98,6 +113,7 @@ describe("WorkspaceMembersPanel", () => {
         workspaceId={7}
         workspaceName="Demo"
         workspaceRole="owner"
+        dailyAiRequestLimit={25}
         onClose={vi.fn()}
       />
     );
@@ -125,3 +141,24 @@ describe("WorkspaceMembersPanel", () => {
   });
 
 });
+
+
+  it("updates the workspace daily AI request limit", async () => {
+    const user = userEvent.setup();
+    render(
+      <WorkspaceMembersPanel
+        workspaceId={7}
+        workspaceName="Demo"
+        workspaceRole="owner"
+        dailyAiRequestLimit={25}
+        onWorkspaceUpdated={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    const input = await screen.findByDisplayValue("25");
+    await user.clear(input);
+    await user.type(input, "40");
+    await user.click(screen.getByRole("button", { name: "Save limit" }));
+    expect(screen.getByDisplayValue("40")).toBeInTheDocument();
+  });

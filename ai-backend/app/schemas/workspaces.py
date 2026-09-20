@@ -28,6 +28,7 @@ class WorkspaceOut(BaseModel):
     name: str
     role: WorkspaceRole
     default_ai_model: str | None
+    daily_ai_request_limit: int | None
     created_at: datetime
 
 
@@ -41,3 +42,7 @@ class WorkspaceDefaultModelUpdate(BaseModel):
             return None
         v = v.strip()
         return v or None
+
+
+class WorkspaceDailyLimitUpdate(BaseModel):
+    daily_ai_request_limit: int | None = Field(default=None, ge=1, le=100000)

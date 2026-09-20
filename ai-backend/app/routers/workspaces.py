@@ -18,6 +18,7 @@ from app.audit import log_event
 from app.schemas.workspace_audit import WorkspaceAuditLogOut
 from app.schemas.workspaces import (
     WorkspaceCreate,
+    WorkspaceDailyLimitUpdate,
     WorkspaceDefaultModelUpdate,
     WorkspaceOut,
     WorkspaceRename,
@@ -82,6 +83,7 @@ def list_workspaces(
             name=workspace.name,
             role=role,
             default_ai_model=workspace.default_ai_model,
+            daily_ai_request_limit=workspace.daily_ai_request_limit,
             created_at=workspace.created_at,
         )
         for workspace, role in rows
@@ -119,6 +121,7 @@ def create_workspace(
         name=workspace.name,
         role=WorkspaceRole.owner,
         default_ai_model=workspace.default_ai_model,
+        daily_ai_request_limit=workspace.daily_ai_request_limit,
         created_at=workspace.created_at,
     )
 
@@ -160,6 +163,7 @@ def rename_workspace(
         name=workspace.name,
         role=membership.role,
         default_ai_model=workspace.default_ai_model,
+        daily_ai_request_limit=workspace.daily_ai_request_limit,
         created_at=workspace.created_at,
     )
 
@@ -194,6 +198,36 @@ def update_workspace_default_model(
         name=workspace.name,
         role=membership.role,
         default_ai_model=workspace.default_ai_model,
+        daily_ai_request_limit=workspace.daily_ai_request_limit,
+        created_at=workspace.created_at,
+    )
+
+
+@router.patch("/{workspace_id}/limit", response_model=WorkspaceOut)
+def update_workspace_daily_limit(
+    workspace_id: int,
+    payload: WorkspaceDailyLimitUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = _get_membership(workspace_id, current_user, db)
+    if membership.role not in {WorkspaceRole.owner, WorkspaceRole.admin}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="هذه العملية تتطلب صلاحية مدير مساحة العمل",
+        )
+
+    workspace = membership.workspace
+    workspace.daily_ai_request_limit = payload.daily_ai_request_limit
+    db.commit()
+    db.refresh(workspace)
+
+    return WorkspaceOut(
+        id=workspace.id,
+        name=workspace.name,
+        role=membership.role,
+        default_ai_model=workspace.default_ai_model,
+        daily_ai_request_limit=workspace.daily_ai_request_limit,
         created_at=workspace.created_at,
     )
 
