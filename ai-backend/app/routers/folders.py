@@ -97,7 +97,10 @@ def _can_manage_folder(
         return
 
     membership = _get_workspace_membership(folder.workspace_id, current_user, db)
-    if membership.role not in {WorkspaceRole.owner, WorkspaceRole.admin}:
+    if (
+        membership.role not in {WorkspaceRole.owner, WorkspaceRole.admin}
+        and folder.user_id != current_user.id
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="هذه العملية تتطلب صلاحية مدير مساحة العمل",
