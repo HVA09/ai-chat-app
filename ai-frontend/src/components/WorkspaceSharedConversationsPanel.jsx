@@ -34,6 +34,8 @@ export default function WorkspaceSharedConversationsPanel({
     };
   }, [workspaceId]);
 
+  if (!workspaceId) return null;
+
   return (
     <div className="mt-3 rounded-xl border border-slate-200 p-2 dark:border-slate-700">
       <div className="mb-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
