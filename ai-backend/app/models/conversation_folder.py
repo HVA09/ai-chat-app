@@ -1,7 +1,7 @@
 """نموذج مجلدات تنظيم المحادثات للمستخدم ومساحة العمل."""
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -17,7 +17,14 @@ class ConversationFolder(Base):
             "user_id",
             "name",
             unique=True,
-            postgresql_where=ForeignKey("users.id") if False else None,
+            postgresql_where=text("workspace_id IS NULL"),
+        ),
+        Index(
+            "uq_conversation_folders_workspace_name",
+            "workspace_id",
+            "name",
+            unique=True,
+            postgresql_where=text("workspace_id IS NOT NULL"),
         ),
     )
 
