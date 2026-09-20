@@ -1,42 +1,158 @@
 """اختبارات مشاركة المحادثات للقراءة فقط داخل مساحة العمل."""
 from unittest.mock import AsyncMock
 
+from app.models.user import User
+from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
 
 
 def _register_and_login(client, email, password="StrongPass123"):
     client.post("/auth/register", json={"email": email, "password": password})
-    login_response = client.post("/auth/login", json={"email": email, "password": password})
-    assert login_response.status_code == 200
+    response = client.post("/auth/login", json={"email": email, "password": password})
+    assert response.status_code == 200
     return client.cookies.get("access_token")
 
 
-def _create_workspace(client, headers, name):
-    response = client.post("/workspaces", json={"name": name}, headers=headers)
-    assert response.status_code == 201
-    return response.json()
+def test_owner_can_share_and_member_can_read_workspace_conversation(client, db_session, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
 
+    owner_token = _register_and_login(client, "workspace-share-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
 
-def _invite_and_accept(client, owner_headers, member_headers, workspace_id):
-    invite = client.post(
-        f"/workspaces/{workspace_id}/invitations",
-        json={"email": "workspace-share-member@example.com", "role": "member"},
+    workspace = client.post(
+        "/workspaces",
+        json={"name": "Team Research"},
+        headers=owner_headers,
+    ).json()
+
+    conversation_id = client.post(
+        "/chat",
+        json={
+            "message": "معلومة مشتركة",
+            "workspace_id": workspace["id"],
+        },
+        headers=owner_headers,
+    ).json()["conversation_id"]
+
+    member_token = _register_and_login(client, "workspace-share-member@example.com")
+    member = (
+        db_session.query(User)
+        .filter(User.email == "workspace-share-member@example.com")
+        .one()
+    )
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace["id"],
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    db_session.commit()
+
+    share = client.post(
+        f"/conversations/{conversation_id}/workspace-share",
         headers=owner_headers,
     )
-    assert invite.status_code == 201
+    assert share.status_code == 201
+    assert share.json()["workspace_id"] == workspace["id"]
 
-    from app.models.workspace_invitation import WorkspaceInvitation
-    from app.database import get_db
+    listed = client.get(
+        f"/workspaces/{workspace['id']}/shared-conversations",
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
+    assert listed.status_code == 200
+    assert [item["conversation_id"] for item in listed.json()] == [conversation_id]
 
-    with client as _:
-        db = next(get_db())
-        token_hash = db.query(WorkspaceInvitation).filter(
-            WorkspaceInvitation.workspace_id == workspace_id
-        ).first().token_hash
-        db.close()
+    detail = client.get(
+        f"/workspaces/{workspace['id']}/shared-conversations/{conversation_id}",
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
+    assert detail.status_code == 200
+    assert detail.json()["title"]
+    assert len(detail.json()["messages"]) == 2
 
-    # إنشاء رابط دعوة مباشرة باستخدام hash ليس ممكنًا؛ نستخدم endpoint اختبار-مناسب
-    # لذلك، بدل ذلك نستخرج أول دعوة من DB ثم نعيد حساب/نستخدم token من email ليس متاحًا.
-    # سيتم تجاوز هذه المساعدة في الاختبار باستخدام إنشاء عضوية مباشرة.
-    raise AssertionError("helper not used")
+
+def test_non_member_cannot_read_shared_workspace_conversation(client, db_session, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+
+    owner_token = _register_and_login(client, "workspace-share-owner-2@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+
+    workspace = client.post(
+        "/workspaces",
+        json={"name": "Private Team"},
+        headers=owner_headers,
+    ).json()
+
+    conversation_id = client.post(
+        "/chat",
+        json={
+            "message": "سري",
+            "workspace_id": workspace["id"],
+        },
+        headers=owner_headers,
+    ).json()["conversation_id"]
+
+    share = client.post(
+        f"/conversations/{conversation_id}/workspace-share",
+        headers=owner_headers,
+    )
+    assert share.status_code == 201
+
+    member_token = _register_and_login(client, "workspace-share-outsider@example.com")
+    response = client.get(
+        f"/workspaces/{workspace['id']}/shared-conversations",
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
+    assert response.status_code == 404
+
+
+def test_owner_can_unshare_workspace_conversation(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+
+    owner_token = _register_and_login(client, "workspace-share-owner-3@example.com")
+    headers = {"Authorization": f"Bearer {owner_token}"}
+
+    workspace = client.post(
+        "/workspaces",
+        json={"name": "Team"},
+        headers=headers,
+    ).json()
+
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "معلومة", "workspace_id": workspace["id"]},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    assert client.post(
+        f"/conversations/{conversation_id}/workspace-share",
+        headers=headers,
+    ).status_code == 201
+    assert client.get(
+        f"/conversations/{conversation_id}/workspace-share",
+        headers=headers,
+    ).status_code == 200
+
+    response = client.delete(
+        f"/conversations/{conversation_id}/workspace-share",
+        headers=headers,
+    )
+    assert response.status_code == 204
+    assert client.get(
+        f"/conversations/{conversation_id}/workspace-share",
+        headers=headers,
+    ).status_code == 404
