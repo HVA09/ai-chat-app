@@ -1676,7 +1676,7 @@ export default function App() {
       onDone: () => {
         streamAbortRef.current = null;
         setLoading(false);
-        refreshConversations();
+        refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
       },
       onError: (message) => {
         streamAbortRef.current = null;
@@ -1826,6 +1826,13 @@ export default function App() {
         onRenameFolder={handleRenameFolder}
         onDeleteFolder={handleDeleteFolder}
         onMoveConversationToFolder={handleMoveConversationToFolder}
+        projects={projects}
+        selectedProjectId={selectedProjectId}
+        onSelectProject={handleSelectProject}
+        onCreateProject={handleCreateProject}
+        onRenameProject={handleRenameProject}
+        onDeleteProject={handleDeleteProject}
+        onMoveConversationToProject={handleMoveConversationToProject}
         tags={tags}
         selectedTagId={selectedTagId}
         onSelectTag={handleSelectTag}
@@ -1853,7 +1860,7 @@ export default function App() {
         onShowArchived={(value) => {
           setShowArchivedConversations(value);
           if (value) setShowTrashConversations(false);
-          refreshConversations(value, selectedFolderId, selectedWorkspaceId, conversationSearch, false);
+          refreshConversations(value, selectedFolderId, selectedWorkspaceId, selectedProjectId, conversationSearch, false);
           if (value) startNewChat();
         }}
         onShowTrash={(value) => {
@@ -1864,7 +1871,7 @@ export default function App() {
             setSelectedConversationIds([]);
             startNewChat();
           }
-          refreshConversations(false, value ? null : selectedFolderId, selectedWorkspaceId, conversationSearch, value);
+          refreshConversations(false, value ? null : selectedFolderId, selectedWorkspaceId, value ? null : selectedProjectId, conversationSearch, value);
         }}
         loading={conversationsLoading}
         loadingMore={conversationsLoadingMore}
