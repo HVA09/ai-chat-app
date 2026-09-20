@@ -209,6 +209,8 @@ export default function App() {
     setShowBilling(false);
     setShowWorkspaceMembers(false);
     setShowShareManager(false);
+    setWorkspaceShare(null);
+    setReadOnlyConversation(false);
     setShowTrashConversations(false);
     setConversationSummary(null);
     setConversationSummaryUpdatedAt(null);
@@ -1579,6 +1581,7 @@ export default function App() {
         onRenameWorkspace={handleRenameWorkspace}
         onOpenWorkspaceMembers={handleOpenWorkspaceMembers}
         onOpenWorkspaceSharedConversation={handleOpenWorkspaceSharedConversation}
+        onOpenWorkspaceSharedConversation={handleOpenWorkspaceSharedConversation}
         searchValue={conversationSearch}
         onSearchChange={setConversationSearch}
         showArchived={showArchivedConversations}
@@ -1616,6 +1619,9 @@ export default function App() {
           canShareConversation={conversationId !== null && !loading}
           onManageShares={handleManageConversationShares}
           canManageShares={conversationId !== null && !loading && !readOnlyConversation}
+          onToggleWorkspaceShare={handleToggleWorkspaceShare}
+          canShareWithWorkspace={conversationId !== null && selectedWorkspaceId !== null && !loading && !readOnlyConversation}
+          workspaceShareActive={Boolean(workspaceShare)}
           onToggleWorkspaceShare={handleToggleWorkspaceShare}
           canShareWithWorkspace={conversationId !== null && selectedWorkspaceId !== null && !loading && !readOnlyConversation}
           workspaceShareActive={Boolean(workspaceShare)}
