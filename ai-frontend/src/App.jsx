@@ -523,9 +523,9 @@ export default function App() {
     await refreshConversations(showArchivedConversations, null, workspaceId);
   };
 
-  const refreshFolders = async () => {
+  const refreshFolders = async (workspaceId = selectedWorkspaceId) => {
     try {
-      setFolders(await listFolders());
+      setFolders(await listFolders(workspaceId));
     } catch {
       // فشل تحميل المجلدات لا يوقف الشات.
     }
@@ -535,8 +535,8 @@ export default function App() {
     const name = window.prompt(t("sidebar.folderCreatePrompt"));
     if (!name?.trim()) return;
     try {
-      const folder = await createFolder(name.trim());
-      await refreshFolders();
+      const folder = await createFolder(name.trim(), selectedWorkspaceId);
+      await refreshFolders(selectedWorkspaceId);
       setSelectedFolderId(folder.id);
       startNewChat();
       await refreshConversations(showArchivedConversations, folder.id, selectedWorkspaceId);
@@ -548,7 +548,7 @@ export default function App() {
   const handleRenameFolder = async (id, newName) => {
     try {
       await renameFolder(id, newName);
-      await refreshFolders();
+      await refreshFolders(selectedWorkspaceId);
       await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
     } catch {
       setToast({ message: t("app.folderRenameError"), type: "error" });
@@ -563,7 +563,7 @@ export default function App() {
         setSelectedFolderId(null);
         startNewChat();
       }
-      await refreshFolders();
+      await refreshFolders(selectedWorkspaceId);
       await refreshConversations(
         showArchivedConversations,
         wasSelected ? null : selectedFolderId,
@@ -1660,6 +1660,10 @@ export default function App() {
         onUseSavedPrompt={handleUseSavedPrompt}
         folders={folders}
         selectedFolderId={selectedFolderId}
+        selectedWorkspaceId={selectedWorkspaceId}
+        selectedWorkspaceRole={
+          workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.role || "member"
+        }
         onSelectFolder={handleSelectFolder}
         onCreateFolder={handleCreateFolder}
         onRenameFolder={handleRenameFolder}
