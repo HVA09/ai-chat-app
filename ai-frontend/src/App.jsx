@@ -285,9 +285,8 @@ export default function App() {
   };
 
   const handleNewChat = () => {
-    setSelectedFolderId(null);
     startNewChat();
-    refreshConversations(showArchivedConversations, null);
+    refreshConversations(showArchivedConversations, selectedFolderId);
   };
 
   const openConversation = async (id) => {
