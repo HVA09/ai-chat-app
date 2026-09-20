@@ -734,3 +734,92 @@ def test_cannot_summarize_other_users_conversation(client, monkeypatch):
         headers={"Authorization": f"Bearer {token_b}"},
     )
     assert response.status_code == 404
+
+
+def test_import_conversation_json_export_shape(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "import@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    workspaces = client.get("/workspaces", headers=headers)
+    assert workspaces.status_code == 200
+    workspace_id = workspaces.json()[0]["id"]
+
+    response = client.post(
+        "/conversations/import",
+        params={"workspace_id": workspace_id},
+        json={
+            "title": "محادثة مستوردة",
+            "messages": [
+                {"role": "user", "content": "سؤال مستورد", "sources": []},
+                {"role": "assistant", "content": "جواب مستورد", "sources": []},
+            ],
+            "folder_id": None,
+            "project_id": None,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["title"] == "محادثة مستوردة"
+    assert payload["workspace_id"] == workspace_id
+    assert payload["is_pinned"] is False
+    assert payload["is_archived"] is False
+    assert payload["folder_id"] is None
+    assert [message["content"] for message in payload["messages"]] == [
+        "سؤال مستورد",
+        "جواب مستورد",
+    ]
+
+
+def test_import_conversation_ignores_inaccessible_folder_and_project(client):
+    token_a = _register_and_login(client, "import-owner@example.com")
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    workspace_a = client.get("/workspaces", headers=headers_a).json()[0]["id"]
+
+    folder_a = client.post(
+        "/folders",
+        params={"workspace_id": workspace_a},
+        json={"name": "Private"},
+        headers=headers_a,
+    ).json()
+
+    token_b = _register_and_login(client, "import-other@example.com")
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+    workspace_b = client.get("/workspaces", headers=headers_b).json()[0]["id"]
+
+    response = client.post(
+        "/conversations/import",
+        params={"workspace_id": workspace_b},
+        json={
+            "title": "Cross user import",
+            "messages": [{"role": "user", "content": "test"}],
+            "folder_id": folder_a["id"],
+        },
+        headers=headers_b,
+    )
+    assert response.status_code == 201
+    assert response.json()["folder_id"] is None
+    assert response.json()["workspace_id"] == workspace_b
+
+
+def test_import_conversation_requires_workspace_membership(client):
+    token_a = _register_and_login(client, "import-ws-owner@example.com")
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    workspace_a = client.get("/workspaces", headers=headers_a).json()[0]["id"]
+
+    token_b = _register_and_login(client, "import-ws-other@example.com")
+    response = client.post(
+        "/conversations/import",
+        params={"workspace_id": workspace_a},
+        json={
+            "title": "Unauthorized",
+            "messages": [{"role": "user", "content": "test"}],
+        },
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
