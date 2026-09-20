@@ -22,3 +22,21 @@ export async function updateAssistant(id, payload) {
 export async function deleteAssistant(id) {
   await api.delete(`/assistants/${id}`);
 }
+
+export async function listWorkspaceSharedAssistants(workspaceId) {
+  const { data } = await api.get(`/workspaces/${workspaceId}/shared-assistants`);
+  return data;
+}
+
+export async function shareAssistantWithWorkspace(assistantId, workspaceId) {
+  const { data } = await api.post(
+    `/assistants/${assistantId}/workspace-share/${workspaceId}`
+  );
+  return data;
+}
+
+export async function unshareAssistantFromWorkspace(assistantId, workspaceId) {
+  await api.delete(
+    `/assistants/${assistantId}/workspace-share/${workspaceId}`
+  );
+}
