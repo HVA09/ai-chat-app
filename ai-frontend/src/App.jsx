@@ -1582,7 +1582,6 @@ export default function App() {
         onRenameWorkspace={handleRenameWorkspace}
         onOpenWorkspaceMembers={handleOpenWorkspaceMembers}
         onOpenWorkspaceSharedConversation={handleOpenWorkspaceSharedConversation}
-        onOpenWorkspaceSharedConversation={handleOpenWorkspaceSharedConversation}
         searchValue={conversationSearch}
         onSearchChange={setConversationSearch}
         showArchived={showArchivedConversations}
@@ -1617,17 +1616,14 @@ export default function App() {
           onOpenAdmin={() => setShowAdmin(true)}
           onOpenBilling={() => setShowBilling(true)}
           onShareConversation={handleShareConversation}
-          canShareConversation={conversationId !== null && !loading}
+          canShareConversation={conversationId !== null && !loading && !readOnlyConversation}
           onManageShares={handleManageConversationShares}
           canManageShares={conversationId !== null && !loading && !readOnlyConversation}
           onToggleWorkspaceShare={handleToggleWorkspaceShare}
           canShareWithWorkspace={conversationId !== null && selectedWorkspaceId !== null && !loading && !readOnlyConversation}
           workspaceShareActive={Boolean(workspaceShare)}
-          onToggleWorkspaceShare={handleToggleWorkspaceShare}
-          canShareWithWorkspace={conversationId !== null && selectedWorkspaceId !== null && !loading && !readOnlyConversation}
-          workspaceShareActive={Boolean(workspaceShare)}
           onExportConversation={handleExportConversation}
-          canExportConversation={conversationId !== null && !loading}
+          canExportConversation={conversationId !== null && !loading && !readOnlyConversation}
           onSummarizeConversation={handleSummarizeConversation}
           canSummarizeConversation={conversationId !== null && !loading}
           summaryLoading={summaryLoading}
@@ -1696,27 +1692,31 @@ export default function App() {
                       msg.role === "assistant" &&
                       !loading &&
                       editingMessageIndex === null &&
-                      conversationId !== null
+                      conversationId !== null &&
+                      !readOnlyConversation
                     }
                     onFeedback={(rating) => handleMessageFeedback(index, rating)}
                     canEdit={
                       msg.role === "user" &&
                       !loading &&
                       editingMessageIndex === null &&
-                      conversationId !== null
+                      conversationId !== null &&
+                      !readOnlyConversation
                     }
                     onEdit={() => startEditingMessage(index)}
                     canDelete={
                       !loading &&
                       editingMessageIndex === null &&
-                      conversationId !== null
+                      conversationId !== null &&
+                      !readOnlyConversation
                     }
                     onDelete={() => deleteMessage(index)}
                     canRegenerate={
                       index === lastAssistantIndex &&
                       !loading &&
                       editingMessageIndex === null &&
-                      conversationId !== null
+                      conversationId !== null &&
+                      !readOnlyConversation
                     }
                     onRegenerate={regenerateLastResponse}
                   />
