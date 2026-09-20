@@ -18,12 +18,14 @@ from app.models.conversation import Conversation, Message
 from app.models.conversation_tag import conversation_tag_links
 from app.models.conversation_folder import ConversationFolder
 from app.models.conversation_tag import ConversationTag
+from app.models.project import WorkspaceProject
 from app.models.user import User
 from app.models.usage_log import UsageLog
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.bookmarks import BookmarkedMessageOut
 from app.schemas.chat import ConversationDetail, ConversationOut, ConversationRename, ConversationSummaryOut
 from app.schemas.folders import ConversationFolderUpdate
+from app.schemas.projects import ConversationProjectUpdate
 from app.schemas.tags import ConversationTagsUpdate
 from app.services.ai_service import get_ai_reply
 
@@ -56,6 +58,7 @@ def list_conversations(
     limit: int = 50,
     include_archived: bool = False,
     folder_id: int | None = None,
+    project_id: int | None = None,
     assistant_id: int | None = None,
     tag_id: int | None = None,
     include_deleted: bool = False,
@@ -142,6 +145,29 @@ def list_conversations(
 
         query = query.filter(Conversation.folder_id == folder_id)
 
+    if project_id is not None:
+        project = db.get(WorkspaceProject, project_id)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المشروع غير موجود",
+            )
+
+        project_membership = (
+            db.query(WorkspaceMember)
+            .filter(
+                WorkspaceMember.workspace_id == project.workspace_id,
+                WorkspaceMember.user_id == current_user.id,
+            )
+            .first()
+        )
+        if not project_membership or workspace_id != project.workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المشروع غير موجود",
+            )
+        query = query.filter(Conversation.project_id == project_id)
+
     if tag_id is not None:
         owned_tag = (
             db.query(ConversationTag)
@@ -181,6 +207,42 @@ def list_conversations(
         .limit(limit)
         .all()
     )
+
+
+@router.patch("/{conversation_id}/project", response_model=ConversationOut)
+def set_conversation_project(
+    conversation_id: int,
+    payload: ConversationProjectUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conversation = _get_owned_conversation(conversation_id, current_user, db)
+
+    if payload.project_id is not None:
+        project = db.get(WorkspaceProject, payload.project_id)
+        if not project or project.workspace_id != conversation.workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المشروع غير موجود",
+            )
+        membership = (
+            db.query(WorkspaceMember)
+            .filter(
+                WorkspaceMember.workspace_id == project.workspace_id,
+                WorkspaceMember.user_id == current_user.id,
+            )
+            .first()
+        )
+        if not membership:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المشروع غير موجود",
+            )
+
+    conversation.project_id = payload.project_id
+    db.commit()
+    db.refresh(conversation)
+    return conversation
 
 
 @router.get("/bookmarks", response_model=list[BookmarkedMessageOut])
