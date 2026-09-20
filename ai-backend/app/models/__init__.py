@@ -1,4 +1,5 @@
 from app.models.user import User, UserRole
+from app.models.api_key import APIKey
 from app.models.user_memory import UserMemory
 from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
 from app.models.workspace_invitation import WorkspaceInvitation
@@ -24,6 +25,7 @@ from app.models.webhook_event import WebhookEvent
 __all__ = [
     "User",
     "UserRole",
+    "APIKey",
     "UserMemory",
     "Workspace",
     "WorkspaceMember",
