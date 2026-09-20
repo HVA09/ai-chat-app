@@ -26,9 +26,13 @@ class UsageLog(Base):
     workspace_id: Mapped[int | None] = mapped_column(
         ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    api_key_id: Mapped[int | None] = mapped_column(
+        ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     endpoint: Mapped[str] = mapped_column(String(100), nullable=False)
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="usage_logs")
+    api_key = relationship("APIKey", back_populates="usage_logs")
