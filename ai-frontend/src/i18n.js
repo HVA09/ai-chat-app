@@ -616,6 +616,8 @@ const resources = {
         branchListEmpty: "لا توجد فروع لهذه المحادثة",
         branchPoint: "بدءًا من الرسالة {{index}}",
         branchOpenError: "تعذر فتح فرع المحادثة",
+        parentConversation: "المحادثة الأصلية",
+        parentConversationTitle: "العودة إلى المحادثة الأصلية",
       },
 
       tools: {
@@ -1210,6 +1212,8 @@ const resources = {
         branchListEmpty: "This conversation has no branches",
         branchPoint: "Starting from message {{index}}",
         branchOpenError: "Couldn't open the conversation branch",
+        parentConversation: "Parent conversation",
+        parentConversationTitle: "Open the parent conversation",
       },
 
       tools: {
