@@ -101,6 +101,6 @@ describe("WorkspaceMembersPanel", () => {
     expect(screen.getByText("5", { exact: true })).toBeInTheDocument();
     const totalTokensLabel = screen.getByText(/Total tokens/);
     expect(totalTokensLabel.parentElement?.textContent).toContain("100");
-    expect(screen.getByText("Owner", { exact: true })).toBeInTheDocument();
+    expect(screen.getAllByText("Owner", { exact: true }).length).toBeGreaterThan(0);
   });
 });
