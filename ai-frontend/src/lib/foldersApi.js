@@ -19,9 +19,3 @@ export async function deleteFolder(id) {
   await api.delete(`/folders/${id}`);
 }
 
-export async function moveConversationToFolder(id, folderId) {
-  const { data } = await api.patch(`/conversations/${id}/folder`, {
-    folder_id: folderId,
-  });
-  return data;
-}
