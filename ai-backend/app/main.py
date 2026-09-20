@@ -19,6 +19,7 @@ from app.database import get_db
 from app.middleware import AuthRateLimitMiddleware, RequestIdMiddleware
 from app.logging_config import configure_logging, get_logger
 from app.routers.admin import router as admin_router
+from app.routers.assistant_workspace_shares import router as assistant_workspace_shares_router
 from app.routers.assistants import router as assistants_router
 from app.routers.billing import router as billing_router
 from app.routers.chat import router as chat_router
@@ -152,4 +153,5 @@ app.include_router(saved_prompts_router)
 app.include_router(memories_router)
 app.include_router(shared_conversations_router)
 app.include_router(admin_router)
+app.include_router(assistant_workspace_shares_router)
 app.include_router(assistants_router)

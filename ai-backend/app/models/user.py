@@ -43,6 +43,9 @@ class User(Base):
     assistants = relationship(
         "Assistant", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )
+    assistant_workspace_shares = relationship(
+        "AssistantWorkspaceShare", back_populates="shared_by", passive_deletes=True
+    )
     conversation_tags = relationship(
         "ConversationTag", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )

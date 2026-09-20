@@ -26,6 +26,7 @@ export default function Sidebar({
   onCreateAssistant = () => {},
   onEditAssistant = () => {},
   onDeleteAssistant = () => {},
+  onToggleShareAssistant = () => {},
   bookmarkedMessages = [],
   onOpenBookmarkedMessage = () => {},
   savedPrompts = [],
@@ -433,22 +434,40 @@ export default function Sidebar({
                   >
                     🤖 {assistant.name}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onEditAssistant(assistant.id)}
-                    title={t("sidebar.editAssistantTitle")}
-                    className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                  >
-                    ✎
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onDeleteAssistant(assistant.id, assistant.name)}
-                    title={t("sidebar.deleteAssistantTitle")}
-                    className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-red-100 hover:text-red-600"
-                  >
-                    ✕
-                  </button>
+                  {assistant.can_edit !== false && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => onEditAssistant(assistant.id)}
+                        title={t("sidebar.editAssistantTitle")}
+                        className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteAssistant(assistant.id, assistant.name)}
+                        title={t("sidebar.deleteAssistantTitle")}
+                        className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-red-100 hover:text-red-600"
+                      >
+                        ✕
+                      </button>
+                    </>
+                  )}
+                  {assistant.can_edit !== false && selectedWorkspaceId !== null && (
+                    <button
+                      type="button"
+                      onClick={() => onToggleShareAssistant(assistant)}
+                      title={
+                        assistant.is_shared
+                          ? t("sidebar.unshareAssistantTitle")
+                          : t("sidebar.shareAssistantTitle")
+                      }
+                      className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    >
+                      {assistant.is_shared ? "↗" : "🔗"}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
