@@ -16,8 +16,16 @@ class FolderCreate(BaseModel):
         return v
 
 
-class FolderRename(FolderCreate):
-    pass
+class FolderRename(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("اسم المجلد لا يمكن أن يكون فارغًا")
+        return v
 
 
 class FolderOut(BaseModel):
