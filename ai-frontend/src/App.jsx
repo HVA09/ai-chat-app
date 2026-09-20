@@ -116,6 +116,8 @@ export default function App() {
   const [selectedConversationIds, setSelectedConversationIds] = useState([]);
   const [conversationSearch, setConversationSearch] = useState("");
   const [conversationsLoading, setConversationsLoading] = useState(false);
+  const [conversationsLoadingMore, setConversationsLoadingMore] = useState(false);
+  const [hasMoreConversations, setHasMoreConversations] = useState(false);
   const [showArchivedConversations, setShowArchivedConversations] = useState(false);
   const [showTrashConversations, setShowTrashConversations] = useState(false);
   const [folders, setFolders] = useState([]);
@@ -235,9 +237,13 @@ export default function App() {
     workspaceId = selectedWorkspaceId,
     search = conversationSearch,
     includeDeleted = showTrashConversations,
-    tagId = selectedTagId
+    tagId = selectedTagId,
+    reset = true
   ) => {
-    setConversationsLoading(true);
+    const pageSize = 50;
+    if (reset) setConversationsLoading(true);
+    else setConversationsLoadingMore(true);
+
     try {
       const list = await listConversations(
         includeArchived,
@@ -245,14 +251,41 @@ export default function App() {
         workspaceId,
         search,
         includeDeleted,
-        tagId
+        tagId,
+        reset ? 0 : conversations.length,
+        pageSize + 1
       );
-      setConversations(list);
+      const page = list.slice(0, pageSize);
+
+      if (reset) {
+        setConversations(page);
+      } else {
+        setConversations((current) => {
+          const existingIds = new Set(current.map((item) => item.id));
+          return [...current, ...page.filter((item) => !existingIds.has(item.id))];
+        });
+      }
+
+      setHasMoreConversations(list.length > pageSize);
     } catch {
       // فشل تحميل القائمة لا يوقف الشات نفسه — نتجاهله بصمت
     } finally {
-      setConversationsLoading(false);
+      if (reset) setConversationsLoading(false);
+      else setConversationsLoadingMore(false);
     }
+  };
+
+  const loadMoreConversations = async () => {
+    if (!hasMoreConversations || conversationsLoading || conversationsLoadingMore) return;
+    await refreshConversations(
+      showArchivedConversations,
+      selectedFolderId,
+      selectedWorkspaceId,
+      conversationSearch,
+      showTrashConversations,
+      selectedTagId,
+      false
+    );
   };
 
   useEffect(() => {
@@ -1475,6 +1508,9 @@ export default function App() {
           refreshConversations(false, value ? null : selectedFolderId, selectedWorkspaceId, conversationSearch, value);
         }}
         loading={conversationsLoading}
+        loadingMore={conversationsLoadingMore}
+        hasMore={hasMoreConversations}
+        onLoadMore={loadMoreConversations}
       />
       <main className="flex flex-1 flex-col">
         <ChatHeader
