@@ -22,6 +22,7 @@ class SourceCitation(TypedDict):
     filename: str
     chunk: int | None
     file_id: int | None
+    snippet: str | None
 
 
 def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
@@ -131,6 +132,7 @@ def build_retrieval_context(
                 "filename": file.original_filename,
                 "chunk": chunk.chunk_index + 1,
                 "file_id": file.id,
+                "snippet": chunk.content[:220].strip(),
             }
         )
         parts.append(f"[SOURCE {source_id}: {file.original_filename} | CHUNK: {chunk.chunk_index + 1}]\n{snippet}")
@@ -170,6 +172,7 @@ def build_fallback_file_context(
                 "filename": file.original_filename,
                 "chunk": None,
                 "file_id": file.id,
+                "snippet": " ".join(text.split())[:220].strip(),
             }
         )
         parts.append(f"[SOURCE {source_id}: {file.original_filename}]\n{snippet}")
