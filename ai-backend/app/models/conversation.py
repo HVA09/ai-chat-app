@@ -57,18 +57,6 @@ class Conversation(Base):
     )
 
     owner = relationship("User", back_populates="conversations")
-    parent_conversation = relationship(
-        "Conversation",
-        remote_side=[id],
-        back_populates="branches",
-        foreign_keys=[parent_conversation_id],
-    )
-    branches = relationship(
-        "Conversation",
-        back_populates="parent_conversation",
-        foreign_keys=[parent_conversation_id],
-        passive_deletes=True,
-    )
     folder = relationship("ConversationFolder", back_populates="conversations")
     project = relationship("WorkspaceProject", back_populates="conversations")
     workspace = relationship("Workspace", back_populates="conversations")
