@@ -5,6 +5,7 @@ from app.models.workspace_invitation import WorkspaceInvitation
 from app.models.assistant import Assistant
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.conversation_share import ConversationShare
+from app.models.conversation_workspace_share import ConversationWorkspaceShare
 from app.models.conversation_folder import ConversationFolder
 from app.models.saved_prompt import SavedPrompt
 from app.models.conversation_tag import ConversationTag
@@ -30,6 +31,7 @@ __all__ = [
     "Assistant",
     "Conversation",
     "ConversationShare",
+    "ConversationWorkspaceShare",
     "Message",
     "MessageRole",
     "ConversationFolder",
