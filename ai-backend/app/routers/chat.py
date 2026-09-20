@@ -14,6 +14,7 @@ from app.database import get_db
 from app.dependencies import enforce_daily_ai_limit, get_current_user
 from app.logging_config import get_logger
 from app.models.assistant import Assistant
+from app.models.assistant_workspace_share import AssistantWorkspaceShare
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
@@ -75,14 +76,25 @@ def _resolve_requested_model(model: str | None) -> str:
     return selected
 
 
-def _get_owned_assistant(
-    assistant_id: int, current_user: User, db: Session
+def _get_assistant_for_workspace(
+    assistant_id: int,
+    workspace_id: int,
+    current_user: User,
+    db: Session,
 ) -> Assistant:
     assistant = (
         db.query(Assistant)
+        .outerjoin(
+            AssistantWorkspaceShare,
+            (AssistantWorkspaceShare.assistant_id == Assistant.id)
+            & (AssistantWorkspaceShare.workspace_id == workspace_id),
+        )
         .filter(
             Assistant.id == assistant_id,
-            Assistant.user_id == current_user.id,
+            (
+                Assistant.user_id == current_user.id
+                | (AssistantWorkspaceShare.id.is_not(None))
+            ),
         )
         .first()
     )
@@ -134,7 +146,7 @@ def _get_or_create_conversation(
     payload: ChatRequest, current_user: User, db: Session
 ) -> Conversation:
     selected_assistant = (
-        _get_owned_assistant(payload.assistant_id, current_user, db)
+        _get_assistant_for_workspace(payload.assistant_id, selected_workspace.id, current_user, db)
         if payload.assistant_id is not None
         else None
     )
@@ -273,9 +285,17 @@ def _build_assistant_context(
 
     assistant = (
         db.query(Assistant)
+        .outerjoin(
+            AssistantWorkspaceShare,
+            (AssistantWorkspaceShare.assistant_id == Assistant.id)
+            & (AssistantWorkspaceShare.workspace_id == conversation.workspace_id),
+        )
         .filter(
             Assistant.id == conversation.assistant_id,
-            Assistant.user_id == conversation.user_id,
+            (
+                Assistant.user_id == conversation.user_id
+                | (AssistantWorkspaceShare.id.is_not(None))
+            ),
         )
         .first()
     )
