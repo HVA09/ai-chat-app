@@ -479,6 +479,32 @@ const resources = {
         enableDark: "تفعيل الوضع الداكن",
       },
 
+      workspaceSharing: {
+        title: "محادثات مساحة العمل المشتركة",
+        empty: "لا توجد محادثات مشتركة مع مساحة العمل",
+        shareButton: "مشاركة مع مساحة العمل",
+        unshareButton: "إلغاء مشاركة مساحة العمل",
+        shareDisabled: "اختر مساحة عمل ومحادثة أولًا",
+        shared: "تمت مشاركة المحادثة مع مساحة العمل",
+        unshared: "تم إلغاء مشاركة المحادثة مع مساحة العمل",
+        updateError: "تعذر تحديث مشاركة مساحة العمل",
+        loadError: "تعذر تحميل المحادثة المشتركة",
+        readOnly: "هذه المحادثة مشتركة معك للقراءة فقط.",
+      },
+
+      workspaceSharing: {
+        title: "Shared workspace conversations",
+        empty: "No conversations have been shared with this workspace",
+        shareButton: "Share with workspace",
+        unshareButton: "Unshare from workspace",
+        shareDisabled: "Choose a workspace and conversation first",
+        shared: "Conversation shared with the workspace",
+        unshared: "Conversation unshared from the workspace",
+        updateError: "Couldn't update workspace sharing",
+        loadError: "Couldn't load the shared conversation",
+        readOnly: "This conversation is shared with you as read-only.",
+      },
+
       sharing: {
         shareButton: "مشاركة",
         shareDisabled: "ابدأ محادثة أولًا للمشاركة",
