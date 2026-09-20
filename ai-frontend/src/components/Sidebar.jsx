@@ -27,7 +27,6 @@ export default function Sidebar({
   onEditAssistant = () => {},
   onDeleteAssistant = () => {},
   onToggleShareAssistant = () => {},
-  selectedWorkspaceId = null,
   bookmarkedMessages = [],
   onOpenBookmarkedMessage = () => {},
   savedPrompts = [],
