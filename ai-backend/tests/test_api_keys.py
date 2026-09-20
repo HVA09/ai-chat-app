@@ -1,7 +1,7 @@
 """اختبارات مفاتيح API ونقطة المطورين."""
 from unittest.mock import AsyncMock
 
-from app.routers import chat as chat_router_module
+from app.routers import api_keys as api_keys_router_module
 from app.services.ai_providers.base import AIReply
 
 
@@ -38,7 +38,7 @@ def test_create_list_and_revoke_api_key(client):
 
 def test_api_key_auth_and_chat(client, monkeypatch):
     monkeypatch.setattr(
-        chat_router_module,
+        api_keys_router_module,
         "get_ai_reply",
         AsyncMock(return_value=AIReply(text="رد API", input_tokens=2, output_tokens=3)),
     )
