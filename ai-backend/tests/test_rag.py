@@ -161,7 +161,7 @@ def test_build_retrieval_context_returns_stable_sources(db_session):
 
     context, sources = build_retrieval_context([(chunk, file)])
     assert "[SOURCE S1: report.pdf | CHUNK: 3]" in context
-    assert sources == [{"id": "S1", "filename": "report.pdf", "chunk": 3}]
+    assert sources == [{"id": "S1", "filename": "report.pdf", "chunk": 3, "file_id": file.id}]
 
 
 def test_workspace_knowledge_chunks_are_retrievable_without_conversation_link(
