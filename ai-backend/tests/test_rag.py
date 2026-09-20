@@ -128,7 +128,7 @@ def test_chat_uses_retrieved_rag_context(client, monkeypatch, db_session):
 
     body = response.json()
     assert body["sources"] == [
-        {"id": "S1", "filename": "linux.txt", "chunk": 1, "file_id": file.id}
+        {"id": "S1", "filename": "linux.txt", "chunk": 1, "file_id": file.id, "snippet": "Linux is an operating system used to run servers."}
     ]
 
 
@@ -161,7 +161,7 @@ def test_build_retrieval_context_returns_stable_sources(db_session):
 
     context, sources = build_retrieval_context([(chunk, file)])
     assert "[SOURCE S1: report.pdf | CHUNK: 3]" in context
-    assert sources == [{"id": "S1", "filename": "report.pdf", "chunk": 3, "file_id": file.id}]
+    assert sources == [{"id": "S1", "filename": "report.pdf", "chunk": 3, "file_id": file.id, "snippet": "important evidence"}]
 
 
 def test_workspace_knowledge_chunks_are_retrievable_without_conversation_link(
