@@ -300,6 +300,40 @@ def list_bookmarked_messages(
     ]
 
 
+@router.get("/{conversation_id}/branches", response_model=list[ConversationOut])
+def list_conversation_branches(
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    parent = (
+        db.query(Conversation.id)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+            Conversation.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not parent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المحادثة غير موجودة",
+        )
+
+    return (
+        db.query(Conversation)
+        .filter(
+            Conversation.user_id == current_user.id,
+            Conversation.parent_conversation_id == conversation_id,
+            Conversation.deleted_at.is_(None),
+        )
+        .order_by(Conversation.updated_at.desc(), Conversation.id.desc())
+        .limit(100)
+        .all()
+    )
+
+
 @router.get("/{conversation_id}", response_model=ConversationDetail)
 def get_conversation(
     conversation_id: int,
@@ -555,6 +589,8 @@ def branch_conversation(
         summary=None,
         summary_updated_at=None,
         deleted_at=None,
+        parent_conversation_id=source.id,
+        branched_from_message_index=message_index,
         tags=list(source.tags),
     )
 

@@ -24,6 +24,8 @@ export default function ChatHeader({
   onSummarizeConversation,
   canSummarizeConversation = false,
   summaryLoading = false,
+  conversationBranches = [],
+  onOpenConversationBranch = () => {},
   isAdmin,
   notifications,
   onMarkNotificationRead,
@@ -31,6 +33,7 @@ export default function ChatHeader({
 }) {
   const { t } = useTranslation();
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
 
   return (
     <header className="flex items-center justify-between border-b border-slate-200 bg-white py-3 pe-4 ps-16 dark:border-slate-700 dark:bg-slate-900 md:ps-4">
@@ -71,6 +74,38 @@ export default function ChatHeader({
           >
             ⋯
           </button>
+        </div>
+        <div className="relative">
+          <button
+            onClick={() => setBranchMenuOpen((open) => !open)}
+            disabled={conversationBranches.length === 0}
+            title={conversationBranches.length ? t("chat.branchListTitle") : t("chat.branchListEmpty")}
+            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-900"
+          >
+            {t("chat.branches")} {conversationBranches.length ? `(${conversationBranches.length})` : ""}
+          </button>
+          {branchMenuOpen && conversationBranches.length > 0 && (
+            <div className="absolute end-0 top-full z-30 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+              {conversationBranches.map((branch) => (
+                <button
+                  key={branch.id}
+                  type="button"
+                  onClick={() => {
+                    setBranchMenuOpen(false);
+                    onOpenConversationBranch(branch.id);
+                  }}
+                  className="w-full rounded-lg px-3 py-2 text-start text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                >
+                  <span className="block truncate font-medium">{branch.title}</span>
+                  <span className="mt-0.5 block text-xs text-slate-400">
+                    {branch.branched_from_message_index
+                      ? t("chat.branchPoint", { index: branch.branched_from_message_index })
+                      : ""}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="relative">
           <button

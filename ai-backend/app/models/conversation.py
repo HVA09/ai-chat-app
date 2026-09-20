@@ -4,7 +4,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, JSON, String, Text, event, update
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, JSON, String, Text, event, update
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -49,6 +49,12 @@ class Conversation(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    parent_conversation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    branched_from_message_index: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
 
     owner = relationship("User", back_populates="conversations")
     folder = relationship("ConversationFolder", back_populates="conversations")
