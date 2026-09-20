@@ -9,6 +9,7 @@ from app.models.conversation import Conversation, Message, MessageRole
 from app.models.conversation_share import ConversationShare
 from app.models.conversation_workspace_share import ConversationWorkspaceShare
 from app.models.conversation_folder import ConversationFolder
+from app.models.project import WorkspaceProject
 from app.models.saved_prompt import SavedPrompt
 from app.models.conversation_tag import ConversationTag
 from app.models.conversation_share import ConversationShare
@@ -39,6 +40,7 @@ __all__ = [
     "Message",
     "MessageRole",
     "ConversationFolder",
+    "WorkspaceProject",
     "SavedPrompt",
     "ConversationTag",
     "ConversationShare",
