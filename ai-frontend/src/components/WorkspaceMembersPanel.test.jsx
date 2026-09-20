@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import WorkspaceMembersPanel from "./WorkspaceMembersPanel";
 
@@ -7,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   listWorkspaceInvitations: vi.fn(),
   listWorkspaceAuditLogs: vi.fn(),
   getWorkspaceUsage: vi.fn(),
+  downloadWorkspaceUsageCsv: vi.fn(),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -41,6 +43,8 @@ vi.mock("react-i18next", () => ({
         "workspaceUsage.inputShort": "input",
         "workspaceUsage.outputShort": "output",
         "workspaceUsage.totalShort": "total",
+        "workspaceUsage.exportCsv": "Export CSV",
+        "workspaceUsage.exportError": "Couldn't export usage data",
       };
       const value = map[key] ?? key;
       return values
@@ -65,6 +69,7 @@ describe("WorkspaceMembersPanel", () => {
     ]);
     mocks.listWorkspaceInvitations.mockResolvedValue([]);
     mocks.listWorkspaceAuditLogs.mockResolvedValue([]);
+    mocks.downloadWorkspaceUsageCsv.mockResolvedValue(undefined);
     mocks.getWorkspaceUsage.mockResolvedValue({
       workspace_id: 7,
       window_hours: 24,
@@ -103,4 +108,20 @@ describe("WorkspaceMembersPanel", () => {
     expect(totalTokensLabel.parentElement?.textContent).toContain("100");
     expect(screen.getAllByText("Owner", { exact: true }).length).toBeGreaterThan(0);
   });
+
+  it("exports workspace usage as CSV", async () => {
+    const user = userEvent.setup();
+    render(
+      <WorkspaceMembersPanel
+        workspaceId={7}
+        workspaceName="Demo"
+        workspaceRole="owner"
+        onClose={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Export CSV" }));
+    expect(mocks.downloadWorkspaceUsageCsv).toHaveBeenCalledWith(7, 24);
+  });
+
 });

@@ -45,3 +45,19 @@ export async function getWorkspaceUsage(workspaceId, windowHours = 24) {
   });
   return data;
 }
+
+
+export async function downloadWorkspaceUsageCsv(workspaceId, windowHours = 24) {
+  const response = await api.get(`/workspaces/${workspaceId}/usage.csv`, {
+    params: { window_hours: windowHours },
+    responseType: "blob",
+  });
+  const url = window.URL.createObjectURL(response.data);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `workspace-${workspaceId}-usage-${windowHours}h.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}

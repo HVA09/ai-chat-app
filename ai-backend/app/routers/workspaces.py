@@ -1,7 +1,10 @@
 """مسارات مساحة العمل الحالية للمستخدم."""
 from datetime import datetime, timedelta, timezone
+import csv
+import io
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -279,6 +282,80 @@ def get_workspace_usage(
         output_tokens=output_tokens,
         total_tokens=input_tokens + output_tokens,
         members=members,
+    )
+
+
+@router.get("/{workspace_id}/usage.csv", include_in_schema=False)
+def export_workspace_usage_csv(
+    workspace_id: int,
+    window_hours: int = 24,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = _get_membership(workspace_id, current_user, db)
+    if membership.role not in {WorkspaceRole.owner, WorkspaceRole.admin}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="هذه العملية تتطلب صلاحية مدير مساحة العمل",
+        )
+
+    window_hours = max(1, min(window_hours, 168))
+    window_start = datetime.now(timezone.utc) - timedelta(hours=window_hours)
+
+    rows = (
+        db.query(
+            UsageLog.created_at,
+            UsageLog.user_id,
+            User.email,
+            User.full_name,
+            UsageLog.endpoint,
+            UsageLog.input_tokens,
+            UsageLog.output_tokens,
+        )
+        .join(WorkspaceMember, WorkspaceMember.user_id == UsageLog.user_id)
+        .join(User, User.id == UsageLog.user_id)
+        .filter(
+            WorkspaceMember.workspace_id == workspace_id,
+            UsageLog.workspace_id == workspace_id,
+            UsageLog.created_at >= window_start,
+        )
+        .order_by(UsageLog.created_at.asc(), UsageLog.id.asc())
+        .all()
+    )
+
+    output = io.StringIO()
+    output.write("\ufeff")
+    writer = csv.writer(output)
+    writer.writerow([
+        "timestamp",
+        "user_id",
+        "email",
+        "full_name",
+        "endpoint",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+    ])
+
+    for created_at, user_id, email, full_name, endpoint, input_tokens, output_tokens in rows:
+        input_value = int(input_tokens or 0)
+        output_value = int(output_tokens or 0)
+        writer.writerow([
+            created_at.isoformat() if created_at else "",
+            user_id,
+            email,
+            full_name or "",
+            endpoint,
+            input_value,
+            output_value,
+            input_value + output_value,
+        ])
+
+    filename = f"workspace-{workspace_id}-usage-{window_hours}h.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
