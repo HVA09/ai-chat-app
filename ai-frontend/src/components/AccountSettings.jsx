@@ -8,6 +8,7 @@ import {
 } from "../lib/authApi";
 import { updateProfile, changePassword, deleteAccount } from "../lib/usersApi";
 import { listMemories, createMemory, updateMemory, deleteMemory } from "../lib/memoriesApi";
+import { listApiKeys, createApiKey, revokeApiKey } from "../lib/apiKeysApi";
 import { getErrorMessage } from "../lib/errors";
 
 function Section({ title, children }) {
@@ -34,6 +35,9 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
   const [deletePassword, setDeletePassword] = useState("");
   const [memories, setMemories] = useState([]);
   const [memoryDraft, setMemoryDraft] = useState("");
+  const [apiKeys, setApiKeys] = useState([]);
+  const [apiKeyName, setApiKeyName] = useState("");
+  const [createdApiKeySecret, setCreatedApiKeySecret] = useState("");
 
   const [setupData, setSetupData] = useState(null);
   const [code, setCode] = useState("");
@@ -46,8 +50,17 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
     }
   };
 
+  const loadApiKeys = async () => {
+    try {
+      setApiKeys(await listApiKeys());
+    } catch (err) {
+      setError(getErrorMessage(err, t("account.apiKeysLoadError")));
+    }
+  };
+
   useEffect(() => {
     loadMemories();
+    loadApiKeys();
   }, []);
 
   const runAction = async (action) => {
@@ -60,6 +73,36 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
       setError(getErrorMessage(err, t("account.genericError")));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateApiKey = () =>
+    runAction(async () => {
+      const name = apiKeyName.trim();
+      if (!name) return;
+      const created = await createApiKey(name);
+      setApiKeys((prev) => [created, ...prev]);
+      setCreatedApiKeySecret(created.secret);
+      setApiKeyName("");
+      setMessage(t("account.apiKeyCreated"));
+    });
+
+  const handleRevokeApiKey = (item) =>
+    runAction(async () => {
+      if (item.revoked_at) return;
+      if (!window.confirm(t("account.apiKeyRevokeConfirm", { name: item.name }))) return;
+      await revokeApiKey(item.id);
+      await loadApiKeys();
+      setMessage(t("account.apiKeyRevoked"));
+    });
+
+  const handleCopyApiKey = async () => {
+    if (!createdApiKeySecret) return;
+    try {
+      await navigator.clipboard.writeText(createdApiKeySecret);
+      setMessage(t("account.apiKeyCopied"));
+    } catch {
+      setError(t("account.apiKeyCopyError"));
     }
   };
 
@@ -231,6 +274,87 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+        </Section>
+
+        <Section title={t("account.apiKeysSection")}>
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500">{t("account.apiKeysDescription")}</p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                maxLength={100}
+                placeholder={t("account.apiKeyNamePlaceholder")}
+                value={apiKeyName}
+                onChange={(e) => setApiKeyName(e.target.value)}
+                className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-400"
+              />
+              <button
+                onClick={handleCreateApiKey}
+                disabled={loading || !apiKeyName.trim()}
+                className="rounded-xl bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {t("account.apiKeyCreate")}
+              </button>
+            </div>
+
+            {createdApiKeySecret && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-medium text-amber-900">{t("account.apiKeySecretTitle")}</p>
+                <p className="mt-1 text-xs text-amber-800">{t("account.apiKeySecretDescription")}</p>
+                <code className="mt-2 block break-all rounded-lg bg-white p-2 text-xs text-slate-800">{createdApiKeySecret}</code>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyApiKey}
+                    className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs text-amber-900 hover:bg-amber-100"
+                  >
+                    {t("account.apiKeyCopy")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreatedApiKeySecret("")}
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+                  >
+                    {t("account.apiKeyHide")}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {apiKeys.length > 0 ? (
+              <div className="space-y-2">
+                {apiKeys.map((item) => (
+                  <div key={item.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-800">{item.name}</p>
+                        <p className="text-xs text-slate-400">{item.key_prefix}…</p>
+                      </div>
+                      {item.revoked_at ? (
+                        <span className="text-xs text-slate-400">{t("account.apiKeyRevokedLabel")}</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleRevokeApiKey(item)}
+                          disabled={loading}
+                          className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          {t("account.apiKeyRevoke")}
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {item.last_used_at
+                        ? t("account.apiKeyLastUsed", { date: new Date(item.last_used_at).toLocaleString() })
+                        : t("account.apiKeyNeverUsed")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400">{t("account.apiKeyEmpty")}</p>
             )}
           </div>
         </Section>

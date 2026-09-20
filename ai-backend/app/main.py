@@ -22,6 +22,7 @@ from app.routers.admin import router as admin_router
 from app.routers.assistant_workspace_shares import router as assistant_workspace_shares_router
 from app.routers.assistants import router as assistants_router
 from app.routers.billing import router as billing_router
+from app.routers.api_keys import router as api_keys_router
 from app.routers.chat import router as chat_router
 from app.routers.conversations import router as conversations_router
 from app.routers.files import router as files_router
@@ -148,6 +149,7 @@ app.include_router(conversations_router)
 app.include_router(files_router)
 app.include_router(folders_router)
 app.include_router(billing_router)
+app.include_router(api_keys_router)
 app.include_router(notifications_router)
 app.include_router(saved_prompts_router)
 app.include_router(memories_router)
