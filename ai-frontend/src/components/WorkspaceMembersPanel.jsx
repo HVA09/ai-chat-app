@@ -28,7 +28,7 @@ export default function WorkspaceMembersPanel({ workspaceId, workspaceName, work
   const load = async () => {
     setLoading(true);
     try {
-      const [memberList, inviteList, auditList] = await Promise.all([
+      const [memberList, inviteList, auditList, usageData] = await Promise.all([
         listWorkspaceMembers(workspaceId),
         manager ? listWorkspaceInvitations(workspaceId) : Promise.resolve([]),
         manager ? listWorkspaceAuditLogs(workspaceId) : Promise.resolve([]),
