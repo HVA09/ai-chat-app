@@ -1880,6 +1880,11 @@ export default function App() {
               current.trim() ? `/agent ${current.trim()}` : "/agent "
             )
           }
+          onInsertPython={() =>
+            setInput((current) =>
+              current.trim() ? `/python ${current.trim()}` : "/python "
+            )
+          }
           onSend={sendMessage}
           onStop={stopGeneration}
           loading={loading}
