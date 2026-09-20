@@ -62,9 +62,12 @@ import {
 } from "./lib/workspacesApi";
 import {
   listAssistants,
+  listWorkspaceSharedAssistants,
   createAssistant,
   updateAssistant,
   deleteAssistant,
+  shareAssistantWithWorkspace,
+  unshareAssistantFromWorkspace,
 } from "./lib/assistantsApi";
 import {
   listTags,
@@ -429,6 +432,7 @@ export default function App() {
           : list[0]?.id ?? null;
       setSelectedWorkspaceId(nextId);
       setSelectedFolderId(null);
+      await refreshAssistants(nextId);
       await refreshConversations(showArchivedConversations, null, nextId);
     } catch {
       // فشل تحميل مساحات العمل لا يوقف الشات.
@@ -479,6 +483,7 @@ export default function App() {
     setSelectedWorkspaceId(workspaceId);
     setSelectedFolderId(null);
     startNewChat();
+    await refreshAssistants(workspaceId);
     await refreshConversations(showArchivedConversations, null, workspaceId);
   };
 
@@ -636,9 +641,44 @@ export default function App() {
     setError("");
   };
 
-  const refreshAssistants = async () => {
+  const refreshAssistants = async (workspaceId = selectedWorkspaceId) => {
     try {
-      setAssistants(await listAssistants());
+      const owned = (await listAssistants()).map((assistant) => ({
+        ...assistant,
+        is_shared: false,
+        can_edit: true,
+      }));
+
+      let shared = [];
+      if (workspaceId !== null && workspaceId !== undefined) {
+        shared = await listWorkspaceSharedAssistants(workspaceId);
+      }
+
+      const ownedById = new Map(owned.map((assistant) => [assistant.id, assistant]));
+      for (const item of shared) {
+        const existing = ownedById.get(item.id);
+        if (existing) {
+          ownedById.set(item.id, {
+            ...existing,
+            is_shared: true,
+            shared_workspace_id: item.workspace_id,
+            owner_email: item.owner_email,
+            can_edit: true,
+          });
+        } else {
+          ownedById.set(item.id, item);
+        }
+      }
+
+      const merged = Array.from(ownedById.values());
+      setAssistants(merged);
+
+      if (
+        selectedAssistantId !== null &&
+        !merged.some((assistant) => assistant.id === selectedAssistantId)
+      ) {
+        setSelectedAssistantId(null);
+      }
     } catch {
       // فشل تحميل المساعدين لا يوقف الشات.
     }
@@ -654,11 +694,38 @@ export default function App() {
     setShowAssistantEditor(true);
   };
 
+  const handleToggleAssistantShare = async (assistant) => {
+    if (selectedWorkspaceId === null || assistant.can_edit === false) return;
+
+    try {
+      if (assistant.is_shared) {
+        await unshareAssistantFromWorkspace(
+          assistant.id,
+          selectedWorkspaceId
+        );
+        setToast({ message: t("app.assistantUnshared"), type: "success" });
+      } else {
+        await shareAssistantWithWorkspace(
+          assistant.id,
+          selectedWorkspaceId
+        );
+        setToast({ message: t("app.assistantShared"), type: "success" });
+      }
+      await refreshAssistants(selectedWorkspaceId);
+    } catch (err) {
+      setToast({
+        message:
+          err?.response?.data?.detail || t("app.assistantShareError"),
+        type: "error",
+      });
+    }
+  };
+
   const handleSaveAssistant = async ({ name, description, instructions }) => {
     try {
       if (editingAssistantId === null) {
         const assistant = await createAssistant({ name, description, instructions });
-        await refreshAssistants();
+        await refreshAssistants(selectedWorkspaceId);
         setSelectedAssistantId(assistant.id);
         startNewChat();
       } else {
@@ -667,7 +734,7 @@ export default function App() {
           description,
           instructions,
         });
-        await refreshAssistants();
+        await refreshAssistants(selectedWorkspaceId);
         if (selectedAssistantId === editingAssistantId) {
           setSelectedAssistantId(assistant.id);
         }
@@ -695,7 +762,7 @@ export default function App() {
         setSelectedAssistantId(null);
         startNewChat();
       }
-      await refreshAssistants();
+      await refreshAssistants(selectedWorkspaceId);
     } catch (err) {
       setToast({
         message:
@@ -830,7 +897,7 @@ export default function App() {
       refreshWorkspaces();
       refreshFolders();
       refreshTags();
-      refreshAssistants();
+      refreshAssistants(selectedWorkspaceId);
       refreshSavedPrompts();
       refreshBookmarkedMessages();
       refreshCurrentUser();
@@ -1547,6 +1614,8 @@ export default function App() {
         onCreateAssistant={openCreateAssistantEditor}
         onEditAssistant={openEditAssistantEditor}
         onDeleteAssistant={handleDeleteAssistant}
+        onToggleShareAssistant={handleToggleAssistantShare}
+        selectedWorkspaceId={selectedWorkspaceId}
         bookmarkedMessages={bookmarkedMessages}
         onOpenBookmarkedMessage={handleOpenBookmarkedMessage}
         savedPrompts={savedPrompts}
