@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import WorkspaceMembersPanel from "./WorkspaceMembersPanel";
 
@@ -109,9 +110,8 @@ describe("WorkspaceMembersPanel", () => {
   });
 });
 
-
   it("exports workspace usage as CSV", async () => {
-    const user = (await import("@testing-library/user-event")).default.setup();
+    const user = userEvent.setup();
     render(
       <WorkspaceMembersPanel
         workspaceId={7}
@@ -124,3 +124,5 @@ describe("WorkspaceMembersPanel", () => {
     await user.click(await screen.findByRole("button", { name: "Export CSV" }));
     expect(mocks.downloadWorkspaceUsageCsv).toHaveBeenCalledWith(7, 24);
   });
+
+});
