@@ -145,15 +145,20 @@ def _get_default_workspace(current_user: User, db: Session) -> Workspace:
 def _get_or_create_conversation(
     payload: ChatRequest, current_user: User, db: Session
 ) -> Conversation:
-    selected_assistant = (
-        _get_assistant_for_workspace(payload.assistant_id, selected_workspace.id, current_user, db)
-        if payload.assistant_id is not None
-        else None
-    )
     selected_workspace = (
         _get_owned_workspace(payload.workspace_id, current_user, db)
         if payload.workspace_id is not None
         else _get_default_workspace(current_user, db)
+    )
+    selected_assistant = (
+        _get_assistant_for_workspace(
+            payload.assistant_id,
+            selected_workspace.id,
+            current_user,
+            db,
+        )
+        if payload.assistant_id is not None
+        else None
     )
     selected_model = _resolve_requested_model(payload.model)
 
