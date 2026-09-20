@@ -1042,8 +1042,6 @@ def toggle_message_bookmark(
     )
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
-    if conversation.workspace_id is not None:
-        enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
 
     messages = (
         db.query(Message)
@@ -1140,6 +1138,8 @@ async def regenerate_chat_stream(
     )
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
+    if conversation.workspace_id is not None:
+        enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
 
     messages = (
         db.query(Message)
@@ -1217,6 +1217,8 @@ async def edit_chat_stream(
     )
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
+    if conversation.workspace_id is not None:
+        enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
 
     messages = (
         db.query(Message)
