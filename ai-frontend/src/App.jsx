@@ -214,6 +214,7 @@ export default function App() {
     setSelectedFolderId(null);
     setSelectedAssistantId(null);
     setConversationId(null);
+    setParentConversationId(null);
     setConversationSummary(null);
     setConversationSummaryUpdatedAt(null);
     setMessages([getWelcomeMessage(t)]);
