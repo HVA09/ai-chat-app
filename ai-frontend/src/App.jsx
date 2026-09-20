@@ -284,6 +284,12 @@ export default function App() {
     setError("");
   };
 
+  const handleNewChat = () => {
+    setSelectedFolderId(null);
+    startNewChat();
+    refreshConversations(showArchivedConversations, null);
+  };
+
   const openConversation = async (id) => {
     setError("");
     setInput("");
@@ -663,7 +669,7 @@ export default function App() {
       <Sidebar
         conversations={conversations}
         onSelectConversation={openConversation}
-        onNewChat={startNewChat}
+        onNewChat={handleNewChat}
         onRenameConversation={handleRenameConversation}
         onDeleteConversation={handleDeleteConversation}
         onTogglePinConversation={handleTogglePinConversation}
