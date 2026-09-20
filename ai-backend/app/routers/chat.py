@@ -514,6 +514,7 @@ async def analyze_attached_image(
     db.add(
         UsageLog(
             user_id=current_user.id,
+            workspace_id=conversation.workspace_id,
             endpoint="/chat/vision",
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
@@ -626,6 +627,7 @@ async def chat(
         db.add(
             UsageLog(
                 user_id=current_user.id,
+                workspace_id=conversation.workspace_id,
                 endpoint="/chat/agent",
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -662,6 +664,7 @@ async def chat(
         db.add(
             UsageLog(
                 user_id=current_user.id,
+                workspace_id=conversation.workspace_id,
                 endpoint="/chat/tool/calculator",
             )
         )
@@ -702,7 +705,7 @@ async def chat(
                 sources=sources,
             )
         )
-        db.add(UsageLog(user_id=current_user.id, endpoint="/chat/tool/data-analysis"))
+        db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/tool/data-analysis"))
         db.commit()
         return ChatResponse(
             conversation_id=conversation.id,
@@ -732,7 +735,7 @@ async def chat(
                 sources=sources,
             )
         )
-        db.add(UsageLog(user_id=current_user.id, endpoint="/chat/tool/web-search"))
+        db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/tool/web-search"))
         db.commit()
         return ChatResponse(
             conversation_id=conversation.id,
@@ -755,6 +758,7 @@ async def chat(
     db.add(
         UsageLog(
             user_id=current_user.id,
+            workspace_id=conversation.workspace_id,
             endpoint="/chat",
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
@@ -813,6 +817,7 @@ async def chat_stream(
         db.add(
             UsageLog(
                 user_id=current_user.id,
+                workspace_id=conversation.workspace_id,
                 endpoint="/chat/agent",
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -862,6 +867,7 @@ async def chat_stream(
                 db.add(
                     UsageLog(
                         user_id=current_user.id,
+                        workspace_id=conversation.workspace_id,
                         endpoint="/chat/tool/calculator",
                     )
                 )
@@ -914,7 +920,7 @@ async def chat_stream(
                         sources=sources,
                     )
                 )
-                db.add(UsageLog(user_id=current_user.id, endpoint="/chat/tool/data-analysis"))
+                db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/tool/data-analysis"))
                 db.commit()
             except Exception:
                 logger.exception("فشل حفظ تقرير تحليل البيانات لمحادثة %s", conversation.id)
@@ -956,7 +962,7 @@ async def chat_stream(
                         sources=sources,
                     )
                 )
-                db.add(UsageLog(user_id=current_user.id, endpoint="/chat/tool/web-search"))
+                db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/tool/web-search"))
                 db.commit()
             except Exception:
                 logger.exception("فشل حفظ نتائج بحث الويب لمحادثة %s", conversation.id)
@@ -999,7 +1005,7 @@ async def chat_stream(
                     sources=sources or None,
                 )
             )
-            db.add(UsageLog(user_id=current_user.id, endpoint="/chat/stream"))
+            db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/stream"))
             db.commit()
         except Exception:
             logger.exception("فشل حفظ رد البث لمحادثة %s", conversation.id)
@@ -1170,7 +1176,7 @@ async def regenerate_chat_stream(
                     sources=sources or None,
                 )
             )
-            db.add(UsageLog(user_id=current_user.id, endpoint="/chat/regenerate/stream"))
+            db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/regenerate/stream"))
             db.commit()
         except Exception:
             logger.exception("فشل حفظ الرد المعاد توليده لمحادثة %s", conversation.id)
@@ -1248,7 +1254,7 @@ async def edit_chat_stream(
                     sources=sources or None,
                 )
             )
-            db.add(UsageLog(user_id=current_user.id, endpoint="/chat/edit/stream"))
+            db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/edit/stream"))
             db.commit()
         except Exception:
             logger.exception("فشل حفظ الرسالة المعدلة لمحادثة %s", conversation.id)
