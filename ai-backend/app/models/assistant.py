@@ -28,3 +28,6 @@ class Assistant(Base):
 
     owner = relationship("User", back_populates="assistants")
     conversations = relationship("Conversation", back_populates="assistant")
+    workspace_shares = relationship(
+        "AssistantWorkspaceShare", back_populates="assistant", cascade="all, delete-orphan", passive_deletes=True
+    )
