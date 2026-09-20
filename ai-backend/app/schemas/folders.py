@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 class FolderCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
+    workspace_id: int | None = None
 
     @field_validator("name")
     @classmethod
@@ -24,6 +25,7 @@ class FolderOut(BaseModel):
 
     id: int
     name: str
+    workspace_id: int | None
     created_at: datetime
 
 
