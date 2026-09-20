@@ -105,6 +105,7 @@ class ConversationOut(BaseModel):
     is_pinned: bool
     is_archived: bool
     folder_id: int | None
+    project_id: int | None
     assistant_id: int | None
     workspace_id: int
     ai_model: str | None
