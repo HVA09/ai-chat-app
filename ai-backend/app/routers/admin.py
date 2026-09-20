@@ -30,6 +30,7 @@ from app.schemas.admin import (
     AuditLogOut,
     DailyStatsPoint,
     FeedbackAnalytics,
+    ModelUsagePoint,
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -137,6 +138,44 @@ def export_analytics_csv(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=analytics.csv"},
     )
+
+
+@router.get("/analytics/models", response_model=list[ModelUsagePoint])
+def get_model_analytics(
+    days: int = 30,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    days = max(1, min(days, 365))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    rows = (
+        db.query(
+            UsageLog.model,
+            func.count(UsageLog.id),
+            func.coalesce(func.sum(UsageLog.input_tokens), 0),
+            func.coalesce(func.sum(UsageLog.output_tokens), 0),
+        )
+        .filter(UsageLog.created_at >= since)
+        .group_by(UsageLog.model)
+        .order_by(func.coalesce(func.sum(UsageLog.input_tokens), 0).desc() + func.coalesce(func.sum(UsageLog.output_tokens), 0).desc())
+        .all()
+    )
+
+    result = []
+    for model, requests, input_tokens, output_tokens in rows:
+        input_tokens = int(input_tokens or 0)
+        output_tokens = int(output_tokens or 0)
+        result.append(
+            ModelUsagePoint(
+                model=model or "unknown",
+                requests=int(requests or 0),
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=input_tokens + output_tokens,
+            )
+        )
+    return result
 
 
 @router.get("/analytics/feedback", response_model=FeedbackAnalytics)
