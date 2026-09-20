@@ -64,6 +64,8 @@ const resources = {
         imageAnalyzeError: "تعذر تحليل الصورة",
         workspaceCreateError: "تعذر إنشاء مساحة العمل",
         workspaceRenameError: "تعذر إعادة تسمية مساحة العمل",
+        workspaceModelUpdateError: "تعذر تحديث النموذج الافتراضي لمساحة العمل",
+        workspaceModelUpdated: "تم تحديث النموذج الافتراضي لمساحة العمل",
         assistantCreateError: "تعذر إنشاء المساعد",
         assistantRenameError: "تعذر إعادة تسمية المساعد",
         assistantDeleteError: "تعذر حذف المساعد",
@@ -607,6 +609,8 @@ const resources = {
         assistantShareError: "Couldn't update assistant sharing",
         workspaceCreateError: "Couldn't create the workspace",
         workspaceRenameError: "Couldn't rename the workspace",
+        workspaceModelUpdateError: "Couldn't update the workspace default model",
+        workspaceModelUpdated: "Workspace default model updated",
         loginSuccess: "Logged in successfully",
         connectionError: "Couldn't connect to the server",
         sendMessageError: "Couldn't send the message to the server.",
@@ -893,6 +897,20 @@ const resources = {
         confirmRemove: "Remove {{email}} from this workspace?",
         activityTitle: "Workspace activity",
         noActivity: "No activity recorded yet",
+      },
+
+      workspaceModel: {
+        title: "النموذج الافتراضي لمساحة العمل",
+        description: "يُستخدم للمحادثات الجديدة عندما لا تختار نموذجًا آخر.",
+        globalDefault: "النموذج الافتراضي العام",
+        save: "حفظ",
+      },
+
+      workspaceModel: {
+        title: "Workspace default AI model",
+        description: "Used for new conversations when no other model is selected.",
+        globalDefault: "Global default model",
+        save: "Save",
       },
 
       workspaceUsage: {
