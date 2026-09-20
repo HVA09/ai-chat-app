@@ -43,6 +43,7 @@ describe("ChatComposer tools", () => {
   it("زر تحليل البيانات يمرر المعالج", async () => {
     const user = userEvent.setup();
     const onInsertDataAnalysis = vi.fn();
+    const onInsertPython = vi.fn();
 
     render(
       <ChatComposer
@@ -53,6 +54,7 @@ describe("ChatComposer tools", () => {
         onInsertCalculator={vi.fn()}
         onInsertWebSearch={vi.fn()}
         onInsertDataAnalysis={onInsertDataAnalysis}
+        onInsertPython={onInsertPython}
       />
     );
 
