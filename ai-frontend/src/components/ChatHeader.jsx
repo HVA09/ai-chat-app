@@ -14,6 +14,8 @@ export default function ChatHeader({
   onOpenBilling,
   onShareConversation,
   canShareConversation = false,
+  onManageShares,
+  canManageShares = false,
   onExportConversation,
   canExportConversation = false,
   onSummarizeConversation,
@@ -41,14 +43,24 @@ export default function ChatHeader({
           onMarkRead={onMarkNotificationRead}
           onMarkAllRead={onMarkAllNotificationsRead}
         />
-        <button
-          onClick={onShareConversation}
-          disabled={!canShareConversation}
-          title={canShareConversation ? t("sharing.shareButton") : t("sharing.shareDisabled")}
-          className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-slate-400"
-        >
-          {t("sharing.shareButton")}
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onShareConversation}
+            disabled={!canShareConversation}
+            title={canShareConversation ? t("sharing.shareButton") : t("sharing.shareDisabled")}
+            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-slate-400"
+          >
+            {t("sharing.shareButton")}
+          </button>
+          <button
+            onClick={onManageShares}
+            disabled={!canManageShares}
+            title={canManageShares ? t("sharing.manageButton") : t("sharing.shareDisabled")}
+            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-sm shadow-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-slate-400"
+          >
+            ⋯
+          </button>
+        </div>
         <div className="relative">
           <button
             onClick={() => setExportMenuOpen((open) => !open)}

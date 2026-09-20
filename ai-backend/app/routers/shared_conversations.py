@@ -15,6 +15,7 @@ from app.models.user import User
 from app.schemas.chat import ConversationDetail
 from app.schemas.shares import (
     ConversationShareCreate,
+    ConversationShareManageOut,
     ConversationShareOut,
     SharedConversationOut,
     SharedMessageOut,
@@ -84,6 +85,34 @@ def create_conversation_share(
         created_at=share.created_at,
         expires_at=share.expires_at,
     )
+
+
+@router.get(
+    "/conversations/{conversation_id}/shares",
+    response_model=list[ConversationShareManageOut],
+)
+def list_conversation_shares(
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conversation = _get_owned_conversation(conversation_id, current_user, db)
+    now = datetime.now(timezone.utc)
+    shares = (
+        db.query(ConversationShare)
+        .filter(ConversationShare.conversation_id == conversation.id)
+        .order_by(ConversationShare.created_at.desc(), ConversationShare.id.desc())
+        .all()
+    )
+    return [
+        ConversationShareManageOut(
+            id=share.id,
+            created_at=share.created_at,
+            expires_at=share.expires_at,
+            is_expired=share.expires_at is not None and share.expires_at <= now,
+        )
+        for share in shares
+    ]
 
 
 @router.delete(

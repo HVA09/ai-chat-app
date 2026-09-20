@@ -15,6 +15,13 @@ class ConversationShareOut(BaseModel):
     expires_at: datetime | None
 
 
+class ConversationShareManageOut(BaseModel):
+    id: int
+    created_at: datetime
+    expires_at: datetime | None
+    is_expired: bool
+
+
 class SharedMessageOut(BaseModel):
     role: str
     content: str

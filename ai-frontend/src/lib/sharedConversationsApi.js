@@ -7,6 +7,11 @@ export async function createConversationShare(conversationId, expiresInDays = 7)
   return data;
 }
 
+export async function listConversationShares(conversationId) {
+  const { data } = await api.get(`/conversations/${conversationId}/shares`);
+  return data;
+}
+
 export async function revokeConversationShare(conversationId, shareId) {
   await api.delete(`/conversations/${conversationId}/share/${shareId}`);
 }

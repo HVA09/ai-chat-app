@@ -29,6 +29,7 @@ const PricingPage = lazy(() => import("./components/PricingPage"));
 const SharedConversationPage = lazy(() => import("./components/SharedConversationPage"));
 const WorkspaceMembersPanel = lazy(() => import("./components/WorkspaceMembersPanel"));
 const WorkspaceInvitePage = lazy(() => import("./components/WorkspaceInvitePage"));
+const ConversationShareManager = lazy(() => import("./components/ConversationShareManager"));
 import {
   listConversations,
   getConversation,
@@ -145,6 +146,7 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showBilling, setShowBilling] = useState(false);
   const [showWorkspaceMembers, setShowWorkspaceMembers] = useState(false);
+  const [showShareManager, setShowShareManager] = useState(false);
   const [conversationSummary, setConversationSummary] = useState(null);
   const [conversationSummaryUpdatedAt, setConversationSummaryUpdatedAt] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -198,6 +200,7 @@ export default function App() {
     setShowAdmin(false);
     setShowBilling(false);
     setShowWorkspaceMembers(false);
+    setShowShareManager(false);
     setShowTrashConversations(false);
     setConversationSummary(null);
     setConversationSummaryUpdatedAt(null);
@@ -845,6 +848,7 @@ export default function App() {
   };
 
   const startNewChat = () => {
+    setShowShareManager(false);
     setSelectedConversationIds([]);
     setConversationId(null);
     setMessages([getWelcomeMessage(t)]);
@@ -854,6 +858,7 @@ export default function App() {
   };
 
   const openConversation = async (id) => {
+    setShowShareManager(false);
     setSelectedConversationIds([]);
     setError("");
     setInput("");
@@ -1023,6 +1028,11 @@ export default function App() {
         type: "error",
       });
     }
+  };
+
+  const handleManageConversationShares = () => {
+    if (!conversationId || loading) return;
+    setShowShareManager(true);
   };
 
   const handleToggleTrashConversation = async (id) => {
@@ -1530,6 +1540,8 @@ export default function App() {
           onOpenBilling={() => setShowBilling(true)}
           onShareConversation={handleShareConversation}
           canShareConversation={conversationId !== null && !loading}
+          onManageShares={handleManageConversationShares}
+          canManageShares={conversationId !== null && !loading}
           onExportConversation={handleExportConversation}
           canExportConversation={conversationId !== null && !loading}
           onSummarizeConversation={handleSummarizeConversation}
@@ -1682,6 +1694,16 @@ export default function App() {
       </main>
 
       <Toast message={toast?.message} type={toast?.type} onDismiss={() => setToast(null)} />
+
+      {showShareManager && conversationId && (
+        <Suspense fallback={<ModalLoadingFallback />}>
+          <ConversationShareManager
+            conversationId={conversationId}
+            onClose={() => setShowShareManager(false)}
+            onChanged={() => setToast({ message: t("sharing.managementUpdated"), type: "success" })}
+          />
+        </Suspense>
+      )}
 
       {showAccountSettings && (
         <Suspense fallback={<ModalLoadingFallback />}>
