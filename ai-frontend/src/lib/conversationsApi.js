@@ -4,6 +4,7 @@ export async function listConversations(
   includeArchived = false,
   folderId = null,
   workspaceId = null,
+  projectId = null,
   search = "",
   includeDeleted = false,
   tagId = null,
@@ -21,6 +22,9 @@ export async function listConversations(
   }
   if (workspaceId !== null && workspaceId !== undefined) {
     params.workspace_id = workspaceId;
+  }
+  if (projectId !== null && projectId !== undefined) {
+    params.project_id = projectId;
   }
   if (search?.trim()) {
     params.search = search.trim();
