@@ -409,6 +409,7 @@ export default function App() {
         showArchivedConversations,
         selectedFolderId,
         selectedWorkspaceId,
+        selectedProjectId,
         conversationSearch,
         showTrashConversations,
         wasSelected ? null : selectedTagId
@@ -443,6 +444,7 @@ export default function App() {
         showArchivedConversations,
         selectedFolderId,
         selectedWorkspaceId,
+        selectedProjectId,
         conversationSearch,
         showTrashConversations,
         selectedTagId
@@ -591,7 +593,7 @@ export default function App() {
     try {
       await renameFolder(id, newName);
       await refreshFolders(selectedWorkspaceId);
-      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
+      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
     } catch {
       setToast({ message: t("app.folderRenameError"), type: "error" });
     }
@@ -977,7 +979,7 @@ export default function App() {
       ) {
         startNewChat();
       }
-      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
+      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
     } catch {
       setToast({ message: t("app.conversationMoveError"), type: "error" });
     }
@@ -1010,7 +1012,7 @@ export default function App() {
     const failed = results.filter((result) => result.status === "rejected").length;
     if (selectedConversationIds.includes(conversationId)) startNewChat();
     setSelectedConversationIds([]);
-    await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
+    await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
     if (failed) {
       setToast({
         message: t("app.bulkActionError", { count: failed }),
@@ -1034,7 +1036,7 @@ export default function App() {
     const failed = results.filter((result) => result.status === "rejected").length;
     if (selectedIds.includes(conversationId)) startNewChat();
     setSelectedConversationIds([]);
-    await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
+    await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
     if (failed) {
       setToast({
         message: t("app.bulkActionError", { count: failed }),
@@ -1055,7 +1057,7 @@ export default function App() {
       startNewChat();
     }
     setSelectedConversationIds([]);
-    await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
+    await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
     if (failed) {
       setToast({
         message: t("app.bulkActionError", { count: failed }),
@@ -1253,7 +1255,7 @@ export default function App() {
         };
         return next;
       });
-      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
+      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
     } catch (err) {
       setMessages((prev) => prev.slice(0, -2));
       setToast({ message: t("app.imageAnalyzeError"), type: "error" });
@@ -1373,6 +1375,7 @@ export default function App() {
         showArchivedConversations,
         selectedFolderId,
         selectedWorkspaceId,
+        selectedProjectId,
         conversationSearch,
         showTrashConversations
       );
@@ -1385,7 +1388,7 @@ export default function App() {
     try {
       const result = await toggleArchiveConversation(id);
       if (result.is_archived && id === conversationId) startNewChat();
-      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
+      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
     } catch {
       setToast({ message: t("app.archiveConversationError"), type: "error" });
     }
@@ -1398,6 +1401,7 @@ export default function App() {
         showArchivedConversations,
         selectedFolderId,
         selectedWorkspaceId,
+        selectedProjectId,
         conversationSearch,
         showTrashConversations,
         selectedTagId
@@ -1433,6 +1437,7 @@ export default function App() {
         showArchivedConversations,
         selectedFolderId,
         selectedWorkspaceId,
+        selectedProjectId,
         conversationSearch,
         showTrashConversations
       );
@@ -1550,7 +1555,7 @@ export default function App() {
       onDone: () => {
         streamAbortRef.current = null;
         setLoading(false);
-        refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
+        refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
       },
       onError: (message) => {
         streamAbortRef.current = null;
@@ -1618,7 +1623,7 @@ export default function App() {
         streamAbortRef.current = null;
         setLoading(false);
         if (isNewConversation) {
-          refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
+          refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
         }
       },
       onError: (message) => {
