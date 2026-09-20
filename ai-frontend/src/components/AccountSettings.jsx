@@ -37,6 +37,8 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
   const [memoryDraft, setMemoryDraft] = useState("");
   const [apiKeys, setApiKeys] = useState([]);
   const [apiKeyName, setApiKeyName] = useState("");
+  const [apiKeyDailyLimit, setApiKeyDailyLimit] = useState("");
+  const [apiKeyExpiry, setApiKeyExpiry] = useState("");
   const [createdApiKeySecret, setCreatedApiKeySecret] = useState("");
 
   const [setupData, setSetupData] = useState(null);
@@ -80,10 +82,16 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
     runAction(async () => {
       const name = apiKeyName.trim();
       if (!name) return;
-      const created = await createApiKey(name);
+      const created = await createApiKey(
+        name,
+        apiKeyDailyLimit ? Number(apiKeyDailyLimit) : null,
+        apiKeyExpiry || null
+      );
       setApiKeys((prev) => [created, ...prev]);
       setCreatedApiKeySecret(created.secret);
       setApiKeyName("");
+      setApiKeyDailyLimit("");
+      setApiKeyExpiry("");
       setMessage(t("account.apiKeyCreated"));
     });
 
@@ -281,19 +289,39 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
         <Section title={t("account.apiKeysSection")}>
           <div className="space-y-3">
             <p className="text-xs text-slate-500">{t("account.apiKeysDescription")}</p>
-            <div className="flex gap-2">
+            <div className="space-y-2">
               <input
                 type="text"
                 maxLength={100}
                 placeholder={t("account.apiKeyNamePlaceholder")}
                 value={apiKeyName}
                 onChange={(e) => setApiKeyName(e.target.value)}
-                className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-400"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-400"
               />
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <input
+                  type="number"
+                  min="1"
+                  max="10000"
+                  placeholder={t("account.apiKeyDailyLimitPlaceholder")}
+                  value={apiKeyDailyLimit}
+                  onChange={(e) => setApiKeyDailyLimit(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-400"
+                />
+                <input
+                  type="date"
+                  min={new Date().toISOString().slice(0, 10)}
+                  aria-label={t("account.apiKeyExpiryPlaceholder")}
+                  value={apiKeyExpiry}
+                  onChange={(e) => setApiKeyExpiry(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-400"
+                />
+              </div>
+              <p className="text-xs text-slate-400">{t("account.apiKeyControlsHelp")}</p>
               <button
                 onClick={handleCreateApiKey}
                 disabled={loading || !apiKeyName.trim()}
-                className="rounded-xl bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
+                className="w-full rounded-xl bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
               >
                 {t("account.apiKeyCreate")}
               </button>
