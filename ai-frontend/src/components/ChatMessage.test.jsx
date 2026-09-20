@@ -107,4 +107,19 @@ describe("ChatMessage feedback", () => {
     expect(screen.queryByRole("button", { name: "Helpful" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Not helpful" })).not.toBeInTheDocument();
   });
+  it("renders file sources as clickable links", () => {
+    render(
+      <ChatMessage
+        role="assistant"
+        text="إجابة"
+        time="10:00"
+        sources={[{ id: "S1", filename: "linux.pdf", chunk: 2, file_id: 42 }]}
+      />
+    );
+
+    const link = screen.getByRole("link", { name: /\[S1\] linux\.pdf/ });
+    expect(link).toHaveAttribute("href", expect.stringContaining("/files/42"));
+  });
+
 });
+
