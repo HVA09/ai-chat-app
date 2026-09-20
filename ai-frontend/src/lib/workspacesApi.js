@@ -21,3 +21,11 @@ export async function updateWorkspaceDefaultModel(id, model) {
   });
   return data;
 }
+
+
+export async function updateWorkspaceDailyLimit(id, dailyAiRequestLimit) {
+  const { data } = await api.patch(`/workspaces/${id}/limit`, {
+    daily_ai_request_limit: dailyAiRequestLimit,
+  });
+  return data;
+}
