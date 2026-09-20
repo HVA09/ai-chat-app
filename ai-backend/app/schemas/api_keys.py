@@ -1,10 +1,12 @@
-from datetime import datetime
+from datetime import date, datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class APIKeyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
+    daily_request_limit: int | None = Field(default=None, ge=1, le=10000)
+    expires_at: date | None = None
 
     @field_validator("name")
     @classmethod
@@ -12,6 +14,13 @@ class APIKeyCreate(BaseModel):
         v = v.strip()
         if not v:
             raise ValueError("اسم المفتاح لا يمكن أن يكون فارغًا")
+        return v
+
+    @field_validator("expires_at")
+    @classmethod
+    def expiry_not_in_past(cls, v: date | None) -> date | None:
+        if v is not None and v < datetime.now(timezone.utc).date():
+            raise ValueError("تاريخ انتهاء المفتاح لا يمكن أن يكون في الماضي")
         return v
 
 
@@ -24,6 +33,8 @@ class APIKeyOut(BaseModel):
     created_at: datetime
     last_used_at: datetime | None
     revoked_at: datetime | None
+    daily_request_limit: int | None
+    expires_at: date | None
 
 
 class APIKeyCreatedOut(APIKeyOut):
