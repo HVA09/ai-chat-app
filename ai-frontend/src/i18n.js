@@ -32,6 +32,14 @@ const resources = {
       importConversationTooLarge: "ملف الاستيراد كبير جدًا",
       branchConversationSuccess: "تم إنشاء فرع جديد من المحادثة",
       branchConversationError: "تعذر إنشاء فرع للمحادثة",
+      conversationTitle: {
+        generateButton: "توليد عنوان",
+        loading: "جارٍ التوليد...",
+        generated: "تم توليد عنوان المحادثة",
+        disabled: "ابدأ محادثة أولًا",
+        error: "تعذر توليد عنوان المحادثة",
+      },
+
       summary: {
         title: "ملخص المحادثة",
         button: "تلخيص",
@@ -669,6 +677,14 @@ const resources = {
       importConversationTooLarge: "The import file is too large",
       branchConversationSuccess: "Conversation branch created",
       branchConversationError: "Couldn't create a conversation branch",
+      conversationTitle: {
+        generateButton: "Generate title",
+        loading: "Generating...",
+        generated: "Conversation title generated",
+        disabled: "Start a conversation first",
+        error: "Couldn't generate a conversation title",
+      },
+
       summary: {
         title: "Conversation summary",
         button: "Summarize",
