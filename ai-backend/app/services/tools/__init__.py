@@ -1,6 +1,7 @@
 """أدوات آمنة يمكن للمساعد تشغيلها عند الحاجة."""
 
 from app.services.tools.calculator import CalculatorError, calculate_expression, extract_calculator_expression
+from app.services.tools.code_execution import CodeExecutionError, execute_python_code, extract_code_request
 from app.services.tools.data_analysis import (
     DataAnalysisError,
     DataFile,
@@ -19,6 +20,9 @@ __all__ = [
     "CalculatorError",
     "calculate_expression",
     "extract_calculator_expression",
+    "CodeExecutionError",
+    "execute_python_code",
+    "extract_code_request",
     "WebSearchError",
     "WebSearchResult",
     "extract_web_search_query",
