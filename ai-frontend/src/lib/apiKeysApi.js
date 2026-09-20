@@ -13,3 +13,10 @@ export async function createApiKey(name) {
 export async function revokeApiKey(id) {
   await api.delete(`/api-keys/${id}`);
 }
+
+export async function getApiKeyUsage(id, windowHours = 24) {
+  const { data } = await api.get(`/api-keys/${id}/usage`, {
+    params: { window_hours: windowHours },
+  });
+  return data;
+}
