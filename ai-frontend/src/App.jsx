@@ -432,9 +432,12 @@ export default function App() {
           : list[0]?.id ?? null;
       setSelectedWorkspaceId(nextId);
       const selectedWorkspace = list.find((workspace) => workspace.id === nextId);
-      if (selectedWorkspace?.default_ai_model) {
-        setSelectedModel(selectedWorkspace.default_ai_model);
-      }
+      setSelectedModel(
+        selectedWorkspace?.default_ai_model ||
+          aiModels.find((model) => model.is_default)?.id ||
+          aiModels[0]?.id ||
+          ""
+      );
       setSelectedFolderId(null);
       await refreshAssistants(nextId);
       await refreshConversations(showArchivedConversations, null, nextId);
@@ -500,13 +503,12 @@ export default function App() {
     const workspace = workspaces.find((item) => item.id === workspaceId);
     setSelectedWorkspaceId(workspaceId);
     setSelectedFolderId(null);
-    if (workspace?.default_ai_model) {
-      setSelectedModel(workspace.default_ai_model);
-    } else {
-      const fallback =
-        aiModels.find((model) => model.is_default)?.id || aiModels[0]?.id || "";
-      setSelectedModel(fallback);
-    }
+    setSelectedModel(
+      workspace?.default_ai_model ||
+        aiModels.find((model) => model.is_default)?.id ||
+        aiModels[0]?.id ||
+        ""
+    );
     startNewChat();
     await refreshAssistants(workspaceId);
     await refreshConversations(showArchivedConversations, null, workspaceId);
