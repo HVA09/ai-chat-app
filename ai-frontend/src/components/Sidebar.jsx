@@ -59,6 +59,7 @@ export default function Sidebar({
   onBulkMoveToFolder = () => {},
   workspaces = [],
   selectedWorkspaceId = null,
+  selectedWorkspaceRole = "member",
   onSelectWorkspace = () => {},
   onCreateWorkspace = () => {},
   onRenameWorkspace = () => {},
@@ -553,8 +554,12 @@ export default function Sidebar({
                   >
                     📁 {folder.name}
                   </button>
-                  <button type="button" onClick={(e) => handleRenameFolder(e, folder)} title={t("sidebar.renameFolderTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700">✎</button>
-                  <button type="button" onClick={(e) => handleDeleteFolder(e, folder)} title={t("sidebar.deleteFolderTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-red-100 hover:text-red-600">✕</button>
+                  {(!folder.workspace_id || selectedWorkspaceRole === "owner" || selectedWorkspaceRole === "admin") && (
+                    <>
+                      <button type="button" onClick={(e) => handleRenameFolder(e, folder)} title={t("sidebar.renameFolderTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700">✎</button>
+                      <button type="button" onClick={(e) => handleDeleteFolder(e, folder)} title={t("sidebar.deleteFolderTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-red-100 hover:text-red-600">✕</button>
+                    </>
+                  )}
                 </div>
               ))}
             </div>

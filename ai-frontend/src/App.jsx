@@ -439,6 +439,7 @@ export default function App() {
           ""
       );
       setSelectedFolderId(null);
+      await refreshFolders(nextId);
       await refreshAssistants(nextId);
       await refreshConversations(showArchivedConversations, null, nextId);
     } catch {
@@ -456,6 +457,7 @@ export default function App() {
       setSelectedWorkspaceId(workspace.id);
       setSelectedFolderId(null);
       startNewChat();
+      await refreshFolders(workspace.id);
       await refreshAssistants(workspace.id);
       await refreshConversations(showArchivedConversations, null, workspace.id);
     } catch {
@@ -519,13 +521,14 @@ export default function App() {
         ""
     );
     startNewChat();
+    await refreshFolders(workspaceId);
     await refreshAssistants(workspaceId);
     await refreshConversations(showArchivedConversations, null, workspaceId);
   };
 
-  const refreshFolders = async () => {
+  const refreshFolders = async (workspaceId = selectedWorkspaceId) => {
     try {
-      setFolders(await listFolders());
+      setFolders(await listFolders(workspaceId));
     } catch {
       // فشل تحميل المجلدات لا يوقف الشات.
     }
@@ -535,8 +538,8 @@ export default function App() {
     const name = window.prompt(t("sidebar.folderCreatePrompt"));
     if (!name?.trim()) return;
     try {
-      const folder = await createFolder(name.trim());
-      await refreshFolders();
+      const folder = await createFolder(name.trim(), selectedWorkspaceId);
+      await refreshFolders(selectedWorkspaceId);
       setSelectedFolderId(folder.id);
       startNewChat();
       await refreshConversations(showArchivedConversations, folder.id, selectedWorkspaceId);
@@ -548,7 +551,7 @@ export default function App() {
   const handleRenameFolder = async (id, newName) => {
     try {
       await renameFolder(id, newName);
-      await refreshFolders();
+      await refreshFolders(selectedWorkspaceId);
       await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId);
     } catch {
       setToast({ message: t("app.folderRenameError"), type: "error" });
@@ -563,7 +566,7 @@ export default function App() {
         setSelectedFolderId(null);
         startNewChat();
       }
-      await refreshFolders();
+      await refreshFolders(selectedWorkspaceId);
       await refreshConversations(
         showArchivedConversations,
         wasSelected ? null : selectedFolderId,
@@ -931,7 +934,6 @@ export default function App() {
   useEffect(() => {
     if (authed) {
       refreshWorkspaces();
-      refreshFolders();
       refreshTags();
       refreshAssistants(selectedWorkspaceId);
       refreshSavedPrompts();
@@ -1660,6 +1662,10 @@ export default function App() {
         onUseSavedPrompt={handleUseSavedPrompt}
         folders={folders}
         selectedFolderId={selectedFolderId}
+        selectedWorkspaceId={selectedWorkspaceId}
+        selectedWorkspaceRole={
+          workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.role || "member"
+        }
         onSelectFolder={handleSelectFolder}
         onCreateFolder={handleCreateFolder}
         onRenameFolder={handleRenameFolder}

@@ -110,19 +110,36 @@ def list_conversations(
         query = query.filter(Conversation.workspace_id == workspace_id)
 
     if folder_id is not None:
-        owned_folder = (
-            db.query(ConversationFolder)
-            .filter(
-                ConversationFolder.id == folder_id,
-                ConversationFolder.user_id == current_user.id,
-            )
-            .first()
-        )
-        if not owned_folder:
+        folder = db.get(ConversationFolder, folder_id)
+        if not folder:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="المجلد غير موجود",
             )
+
+        if folder.workspace_id is None:
+            if folder.user_id != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="المجلد غير موجود",
+                )
+        else:
+            folder_membership = (
+                db.query(WorkspaceMember)
+                .filter(
+                    WorkspaceMember.workspace_id == folder.workspace_id,
+                    WorkspaceMember.user_id == current_user.id,
+                )
+                .first()
+            )
+            if not folder_membership or (
+                workspace_id is None or folder.workspace_id != workspace_id
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="المجلد غير موجود",
+                )
+
         query = query.filter(Conversation.folder_id == folder_id)
 
     if tag_id is not None:
@@ -473,19 +490,38 @@ def set_conversation_folder(
     conversation = _get_owned_conversation(conversation_id, current_user, db)
 
     if payload.folder_id is not None:
-        owned_folder = (
-            db.query(ConversationFolder)
-            .filter(
-                ConversationFolder.id == payload.folder_id,
-                ConversationFolder.user_id == current_user.id,
-            )
-            .first()
-        )
-        if not owned_folder:
+        folder = db.get(ConversationFolder, payload.folder_id)
+        if not folder:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="المجلد غير موجود",
             )
+
+        if folder.workspace_id is None:
+            if folder.user_id != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="المجلد غير موجود",
+                )
+        else:
+            membership = (
+                db.query(WorkspaceMember)
+                .filter(
+                    WorkspaceMember.workspace_id == folder.workspace_id,
+                    WorkspaceMember.user_id == current_user.id,
+                )
+                .first()
+            )
+            if not membership:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="المجلد غير موجود",
+                )
+            if folder.workspace_id != conversation.workspace_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="لا يمكن نقل المحادثة إلى مجلد من مساحة عمل أخرى",
+                )
 
     conversation.folder_id = payload.folder_id
     db.commit()

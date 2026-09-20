@@ -45,6 +45,11 @@ class Workspace(Base):
         back_populates="workspace",
         passive_deletes=True,
     )
+    conversation_folders = relationship(
+        "ConversationFolder",
+        back_populates="workspace",
+        passive_deletes=True,
+    )
     conversation_shares = relationship(
         "ConversationWorkspaceShare",
         back_populates="workspace",
