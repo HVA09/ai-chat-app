@@ -60,9 +60,6 @@ class Conversation(Base):
     shares = relationship(
         "ConversationShare", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
     )
-    shares = relationship(
-        "ConversationShare", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
-    )
     file_links = relationship(
         "ConversationFileLink", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
     )
