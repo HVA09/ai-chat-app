@@ -115,6 +115,7 @@ def create_workspace(
         id=workspace.id,
         name=workspace.name,
         role=WorkspaceRole.owner,
+        default_ai_model=workspace.default_ai_model,
         created_at=workspace.created_at,
     )
 
