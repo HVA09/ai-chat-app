@@ -1,5 +1,5 @@
 """نموذج مفاتيح API الشخصية للمستخدم."""
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -27,6 +27,6 @@ class APIKey(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     daily_request_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    expires_at: Mapped[datetime | None] = mapped_column(Date, nullable=True)
+    expires_at: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     owner = relationship("User", back_populates="api_keys")
