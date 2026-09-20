@@ -93,7 +93,6 @@ def list_workspace_shared_assistants(
             id=assistant.id,
             name=assistant.name,
             description=assistant.description,
-            instructions=assistant.instructions,
             owner_user_id=assistant.user_id,
             owner_email=owner.email,
             workspace_id=workspace_id,
