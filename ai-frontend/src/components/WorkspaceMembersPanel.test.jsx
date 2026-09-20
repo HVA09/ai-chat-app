@@ -99,7 +99,7 @@ describe("WorkspaceMembersPanel", () => {
 
     expect(await screen.findByText("Workspace AI usage")).toBeInTheDocument();
     expect(screen.getByText("5", { exact: true })).toBeInTheDocument();
-    const totalTokensLabel = screen.getByText("Total tokens");
+    const totalTokensLabel = screen.getByText(/Total tokens/);
     expect(totalTokensLabel.parentElement?.textContent).toContain("100");
     expect(screen.getByText("Owner", { exact: true })).toBeInTheDocument();
   });
