@@ -47,4 +47,4 @@ class AssistantWorkspaceShare(Base):
 
     assistant = relationship("Assistant", back_populates="workspace_shares")
     workspace = relationship("Workspace", back_populates="assistant_shares")
-    shared_by = relationship("User")
+    shared_by = relationship("User", back_populates="assistant_workspace_shares")
