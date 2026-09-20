@@ -385,6 +385,14 @@ const resources = {
         exportError: "تعذر تصدير بيانات الاستخدام",
       },
 
+      workspaceQuota: {
+        title: "حد استخدام الذكاء الاصطناعي",
+        description: "حد اختياري لعدد طلبات AI في مساحة العمل خلال آخر 24 ساعة.",
+        unlimited: "بدون حد مساحة عمل",
+        save: "حفظ الحد",
+        hint: "الحد على مستوى مساحة العمل، ويُطبق على جميع الأعضاء. يبقى حد خطتك الشخصية ساريًا أيضًا.",
+      },
+
       workspaceInvite: {
         title: "دعوة مساحة العمل",
         invalid: "رابط الدعوة غير صالح أو ناقص.",
@@ -945,6 +953,14 @@ const resources = {
         totalShort: "total",
         exportCsv: "Export CSV",
         exportError: "Couldn’t export usage data",
+      },
+
+      workspaceQuota: {
+        title: "Workspace AI request limit",
+        description: "Optional cap for AI requests in this workspace over the last 24 hours.",
+        unlimited: "No workspace limit",
+        save: "Save limit",
+        hint: "This cap applies to all workspace members. Your personal plan limit still applies too.",
       },
 
       workspaceInvite: {
