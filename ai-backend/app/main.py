@@ -29,7 +29,6 @@ from app.routers.notifications import router as notifications_router
 from app.routers.saved_prompts import router as saved_prompts_router
 from app.routers.memories import router as memories_router
 from app.routers.shared_conversations import router as shared_conversations_router
-from app.routers.shared_conversations import router as shared_conversations_router
 from app.routers.users import router as users_router
 from app.routers.tags import router as tags_router
 from app.routers.workspaces import router as workspaces_router
@@ -149,7 +148,6 @@ app.include_router(billing_router)
 app.include_router(notifications_router)
 app.include_router(saved_prompts_router)
 app.include_router(memories_router)
-app.include_router(shared_conversations_router)
 app.include_router(shared_conversations_router)
 app.include_router(admin_router)
 app.include_router(assistants_router)
