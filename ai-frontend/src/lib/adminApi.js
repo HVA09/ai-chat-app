@@ -57,3 +57,9 @@ export async function getFeedbackAnalytics(days = 30) {
   const { data } = await api.get("/admin/analytics/feedback", { params: { days } });
   return data;
 }
+
+
+export async function getModelAnalytics(days = 30) {
+  const { data } = await api.get("/admin/analytics/models", { params: { days } });
+  return data;
+}
