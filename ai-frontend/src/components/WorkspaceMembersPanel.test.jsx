@@ -60,6 +60,16 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("../lib/workspaceMembersApi", () => mocks);
+vi.mock("../lib/workspacesApi", () => ({
+  updateWorkspaceDefaultModel: vi.fn(),
+  updateWorkspaceDailyLimit: vi.fn().mockResolvedValue({
+    id: 7,
+    name: "Demo",
+    role: "owner",
+    default_ai_model: null,
+    daily_ai_request_limit: 40,
+  }),
+}));
 
 describe("WorkspaceMembersPanel", () => {
   beforeEach(() => {
@@ -135,7 +145,6 @@ describe("WorkspaceMembersPanel", () => {
 
   it("updates the workspace daily AI request limit", async () => {
     const user = userEvent.setup();
-    const mocksModule = mocks;
     render(
       <WorkspaceMembersPanel
         workspaceId={7}
@@ -150,5 +159,6 @@ describe("WorkspaceMembersPanel", () => {
     const input = await screen.findByDisplayValue("25");
     await user.clear(input);
     await user.type(input, "40");
-    expect(screen.getByRole("button", { name: "Save limit" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save limit" }));
+    expect(screen.getByDisplayValue("40")).toBeInTheDocument();
   });
