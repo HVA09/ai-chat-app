@@ -29,6 +29,7 @@ from app.schemas.admin import (
     AdminUserUpdate,
     AuditLogOut,
     DailyStatsPoint,
+    FeedbackAnalytics,
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -135,6 +136,47 @@ def export_analytics_csv(
         buffer,
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=analytics.csv"},
+    )
+
+
+@router.get("/analytics/feedback", response_model=FeedbackAnalytics)
+def get_feedback_analytics(
+    days: int = 30,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    days = max(1, min(days, 365))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    positive = (
+        db.query(func.count(Message.id))
+        .filter(
+            Message.created_at >= since,
+            Message.role == "assistant",
+            Message.feedback == 1,
+        )
+        .scalar()
+        or 0
+    )
+    negative = (
+        db.query(func.count(Message.id))
+        .filter(
+            Message.created_at >= since,
+            Message.role == "assistant",
+            Message.feedback == -1,
+        )
+        .scalar()
+        or 0
+    )
+    total_rated = positive + negative
+    positive_rate = round((positive / total_rated) * 100, 1) if total_rated else None
+
+    return FeedbackAnalytics(
+        days=days,
+        total_rated=total_rated,
+        positive=positive,
+        negative=negative,
+        positive_rate=positive_rate,
     )
 
 
