@@ -17,11 +17,9 @@ def _register_and_login(client, email="conv@example.com", password="StrongPass12
 
 
 def test_generate_conversation_title(client, monkeypatch):
-    monkeypatch.setattr(
-        conversations_router_module,
-        "get_ai_reply",
-        AsyncMock(return_value=AIReply(text='  Title: "Python Basics"  ')),
-    )
+    fake_reply = AsyncMock(return_value=AIReply(text='  Title: "Python Basics"  '))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", fake_reply)
+    monkeypatch.setattr(conversations_router_module, "get_ai_reply", fake_reply)
     token = _register_and_login(client, "title@example.com")
     headers = {"Authorization": f"Bearer {token}"}
 
