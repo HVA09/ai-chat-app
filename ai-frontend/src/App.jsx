@@ -291,6 +291,7 @@ export default function App() {
     try {
       const data = await getConversation(id);
       setConversationId(data.id);
+      setSelectedFolderId(data.folder_id ?? null);
       setMessages(
         data.messages.map((m) => ({
           role: m.role,
