@@ -25,6 +25,8 @@ const resources = {
       exportJson: "JSON",
       exportConversationSuccess: "تم تصدير المحادثة",
       exportConversationError: "تعذر تصدير المحادثة",
+      branchConversationSuccess: "تم إنشاء فرع جديد من المحادثة",
+      branchConversationError: "تعذر إنشاء فرع للمحادثة",
       summary: {
         title: "ملخص المحادثة",
         button: "تلخيص",
@@ -609,6 +611,7 @@ const resources = {
       },
 
       tools: {
+        branchConversation: "تفريع المحادثة",
         calculator: "الآلة الحاسبة — أدخل تعبيرًا مثل /calc (12 + 8) * 3",
         webSearch: "بحث الويب — ابحث في المصادر المتاحة عبر الويب",
         dataAnalysis: "تحليل البيانات — حلل ملف CSV أو XLSX مرفق بالمحادثة",
@@ -642,6 +645,8 @@ const resources = {
       exportJson: "JSON",
       exportConversationSuccess: "Conversation exported",
       exportConversationError: "Couldn't export the conversation",
+      branchConversationSuccess: "Conversation branch created",
+      branchConversationError: "Couldn't create a conversation branch",
       summary: {
         title: "Conversation summary",
         button: "Summarize",
@@ -1192,6 +1197,7 @@ const resources = {
       },
 
       tools: {
+        branchConversation: "Branch conversation",
         calculator: "Calculator — enter an expression like /calc (12 + 8) * 3",
         webSearch: "Web search — search available web sources",
         dataAnalysis: "Data analysis — analyze an attached CSV or XLSX file",
