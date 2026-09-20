@@ -1141,6 +1141,7 @@ export default function App() {
       setSelectedAssistantId(data.assistant_id ?? null);
       setSelectedWorkspaceId(data.workspace_id ?? null);
       setSelectedFolderId(data.folder_id ?? null);
+      setSelectedProjectId(data.project_id ?? null);
       setSelectedModel(
         data.ai_model ||
           aiModels.find((model) => model.is_default)?.id ||
@@ -1182,6 +1183,7 @@ export default function App() {
       setConversationSummaryUpdatedAt(null);
       setSelectedAssistantId(null);
       setSelectedFolderId(null);
+      setSelectedProjectId(null);
       setSelectedModel("");
       setMessages(
         data.messages.map((message) => ({
