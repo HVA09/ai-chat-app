@@ -71,8 +71,8 @@ const sampleWorkspaces = [
   { id: 2, name: "Research", role: "owner", created_at: "2026-07-02T10:00:00Z" },
 ];
 const sampleFolders = [
-  { id: 10, name: "عمل", created_at: "2026-07-01T10:00:00Z" },
-  { id: 20, name: "دراسة", created_at: "2026-07-02T10:00:00Z" },
+  { id: 10, name: "عمل", workspace_id: 1, created_at: "2026-07-01T10:00:00Z" },
+  { id: 20, name: "دراسة", workspace_id: null, created_at: "2026-07-02T10:00:00Z" },
 ];
 
 function renderSidebar(overrides = {}) {
@@ -101,6 +101,7 @@ function renderSidebar(overrides = {}) {
     folders: sampleFolders,
     workspaces: sampleWorkspaces,
     selectedWorkspaceId: 1,
+    selectedWorkspaceRole: "owner",
     onSelectWorkspace: vi.fn(),
     onCreateWorkspace: vi.fn(),
     onRenameWorkspace: vi.fn(),
@@ -360,4 +361,11 @@ describe("Sidebar", () => {
     await user.click(screen.getAllByTitle("سلة المحذوفات")[0]);
     expect(onDeleteConversation).not.toHaveBeenCalled();
   });
+});
+
+
+it("عضو مساحة العمل لا يرى أزرار إدارة مجلدات مساحة العمل", () => {
+  renderSidebar({ selectedWorkspaceRole: "member" });
+  expect(screen.queryByTitle("إعادة تسمية المجلد")).not.toBeInTheDocument();
+  expect(screen.queryByTitle("حذف المجلد")).not.toBeInTheDocument();
 });
