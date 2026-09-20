@@ -10,8 +10,17 @@ import {
   listWorkspaceAuditLogs,
   getWorkspaceUsage,
 } from "../lib/workspaceMembersApi";
+import { updateWorkspaceDefaultModel } from "../lib/workspacesApi";
 
-export default function WorkspaceMembersPanel({ workspaceId, workspaceName, workspaceRole, onClose }) {
+export default function WorkspaceMembersPanel({
+  workspaceId,
+  workspaceName,
+  workspaceRole,
+  defaultAiModel,
+  availableModels = [],
+  onWorkspaceUpdated,
+  onClose,
+}) {
   const { t } = useTranslation();
   const [members, setMembers] = useState([]);
   const [invitations, setInvitations] = useState([]);
@@ -21,6 +30,7 @@ export default function WorkspaceMembersPanel({ workspaceId, workspaceName, work
   const [role, setRole] = useState("member");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [defaultModel, setDefaultModel] = useState(defaultAiModel || "");
 
   const manager = workspaceRole === "owner" || workspaceRole === "admin";
   const owner = workspaceRole === "owner";
@@ -44,8 +54,9 @@ export default function WorkspaceMembersPanel({ workspaceId, workspaceName, work
   };
 
   useEffect(() => {
+    setDefaultModel(defaultAiModel || "");
     load();
-  }, [workspaceId, workspaceRole]);
+  }, [workspaceId, workspaceRole, defaultAiModel]);
 
   const invite = async () => {
     if (!email.trim()) return;
@@ -102,6 +113,48 @@ export default function WorkspaceMembersPanel({ workspaceId, workspaceName, work
           </div>
           <button type="button" onClick={onClose} className="rounded-lg px-3 py-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">✕</button>
         </div>
+
+        {manager && (
+          <div className="mt-5 rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-medium">{t("workspaceModel.title")}</h3>
+              <span className="text-xs text-slate-400">{t("workspaceModel.description")}</span>
+            </div>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <select
+                value={defaultModel}
+                disabled={busy}
+                onChange={(e) => setDefaultModel(e.target.value)}
+                className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+              >
+                <option value="">{t("workspaceModel.globalDefault")}</option>
+                {availableModels.map((model) => (
+                  <option key={model.id} value={model.id}>{model.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    const updated = await updateWorkspaceDefaultModel(workspaceId, defaultModel || null);
+                    setDefaultModel(updated.default_ai_model || "");
+                    onWorkspaceUpdated?.(updated);
+                  } catch (err) {
+                    const message = err?.response?.data?.detail || t("app.workspaceModelUpdateError");
+                    window.alert(message);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+                className="rounded-xl bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
+              >
+                {t("workspaceModel.save")}
+              </button>
+            </div>
+          </div>
+        )}
 
         {manager && (
           <div className="mt-5 rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
