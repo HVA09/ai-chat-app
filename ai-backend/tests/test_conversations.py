@@ -58,6 +58,47 @@ def test_list_conversations_supports_title_search(client, monkeypatch):
     assert [item["id"] for item in response.json()] == [first_id]
 
 
+def test_list_conversations_searches_message_content(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="نتيجة فريدة للبحث")),
+    )
+    token = _register_and_login(client, "content-search@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        "/chat",
+        json={"message": "رسالة عادية داخل المحادثة"},
+        headers=headers,
+    )
+    conversation_id = created.json()["conversation_id"]
+
+    no_match = client.get(
+        "/conversations",
+        params={"search": "كلمة_غير_موجودة"},
+        headers=headers,
+    )
+    assert no_match.status_code == 200
+    assert no_match.json() == []
+
+    user_message_search = client.get(
+        "/conversations",
+        params={"search": "رسالة عادية"},
+        headers=headers,
+    )
+    assert user_message_search.status_code == 200
+    assert [item["id"] for item in user_message_search.json()] == [conversation_id]
+
+    assistant_message_search = client.get(
+        "/conversations",
+        params={"search": "فريدة للبحث"},
+        headers=headers,
+    )
+    assert assistant_message_search.status_code == 200
+    assert [item["id"] for item in assistant_message_search.json()] == [conversation_id]
+
+
 def test_list_conversations_sorts_by_last_activity(client, monkeypatch):
     monkeypatch.setattr(
         chat_router_module,

@@ -711,7 +711,7 @@ export default function Sidebar({
 
           <label className="mt-3 block">
             <span className="sr-only">
-              {document.documentElement.lang === "ar" ? "البحث في المحادثات" : "Search conversations"}
+              {document.documentElement.lang === "ar" ? "البحث في العناوين والرسائل" : "Search titles and messages"}
             </span>
             <input
               type="search"
@@ -719,8 +719,8 @@ export default function Sidebar({
               onChange={(event) => setSearch(event.target.value)}
               placeholder={
                 document.documentElement.lang === "ar"
-                  ? "ابحث في المحادثات..."
-                  : "Search conversations..."
+                  ? "ابحث في العناوين والرسائل..."
+                  : "Search titles and messages..."
               }
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-slate-500"
             />
