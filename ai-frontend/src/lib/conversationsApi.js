@@ -6,11 +6,15 @@ export async function listConversations(
   workspaceId = null,
   search = "",
   includeDeleted = false,
-  tagId = null
+  tagId = null,
+  skip = 0,
+  limit = 50
 ) {
   const params = {
     include_archived: includeArchived,
     include_deleted: includeDeleted,
+    skip,
+    limit,
   };
   if (folderId !== null && folderId !== undefined) {
     params.folder_id = folderId;

@@ -38,6 +38,8 @@ vi.mock("react-i18next", () => ({
       "sidebar.selectConversation": "تحديد {{title}}",
       "sidebar.selectAllVisible": "تحديد الكل الظاهر",
       "sidebar.bulkSelected": "{{count}} محددة",
+      "sidebar.loadMore": "تحميل المزيد",
+      "sidebar.loadingMore": "جارٍ التحميل...",
       "sidebar.bulkArchive": "أرشفة المحدد",
       "sidebar.bulkUnarchive": "إلغاء أرشفة المحدد",
       "sidebar.bulkDelete": "حذف المحدد",
@@ -105,6 +107,7 @@ function renderSidebar(overrides = {}) {
     onToggleConversationSelection: vi.fn(),
     onToggleSelectAllVisible: vi.fn(),
     onClearSelectedConversations: vi.fn(),
+    onLoadMore: vi.fn(),
     onBulkArchive: vi.fn(),
     onBulkDelete: vi.fn(),
     onBulkMoveToFolder: vi.fn(),
@@ -164,6 +167,13 @@ describe("Sidebar", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("تحميل المزيد يستدعي المعالج", async () => {
+    const user = userEvent.setup();
+    const { onLoadMore } = renderSidebar({ hasMore: true });
+    await user.click(screen.getByText("تحميل المزيد"));
+    expect(onLoadMore).toHaveBeenCalled();
   });
 
   it("زر محادثة جديدة ينادي onNewChat", async () => {
