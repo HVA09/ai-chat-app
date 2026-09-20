@@ -11,13 +11,14 @@ import {
   getWorkspaceUsage,
   downloadWorkspaceUsageCsv,
 } from "../lib/workspaceMembersApi";
-import { updateWorkspaceDefaultModel } from "../lib/workspacesApi";
+import { updateWorkspaceDailyLimit, updateWorkspaceDefaultModel } from "../lib/workspacesApi";
 
 export default function WorkspaceMembersPanel({
   workspaceId,
   workspaceName,
   workspaceRole,
   defaultAiModel,
+  dailyAiRequestLimit = null,
   availableModels = [],
   onWorkspaceUpdated,
   onClose,
@@ -32,6 +33,9 @@ export default function WorkspaceMembersPanel({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [defaultModel, setDefaultModel] = useState(defaultAiModel || "");
+  const [dailyLimit, setDailyLimit] = useState(
+    dailyAiRequestLimit == null ? "" : String(dailyAiRequestLimit)
+  );
 
   const manager = workspaceRole === "owner" || workspaceRole === "admin";
   const owner = workspaceRole === "owner";
@@ -56,6 +60,7 @@ export default function WorkspaceMembersPanel({
 
   useEffect(() => {
     setDefaultModel(defaultAiModel || "");
+    setDailyLimit(dailyAiRequestLimit == null ? "" : String(dailyAiRequestLimit));
     load();
   }, [workspaceId, workspaceRole, defaultAiModel]);
 
@@ -154,6 +159,53 @@ export default function WorkspaceMembersPanel({
                 {t("workspaceModel.save")}
               </button>
             </div>
+          </div>
+        )}
+
+        {manager && (
+          <div className="mt-5 rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-medium">{t("workspaceQuota.title")}</h3>
+              <span className="text-xs text-slate-400">{t("workspaceQuota.description")}</span>
+            </div>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                type="number"
+                min="1"
+                max="100000"
+                value={dailyLimit}
+                disabled={busy}
+                onChange={(e) => setDailyLimit(e.target.value)}
+                placeholder={t("workspaceQuota.unlimited")}
+                className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+              />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    const normalized = dailyLimit.trim() === "" ? null : Number(dailyLimit);
+                    const updated = await updateWorkspaceDailyLimit(workspaceId, normalized);
+                    setDailyLimit(
+                      updated.daily_ai_request_limit == null
+                        ? ""
+                        : String(updated.daily_ai_request_limit)
+                    );
+                    onWorkspaceUpdated?.(updated);
+                  } catch (err) {
+                    const message = err?.response?.data?.detail || t("app.workspaceQuotaUpdateError");
+                    window.alert(message);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+                className="rounded-xl bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
+              >
+                {t("workspaceQuota.save")}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">{t("workspaceQuota.hint")}</p>
           </div>
         )}
 
