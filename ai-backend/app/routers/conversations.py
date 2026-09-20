@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.database import get_db
-from app.dependencies import enforce_daily_ai_limit, get_current_user
+from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_current_user
 from app.models.assistant import Assistant
 from app.models.conversation import Conversation, Message
 from app.models.conversation_tag import conversation_tag_links
@@ -320,6 +320,8 @@ async def summarize_conversation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="المحادثة غير موجودة",
         )
+    if conversation.workspace_id is not None:
+        enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
 
     prompt = _build_summary_prompt(conversation)
     if "CONVERSATION:\n" not in prompt or not conversation.messages:
