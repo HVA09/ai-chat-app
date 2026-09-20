@@ -140,6 +140,33 @@ def test_daily_analytics_includes_today_with_activity(client, monkeypatch):
     assert today["ai_requests"] >= 1
 
 
+
+def test_model_usage_analytics_groups_usage_by_model(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد", input_tokens=10, output_tokens=20)),
+    )
+    admin_token = _register_and_login(client, "modelusage@example.com", admin=True)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    client.post(
+        "/chat",
+        json={"message": "رسالة", "model": app_settings.AI_MODEL},
+        headers=headers,
+    )
+
+    response = client.get("/admin/analytics/models?days=30", headers=headers)
+    assert response.status_code == 200
+    rows = response.json()
+    matching = next(row for row in rows if row["model"] == app_settings.AI_MODEL)
+    assert matching["requests"] == 1
+    assert matching["input_tokens"] == 10
+    assert matching["output_tokens"] == 20
+    assert matching["total_tokens"] == 30
+
+
+
 def test_daily_analytics_requires_admin(client):
     _register_and_login(client, "first_for_analytics@example.com", admin=True)
     token = _register_and_login(client, "nonadmin_analytics@example.com")
