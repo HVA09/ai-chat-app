@@ -66,8 +66,8 @@ def list_ai_models(current_user: User = Depends(get_current_user)):
     ]
 
 
-def _resolve_requested_model(model: str | None) -> str:
-    selected = (model or settings.AI_MODEL).strip()
+def _resolve_requested_model(model: str | None, fallback_model: str | None = None) -> str:
+    selected = (model or fallback_model or settings.AI_MODEL).strip()
     if selected not in settings.AI_ALLOWED_MODELS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -160,7 +160,10 @@ def _get_or_create_conversation(
         if payload.assistant_id is not None
         else None
     )
-    selected_model = _resolve_requested_model(payload.model)
+    selected_model = _resolve_requested_model(
+        payload.model,
+        selected_workspace.default_ai_model,
+    )
 
     if payload.conversation_id:
         conversation = (

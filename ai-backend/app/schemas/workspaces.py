@@ -27,4 +27,17 @@ class WorkspaceOut(BaseModel):
     id: int
     name: str
     role: WorkspaceRole
+    default_ai_model: str | None
     created_at: datetime
+
+
+class WorkspaceDefaultModelUpdate(BaseModel):
+    model: str | None = Field(default=None, max_length=100)
+
+    @field_validator("model")
+    @classmethod
+    def normalize_model(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None

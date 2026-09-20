@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
@@ -12,7 +13,12 @@ from app.models.usage_log import UsageLog
 from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
 from app.audit import log_event
 from app.schemas.workspace_audit import WorkspaceAuditLogOut
-from app.schemas.workspaces import WorkspaceCreate, WorkspaceOut, WorkspaceRename
+from app.schemas.workspaces import (
+    WorkspaceCreate,
+    WorkspaceDefaultModelUpdate,
+    WorkspaceOut,
+    WorkspaceRename,
+)
 from app.schemas.workspace_usage import WorkspaceUsageMemberOut, WorkspaceUsageOut
 from app.models.audit_log import AuditLog
 
@@ -72,6 +78,7 @@ def list_workspaces(
             id=workspace.id,
             name=workspace.name,
             role=role,
+            default_ai_model=workspace.default_ai_model,
             created_at=workspace.created_at,
         )
         for workspace, role in rows
@@ -108,6 +115,7 @@ def create_workspace(
         id=workspace.id,
         name=workspace.name,
         role=WorkspaceRole.owner,
+        default_ai_model=workspace.default_ai_model,
         created_at=workspace.created_at,
     )
 
@@ -148,6 +156,41 @@ def rename_workspace(
         id=workspace.id,
         name=workspace.name,
         role=membership.role,
+        default_ai_model=workspace.default_ai_model,
+        created_at=workspace.created_at,
+    )
+
+
+@router.patch("/{workspace_id}/model", response_model=WorkspaceOut)
+def update_workspace_default_model(
+    workspace_id: int,
+    payload: WorkspaceDefaultModelUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = _get_membership(workspace_id, current_user, db)
+    if membership.role not in {WorkspaceRole.owner, WorkspaceRole.admin}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="هذه العملية تتطلب صلاحية مدير مساحة العمل",
+        )
+
+    if payload.model is not None and payload.model not in settings.AI_ALLOWED_MODELS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="نموذج الذكاء الاصطناعي غير متاح في الإعدادات الحالية",
+        )
+
+    workspace = membership.workspace
+    workspace.default_ai_model = payload.model
+    db.commit()
+    db.refresh(workspace)
+
+    return WorkspaceOut(
+        id=workspace.id,
+        name=workspace.name,
+        role=membership.role,
+        default_ai_model=workspace.default_ai_model,
         created_at=workspace.created_at,
     )
 
