@@ -4,6 +4,7 @@ import Sidebar from "./components/Sidebar";
 import ChatHeader from "./components/ChatHeader";
 import ChatMessage from "./components/ChatMessage";
 import ChatComposer from "./components/ChatComposer";
+import AssistantEditor from "./components/AssistantEditor";
 import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
@@ -128,6 +129,8 @@ export default function App() {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(null);
   const [assistants, setAssistants] = useState([]);
   const [selectedAssistantId, setSelectedAssistantId] = useState(null);
+  const [showAssistantEditor, setShowAssistantEditor] = useState(false);
+  const [editingAssistantId, setEditingAssistantId] = useState(null);
   const [savedPrompts, setSavedPrompts] = useState([]);
   const [bookmarkedMessages, setBookmarkedMessages] = useState([]);
   const [aiModels, setAiModels] = useState([]);
@@ -628,42 +631,46 @@ export default function App() {
     }
   };
 
-  const handleCreateAssistant = async () => {
-    const name = window.prompt(t("sidebar.assistantCreateNamePrompt"));
-    if (!name?.trim()) return;
-    const instructions = window.prompt(t("sidebar.assistantCreateInstructionsPrompt"));
-    if (!instructions?.trim()) return;
-    const description = window.prompt(t("sidebar.assistantCreateDescriptionPrompt"));
-    try {
-      const assistant = await createAssistant({
-        name: name.trim(),
-        description: description?.trim() || null,
-        instructions: instructions.trim(),
-      });
-      await refreshAssistants();
-      setSelectedAssistantId(assistant.id);
-      startNewChat();
-    } catch (err) {
-      setToast({
-        message:
-          err?.response?.data?.detail || t("app.assistantCreateError"),
-        type: "error",
-      });
-    }
+  const openCreateAssistantEditor = () => {
+    setEditingAssistantId(null);
+    setShowAssistantEditor(true);
   };
 
-  const handleRenameAssistant = async (id, currentName) => {
-    const name = window.prompt(t("sidebar.assistantRenamePrompt"), currentName);
-    if (!name?.trim() || name.trim() === currentName) return;
+  const openEditAssistantEditor = (id) => {
+    setEditingAssistantId(id);
+    setShowAssistantEditor(true);
+  };
+
+  const handleSaveAssistant = async ({ name, description, instructions }) => {
     try {
-      await updateAssistant(id, { name: name.trim() });
-      await refreshAssistants();
+      if (editingAssistantId === null) {
+        const assistant = await createAssistant({ name, description, instructions });
+        await refreshAssistants();
+        setSelectedAssistantId(assistant.id);
+        startNewChat();
+      } else {
+        const assistant = await updateAssistant(editingAssistantId, {
+          name,
+          description,
+          instructions,
+        });
+        await refreshAssistants();
+        if (selectedAssistantId === editingAssistantId) {
+          setSelectedAssistantId(assistant.id);
+        }
+      }
+      setShowAssistantEditor(false);
+      setEditingAssistantId(null);
     } catch (err) {
       setToast({
         message:
-          err?.response?.data?.detail || t("app.assistantRenameError"),
+          err?.response?.data?.detail ||
+          (editingAssistantId === null
+            ? t("app.assistantCreateError")
+            : t("app.assistantUpdateError")),
         type: "error",
       });
+      throw err;
     }
   };
 
@@ -1451,8 +1458,8 @@ export default function App() {
         assistants={assistants}
         selectedAssistantId={selectedAssistantId}
         onSelectAssistant={handleSelectAssistant}
-        onCreateAssistant={handleCreateAssistant}
-        onRenameAssistant={handleRenameAssistant}
+        onCreateAssistant={openCreateAssistantEditor}
+        onEditAssistant={openEditAssistantEditor}
         onDeleteAssistant={handleDeleteAssistant}
         bookmarkedMessages={bookmarkedMessages}
         onOpenBookmarkedMessage={handleOpenBookmarkedMessage}
@@ -1702,6 +1709,21 @@ export default function App() {
         <Suspense fallback={<ModalLoadingFallback />}>
           <AdminDashboard currentUserId={currentUser?.id} onClose={() => setShowAdmin(false)} />
         </Suspense>
+      )}
+
+      {showAssistantEditor && (
+        <AssistantEditor
+          assistant={
+            editingAssistantId === null
+              ? null
+              : assistants.find((assistant) => assistant.id === editingAssistantId) || null
+          }
+          onClose={() => {
+            setShowAssistantEditor(false);
+            setEditingAssistantId(null);
+          }}
+          onSave={handleSaveAssistant}
+        />
       )}
 
       {showBilling && (
