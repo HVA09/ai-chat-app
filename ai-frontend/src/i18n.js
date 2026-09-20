@@ -492,19 +492,6 @@ const resources = {
         readOnly: "هذه المحادثة مشتركة معك للقراءة فقط.",
       },
 
-      workspaceSharing: {
-        title: "Shared workspace conversations",
-        empty: "No conversations have been shared with this workspace",
-        shareButton: "Share with workspace",
-        unshareButton: "Unshare from workspace",
-        shareDisabled: "Choose a workspace and conversation first",
-        shared: "Conversation shared with the workspace",
-        unshared: "Conversation unshared from the workspace",
-        updateError: "Couldn't update workspace sharing",
-        loadError: "Couldn't load the shared conversation",
-        readOnly: "This conversation is shared with you as read-only.",
-      },
-
       sharing: {
         shareButton: "مشاركة",
         shareDisabled: "ابدأ محادثة أولًا للمشاركة",
@@ -987,6 +974,19 @@ const resources = {
       theme: {
         enableLight: "Switch to light mode",
         enableDark: "Switch to dark mode",
+      },
+
+      workspaceSharing: {
+        title: "Shared workspace conversations",
+        empty: "No conversations have been shared with this workspace",
+        shareButton: "Share with workspace",
+        unshareButton: "Unshare from workspace",
+        shareDisabled: "Choose a workspace and conversation first",
+        shared: "Conversation shared with the workspace",
+        unshared: "Conversation unshared from the workspace",
+        updateError: "Couldn't update workspace sharing",
+        loadError: "Couldn't load the shared conversation",
+        readOnly: "This conversation is shared with you as read-only.",
       },
 
       sharing: {
