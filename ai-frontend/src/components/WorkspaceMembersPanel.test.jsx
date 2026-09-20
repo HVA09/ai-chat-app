@@ -108,7 +108,6 @@ describe("WorkspaceMembersPanel", () => {
     expect(totalTokensLabel.parentElement?.textContent).toContain("100");
     expect(screen.getAllByText("Owner", { exact: true }).length).toBeGreaterThan(0);
   });
-});
 
   it("exports workspace usage as CSV", async () => {
     const user = userEvent.setup();
