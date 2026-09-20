@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FixedSizeList } from "react-window";
 import AutoSizer from "react-virtualized-auto-sizer";
@@ -13,6 +13,7 @@ export default function Sidebar({
   conversations,
   onSelectConversation,
   onNewChat,
+  onImportConversation = () => {},
   onRenameConversation,
   onDeleteConversation,
   onTogglePinConversation,
@@ -84,6 +85,7 @@ export default function Sidebar({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState(searchValue);
   const [tagPickerConversationId, setTagPickerConversationId] = useState(null);
+  const importFileInputRef = useRef(null);
 
   useEffect(() => {
     setSearch(searchValue);
@@ -432,6 +434,27 @@ export default function Sidebar({
           >
             {t("newChat")}
           </button>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => importFileInputRef.current?.click()}
+              title={t("sidebar.importConversationTitle")}
+              className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              {t("sidebar.importConversation")}
+            </button>
+            <input
+              ref={importFileInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) onImportConversation(file);
+              }}
+            />
+          </div>
           <div className="mt-2 flex gap-2">
             <button type="button" onClick={() => onShowArchived(!showArchived)} className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">{showArchived ? t("sidebar.backToChats") : t("sidebar.archivedTitle")}</button>
             <button type="button" onClick={() => onShowTrash(!showTrash)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">{showTrash ? t("sidebar.backToChats") : t("sidebar.trashTitle")}</button>
