@@ -126,3 +126,139 @@ def test_cannot_move_conversation_to_other_users_folder(client, monkeypatch):
         headers=headers_b,
     )
     assert response.status_code == 404
+
+
+def _create_workspace(client, headers, name):
+    response = client.post("/workspaces", json={"name": name}, headers=headers)
+    assert response.status_code == 201
+    return response.json()
+
+
+def test_workspace_folders_are_visible_only_inside_the_workspace(client):
+    token = _register_and_login(client, "folder-workspace-owner@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_a = _create_workspace(client, headers, "Team A")
+    workspace_b = _create_workspace(client, headers, "Team B")
+
+    created = client.post(
+        "/folders",
+        json={"name": "Research", "workspace_id": workspace_a["id"]},
+        headers=headers,
+    )
+    assert created.status_code == 201
+    assert created.json()["workspace_id"] == workspace_a["id"]
+
+    in_a = client.get(
+        "/folders",
+        params={"workspace_id": workspace_a["id"]},
+        headers=headers,
+    )
+    assert [item["name"] for item in in_a.json()] == ["Research"]
+
+    in_b = client.get(
+        "/folders",
+        params={"workspace_id": workspace_b["id"]},
+        headers=headers,
+    )
+    assert in_b.status_code == 200
+    assert all(item["name"] != "Research" for item in in_b.json())
+
+
+def test_workspace_members_can_use_but_not_manage_workspace_folder(client, db_session):
+    token_owner = _register_and_login(client, "folder-ws-owner@example.com")
+    headers_owner = {"Authorization": f"Bearer {token_owner}"}
+    workspace = _create_workspace(client, headers_owner, "Shared Team")
+
+    token_member = _register_and_login(client, "folder-ws-member@example.com")
+    user_row = db_session.query(__import__("app.models.user", fromlist=["User"]).User).filter_by(
+        email="folder-ws-member@example.com"
+    ).first()
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace["id"],
+            user_id=user_row.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    db_session.commit()
+
+    headers_member = {"Authorization": f"Bearer {token_member}"}
+    folder = client.post(
+        "/folders",
+        json={"name": "Shared", "workspace_id": workspace["id"]},
+        headers=headers_owner,
+    ).json()
+
+    listed = client.get(
+        "/folders",
+        params={"workspace_id": workspace["id"]},
+        headers=headers_member,
+    )
+    assert listed.status_code == 200
+    assert any(item["id"] == folder["id"] for item in listed.json())
+
+    rename = client.patch(
+        f"/folders/{folder['id']}",
+        json={"name": "Blocked"},
+        headers=headers_member,
+    )
+    assert rename.status_code == 403
+
+    delete = client.delete(
+        f"/folders/{folder['id']}",
+        headers=headers_member,
+    )
+    assert delete.status_code == 403
+
+
+def test_workspace_folder_names_can_repeat_across_workspaces(client):
+    token = _register_and_login(client, "folder-same-name@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_a = _create_workspace(client, headers, "Alpha")
+    workspace_b = _create_workspace(client, headers, "Beta")
+
+    first = client.post(
+        "/folders",
+        json={"name": "Projects", "workspace_id": workspace_a["id"]},
+        headers=headers,
+    )
+    second = client.post(
+        "/folders",
+        json={"name": "Projects", "workspace_id": workspace_b["id"]},
+        headers=headers,
+    )
+    assert first.status_code == 201
+    assert second.status_code == 201
+
+
+def test_workspace_folder_cannot_receive_conversation_from_other_workspace(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "folder-cross-workspace@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_a = _create_workspace(client, headers, "Client A")
+    workspace_b = _create_workspace(client, headers, "Client B")
+
+    folder_b = client.post(
+        "/folders",
+        json={"name": "Only B", "workspace_id": workspace_b["id"]},
+        headers=headers,
+    ).json()
+
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "رسالة", "workspace_id": workspace_a["id"]},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    moved = client.patch(
+        f"/conversations/{conversation_id}/folder",
+        json={"folder_id": folder_b["id"]},
+        headers=headers,
+    )
+    assert moved.status_code == 409
