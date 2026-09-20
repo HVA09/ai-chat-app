@@ -16,7 +16,6 @@ class WorkspaceSharedAssistantOut(BaseModel):
     id: int
     name: str
     description: str | None
-    instructions: str
     owner_user_id: int
     owner_email: str
     workspace_id: int
