@@ -92,8 +92,8 @@ def _get_assistant_for_workspace(
         .filter(
             Assistant.id == assistant_id,
             (
-                Assistant.user_id == current_user.id
-                | (AssistantWorkspaceShare.id.is_not(None))
+                (Assistant.user_id == current_user.id)
+                | AssistantWorkspaceShare.id.is_not(None)
             ),
         )
         .first()
@@ -293,8 +293,8 @@ def _build_assistant_context(
         .filter(
             Assistant.id == conversation.assistant_id,
             (
-                Assistant.user_id == conversation.user_id
-                | (AssistantWorkspaceShare.id.is_not(None))
+                (Assistant.user_id == conversation.user_id)
+                | AssistantWorkspaceShare.id.is_not(None)
             ),
         )
         .first()
