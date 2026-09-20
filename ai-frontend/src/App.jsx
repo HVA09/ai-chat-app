@@ -449,6 +449,7 @@ export default function App() {
       setSelectedWorkspaceId(workspace.id);
       setSelectedFolderId(null);
       startNewChat();
+      await refreshAssistants(workspace.id);
       await refreshConversations(showArchivedConversations, null, workspace.id);
     } catch {
       setToast({ message: t("app.workspaceCreateError"), type: "error" });
@@ -1615,7 +1616,6 @@ export default function App() {
         onEditAssistant={openEditAssistantEditor}
         onDeleteAssistant={handleDeleteAssistant}
         onToggleShareAssistant={handleToggleAssistantShare}
-        selectedWorkspaceId={selectedWorkspaceId}
         bookmarkedMessages={bookmarkedMessages}
         onOpenBookmarkedMessage={handleOpenBookmarkedMessage}
         savedPrompts={savedPrompts}
