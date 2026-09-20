@@ -352,6 +352,7 @@ async def summarize_conversation(
         UsageLog(
             user_id=current_user.id,
             workspace_id=conversation.workspace_id,
+            model=conversation.ai_model,
             endpoint="/conversations/summary",
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
