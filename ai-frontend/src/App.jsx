@@ -431,6 +431,10 @@ export default function App() {
           ? selectedWorkspaceId
           : list[0]?.id ?? null;
       setSelectedWorkspaceId(nextId);
+      const selectedWorkspace = list.find((workspace) => workspace.id === nextId);
+      if (selectedWorkspace?.default_ai_model) {
+        setSelectedModel(selectedWorkspace.default_ai_model);
+      }
       setSelectedFolderId(null);
       await refreshAssistants(nextId);
       await refreshConversations(showArchivedConversations, null, nextId);
@@ -478,11 +482,31 @@ export default function App() {
     if (selectedWorkspaceId !== null) setShowWorkspaceMembers(true);
   };
 
+  const handleWorkspaceUpdated = (updated) => {
+    setWorkspaces((prev) =>
+      prev.map((workspace) =>
+        workspace.id === updated.id ? { ...workspace, ...updated } : workspace
+      )
+    );
+    if (updated.id === selectedWorkspaceId && updated.default_ai_model) {
+      setSelectedModel(updated.default_ai_model);
+    }
+    setToast({ message: t("app.workspaceModelUpdated"), type: "success" });
+  };
+
   const handleSelectWorkspace = async (id) => {
     const workspaceId = Number(id);
     if (!workspaceId || workspaceId === selectedWorkspaceId) return;
+    const workspace = workspaces.find((item) => item.id === workspaceId);
     setSelectedWorkspaceId(workspaceId);
     setSelectedFolderId(null);
+    if (workspace?.default_ai_model) {
+      setSelectedModel(workspace.default_ai_model);
+    } else {
+      const fallback =
+        aiModels.find((model) => model.is_default)?.id || aiModels[0]?.id || "";
+      setSelectedModel(fallback);
+    }
     startNewChat();
     await refreshAssistants(workspaceId);
     await refreshConversations(showArchivedConversations, null, workspaceId);
@@ -1923,6 +1947,11 @@ export default function App() {
             workspaceRole={
               workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.role || "member"
             }
+            defaultAiModel={
+              workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.default_ai_model || ""
+            }
+            availableModels={aiModels}
+            onWorkspaceUpdated={handleWorkspaceUpdated}
             onClose={() => setShowWorkspaceMembers(false)}
           />
         </Suspense>
