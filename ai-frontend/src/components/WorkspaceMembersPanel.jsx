@@ -9,6 +9,7 @@ import {
   updateWorkspaceMemberRole,
   listWorkspaceAuditLogs,
   getWorkspaceUsage,
+  downloadWorkspaceUsageCsv,
 } from "../lib/workspaceMembersApi";
 import { updateWorkspaceDefaultModel } from "../lib/workspacesApi";
 
@@ -262,7 +263,26 @@ export default function WorkspaceMembersPanel({
           <div className="mt-5 rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-medium">{t("workspaceUsage.title")}</h3>
-              <span className="text-xs text-slate-400">{t("workspaceUsage.window", { hours: usage.window_hours })}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400">{t("workspaceUsage.window", { hours: usage.window_hours })}</span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      await downloadWorkspaceUsageCsv(workspaceId, usage.window_hours);
+                    } catch {
+                      window.alert(t("workspaceUsage.exportError"));
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                  className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  {t("workspaceUsage.exportCsv")}
+                </button>
+              </div>
             </div>
 
             <div className="mt-3 grid gap-2 sm:grid-cols-3">
