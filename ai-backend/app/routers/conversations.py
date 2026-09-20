@@ -463,7 +463,7 @@ def _build_title_prompt(conversation: Conversation) -> str:
 def _normalize_generated_title(raw_title: str) -> str:
     title = " ".join(raw_title.strip().split())
     title = re.sub(r"^(?:title|العنوان)\s*:\s*", "", title, flags=re.IGNORECASE)
-    title = title.strip().strip(""'“”‘’")
+    title = title.strip().strip(' "“”‘’')
     title = re.sub(r"[.!؟?]+$", "", title).strip()
     return title[:255].strip()
 
