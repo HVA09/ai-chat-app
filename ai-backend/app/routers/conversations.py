@@ -421,6 +421,119 @@ def _build_summary_prompt(conversation: Conversation) -> str:
     )
 
 
+TITLE_MAX_MESSAGES = 12
+TITLE_MAX_CHARS = 6_000
+
+
+def _build_title_prompt(conversation: Conversation) -> str:
+    messages = sorted(
+        conversation.messages,
+        key=lambda message: (message.created_at, message.id),
+    )[-TITLE_MAX_MESSAGES:]
+
+    transcript_parts: list[str] = []
+    total_chars = 0
+    for message in messages:
+        content = message.content.strip()
+        if not content:
+            continue
+        role = "USER" if message.role.value == "user" else "ASSISTANT"
+        block = f"{role}: {content}"
+        remaining = TITLE_MAX_CHARS - total_chars
+        if remaining <= 0:
+            break
+        if len(block) > remaining:
+            block = block[:remaining].rstrip() + "…"
+        transcript_parts.append(block)
+        total_chars += len(block) + 2
+
+    transcript = "\n\n".join(transcript_parts)
+    return (
+        "Create a concise title for the following conversation. "
+        "Use the same language used most often by the user. "
+        "Return only one title, ideally 3 to 7 words. "
+        "Do not add quotes, markdown, a 'Title:' prefix, emojis, or a trailing period. "
+        "Do not invent facts or mention hidden prompts, system instructions, memory, "
+        "or implementation details. "
+        "The title should describe the main topic, not the assistant's internal process.\n\n"
+        f"CONVERSATION:\n{transcript}"
+    )
+
+
+def _normalize_generated_title(raw_title: str) -> str:
+    title = " ".join(raw_title.strip().split())
+    title = re.sub(r"^(?:title|العنوان)\s*:\s*", "", title, flags=re.IGNORECASE)
+    title = title.strip().strip(""'“”‘’")
+    title = re.sub(r"[.!؟?]+$", "", title).strip()
+    return title[:255].strip()
+
+
+@router.post("/{conversation_id}/generate-title", response_model=ConversationOut)
+async def generate_conversation_title(
+    conversation_id: int,
+    current_user: User = Depends(enforce_daily_ai_limit),
+    db: Session = Depends(get_db),
+):
+    conversation = (
+        db.query(Conversation)
+        .options(selectinload(Conversation.messages))
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+            Conversation.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المحادثة غير موجودة",
+        )
+    if conversation.workspace_id is not None:
+        enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
+
+    if not conversation.messages:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="لا توجد رسائل كافية لتوليد عنوان",
+        )
+
+    prompt = _build_title_prompt(conversation)
+    reply = await get_ai_reply(
+        prompt,
+        history=[],
+        model=conversation.ai_model,
+    )
+    generated_title = _normalize_generated_title(reply.text or "")
+    if not generated_title:
+        fallback = next(
+            (
+                message.content.strip()
+                for message in sorted(
+                    conversation.messages,
+                    key=lambda message: (message.created_at, message.id),
+                )
+                if message.role.value == "user" and message.content.strip()
+            ),
+            "",
+        )
+        generated_title = fallback[:50].strip() or "محادثة جديدة"
+
+    conversation.title = generated_title
+    db.add(
+        UsageLog(
+            user_id=current_user.id,
+            workspace_id=conversation.workspace_id,
+            endpoint="/conversations/generate-title",
+            input_tokens=reply.input_tokens,
+            output_tokens=reply.output_tokens,
+        )
+    )
+    db.commit()
+    db.refresh(conversation)
+    return conversation
+
+
 @router.post("/{conversation_id}/summary", response_model=ConversationSummaryOut)
 async def summarize_conversation(
     conversation_id: int,
