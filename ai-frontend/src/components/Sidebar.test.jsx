@@ -365,7 +365,10 @@ describe("Sidebar", () => {
 
 
 it("عضو مساحة العمل لا يرى أزرار إدارة مجلدات مساحة العمل", () => {
-  renderSidebar({ selectedWorkspaceRole: "member" });
+  renderSidebar({
+    selectedWorkspaceRole: "member",
+    folders: sampleFolders.map((folder) => ({ ...folder, workspace_id: 1 })),
+  });
   expect(screen.queryByTitle("إعادة تسمية المجلد")).not.toBeInTheDocument();
   expect(screen.queryByTitle("حذف المجلد")).not.toBeInTheDocument();
 });
