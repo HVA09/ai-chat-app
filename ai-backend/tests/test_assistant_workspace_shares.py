@@ -1,6 +1,8 @@
 """اختبارات مشاركة المساعدين داخل مساحة العمل."""
 from unittest.mock import AsyncMock
 
+from app.models.user import User
+from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
 
@@ -10,6 +12,19 @@ def _register_and_login(client, email, password="StrongPass123"):
     response = client.post("/auth/login", json={"email": email, "password": password})
     assert response.status_code == 200
     return client.cookies.get("access_token")
+
+
+def _add_workspace_member(db_session, workspace_id, email):
+    user = db_session.query(User).filter(User.email == email).first()
+    assert user is not None
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace_id,
+            user_id=user.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    db_session.commit()
 
 
 def _create_workspace(client, token, name="Team"):
@@ -22,19 +37,14 @@ def _create_workspace(client, token, name="Team"):
     return response.json()["id"]
 
 
-def test_share_list_unshare_assistant(client):
+def test_share_list_unshare_assistant(client, db_session):
     owner_token = _register_and_login(client, "assistant-share-owner@example.com")
     member_token = _register_and_login(client, "assistant-share-member@example.com")
     owner_headers = {"Authorization": f"Bearer {owner_token}"}
     member_headers = {"Authorization": f"Bearer {member_token}"}
 
     workspace_id = _create_workspace(client, owner_token)
-    invite = client.post(
-        f"/workspaces/{workspace_id}/members",
-        json={"email": "assistant-share-member@example.com", "role": "member"},
-        headers=owner_headers,
-    )
-    assert invite.status_code in {200, 201}
+    _add_workspace_member(db_session, workspace_id, "assistant-share-member@example.com")
 
     assistant = client.post(
         "/assistants",
@@ -71,7 +81,7 @@ def test_share_list_unshare_assistant(client):
     ).json() == []
 
 
-def test_shared_assistant_can_be_used_in_chat(client, monkeypatch):
+def test_shared_assistant_can_be_used_in_chat(client, db_session, monkeypatch):
     mock_reply = AsyncMock(return_value=AIReply(text="رد مشترك"))
     monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
 
@@ -81,12 +91,7 @@ def test_shared_assistant_can_be_used_in_chat(client, monkeypatch):
     member_headers = {"Authorization": f"Bearer {member_token}"}
     workspace_id = _create_workspace(client, owner_token)
 
-    invite = client.post(
-        f"/workspaces/{workspace_id}/members",
-        json={"email": "shared-chat-member@example.com", "role": "member"},
-        headers=owner_headers,
-    )
-    assert invite.status_code in {200, 201}
+    _add_workspace_member(db_session, workspace_id, "shared-chat-member@example.com")
 
     assistant = client.post(
         "/assistants",
@@ -149,17 +154,13 @@ def test_non_member_cannot_view_or_use_shared_assistant(client, monkeypatch):
     ).status_code == 404
 
 
-def test_non_owner_cannot_unshare_assistant(client):
+def test_non_owner_cannot_unshare_assistant(client, db_session):
     owner_token = _register_and_login(client, "unshare-owner@example.com")
     member_token = _register_and_login(client, "unshare-member@example.com")
     owner_headers = {"Authorization": f"Bearer {owner_token}"}
     member_headers = {"Authorization": f"Bearer {member_token}"}
     workspace_id = _create_workspace(client, owner_token)
-    assert client.post(
-        f"/workspaces/{workspace_id}/members",
-        json={"email": "unshare-member@example.com", "role": "member"},
-        headers=owner_headers,
-    ).status_code in {200, 201}
+    _add_workspace_member(db_session, workspace_id, "unshare-member@example.com")
     assistant = client.post(
         "/assistants",
         json={"name": "Owner Only", "instructions": "صالح"},
