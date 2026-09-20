@@ -34,6 +34,11 @@ def test_workspace_usage_requires_owner_or_admin(client, db_session):
                 role=WorkspaceRole.owner,
             ),
             WorkspaceMember(
+                workspace_id=other_workspace.id,
+                user_id=owner["id"],
+                role=WorkspaceRole.owner,
+            ),
+            WorkspaceMember(
                 workspace_id=workspace.id,
                 user_id=member["id"],
                 role=WorkspaceRole.member,
@@ -64,7 +69,8 @@ def test_workspace_usage_aggregates_members_and_ignores_non_members(client, db_s
     ).json()
 
     workspace = Workspace(owner_id=owner["id"], name="Usage Workspace")
-    db_session.add(workspace)
+    other_workspace = Workspace(owner_id=owner["id"], name="Other Workspace")
+    db_session.add_all([workspace, other_workspace])
     db_session.flush()
     db_session.add_all(
         [
@@ -80,6 +86,7 @@ def test_workspace_usage_aggregates_members_and_ignores_non_members(client, db_s
             ),
             UsageLog(
                 user_id=owner["id"],
+                workspace_id=workspace.id,
                 endpoint="/chat",
                 input_tokens=10,
                 output_tokens=20,
@@ -87,6 +94,7 @@ def test_workspace_usage_aggregates_members_and_ignores_non_members(client, db_s
             ),
             UsageLog(
                 user_id=owner["id"],
+                workspace_id=workspace.id,
                 endpoint="/chat",
                 input_tokens=1,
                 output_tokens=2,
@@ -94,6 +102,7 @@ def test_workspace_usage_aggregates_members_and_ignores_non_members(client, db_s
             ),
             UsageLog(
                 user_id=member["id"],
+                workspace_id=workspace.id,
                 endpoint="/chat",
                 input_tokens=7,
                 output_tokens=3,
@@ -101,6 +110,7 @@ def test_workspace_usage_aggregates_members_and_ignores_non_members(client, db_s
             ),
             UsageLog(
                 user_id=member["id"],
+                workspace_id=workspace.id,
                 endpoint="/chat",
                 input_tokens=100,
                 output_tokens=100,
@@ -108,6 +118,7 @@ def test_workspace_usage_aggregates_members_and_ignores_non_members(client, db_s
             ),
             UsageLog(
                 user_id=outsider["id"],
+                workspace_id=other_workspace.id,
                 endpoint="/chat",
                 input_tokens=999,
                 output_tokens=999,
@@ -137,3 +148,6 @@ def test_workspace_usage_aggregates_members_and_ignores_non_members(client, db_s
     assert members["usage-owner-2@example.com"]["total_tokens"] == 33
     assert members["usage-member-2@example.com"]["used_requests"] == 1
     assert members["usage-member-2@example.com"]["total_tokens"] == 10
+
+    # العضو نفسه موجود في مساحة أخرى، لكن استخدامه هناك لا يظهر في هذه المساحة.
+    assert data["total_tokens"] == 43
