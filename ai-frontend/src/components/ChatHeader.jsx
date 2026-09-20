@@ -26,6 +26,8 @@ export default function ChatHeader({
   summaryLoading = false,
   conversationBranches = [],
   onOpenConversationBranch = () => {},
+  parentConversationId = null,
+  onOpenParentConversation = () => {},
   isAdmin,
   notifications,
   onMarkNotificationRead,
@@ -75,6 +77,16 @@ export default function ChatHeader({
             ⋯
           </button>
         </div>
+        {parentConversationId !== null && (
+          <button
+            type="button"
+            onClick={() => onOpenParentConversation(parentConversationId)}
+            title={t("chat.parentConversationTitle")}
+            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-900"
+          >
+            {t("chat.parentConversation")}
+          </button>
+        )}
         <div className="relative">
           <button
             onClick={() => setBranchMenuOpen((open) => !open)}
