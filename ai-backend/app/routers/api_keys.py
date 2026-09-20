@@ -267,6 +267,7 @@ async def developer_chat(
         UsageLog(
             user_id=current_user.id,
             workspace_id=conversation.workspace_id,
+            model=conversation.ai_model,
             endpoint="/v1/chat",
             api_key_id=api_key.id,
             input_tokens=reply.input_tokens,
