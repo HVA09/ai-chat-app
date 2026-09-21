@@ -81,6 +81,49 @@ def test_list_conversations_supports_title_search(client, monkeypatch):
     assert [item["id"] for item in response.json()] == [first_id]
 
 
+def test_list_conversations_ranks_exact_title_match_first(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "search-ranking@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post(
+        "/chat",
+        json={"message": "حول موضوع مختلف تمامًا"},
+        headers=headers,
+    )
+    second = client.post(
+        "/chat",
+        json={"message": "معلومة عن بايثون"},
+        headers=headers,
+    )
+
+    first_id = first.json()["conversation_id"]
+    second_id = second.json()["conversation_id"]
+
+    client.patch(
+        f"/conversations/{first_id}",
+        json={"title": "Python"},
+        headers=headers,
+    )
+    client.patch(
+        f"/conversations/{second_id}",
+        json={"title": "تعلم Python للمبتدئين"},
+        headers=headers,
+    )
+
+    response = client.get(
+        "/conversations",
+        params={"search": "Python"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [first_id, second_id]
+
+
 def test_list_conversations_searches_message_content(client, monkeypatch):
     monkeypatch.setattr(
         chat_router_module,
