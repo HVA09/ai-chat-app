@@ -7,13 +7,11 @@ from datetime import datetime, timedelta, timezone
 from app.database import SessionLocal
 from app.logging_config import get_logger
 from app.models.conversation import Conversation, Message, MessageRole
-from app.models.notification import Notification
 from app.models.scheduled_task import ScheduledTask, ScheduledTaskType
 from app.models.usage_log import UsageLog
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace, WorkspaceMember
 from app.notifications import notify
-from app.services.ai_providers.factory import get_provider
 from app.services.ai_service import get_ai_reply
 from app.services.email_service import send_email
 from app.dependencies import get_daily_ai_limit
