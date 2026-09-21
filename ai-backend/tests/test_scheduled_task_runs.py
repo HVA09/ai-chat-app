@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 from app.models.scheduled_task_run import ScheduledTaskRunStatus
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
-from app.tasks import _execute_scheduled_task
+from app import tasks as tasks_module
 
 
 def _register_and_login(client, email, password="StrongPass123"):
@@ -43,6 +43,7 @@ def test_manual_run_creates_history_and_conversation(client, monkeypatch):
         "get_ai_reply",
         AsyncMock(return_value=AIReply(text="نتيجة مجدولة")),
     )
+    monkeypatch.setattr(tasks_module, "execute_scheduled_task", None)
     token = _register_and_login(client, "scheduled-run@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     workspace = _create_workspace(client, token)
@@ -55,10 +56,6 @@ def test_manual_run_creates_history_and_conversation(client, monkeypatch):
     assert response.status_code in {200, 202}
     run = response.json()
     assert run["scheduled_task_id"] == task["id"]
-
-    if run["status"] == ScheduledTaskRunStatus.queued.value:
-        # CI does not run a worker, so history can be checked after direct fallback
-        _execute_scheduled_task(task["id"], run["id"])
 
     history = client.get(
         f"/scheduled-tasks/{task['id']}/runs",
@@ -94,6 +91,7 @@ def test_failed_manual_run_is_recorded(client, monkeypatch):
         "get_ai_reply",
         AsyncMock(side_effect=RuntimeError("provider down")),
     )
+    monkeypatch.setattr(tasks_module, "execute_scheduled_task", None)
     token = _register_and_login(client, "scheduled-error@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     workspace = _create_workspace(client, token)
@@ -102,9 +100,6 @@ def test_failed_manual_run_is_recorded(client, monkeypatch):
     response = client.post(f"/scheduled-tasks/{task['id']}/run", headers=headers)
     assert response.status_code in {200, 202}
     run = response.json()
-
-    if run["status"] == ScheduledTaskRunStatus.queued.value:
-        _execute_scheduled_task(task["id"], run["id"])
 
     history = client.get(
         f"/scheduled-tasks/{task['id']}/runs",
