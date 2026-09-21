@@ -47,6 +47,7 @@ vi.mock("react-i18next", () => ({
         "scheduledTasks.runNowError": "تعذر تشغيل المهمة الآن",
         "scheduledTasks.finishedAt": "انتهى: {{date}}",
         "scheduledTasks.conversationCreated": "تم إنشاء محادثة من هذا التنفيذ",
+        "scheduledTasks.openConversation": "فتح المحادثة",
         "scheduledTasks.status.queued": "في الانتظار",
         "scheduledTasks.status.running": "جارٍ التنفيذ",
         "scheduledTasks.status.succeeded": "نجح",
@@ -154,5 +155,52 @@ describe("ScheduledTasksPanel", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "إخفاء السجل" })).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText("نجح")).toBeInTheDocument());
     expect(screen.getByText("تم إنشاء محادثة من هذا التنفيذ")).toBeInTheDocument();
+  });
+
+  it("يفتح المحادثة الناتجة من سجل التنفيذ", async () => {
+    const user = userEvent.setup();
+    const onOpenConversation = vi.fn();
+    api.listScheduledTasks.mockResolvedValue([
+      {
+        id: 1,
+        workspace_id: 7,
+        prompt: "لخص الأخبار",
+        schedule_type: "once",
+        next_run_at: "2026-09-22T10:00:00Z",
+        is_active: true,
+        last_run_at: null,
+        last_error: null,
+      },
+    ]);
+    api.listScheduledTaskRuns.mockResolvedValue([
+      {
+        id: 5,
+        scheduled_task_id: 1,
+        workspace_id: 7,
+        prompt: "لخص الأخبار",
+        status: "succeeded",
+        started_at: "2026-09-21T10:00:00Z",
+        finished_at: "2026-09-21T10:00:02Z",
+        conversation_id: 44,
+        error: null,
+        created_at: "2026-09-21T10:00:00Z",
+      },
+    ]);
+
+    render(
+      <ScheduledTasksPanel
+        workspaces={[{ id: 7, name: "عمل" }]}
+        selectedWorkspaceId={7}
+        onOpenConversation={onOpenConversation}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText("لخص الأخبار")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "سجل التنفيذ" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "فتح المحادثة" })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "فتح المحادثة" }));
+
+    expect(onOpenConversation).toHaveBeenCalledWith(44);
   });
 });
