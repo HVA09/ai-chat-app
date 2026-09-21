@@ -19,3 +19,13 @@ export async function updateScheduledTask(id, payload) {
 export async function deleteScheduledTask(id) {
   await api.delete(`/scheduled-tasks/${id}`);
 }
+
+export async function runScheduledTask(id) {
+  const { data } = await api.post(`/scheduled-tasks/${id}/run`);
+  return data;
+}
+
+export async function listScheduledTaskRuns(id, limit = 20) {
+  const { data } = await api.get(`/scheduled-tasks/${id}/runs`, { params: { limit } });
+  return data;
+}
