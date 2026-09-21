@@ -319,6 +319,7 @@ export default function ScheduledTasksPanel({
                   </div>
                 )}
                 </div>
+                </div>
               ))}
             </div>
           )}
