@@ -50,6 +50,7 @@ def test_get_ai_reply_uses_fallback_on_rate_limit(monkeypatch):
     monkeypatch.setattr(app_settings, "AI_FALLBACK_PROVIDER", "anthropic")
     monkeypatch.setattr(app_settings, "AI_FALLBACK_API_KEY", "fallback")
     monkeypatch.setattr(app_settings, "AI_FALLBACK_MODEL", "claude-test")
+    monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["gemini-2.5-flash"])
 
     result = asyncio.run(ai_service.get_ai_reply("hello"))
 
@@ -91,6 +92,7 @@ def test_stream_ai_reply_fails_over_before_first_chunk(monkeypatch):
     monkeypatch.setattr(app_settings, "AI_FALLBACK_PROVIDER", "anthropic")
     monkeypatch.setattr(app_settings, "AI_FALLBACK_API_KEY", "fallback")
     monkeypatch.setattr(app_settings, "AI_FALLBACK_MODEL", "claude-test")
+    monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["gemini-2.5-flash"])
 
     async def collect():
         return [chunk async for chunk in ai_service.stream_ai_reply("hello")]
