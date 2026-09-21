@@ -287,6 +287,13 @@ const resources = {
         feedbackPositive: "مفيد",
         feedbackNegative: "غير مفيد",
         feedbackPositiveRate: "نسبة التقييم الإيجابي",
+        providerUsageTitle: "استخدام مزوّدي ونماذج الذكاء الاصطناعي",
+        providerUsageEmpty: "لا توجد بيانات استخدام لهذه الفترة",
+        providerLabel: "المزوّد",
+        modelLabel: "النموذج",
+        requestsLabel: "الطلبات",
+        inputTokensLabel: "توكنز الإدخال",
+        outputTokensLabel: "توكنز الإخراج",
       },
 
       files: {
