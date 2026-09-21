@@ -51,6 +51,7 @@ import {
   exportConversation,
   exportConversations,
   importConversation,
+  importConversations,
   summarizeConversation,
 } from "./lib/conversationsApi";
 import {
@@ -1354,7 +1355,7 @@ export default function App() {
   const handleImportConversation = async (file) => {
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
+    if (file.size > 10 * 1024 * 1024) {
       setToast({ message: t("importConversationTooLarge"), type: "error" });
       return;
     }
@@ -1374,6 +1375,46 @@ export default function App() {
       }
 
       if (
+        payload &&
+        typeof payload === "object" &&
+        Array.isArray(payload.conversations)
+      ) {
+        if (payload.version !== 1 || payload.conversations.length === 0) {
+          setToast({ message: t("importConversationInvalidFile"), type: "error" });
+          return;
+        }
+
+        const imported = await importConversations(selectedWorkspaceId, payload);
+        setShowArchivedConversations(false);
+        setShowTrashConversations(false);
+        setConversationSearch("");
+        setSelectedTagId(null);
+        setSelectedFolderId(null);
+        setSelectedProjectId(null);
+        setSelectedConversationIds([]);
+
+        await refreshConversations(
+          false,
+          null,
+          selectedWorkspaceId,
+          null,
+          "",
+          false,
+          null
+        );
+
+        const firstId = imported.conversation_ids?.[0];
+        if (firstId) {
+          await openConversation(firstId);
+        }
+        setToast({
+          message: t("bulkImportSuccess", { count: imported.imported_count }),
+          type: "success",
+        });
+        return;
+      }
+
+      if (
         !payload ||
         typeof payload !== "object" ||
         !Array.isArray(payload.messages) ||
@@ -1388,6 +1429,8 @@ export default function App() {
         messages: payload.messages,
         folder_id: payload.folder_id ?? null,
         project_id: payload.project_id ?? null,
+        assistant_id: payload.assistant_id ?? null,
+        ai_model: payload.ai_model ?? null,
       });
 
       setShowArchivedConversations(false);

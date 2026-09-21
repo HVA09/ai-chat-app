@@ -25,6 +25,8 @@ from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.bookmarks import BookmarkedMessageOut
 from app.schemas.chat import (
     ConversationBulkExportRequest,
+    ConversationBulkImportOut,
+    ConversationBulkImportRequest,
     ConversationDetail,
     ConversationImportRequest,
     ConversationOut,
@@ -842,6 +844,105 @@ def bulk_export_conversations(
         headers={
             "Content-Disposition": 'attachment; filename="ai-conversations-backup.json"'
         },
+    )
+
+
+@router.post("/import-bulk", response_model=ConversationBulkImportOut, status_code=status.HTTP_201_CREATED)
+def import_conversations_bulk(
+    payload: ConversationBulkImportRequest,
+    workspace_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = (
+        db.query(WorkspaceMember)
+        .filter(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not membership:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="مساحة العمل غير موجودة",
+        )
+
+    folder_ids = {item.folder_id for item in payload.conversations if item.folder_id is not None}
+    project_ids = {item.project_id for item in payload.conversations if item.project_id is not None}
+    assistant_ids = {item.assistant_id for item in payload.conversations if item.assistant_id is not None}
+
+    folder_map = {}
+    if folder_ids:
+        folders = db.query(ConversationFolder).filter(
+            ConversationFolder.id.in_(folder_ids),
+            ConversationFolder.user_id == current_user.id,
+        ).all()
+        folder_map = {
+            folder.id: folder.id
+            for folder in folders
+            if folder.workspace_id is None or folder.workspace_id == workspace_id
+        }
+
+    project_map = {}
+    if project_ids:
+        projects = db.query(WorkspaceProject).filter(
+            WorkspaceProject.id.in_(project_ids),
+            WorkspaceProject.workspace_id == workspace_id,
+        ).all()
+        project_map = {project.id: project.id for project in projects}
+
+    assistant_map = {}
+    if assistant_ids:
+        assistants = db.query(Assistant).filter(
+            Assistant.id.in_(assistant_ids),
+            Assistant.user_id == current_user.id,
+        ).all()
+        assistant_map = {assistant.id: assistant.id for assistant in assistants}
+
+    created_ids: list[int] = []
+    try:
+        for item in payload.conversations:
+            conversation = Conversation(
+                user_id=current_user.id,
+                title=item.title,
+                is_pinned=False,
+                is_archived=False,
+                folder_id=folder_map.get(item.folder_id),
+                project_id=project_map.get(item.project_id),
+                workspace_id=workspace_id,
+                ai_model=item.ai_model,
+                assistant_id=assistant_map.get(item.assistant_id),
+                deleted_at=None,
+                summary=None,
+                summary_updated_at=None,
+                parent_conversation_id=None,
+                branched_from_message_index=None,
+            )
+
+            for imported_message in item.messages:
+                conversation.messages.append(
+                    Message(
+                        role=MessageRole(imported_message.role),
+                        content=imported_message.content,
+                        sources=imported_message.sources or [],
+                        feedback=None,
+                        is_bookmarked=False,
+                    )
+                )
+
+            db.add(conversation)
+            db.flush()
+            created_ids.append(conversation.id)
+
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return ConversationBulkImportOut(
+        conversation_ids=created_ids,
+        imported_count=len(created_ids),
     )
 
 

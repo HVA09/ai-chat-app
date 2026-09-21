@@ -170,6 +170,8 @@ class ConversationImportRequest(BaseModel):
     messages: list[ConversationImportMessage] = Field(min_length=1, max_length=500)
     folder_id: int | None = None
     project_id: int | None = None
+    assistant_id: int | None = None
+    ai_model: str | None = Field(default=None, max_length=100)
 
     @field_validator("title")
     @classmethod
@@ -186,3 +188,30 @@ class ConversationImportRequest(BaseModel):
         if total_chars > 200_000:
             raise ValueError("حجم المحادثة المستوردة كبير جدًا")
         return v
+
+
+class ConversationBulkImportRequest(BaseModel):
+    version: Literal[1] = 1
+    conversations: list[ConversationImportRequest] = Field(min_length=1, max_length=50)
+
+    @field_validator("conversations")
+    @classmethod
+    def bulk_size_limits(
+        cls, v: list[ConversationImportRequest]
+    ) -> list[ConversationImportRequest]:
+        total_messages = sum(len(item.messages) for item in v)
+        total_chars = sum(
+            len(message.content) for item in v for message in item.messages
+        )
+        if total_messages > 5000:
+            raise ValueError("عدد الرسائل المستوردة كبير جدًا")
+        if total_chars > 2_000_000:
+            raise ValueError("حجم المحادثات المستوردة كبير جدًا")
+        return v
+
+
+class ConversationBulkImportOut(BaseModel):
+    conversation_ids: list[int]
+    imported_count: int
+
+
