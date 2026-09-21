@@ -314,6 +314,7 @@ const resources = {
       },
 
       sidebar: {
+        scheduledTasksTitle: "المهام المجدولة",
         renamePrompt: "اسم المحادثة الجديد:",
         renameTitle: "إعادة تسمية",
         duplicateTitle: "نسخ المحادثة",
@@ -978,6 +979,7 @@ const resources = {
       },
 
       sidebar: {
+        scheduledTasksTitle: "Scheduled tasks",
         renamePrompt: "New conversation name:",
         renameTitle: "Rename",
         duplicateTitle: "Duplicate conversation",
