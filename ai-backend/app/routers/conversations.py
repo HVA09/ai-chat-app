@@ -24,6 +24,7 @@ from app.models.usage_log import UsageLog
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.bookmarks import BookmarkedMessageOut
 from app.schemas.chat import (
+    ConversationBulkExportRequest,
     ConversationDetail,
     ConversationImportRequest,
     ConversationOut,
@@ -765,6 +766,83 @@ def set_conversation_assistant(
     db.commit()
     db.refresh(conversation)
     return conversation
+
+
+@router.post("/export", response_class=Response)
+def bulk_export_conversations(
+    payload: ConversationBulkExportRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conversations = (
+        db.query(Conversation)
+        .options(selectinload(Conversation.messages))
+        .filter(
+            Conversation.user_id == current_user.id,
+            Conversation.id.in_(payload.conversation_ids),
+        )
+        .all()
+    )
+
+    if len(conversations) != len(payload.conversation_ids):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="إحدى المحادثات المحددة غير موجودة",
+        )
+
+    by_id = {conversation.id: conversation for conversation in conversations}
+    ordered = [by_id[conversation_id] for conversation_id in payload.conversation_ids]
+
+    export_payload = {
+        "version": 1,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "conversations": [
+            {
+                "title": conversation.title,
+                "created_at": conversation.created_at.isoformat()
+                if conversation.created_at
+                else None,
+                "is_pinned": conversation.is_pinned,
+                "is_archived": conversation.is_archived,
+                "deleted_at": conversation.deleted_at.isoformat()
+                if conversation.deleted_at
+                else None,
+                "folder_id": conversation.folder_id,
+                "project_id": conversation.project_id,
+                "workspace_id": conversation.workspace_id,
+                "assistant_id": conversation.assistant_id,
+                "ai_model": conversation.ai_model,
+                "messages": [
+                    {
+                        "role": message.role.value,
+                        "content": message.content,
+                        "created_at": message.created_at.isoformat()
+                        if message.created_at
+                        else None,
+                        "sources": message.sources or [],
+                        "feedback": message.feedback,
+                    }
+                    for message in conversation.messages
+                ],
+            }
+            for conversation in ordered
+        ],
+    }
+
+    body = json.dumps(export_payload, ensure_ascii=False, indent=2) + "\n"
+    if len(body.encode("utf-8")) > 10 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="حجم التصدير كبير جدًا، اختر عددًا أقل من المحادثات",
+        )
+
+    return Response(
+        content=body,
+        media_type="application/json; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="ai-conversations-backup.json"'
+        },
+    )
 
 
 @router.post("/import", response_model=ConversationDetail, status_code=status.HTTP_201_CREATED)

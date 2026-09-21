@@ -139,6 +139,18 @@ class ConversationRename(BaseModel):
         return v
 
 
+class ConversationBulkExportRequest(BaseModel):
+    conversation_ids: list[int] = Field(min_length=1, max_length=50)
+
+    @field_validator("conversation_ids")
+    @classmethod
+    def unique_conversation_ids(cls, v: list[int]) -> list[int]:
+        unique = list(dict.fromkeys(v))
+        if not unique:
+            raise ValueError("يجب اختيار محادثة واحدة على الأقل")
+        return unique
+
+
 class ConversationImportMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=12000)

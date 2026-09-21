@@ -49,6 +49,7 @@ import {
   branchConversation,
   listConversationBranches,
   exportConversation,
+  exportConversations,
   importConversation,
   summarizeConversation,
 } from "./lib/conversationsApi";
@@ -1054,6 +1055,20 @@ export default function App() {
     }
   };
 
+  const handleBulkExport = async () => {
+    if (!selectedConversationIds.length) return;
+    try {
+      await exportConversations(selectedConversationIds);
+      setSelectedConversationIds([]);
+      setToast({ message: t("app.bulkExportSuccess"), type: "success" });
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.bulkExportError"),
+        type: "error",
+      });
+    }
+  };
+
   const handleBulkMoveToFolder = async (folderValue) => {
     if (!selectedConversationIds.length || folderValue === "") return;
     const folderId = folderValue === "__none__" ? null : Number(folderValue);
@@ -1969,6 +1984,7 @@ export default function App() {
         onClearSelectedConversations={clearSelectedConversations}
         onBulkArchive={handleBulkArchive}
         onBulkDelete={handleBulkDelete}
+        onBulkExport={handleBulkExport}
         onBulkMoveToFolder={handleBulkMoveToFolder}
         workspaces={workspaces}
         selectedWorkspaceId={selectedWorkspaceId}

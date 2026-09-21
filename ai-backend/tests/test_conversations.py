@@ -823,3 +823,75 @@ def test_import_conversation_requires_workspace_membership(client):
         headers={"Authorization": f"Bearer {token_b}"},
     )
     assert response.status_code == 404
+
+
+def test_bulk_export_conversations(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(side_effect=[AIReply(text="رد أول"), AIReply(text="رد ثاني")]),
+    )
+    token = _register_and_login(client, "bulk-export@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first_id = client.post(
+        "/chat",
+        json={"message": "الأولى"},
+        headers=headers,
+    ).json()["conversation_id"]
+    second_id = client.post(
+        "/chat",
+        json={"message": "الثانية"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    response = client.post(
+        "/conversations/export",
+        json={"conversation_ids": [second_id, first_id, first_id]},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    assert "ai-conversations-backup.json" in response.headers["content-disposition"]
+
+    payload = json.loads(response.text)
+    assert payload["version"] == 1
+    assert len(payload["conversations"]) == 2
+    assert [item["title"] for item in payload["conversations"]] == [
+        "الثانية",
+        "الأولى",
+    ]
+    assert payload["conversations"][0]["messages"][0]["content"] == "الثانية"
+    assert payload["conversations"][1]["messages"][1]["content"] == "رد أول"
+
+
+def test_bulk_export_rejects_other_users_conversation(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token_a = _register_and_login(client, "bulk-owner@example.com")
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "خاص"},
+        headers={"Authorization": f"Bearer {token_a}"},
+    ).json()["conversation_id"]
+
+    token_b = _register_and_login(client, "bulk-other@example.com")
+    response = client.post(
+        "/conversations/export",
+        json={"conversation_ids": [conversation_id]},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
+
+
+def test_bulk_export_rejects_empty_selection(client):
+    token = _register_and_login(client, "bulk-empty@example.com")
+    response = client.post(
+        "/conversations/export",
+        json={"conversation_ids": []},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 422

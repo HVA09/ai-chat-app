@@ -47,6 +47,7 @@ vi.mock("react-i18next", () => ({
       "sidebar.bulkArchive": "أرشفة المحدد",
       "sidebar.bulkUnarchive": "إلغاء أرشفة المحدد",
       "sidebar.bulkDelete": "حذف المحدد",
+      "sidebar.bulkExport": "تصدير المحدد",
       "sidebar.bulkMoveTitle": "نقل المحدد إلى...",
       "sidebar.clearSelection": "إلغاء التحديد",
       "sidebar.workspaceSelectTitle": "مساحة العمل",
@@ -121,6 +122,7 @@ function renderSidebar(overrides = {}) {
     onLoadMore: vi.fn(),
     onBulkArchive: vi.fn(),
     onBulkDelete: vi.fn(),
+    onBulkExport: vi.fn(),
     onBulkMoveToFolder: vi.fn(),
     showArchived: false,
     onShowArchived: vi.fn(),
@@ -203,6 +205,13 @@ describe("Sidebar", () => {
 
     fireEvent.change(input, { target: { files: [file] } });
     expect(onImportConversation).toHaveBeenCalledWith(file);
+  });
+
+  it("تصدير المحادثات المحددة يستدعي onBulkExport", async () => {
+    const user = userEvent.setup();
+    const { onBulkExport } = renderSidebar({ selectedConversationIds: [1] });
+    await user.click(screen.getByText("تصدير المحدد"));
+    expect(onBulkExport).toHaveBeenCalled();
   });
 
   it("زر محادثة جديدة ينادي onNewChat", async () => {

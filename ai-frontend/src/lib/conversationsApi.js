@@ -72,6 +72,30 @@ export async function moveConversationToFolder(id, folderId) {
   return data;
 }
 
+export async function exportConversations(conversationIds) {
+  const response = await api.post(
+    "/conversations/export",
+    { conversation_ids: conversationIds },
+    { responseType: "blob" }
+  );
+
+  const contentDisposition = response.headers["content-disposition"] || "";
+  const match = contentDisposition.match(/filename="([^"]+)"/i);
+  const filename = match?.[1] || "ai-conversations-backup.json";
+  const url = URL.createObjectURL(response.data);
+
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export async function importConversation(workspaceId, payload) {
   const { data } = await api.post("/conversations/import", payload, {
     params: { workspace_id: workspaceId },
