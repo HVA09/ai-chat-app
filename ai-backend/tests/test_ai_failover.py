@@ -39,7 +39,7 @@ def test_get_ai_reply_uses_fallback_on_rate_limit(monkeypatch):
     primary = FakeProvider(error=_http_error(429))
     fallback = FakeProvider(reply=AIReply(text="fallback", input_tokens=1, output_tokens=2))
 
-    def fake_get_provider(model=None, provider_name=None, api_key=None, base_url=None):
+    def fake_get_provider(model=None, provider_name=None, api_key=None, base_url=None, **kwargs):
         calls.append((model, provider_name))
         return fallback if provider_name == "anthropic" else primary
 
@@ -112,7 +112,7 @@ def test_stream_ai_reply_does_not_switch_after_partial_output(monkeypatch):
 
     primary.stream_reply = broken_stream
 
-    def fake_get_provider(*, model=None, provider_name=None, api_key=None, base_url=None):
+    def fake_get_provider(model=None, provider_name=None, api_key=None, base_url=None, **kwargs):
         return fallback if provider_name == "anthropic" else primary
 
     monkeypatch.setattr(ai_service, "get_provider", fake_get_provider)
