@@ -595,7 +595,12 @@ async def auto_generate_conversation_title(
 
     # لا نستهلك حصة AI إذا غيّر المستخدم العنوان يدويًا أو لم توجد رسائل.
     current_user = enforce_daily_ai_limit(current_user=current_user, db=db)
-    return await _generate_conversation_title(conversation, current_user, db)
+    return await _generate_conversation_title(
+        conversation,
+        current_user,
+        db,
+        usage_endpoint="/conversations/auto-title",
+    )
 
 
 @router.post("/{conversation_id}/summary", response_model=ConversationSummaryOut)
