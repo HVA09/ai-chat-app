@@ -87,3 +87,16 @@ class FeedbackAnalytics(BaseModel):
     positive: int
     negative: int
     positive_rate: float | None
+
+
+class CostUsageStat(BaseModel):
+    provider: str
+    model: str
+    requests: int
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    input_cost_usd: float | None
+    output_cost_usd: float | None
+    total_cost_usd: float | None
+    pricing_configured: bool

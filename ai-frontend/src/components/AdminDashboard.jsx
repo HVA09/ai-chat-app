@@ -15,6 +15,7 @@ import {
   getModelUsage,
   getProviderUsage,
   getProviderLatency,
+  getCostUsage,
   getFeedbackAnalytics,
   downloadAnalyticsCsv,
   listAllUsers,
@@ -47,6 +48,7 @@ function StatsTab() {
   const [modelUsage, setModelUsage] = useState([]);
   const [providerUsage, setProviderUsage] = useState([]);
   const [providerLatency, setProviderLatency] = useState([]);
+  const [costUsage, setCostUsage] = useState([]);
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
 
@@ -57,14 +59,16 @@ function StatsTab() {
       getModelUsage(30),
       getProviderUsage(30),
       getProviderLatency(30),
+      getCostUsage(30),
       getFeedbackAnalytics(30),
     ])
-.then(([statsData, dailyData, modelUsageData, providerUsageData, providerLatencyData, feedbackData]) => {
+.then(([statsData, dailyData, modelUsageData, providerUsageData, providerLatencyData, costUsageData, feedbackData]) => {
         setStats(statsData);
         setDaily(dailyData.map((p) => ({ ...p, dateLabel: p.date.slice(5) })));
         setModelUsage(modelUsageData);
         setProviderUsage(providerUsageData);
         setProviderLatency(providerLatencyData);
+        setCostUsage(costUsageData);
         setFeedback(feedbackData);
       })
       .catch(() => setError(t("admin.statsError")));
@@ -195,6 +199,50 @@ function StatsTab() {
                     <td className="px-2 py-2 text-right text-slate-600">{item.avg_latency_ms} ms</td>
                     <td className="px-2 py-2 text-right text-slate-600">{item.min_latency_ms} ms</td>
                     <td className="px-2 py-2 text-right font-medium text-slate-900">{item.max_latency_ms} ms</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+
+
+      {costUsage.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-slate-900">{t("admin.costUsageTitle")}</p>
+            <span className="text-xs text-slate-400">{t("admin.costUsageLast30Days")}</span>
+          </div>
+          <p className="mt-1 text-xs text-slate-400">{t("admin.costUsageHint")}</p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="border-b border-slate-200 text-xs text-slate-500">
+                <tr>
+                  <th className="px-2 py-2 font-medium">{t("admin.providerColumn")}</th>
+                  <th className="px-2 py-2 font-medium">{t("admin.modelColumn")}</th>
+                  <th className="px-2 py-2 text-right font-medium">{t("admin.costRequests")}</th>
+                  <th className="px-2 py-2 text-right font-medium">{t("admin.costInput")}</th>
+                  <th className="px-2 py-2 text-right font-medium">{t("admin.costOutput")}</th>
+                  <th className="px-2 py-2 text-right font-medium">{t("admin.costTotal")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {costUsage.map((item) => (
+                  <tr key={`${item.provider}:${item.model}`} className="border-b border-slate-100 last:border-0">
+                    <td className="px-2 py-2 font-medium text-slate-900">{item.provider}</td>
+                    <td className="px-2 py-2 text-slate-700">{item.model}</td>
+                    <td className="px-2 py-2 text-right text-slate-600">{item.requests}</td>
+                    <td className="px-2 py-2 text-right text-slate-600">
+                      {item.input_cost_usd === null ? "—" : `${item.input_cost_usd.toFixed(6)}`}
+                    </td>
+                    <td className="px-2 py-2 text-right text-slate-600">
+                      {item.output_cost_usd === null ? "—" : `${item.output_cost_usd.toFixed(6)}`}
+                    </td>
+                    <td className="px-2 py-2 text-right font-medium text-slate-900">
+                      {item.total_cost_usd === null ? "—" : `${item.total_cost_usd.toFixed(6)}`}
+                    </td>
                   </tr>
                 ))}
               </tbody>

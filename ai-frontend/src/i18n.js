@@ -1036,6 +1036,13 @@ const resources = {
         modelInputTokens: "Input tokens",
         modelOutputTokens: "Output tokens",
         modelTotalTokens: "Total tokens",
+        costUsageTitle: "AI usage cost",
+        costUsageLast30Days: "Last 30 days",
+        costUsageHint: "Costs are shown only for models with prices configured in AI_PRICING_JSON.",
+        costRequests: "Requests",
+        costInput: "Input cost",
+        costOutput: "Output cost",
+        costTotal: "Total cost",
       },
 
       files: {
