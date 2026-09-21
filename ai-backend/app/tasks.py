@@ -5,6 +5,8 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from sqlalchemy.exc import IntegrityError
+
 from app.database import SessionLocal
 from app.logging_config import get_logger
 from app.models.conversation import Conversation, Message, MessageRole
@@ -255,7 +257,7 @@ def _run_due_scheduled_tasks() -> None:
     try:
         now = datetime.now(timezone.utc)
         due_tasks = (
-            db.query(ScheduledTask.id)
+            db.query(ScheduledTask.id, ScheduledTask.next_run_at)
             .filter(
                 ScheduledTask.is_active.is_(True),
                 ScheduledTask.next_run_at <= now,
@@ -264,12 +266,37 @@ def _run_due_scheduled_tasks() -> None:
             .limit(50)
             .all()
         )
-        task_ids = [row[0] for row in due_tasks]
+        due_slots = [(row[0], row[1]) for row in due_tasks]
     finally:
         db.close()
 
-    for task_id in task_ids:
-        _execute_scheduled_task(task_id)
+    for task_id, scheduled_for in due_slots:
+        claim_db = SessionLocal()
+        try:
+            task = claim_db.get(ScheduledTask, task_id)
+            if not task or not task.is_active or task.next_run_at != scheduled_for:
+                continue
+
+            run = ScheduledTaskRun(
+                scheduled_task_id=task.id,
+                user_id=task.user_id,
+                workspace_id=task.workspace_id,
+                prompt=task.prompt,
+                scheduled_for=scheduled_for,
+                status=ScheduledTaskRunStatus.queued,
+            )
+            claim_db.add(run)
+            try:
+                claim_db.commit()
+                run_id = run.id
+            except IntegrityError:
+                # عامل آخر سبق أن حجز نفس الموعد — لا ننفذ المهمة مرتين.
+                claim_db.rollback()
+                continue
+        finally:
+            claim_db.close()
+
+        _execute_scheduled_task(task_id, run_id)
 
 
 try:
