@@ -78,3 +78,9 @@ export async function getCostUsage(days = 30) {
   const { data } = await api.get("/admin/analytics/cost", { params: { days } });
   return data;
 }
+
+
+export async function getCostBudget() {
+  const { data } = await api.get("/admin/analytics/budget");
+  return data;
+}
