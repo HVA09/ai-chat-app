@@ -191,7 +191,7 @@ def run_scheduled_task_now(
         pass
 
     from app.tasks import _execute_scheduled_task
-    _execute_scheduled_task(task.id, run.id)
+    _execute_scheduled_task(task.id, run.id, db=db)
     db.refresh(run)
     return run
 
