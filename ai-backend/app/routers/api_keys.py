@@ -272,6 +272,7 @@ async def developer_chat(
             api_key_id=api_key.id,
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
+            provider=reply.provider,
         )
     )
     db.commit()
