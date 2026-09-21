@@ -3,7 +3,6 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 from app.models.scheduled_task_run import ScheduledTaskRunStatus
-from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
 from app import tasks as tasks_module
 
@@ -39,7 +38,7 @@ def _create_task(client, headers, workspace_id):
 
 def test_manual_run_creates_history_and_conversation(client, monkeypatch):
     monkeypatch.setattr(
-        chat_router_module,
+        tasks_module,
         "get_ai_reply",
         AsyncMock(return_value=AIReply(text="نتيجة مجدولة")),
     )
