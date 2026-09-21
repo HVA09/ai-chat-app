@@ -471,35 +471,29 @@ def _normalize_generated_title(raw_title: str) -> str:
     return title[:255].strip()
 
 
-@router.post("/{conversation_id}/generate-title", response_model=ConversationOut)
-async def generate_conversation_title(
-    conversation_id: int,
-    current_user: User = Depends(enforce_daily_ai_limit),
-    db: Session = Depends(get_db),
-):
-    conversation = (
-        db.query(Conversation)
-        .options(selectinload(Conversation.messages))
-        .filter(
-            Conversation.id == conversation_id,
-            Conversation.user_id == current_user.id,
-            Conversation.deleted_at.is_(None),
-        )
-        .first()
+def _conversation_uses_fallback_title(conversation: Conversation) -> bool:
+    """True when the title still reflects the automatic first-message fallback."""
+    user_messages = sorted(
+        (
+            message for message in conversation.messages
+            if message.role.value == "user" and message.content.strip()
+        ),
+        key=lambda message: (message.created_at, message.id),
     )
-    if not conversation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="المحادثة غير موجودة",
-        )
+    if not user_messages:
+        return False
+
+    fallback = user_messages[0].content.strip()[:50].strip() or "محادثة جديدة"
+    return conversation.title.strip() in {"محادثة جديدة", fallback}
+
+
+async def _generate_conversation_title(
+    conversation: Conversation,
+    current_user: User,
+    db: Session,
+) -> Conversation:
     if conversation.workspace_id is not None:
         enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
-
-    if not conversation.messages:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="لا توجد رسائل كافية لتوليد عنوان",
-        )
 
     prompt = _build_title_prompt(conversation)
     reply = await get_ai_reply(
@@ -535,6 +529,66 @@ async def generate_conversation_title(
     db.commit()
     db.refresh(conversation)
     return conversation
+
+
+@router.post("/{conversation_id}/generate-title", response_model=ConversationOut)
+async def generate_conversation_title(
+    conversation_id: int,
+    current_user: User = Depends(enforce_daily_ai_limit),
+    db: Session = Depends(get_db),
+):
+    conversation = (
+        db.query(Conversation)
+        .options(selectinload(Conversation.messages))
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+            Conversation.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المحادثة غير موجودة",
+        )
+    if not conversation.messages:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="لا توجد رسائل كافية لتوليد عنوان",
+        )
+
+    return await _generate_conversation_title(conversation, current_user, db)
+
+
+@router.post("/{conversation_id}/auto-title", response_model=ConversationOut)
+async def auto_generate_conversation_title(
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    conversation = (
+        db.query(Conversation)
+        .options(selectinload(Conversation.messages), selectinload(Conversation.tags))
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+            Conversation.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not conversation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المحادثة غير موجودة",
+        )
+
+    if not conversation.messages or not _conversation_uses_fallback_title(conversation):
+        return conversation
+
+    # لا نستهلك حصة AI إذا غيّر المستخدم العنوان يدويًا أو لم توجد رسائل.
+    current_user = enforce_daily_ai_limit(current_user=current_user, db=db)
+    return await _generate_conversation_title(conversation, current_user, db)
 
 
 @router.post("/{conversation_id}/summary", response_model=ConversationSummaryOut)
