@@ -37,7 +37,7 @@ def test_get_ai_reply_uses_fallback_on_rate_limit(monkeypatch):
     primary = FakeProvider(error=_http_error(429))
     fallback = FakeProvider(reply=AIReply(text="fallback", input_tokens=1, output_tokens=2))
 
-    def fake_get_provider(*, model=None, provider_name=None, api_key=None, base_url=None):
+    def fake_get_provider(model=None, provider_name=None, api_key=None, base_url=None):
         calls.append((model, provider_name))
         return fallback if provider_name == "anthropic" else primary
 
@@ -49,7 +49,8 @@ def test_get_ai_reply_uses_fallback_on_rate_limit(monkeypatch):
     monkeypatch.setattr(app_settings, "AI_FALLBACK_API_KEY", "fallback")
     monkeypatch.setattr(app_settings, "AI_FALLBACK_MODEL", "claude-test")
 
-    result = __import__("asyncio").run(ai_service.get_ai_reply("hello"))
+    import asyncio
+    result = asyncio.run(ai_service.get_ai_reply("hello"))
 
     assert result.text == "fallback"
     assert calls == [("gemini-2.5-flash", None), ("claude-test", "anthropic")]
@@ -70,7 +71,8 @@ def test_get_ai_reply_does_not_failover_on_auth_error(monkeypatch):
     monkeypatch.setattr(app_settings, "AI_FALLBACK_API_KEY", "fallback")
 
     with pytest.raises(Exception) as exc:
-        __import__("asyncio").run(ai_service.get_ai_reply("hello"))
+        import asyncio
+        asyncio.run(ai_service.get_ai_reply("hello"))
 
     assert getattr(exc.value, "status_code", None) == 502
 
@@ -93,7 +95,8 @@ def test_stream_ai_reply_fails_over_before_first_chunk(monkeypatch):
     async def collect():
         return [chunk async for chunk in ai_service.stream_ai_reply("hello")]
 
-    chunks = __import__("asyncio").run(collect())
+    import asyncio
+    chunks = asyncio.run(collect())
 
     assert chunks == ["A", "B"]
 
