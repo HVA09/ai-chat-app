@@ -353,6 +353,9 @@ const resources = {
         historyEmpty: "لا توجد عمليات تنفيذ بعد",
         historyLoadError: "تعذر تحميل سجل التنفيذ",
         runNowError: "تعذر تشغيل المهمة الآن",
+        retryError: "تعذر إعادة المحاولة",
+        retry: "إعادة المحاولة",
+        retrying: "جارٍ إعادة المحاولة...",
         finishedAt: "انتهى: {{date}}",
         conversationCreated: "تم إنشاء محادثة من هذا التنفيذ",
         status: {
@@ -1068,6 +1071,9 @@ const resources = {
         historyEmpty: "No executions yet",
         historyLoadError: "Couldn't load execution history",
         runNowError: "Couldn't run the task now",
+        retryError: "Couldn't retry the run",
+        retry: "Retry",
+        retrying: "Retrying...",
         finishedAt: "Finished: {{date}}",
         conversationCreated: "A conversation was created from this run",
         status: {
