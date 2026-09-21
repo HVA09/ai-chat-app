@@ -1268,6 +1268,8 @@ const resources = {
         activeLink: "Active link",
         expiredLink: "Expired link",
         createdAt: "Created: {{date}}",
+        accessCount: "Views: {{count}}",
+        lastAccessedAt: "Last viewed: {{date}}",
         never: "Never",
         revoking: "Revoking...",
         revoke: "Revoke link",
