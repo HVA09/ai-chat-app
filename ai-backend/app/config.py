@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     # Optional JSON pricing map for admin cost analytics. Keep empty when
     # provider/model prices are not configured.
     AI_PRICING_JSON: str = "{}"
+    # Optional current-month AI spend guardrail for admin analytics. 0 disables the budget.
+    AI_MONTHLY_BUDGET_USD: float = 0.0
 
     WEB_SEARCH_TIMEOUT_SECONDS: float = 8.0
     WEB_SEARCH_MAX_RESULTS: int = 5
@@ -88,6 +90,13 @@ class Settings(BaseSettings):
     CMS_COVERAGE_BASE_URL: str = "https://api.coverage.cms.gov"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("AI_MONTHLY_BUDGET_USD")
+    @classmethod
+    def validate_monthly_budget(cls, value: float) -> float:
+        if value < 0:
+            raise ValueError("AI_MONTHLY_BUDGET_USD cannot be negative")
+        return value
 
     @field_validator("AI_ALLOWED_MODELS", mode="before")
     @classmethod
