@@ -137,6 +137,9 @@ const resources = {
       account: {
         title: "الحساب",
         genericError: "حدث خطأ.",
+        conversationTitlesSection: "عناوين المحادثات",
+        autoGenerateTitles: "توليد عنوان تلقائي للمحادثة الجديدة",
+        autoGenerateTitlesDescription: "بعد أول رد من المساعد، يمكنه إنشاء عنوان مختصر للمحادثة. يمكنك إيقاف هذا الخيار في أي وقت.",
         profileSaved: "تم حفظ الملف الشخصي",
         passwordChanged: "تم تغيير كلمة المرور",
         confirmDeleteAccount: "حذف الحساب نهائي وما يمكن التراجع عنه. متأكد؟",
@@ -785,6 +788,9 @@ const resources = {
       account: {
         title: "Account",
         genericError: "Something went wrong.",
+        conversationTitlesSection: "Conversation titles",
+        autoGenerateTitles: "Automatically generate titles for new conversations",
+        autoGenerateTitlesDescription: "After the first assistant reply, the assistant can create a short conversation title. You can turn this off anytime.",
         profileSaved: "Profile saved",
         passwordChanged: "Password changed",
         confirmDeleteAccount: "Deleting your account is permanent and cannot be undone. Are you sure?",
