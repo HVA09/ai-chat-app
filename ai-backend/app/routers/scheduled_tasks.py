@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.dependencies import get_current_user
 from app.models.scheduled_task import ScheduledTask, ScheduledTaskType
 from app.models.scheduled_task_run import ScheduledTaskRun
@@ -195,9 +195,21 @@ def run_scheduled_task_now(
     # التنفيذ الاحتياطي يستخدم جلسة مستقلة حتى لا يكسر معاملة طلب FastAPI
     # (خصوصًا اختبارات TestClient التي تستخدم nested transactions).
     _execute_scheduled_task(task.id, run_id)
-    db.expire(run)
-    refreshed_run = db.get(ScheduledTaskRun, run_id)
-    return refreshed_run or run
+
+    # أعد تحميل النتيجة من جلسة مستقلة بعد التنفيذ الاحتياطي.
+    # هذا يمنع إعادة كائن ORM مرتبط بمعاملة الطلب التي تم عمل commit/rollback لها.
+    with SessionLocal() as response_db:
+        refreshed_run = (
+            response_db.query(ScheduledTaskRun)
+            .filter(ScheduledTaskRun.id == run_id)
+            .first()
+        )
+        if not refreshed_run:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="تعذر تحميل سجل تنفيذ المهمة",
+            )
+        return ScheduledTaskRunOut.model_validate(refreshed_run)
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
