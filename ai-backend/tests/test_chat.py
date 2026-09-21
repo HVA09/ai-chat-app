@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 """
 اختبارات مسار المحادثة — يتم عمل mock لاستدعاء محرك AI بدل الاتصال الحقيقي بالإنترنت
 """
@@ -95,6 +96,90 @@ def test_chat_includes_saved_user_memory_in_ai_context(client, monkeypatch):
     assert "[USER MEMORY]" in sent_message
     assert "أفضل الإجابات المختصرة وبالعربية." in sent_message
     assert "USER REQUEST:" in sent_message
+
+
+def test_chat_includes_conversation_summary_in_ai_context(client, monkeypatch, db_session):
+    mock_reply = AsyncMock(return_value=AIReply(text="رد"))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
+
+    from app.models.conversation import Conversation
+
+    token = _register_and_login(client, "summary-context@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post(
+        "/chat",
+        json={"message": "الرسالة الأولى"},
+        headers=headers,
+    )
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+
+    conversation = (
+        db_session.query(Conversation)
+        .filter(Conversation.id == conversation_id)
+        .one()
+    )
+    conversation.summary = "المستخدم يعمل على مشروع Python ويفضل أمثلة قصيرة."
+    conversation.summary_updated_at = datetime.now(timezone.utc)
+    db_session.commit()
+
+    response = client.post(
+        "/chat",
+        json={
+            "message": "ذكّرني بما تحدثنا عنه سابقًا",
+            "conversation_id": conversation_id,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200
+
+    sent_message = mock_reply.await_args.args[0]
+    assert "[CONVERSATION SUMMARY]" in sent_message
+    assert "المستخدم يعمل على مشروع Python" in sent_message
+    assert "Summary updated:" in sent_message
+    assert "USER REQUEST:" in sent_message
+    assert "ذكّرني بما تحدثنا عنه سابقًا" in sent_message
+
+
+def test_chat_truncates_oversized_conversation_summary(client, monkeypatch, db_session):
+    mock_reply = AsyncMock(return_value=AIReply(text="رد"))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
+
+    from app.models.conversation import Conversation
+
+    token = _register_and_login(client, "summary-limit@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post(
+        "/chat",
+        json={"message": "رسالة"},
+        headers=headers,
+    )
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+
+    conversation = (
+        db_session.query(Conversation)
+        .filter(Conversation.id == conversation_id)
+        .one()
+    )
+    conversation.summary = "x" * (chat_router_module.MAX_SUMMARY_CONTEXT_CHARS + 500)
+    db_session.commit()
+
+    response = client.post(
+        "/chat",
+        json={"message": "رسالة متابعة", "conversation_id": conversation_id},
+        headers=headers,
+    )
+    assert response.status_code == 200
+
+    sent_message = mock_reply.await_args.args[0]
+    summary_start = sent_message.index("[CONVERSATION SUMMARY]")
+    request_start = sent_message.index("USER REQUEST:")
+    summary_block = sent_message[summary_start:request_start]
+    assert len(summary_block) < chat_router_module.MAX_SUMMARY_CONTEXT_CHARS + 300
+    assert "…" in summary_block
 
 
 def test_chat_creates_conversation_and_returns_reply(client, monkeypatch):
