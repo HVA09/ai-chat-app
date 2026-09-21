@@ -35,6 +35,9 @@ class ScheduledTask(Base):
     )
     next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     weekday: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    timezone_name: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="UTC", server_default="UTC"
+    )
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False, index=True)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)

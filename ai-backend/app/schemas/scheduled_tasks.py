@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -10,6 +11,7 @@ class ScheduledTaskCreate(BaseModel):
     schedule_type: Literal["once", "daily", "weekly"]
     next_run_at: datetime
     weekday: int | None = Field(default=None, ge=0, le=6)
+    timezone_name: str = Field(default="UTC", min_length=1, max_length=64)
 
     @field_validator("prompt")
     @classmethod
@@ -26,6 +28,16 @@ class ScheduledTaskCreate(BaseModel):
             raise ValueError("وقت التنفيذ يجب أن يتضمن منطقة زمنية")
         return v
 
+    @field_validator("timezone_name")
+    @classmethod
+    def timezone_name_must_be_valid(cls, v: str) -> str:
+        v = v.strip()
+        try:
+            ZoneInfo(v)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("منطقة زمنية غير صالحة") from exc
+        return v
+
     @field_validator("weekday")
     @classmethod
     def weekday_is_required_for_weekly(cls, v: int | None, info):
@@ -40,7 +52,20 @@ class ScheduledTaskUpdate(BaseModel):
     schedule_type: Literal["once", "daily", "weekly"] | None = None
     next_run_at: datetime | None = None
     weekday: int | None = Field(default=None, ge=0, le=6)
+    timezone_name: str | None = Field(default=None, min_length=1, max_length=64)
     is_active: bool | None = None
+
+    @field_validator("timezone_name")
+    @classmethod
+    def update_timezone_name_must_be_valid(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        try:
+            ZoneInfo(v)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("منطقة زمنية غير صالحة") from exc
+        return v
 
     @field_validator("prompt")
     @classmethod
@@ -69,6 +94,7 @@ class ScheduledTaskOut(BaseModel):
     schedule_type: str
     next_run_at: datetime
     weekday: int | None
+    timezone_name: str
     is_active: bool
     last_run_at: datetime | None
     last_error: str | None

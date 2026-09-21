@@ -102,6 +102,7 @@ def create_scheduled_task(
         schedule_type=ScheduledTaskType(payload.schedule_type),
         next_run_at=payload.next_run_at.astimezone(timezone.utc),
         weekday=payload.weekday,
+        timezone_name=payload.timezone_name,
         is_active=True,
     )
     db.add(task)
@@ -126,6 +127,7 @@ def update_scheduled_task(
     schedule_type = values.get("schedule_type", task.schedule_type.value)
     next_run_at = values.get("next_run_at", task.next_run_at)
     weekday = values.get("weekday", task.weekday)
+    timezone_name = values.get("timezone_name", task.timezone_name)
     if schedule_type and next_run_at:
         _validate_schedule(schedule_type, next_run_at, weekday)
 
@@ -137,6 +139,8 @@ def update_scheduled_task(
         task.next_run_at = values["next_run_at"]
     if "weekday" in values:
         task.weekday = values["weekday"]
+    if "timezone_name" in values:
+        task.timezone_name = values["timezone_name"]
     if "is_active" in values:
         task.is_active = values["is_active"]
         if task.is_active:
