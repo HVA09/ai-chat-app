@@ -2527,6 +2527,7 @@ export default function App() {
           <ScheduledTasksPanel
             workspaces={workspaces}
             selectedWorkspaceId={selectedWorkspaceId}
+            onOpenConversation={openConversation}
             onClose={() => setShowScheduledTasks(false)}
           />
         </Suspense>
