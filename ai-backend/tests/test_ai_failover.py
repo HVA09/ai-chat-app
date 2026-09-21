@@ -62,7 +62,7 @@ def test_get_ai_reply_does_not_failover_on_auth_error(monkeypatch):
     primary = FakeProvider(error=_http_error(401))
     fallback = FakeProvider(reply=AIReply(text="fallback"))
 
-    def fake_get_provider(model=None, provider_name=None, api_key=None, base_url=None):
+    def fake_get_provider(model=None, provider_name=None, api_key=None, base_url=None, **kwargs):
         return fallback if provider_name == "anthropic" else primary
 
     monkeypatch.setattr(ai_service, "get_provider", fake_get_provider)
