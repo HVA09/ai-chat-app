@@ -550,6 +550,7 @@ async def analyze_attached_image(
             user_id=current_user.id,
             workspace_id=conversation.workspace_id,
             endpoint="/chat/vision",
+            model=conversation.ai_model,
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
         )
@@ -834,6 +835,7 @@ async def chat(
             user_id=current_user.id,
             workspace_id=conversation.workspace_id,
             endpoint="/chat",
+            model=conversation.ai_model,
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
         )
@@ -1130,7 +1132,7 @@ async def chat_stream(
                     sources=sources or None,
                 )
             )
-            db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/stream"))
+            db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/stream", model=conversation.ai_model))
             db.commit()
         except Exception:
             logger.exception("فشل حفظ رد البث لمحادثة %s", conversation.id)
@@ -1385,7 +1387,7 @@ async def edit_chat_stream(
                     sources=sources or None,
                 )
             )
-            db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/edit/stream"))
+            db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/edit/stream", model=conversation.ai_model))
             db.commit()
         except Exception:
             logger.exception("فشل حفظ الرسالة المعدلة لمحادثة %s", conversation.id)

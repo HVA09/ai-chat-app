@@ -1011,6 +1011,13 @@ const resources = {
         feedbackPositive: "Helpful",
         feedbackNegative: "Not helpful",
         feedbackPositiveRate: "Positive rate",
+        modelUsageTitle: "AI model usage",
+        modelUsageLast30Days: "Last 30 days",
+        modelColumn: "Model",
+        modelRequests: "Requests",
+        modelInputTokens: "Input tokens",
+        modelOutputTokens: "Output tokens",
+        modelTotalTokens: "Total tokens",
       },
 
       files: {

@@ -212,3 +212,42 @@ def test_feedback_analytics_requires_admin_and_counts_ratings(client, monkeypatc
     assert data["positive"] == 1
     assert data["negative"] == 1
     assert data["positive_rate"] == 50.0
+
+
+def test_model_usage_analytics_groups_requests_by_model(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    monkeypatch.setattr(app_settings, "AI_MODEL", "test-model")
+    monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["test-model"])
+    admin_token = _register_and_login(client, "model-analytics-admin@example.com", admin=True)
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    response = client.post(
+        "/chat",
+        json={"message": "مرحبا", "model": "test-model"},
+        headers=admin_headers,
+    )
+    assert response.status_code == 200
+
+    usage_response = client.get(
+        "/admin/analytics/models?days=30",
+        headers=admin_headers,
+    )
+    assert usage_response.status_code == 200
+    rows = usage_response.json()
+    assert rows
+    row = next(item for item in rows if item["model"] == "test-model")
+    assert row["requests"] >= 1
+    assert row["total_tokens"] >= 0
+
+
+def test_model_usage_analytics_requires_admin(client):
+    token = _register_and_login(client, "model-analytics-user@example.com")
+    response = client.get(
+        "/admin/analytics/models",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403

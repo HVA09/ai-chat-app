@@ -174,6 +174,7 @@ def _execute_scheduled_task(
                 user_id=user.id,
                 workspace_id=workspace.id,
                 endpoint=f"/scheduled-tasks/{task.id}",
+                model=ai_model,
                 input_tokens=reply.input_tokens,
                 output_tokens=reply.output_tokens,
             )

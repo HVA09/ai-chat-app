@@ -268,6 +268,7 @@ async def developer_chat(
             user_id=current_user.id,
             workspace_id=conversation.workspace_id,
             endpoint="/v1/chat",
+            model=conversation.ai_model,
             api_key_id=api_key.id,
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
