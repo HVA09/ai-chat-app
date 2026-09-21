@@ -45,7 +45,7 @@ export default function SharedConversationPage() {
     return () => {
       active = false;
     };
-  }, [token, t]);
+  }, [token]);
 
   const unlockShare = async (event) => {
     event.preventDefault();
