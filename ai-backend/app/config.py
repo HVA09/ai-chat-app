@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSIONS: int = 768
     DAILY_AI_REQUEST_LIMIT: int = 20
     MAX_AI_OUTPUT_TOKENS: int = 1200
+    # Optional JSON pricing map for admin cost analytics. Keep empty when
+    # provider/model prices are not configured.
+    AI_PRICING_JSON: str = "{}"
 
     WEB_SEARCH_TIMEOUT_SECONDS: float = 8.0
     WEB_SEARCH_MAX_RESULTS: int = 5
