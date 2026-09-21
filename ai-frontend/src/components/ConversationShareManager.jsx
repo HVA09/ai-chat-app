@@ -90,8 +90,15 @@ export default function ConversationShareManager({ conversationId, onClose, onCh
                   className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700"
                 >
                   <div className="min-w-0">
-                    <div className="text-sm font-medium">
-                      {share.is_expired ? t("sharing.expiredLink") : t("sharing.activeLink")}
+                    <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                      <span>
+                        {share.is_expired ? t("sharing.expiredLink") : t("sharing.activeLink")}
+                      </span>
+                      {share.password_protected ? (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          {t("sharing.passwordProtected")}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                       {t("sharing.createdAt", { date: formatDate(share.created_at) })}
