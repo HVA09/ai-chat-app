@@ -294,6 +294,7 @@ def retry_failed_scheduled_task_run(
                 ScheduledTaskRun.workspace_id,
                 ScheduledTaskRun.prompt,
                 ScheduledTaskRun.status,
+                ScheduledTaskRun.scheduled_for,
                 ScheduledTaskRun.started_at,
                 ScheduledTaskRun.finished_at,
                 ScheduledTaskRun.conversation_id,
