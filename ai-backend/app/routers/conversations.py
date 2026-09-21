@@ -209,13 +209,70 @@ def list_conversations(
             )
         query = query.filter(Conversation.assistant_id == assistant_id)
 
-    return (
+    conversations = (
         query
         .order_by(Conversation.is_pinned.desc(), Conversation.updated_at.desc())
         .offset(skip)
         .limit(limit)
         .all()
     )
+
+    if not search or not search.strip() or not conversations:
+        return conversations
+
+    search_text = search.strip()[:100]
+
+    def make_snippet(text: str | None, needle: str, max_chars: int = 180) -> str | None:
+        if not text:
+            return None
+        normalized = " ".join(text.split())
+        if not normalized:
+            return None
+        start = normalized.casefold().find(needle.casefold())
+        if start < 0:
+            return None
+        end = start + len(needle)
+        window_start = max(0, start - 70)
+        window_end = min(len(normalized), end + 90)
+        snippet = normalized[window_start:window_end].strip()
+        if window_start > 0:
+            snippet = "… " + snippet
+        if window_end < len(normalized):
+            snippet = snippet + " …"
+        if len(snippet) > max_chars:
+            snippet = snippet[:max_chars].rstrip() + "…"
+        return snippet
+
+    conversation_ids = [conversation.id for conversation in conversations]
+    matched_messages = (
+        db.query(Message.conversation_id, Message.content)
+        .filter(
+            Message.conversation_id.in_(conversation_ids),
+            Message.content.ilike(
+                f"%{escaped_search}%",
+                escape="\\",
+            ),
+        )
+        .order_by(Message.created_at.asc(), Message.id.asc())
+        .all()
+    )
+
+    snippets_by_conversation: dict[int, str] = {}
+    for conversation_id, content in matched_messages:
+        if conversation_id in snippets_by_conversation:
+            continue
+        snippet = make_snippet(content, search_text)
+        if snippet:
+            snippets_by_conversation[conversation_id] = snippet
+
+    serialized = [ConversationOut.model_validate(conversation) for conversation in conversations]
+    for item, conversation in zip(serialized, conversations):
+        if conversation.id in snippets_by_conversation:
+            item.search_snippet = snippets_by_conversation[conversation.id]
+            continue
+        item.search_snippet = make_snippet(conversation.title, search_text)
+
+    return serialized
 
 
 @router.patch("/{conversation_id}/project", response_model=ConversationOut)
