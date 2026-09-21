@@ -120,6 +120,15 @@ def test_list_conversations_searches_message_content(client, monkeypatch):
     )
     assert assistant_message_search.status_code == 200
     assert [item["id"] for item in assistant_message_search.json()] == [conversation_id]
+    assert "فريدة للبحث" in assistant_message_search.json()[0]["search_snippet"]
+
+    title_snippet_search = client.get(
+        "/conversations",
+        params={"search": "رسالة عادية"},
+        headers=headers,
+    )
+    assert title_snippet_search.status_code == 200
+    assert "رسالة عادية" in title_snippet_search.json()[0]["search_snippet"]
 
 
 def test_list_conversations_sorts_by_last_activity(client, monkeypatch):
