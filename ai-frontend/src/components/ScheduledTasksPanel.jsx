@@ -427,7 +427,6 @@ export default function ScheduledTasksPanel({
                       </button>
                     </div>
                   </div>
-                  </div>
                   )}
                   {editingTaskId !== task.id && expandedTaskId === task.id && (
                   <div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
