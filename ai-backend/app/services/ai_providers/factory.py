@@ -14,6 +14,8 @@ def get_provider(
     provider_name: str | None = None,
     api_key: str | None = None,
     base_url: str | None = None,
+    *,
+    validate_model: bool = True,
 ) -> AIProvider:
     provider_name = (provider_name or settings.AI_PROVIDER).lower().strip()
     selected_model = (model or settings.AI_MODEL).strip()
@@ -21,7 +23,7 @@ def get_provider(
     resolved_base_url = base_url if base_url is not None and base_url.strip() else settings.AI_API_BASE_URL
     allowed_models = set(settings.AI_ALLOWED_MODELS or [])
     allowed_models.add(settings.AI_MODEL)
-    if selected_model not in allowed_models:
+    if validate_model and selected_model not in allowed_models:
         raise ValueError(
             f"AI_MODEL='{selected_model}' غير مسموح — الخيارات: {', '.join(settings.AI_ALLOWED_MODELS)}"
         )
