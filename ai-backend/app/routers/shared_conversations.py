@@ -247,6 +247,13 @@ def access_password_protected_share(
 ):
     share = _get_valid_share(token, db)
     if share.password_hash is None:
+        _record_share_access(share.id, db)
+        share = (
+            db.query(ConversationShare)
+            .options(selectinload(ConversationShare.conversation).selectinload(Conversation.messages))
+            .filter(ConversationShare.id == share.id)
+            .first()
+        )
         return _serialize_shared_conversation(share)
 
     if not verify_password(payload.password, share.password_hash):
