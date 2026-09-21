@@ -30,6 +30,7 @@ from app.schemas.admin import (
     AuditLogOut,
     DailyStatsPoint,
     FeedbackAnalytics,
+    ProviderUsagePoint,
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -137,6 +138,41 @@ def export_analytics_csv(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=analytics.csv"},
     )
+
+
+@router.get("/analytics/providers", response_model=list[ProviderUsagePoint])
+def get_provider_usage_analytics(
+    days: int = 30,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    days = max(1, min(days, 365))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    rows = (
+        db.query(
+            UsageLog.provider,
+            UsageLog.model,
+            func.count(UsageLog.id),
+            func.coalesce(func.sum(UsageLog.input_tokens), 0),
+            func.coalesce(func.sum(UsageLog.output_tokens), 0),
+        )
+        .filter(UsageLog.created_at >= since)
+        .group_by(UsageLog.provider, UsageLog.model)
+        .order_by(func.count(UsageLog.id).desc())
+        .all()
+    )
+
+    return [
+        ProviderUsagePoint(
+            provider=provider,
+            model=model,
+            requests=requests,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+        for provider, model, requests, input_tokens, output_tokens in rows
+    ]
 
 
 @router.get("/analytics/feedback", response_model=FeedbackAnalytics)
