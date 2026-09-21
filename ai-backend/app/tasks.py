@@ -67,8 +67,14 @@ def _ensure_ai_quota(user: User, workspace: Workspace, db) -> None:
             )
 
 
-def _execute_scheduled_task(task_id: int, run_id: int | None = None) -> None:
-    db = SessionLocal()
+def _execute_scheduled_task(
+    task_id: int,
+    run_id: int | None = None,
+    db=None,
+) -> None:
+    owns_session = db is None
+    if db is None:
+        db = SessionLocal()
     now = datetime.now(timezone.utc).replace(microsecond=0)
     try:
         task = db.get(ScheduledTask, task_id)
@@ -229,7 +235,8 @@ def _execute_scheduled_task(task_id: int, run_id: int | None = None) -> None:
             except Exception:
                 logger.exception("Failed to notify about scheduled task error %s", task_id)
     finally:
-        db.close()
+        if owns_session:
+            db.close()
 
 
 def _run_due_scheduled_tasks() -> None:
