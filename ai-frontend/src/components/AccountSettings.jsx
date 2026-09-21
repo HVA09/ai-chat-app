@@ -20,7 +20,7 @@ function Section({ title, children }) {
   );
 }
 
-export default function AccountSettings({ user, onClose, onUserUpdated, onAccountDeleted }) {
+export default function AccountSettings({ user, autoGenerateTitles: autoGenerateTitlesProp = false, onAutoGenerateTitlesChanged, onClose, onUserUpdated, onAccountDeleted }) {
   const { t } = useTranslation();
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -28,6 +28,7 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
 
   const [fullName, setFullName] = useState(user?.full_name || "");
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || "");
+  const [autoGenerateTitles, setAutoGenerateTitles] = useState(Boolean(autoGenerateTitlesProp));
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -76,6 +77,18 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
     loadMemories();
     loadApiKeys();
   }, []);
+
+  useEffect(() => {
+    setAutoGenerateTitles(Boolean(autoGenerateTitlesProp));
+  }, [autoGenerateTitlesProp]);
+
+  const handleToggleAutoGenerateTitles = (enabled) => {
+    window.localStorage.setItem("ai-chat-auto-title", enabled ? "true" : "false");
+    setAutoGenerateTitles(enabled);
+    onAutoGenerateTitlesChanged?.(enabled);
+    window.dispatchEvent(new Event("ai-chat:auto-title-changed"));
+  };
+
 
   const runAction = async (action) => {
     setError("");
@@ -250,6 +263,25 @@ export default function AccountSettings({ user, onClose, onUserUpdated, onAccoun
               {t("account.save")}
             </button>
           </div>
+        </Section>
+
+        <Section title={t("account.conversationTitlesSection")}>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={autoGenerateTitles}
+              onChange={(event) => handleToggleAutoGenerateTitles(event.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+            />
+            <span>
+              <span className="block text-sm font-medium text-slate-900">
+                {t("account.autoGenerateTitles")}
+              </span>
+              <span className="mt-1 block text-xs text-slate-500">
+                {t("account.autoGenerateTitlesDescription")}
+              </span>
+            </span>
+          </label>
         </Section>
 
         <Section title={t("account.memorySection")}>
