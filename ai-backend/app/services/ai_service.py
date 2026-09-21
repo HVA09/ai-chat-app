@@ -17,16 +17,18 @@ async def get_ai_reply(message: str, history: list[dict[str, str]] | None = None
     provider = get_provider(model)
     try:
         return await provider.get_reply(message, history)
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"خطأ من محرك الذكاء الاصطناعي: {exc.response.status_code}",
-        ) from exc
-    except httpx.RequestError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="تعذر الوصول لمحرك الذكاء الاصطناعي",
-        ) from exc
+    except Exception as primary_exc:
+        if not _is_retryable_provider_error(primary_exc):
+            _raise_ai_http_error(primary_exc)
+
+        fallback = _get_fallback_provider(model)
+        if fallback is None:
+            _raise_ai_http_error(primary_exc)
+
+        try:
+            return await fallback.get_reply(message, history)
+        except Exception as fallback_exc:
+            _raise_ai_http_error(fallback_exc)
 
 
 async def stream_ai_reply(
@@ -37,7 +39,22 @@ async def stream_ai_reply(
     """رد يُبَث تدريجيًا — تُستخدم في /chat/stream. الأخطاء تُترك للمستدعي يمسكها
     لأنها تصير أثناء البث نفسه (بعد ما الاستجابة بدأت)، مو قبل إرسالها."""
     provider = get_provider(model)
-    async for chunk in provider.stream_reply(message, history):
+    emitted = False
+    try:
+        async for chunk in provider.stream_reply(message, history):
+            emitted = True
+            yield chunk
+        return
+    except Exception as primary_exc:
+        # بعد إرسال أول chunk لا ننتقل لمزوّد ثانٍ، حتى لا نكرر جزءًا من الرد.
+        if emitted or not _is_retryable_provider_error(primary_exc):
+            raise
+
+    fallback = _get_fallback_provider(model)
+    if fallback is None:
+        raise primary_exc
+
+    async for chunk in fallback.stream_reply(message, history):
         yield chunk
 
 
@@ -56,13 +73,15 @@ async def get_ai_vision_reply(
         )
     try:
         return await provider.get_vision_reply(message, image_data_url, history)
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"خطأ من محرك الذكاء الاصطناعي: {exc.response.status_code}",
-        ) from exc
-    except httpx.RequestError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="تعذر الوصول لمحرك الذكاء الاصطناعي",
-        ) from exc
+    except Exception as primary_exc:
+        if not _is_retryable_provider_error(primary_exc):
+            _raise_ai_http_error(primary_exc)
+
+        fallback = _get_fallback_provider(model)
+        if not isinstance(fallback, OpenAICompatibleProvider):
+            _raise_ai_http_error(primary_exc)
+
+        try:
+            return await fallback.get_vision_reply(message, image_data_url, history)
+        except Exception as fallback_exc:
+            _raise_ai_http_error(fallback_exc)
