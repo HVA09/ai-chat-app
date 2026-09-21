@@ -179,6 +179,7 @@ export default function App() {
   const [parentConversationId, setParentConversationId] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [titleLoading, setTitleLoading] = useState(false);
+  const [autoGenerateTitles, setAutoGenerateTitles] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const bottomRef = useRef(null);
@@ -244,6 +245,15 @@ export default function App() {
 
   useEffect(() => {
     restoreSession().then(() => setAuthed(true)).catch(() => setAuthed(false)).finally(() => setSessionChecking(false));
+  }, []);
+
+  useEffect(() => {
+    const readPreference = () => {
+      setAutoGenerateTitles(window.localStorage.getItem("ai-chat-auto-title") === "true");
+    };
+    readPreference();
+    window.addEventListener("ai-chat:auto-title-changed", readPreference);
+    return () => window.removeEventListener("ai-chat:auto-title-changed", readPreference);
   }, []);
 
   // لو أي طلب بأي مكان بالتطبيق رجع 401 (مو بس إرسال رسالة)، نسجّل خروج
@@ -1353,6 +1363,30 @@ export default function App() {
     }
   };
 
+  const maybeAutoGenerateConversationTitle = async (id) => {
+    if (!autoGenerateTitles || !id || titleLoading || readOnlyConversation) return;
+    setTitleLoading(true);
+    try {
+      const result = await generateConversationTitle(id);
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        selectedProjectId,
+        conversationSearch,
+        showTrashConversations,
+        selectedTagId
+      );
+      if (result?.title) {
+        setToast({ message: result.title, type: "success" });
+      }
+    } catch {
+      // Auto-title is optional; a title-generation failure must not affect the chat response.
+    } finally {
+      setTitleLoading(false);
+    }
+  };
+
   const handleSummarizeConversation = async () => {
     if (!conversationId || loading || summaryLoading || readOnlyConversation) return;
     setSummaryLoading(true);
@@ -1785,6 +1819,7 @@ export default function App() {
     streamAbortRef.current = controller;
 
     const isNewConversation = !conversationId;
+    let createdConversationId = conversationId;
     let receivedFirstChunk = false;
 
     const appendToLastMessage = (chunk) => {
@@ -1801,6 +1836,7 @@ export default function App() {
       workspaceId: selectedWorkspaceId,
       model: selectedModel || null,
       onConversationId: async (id) => {
+        createdConversationId = id;
         setConversationId(id);
         if (isNewConversation && selectedProjectId !== null) {
           try {
@@ -1828,11 +1864,12 @@ export default function App() {
         }
         appendToLastMessage(chunk);
       },
-      onDone: () => {
+      onDone: async () => {
         streamAbortRef.current = null;
         setLoading(false);
         if (isNewConversation) {
           refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
+          await maybeAutoGenerateConversationTitle(createdConversationId);
         }
       },
       onError: (message) => {
@@ -2301,6 +2338,8 @@ export default function App() {
         <Suspense fallback={<ModalLoadingFallback />}>
           <AccountSettings
             user={currentUser}
+            autoGenerateTitles={autoGenerateTitles}
+            onAutoGenerateTitlesChanged={setAutoGenerateTitles}
             onClose={() => setShowAccountSettings(false)}
             onUserUpdated={refreshCurrentUser}
             onAccountDeleted={logout}
