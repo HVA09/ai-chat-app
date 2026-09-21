@@ -11,6 +11,7 @@ class ScheduledTaskRunOut(BaseModel):
     workspace_id: int
     prompt: str
     status: str
+    scheduled_for: datetime | None
     started_at: datetime | None
     finished_at: datetime | None
     conversation_id: int | None

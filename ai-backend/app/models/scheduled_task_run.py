@@ -2,7 +2,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -19,6 +19,10 @@ class ScheduledTaskRunStatus(str, enum.Enum):
 class ScheduledTaskRun(Base):
     __tablename__ = "scheduled_task_runs"
     __table_args__ = (
+        UniqueConstraint(
+            "scheduled_task_id", "scheduled_for",
+            name="uq_scheduled_task_runs_task_scheduled_for",
+        ),
         Index(
             "ix_scheduled_task_runs_task_created_at",
             "scheduled_task_id",
@@ -56,6 +60,9 @@ class ScheduledTaskRun(Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    scheduled_for: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
     )
     finished_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
