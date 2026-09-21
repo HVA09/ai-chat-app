@@ -1624,7 +1624,20 @@ export default function App() {
   const handleShareConversation = async () => {
     if (!conversationId) return;
     try {
-      const share = await createConversationShare(conversationId, 7);
+      const protect = window.confirm(t("sharing.protectConfirm"));
+      let password = null;
+
+      if (protect) {
+        password = window.prompt(t("sharing.passwordPrompt"));
+        if (password === null) return;
+        password = password.trim();
+        if (password.length < 8) {
+          setToast({ message: t("sharing.passwordTooShort"), type: "error" });
+          return;
+        }
+      }
+
+      const share = await createConversationShare(conversationId, 7, password);
       if (navigator.share) {
         try {
           await navigator.share({
