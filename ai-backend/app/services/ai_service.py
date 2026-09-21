@@ -68,8 +68,18 @@ def _raise_ai_http_error(exc: Exception) -> None:
     ) from exc
 
 
-async def get_ai_reply(message: str, history: list[dict[str, str]] | None = None, model: str | None = None) -> AIReply:
+async def get_ai_reply(
+    message: str,
+    history: list[dict[str, str]] | None = None,
+    model: str | None = None,
+    meta: dict[str, str] | None = None,
+) -> AIReply:
     """رد كامل دفعة وحدة (نص + عدد توكنز لو متوفر) — تُستخدم في /chat"""
+    selected_model = (model or settings.AI_MODEL).strip()
+    primary_provider_name = settings.AI_PROVIDER.strip().lower()
+    if meta is not None:
+        meta.update({"provider": primary_provider_name, "model": selected_model})
+
     provider = get_provider(model)
     try:
         return await provider.get_reply(message, history)
@@ -81,6 +91,11 @@ async def get_ai_reply(message: str, history: list[dict[str, str]] | None = None
         if fallback is None:
             _raise_ai_http_error(primary_exc)
 
+        if meta is not None:
+            meta.update({
+                "provider": settings.AI_FALLBACK_PROVIDER.strip().lower(),
+                "model": (settings.AI_FALLBACK_MODEL or model or settings.AI_MODEL).strip(),
+            })
         try:
             return await fallback.get_reply(message, history)
         except Exception as fallback_exc:
@@ -91,9 +106,15 @@ async def stream_ai_reply(
     message: str,
     history: list[dict[str, str]] | None = None,
     model: str | None = None,
+    meta: dict[str, str] | None = None,
 ) -> AsyncIterator[str]:
     """رد يُبَث تدريجيًا — تُستخدم في /chat/stream. الأخطاء تُترك للمستدعي يمسكها
     لأنها تصير أثناء البث نفسه (بعد ما الاستجابة بدأت)، مو قبل إرسالها."""
+    selected_model = (model or settings.AI_MODEL).strip()
+    primary_provider_name = settings.AI_PROVIDER.strip().lower()
+    if meta is not None:
+        meta.update({"provider": primary_provider_name, "model": selected_model})
+
     provider = get_provider(model)
     emitted = False
     primary_error: Exception | None = None
@@ -114,6 +135,11 @@ async def stream_ai_reply(
         assert primary_error is not None
         raise primary_error
 
+    if meta is not None:
+        meta.update({
+            "provider": settings.AI_FALLBACK_PROVIDER.strip().lower(),
+            "model": (settings.AI_FALLBACK_MODEL or model or settings.AI_MODEL).strip(),
+        })
     async for chunk in fallback.stream_reply(message, history):
         yield chunk
 
@@ -123,8 +149,14 @@ async def get_ai_vision_reply(
     image_data_url: str,
     history: list[dict] | None = None,
     model: str | None = None,
+    meta: dict[str, str] | None = None,
 ) -> AIReply:
     """رد متعدد الوسائط لصورة واحدة عبر المزوّد المتوافق مع OpenAI."""
+    selected_model = (model or settings.AI_MODEL).strip()
+    primary_provider_name = settings.AI_PROVIDER.strip().lower()
+    if meta is not None:
+        meta.update({"provider": primary_provider_name, "model": selected_model})
+
     provider = get_provider(model)
     if not isinstance(provider, OpenAICompatibleProvider):
         raise HTTPException(
@@ -141,6 +173,11 @@ async def get_ai_vision_reply(
         if not isinstance(fallback, OpenAICompatibleProvider):
             _raise_ai_http_error(primary_exc)
 
+        if meta is not None:
+            meta.update({
+                "provider": settings.AI_FALLBACK_PROVIDER.strip().lower(),
+                "model": (settings.AI_FALLBACK_MODEL or model or settings.AI_MODEL).strip(),
+            })
         try:
             return await fallback.get_vision_reply(message, image_data_url, history)
         except Exception as fallback_exc:
