@@ -2,9 +2,10 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal, get_db
+from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.scheduled_task import ScheduledTask, ScheduledTaskType
 from app.models.scheduled_task_run import ScheduledTaskRun
@@ -196,20 +197,32 @@ def run_scheduled_task_now(
     # (خصوصًا اختبارات TestClient التي تستخدم nested transactions).
     _execute_scheduled_task(task.id, run_id)
 
-    # أعد تحميل النتيجة من جلسة مستقلة بعد التنفيذ الاحتياطي.
-    # هذا يمنع إعادة كائن ORM مرتبط بمعاملة الطلب التي تم عمل commit/rollback لها.
-    with SessionLocal() as response_db:
-        refreshed_run = (
-            response_db.query(ScheduledTaskRun)
-            .filter(ScheduledTaskRun.id == run_id)
-            .first()
+    # أعد النتيجة كسجل scalar بدل كائن ORM قد يكون انتهت حالته بعد
+    # عمليات commit/rollback داخل التنفيذ الاحتياطي.
+    row = (
+        db.execute(
+            select(
+                ScheduledTaskRun.id,
+                ScheduledTaskRun.scheduled_task_id,
+                ScheduledTaskRun.workspace_id,
+                ScheduledTaskRun.prompt,
+                ScheduledTaskRun.status,
+                ScheduledTaskRun.started_at,
+                ScheduledTaskRun.finished_at,
+                ScheduledTaskRun.conversation_id,
+                ScheduledTaskRun.error,
+                ScheduledTaskRun.created_at,
+            ).where(ScheduledTaskRun.id == run_id)
         )
-        if not refreshed_run:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="تعذر تحميل سجل تنفيذ المهمة",
-            )
-        return ScheduledTaskRunOut.model_validate(refreshed_run)
+        .mappings()
+        .one_or_none()
+    )
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="تعذر تحميل سجل تنفيذ المهمة",
+        )
+    return ScheduledTaskRunOut(**row)
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
