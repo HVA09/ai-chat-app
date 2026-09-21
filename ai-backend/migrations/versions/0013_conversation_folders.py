@@ -24,7 +24,7 @@ def upgrade() -> None:
             "created_at",
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
-            nullable=True,
+            nullable=False,
         ),
         sa.ForeignKeyConstraint(
             ["user_id"],
