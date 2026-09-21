@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     AI_MODEL: str = "gpt-4o-mini"
     AI_ALLOWED_MODELS: list[str] = []
     AI_PROVIDER: str = "openai"
+    # Optional automatic failover when the primary provider times out or is rate-limited.
+    AI_FALLBACK_PROVIDER: str = ""
+    AI_FALLBACK_API_KEY: str = ""
+    AI_FALLBACK_API_BASE_URL: str = ""
+    AI_FALLBACK_MODEL: str = ""
     EMBEDDING_MODEL: str = "gemini-embedding-001"
     EMBEDDING_DIMENSIONS: int = 768
     DAILY_AI_REQUEST_LIMIT: int = 20
