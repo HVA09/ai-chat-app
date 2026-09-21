@@ -96,3 +96,19 @@ def test_factory_rejects_disallowed_model(monkeypatch):
         assert "غير مسموح" in str(exc)
     else:
         raise AssertionError("Expected get_provider to reject a disallowed model")
+
+
+def test_factory_supports_explicit_provider_override(monkeypatch):
+    monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
+    monkeypatch.setattr(app_settings, "AI_API_KEY", "primary-key")
+    monkeypatch.setattr(app_settings, "AI_API_BASE_URL", "https://primary.example/v1")
+    monkeypatch.setattr(app_settings, "AI_MODEL", "gemini-2.5-flash")
+    provider = get_provider(
+        model="gemini-2.5-flash",
+        provider_name="openai",
+        api_key="fallback-key",
+        base_url="https://fallback.example/v1",
+    )
+    assert isinstance(provider, OpenAICompatibleProvider)
+    assert provider.api_key == "fallback-key"
+    assert provider.base_url == "https://fallback.example/v1"
