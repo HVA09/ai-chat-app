@@ -86,7 +86,7 @@ def test_cannot_run_or_read_other_users_task_history(client):
 
 def test_failed_manual_run_is_recorded(client, monkeypatch):
     monkeypatch.setattr(
-        chat_router_module,
+        tasks_module,
         "get_ai_reply",
         AsyncMock(side_effect=RuntimeError("provider down")),
     )
