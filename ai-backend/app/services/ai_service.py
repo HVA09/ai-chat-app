@@ -95,19 +95,23 @@ async def stream_ai_reply(
     لأنها تصير أثناء البث نفسه (بعد ما الاستجابة بدأت)، مو قبل إرسالها."""
     provider = get_provider(model)
     emitted = False
+    primary_error: Exception | None = None
+
     try:
         async for chunk in provider.stream_reply(message, history):
             emitted = True
             yield chunk
         return
-    except Exception as primary_exc:
+    except Exception as exc:
         # بعد إرسال أول chunk لا ننتقل لمزوّد ثانٍ، حتى لا نكرر جزءًا من الرد.
-        if emitted or not _is_retryable_provider_error(primary_exc):
+        if emitted or not _is_retryable_provider_error(exc):
             raise
+        primary_error = exc
 
     fallback = _get_fallback_provider(model)
     if fallback is None:
-        raise primary_exc
+        assert primary_error is not None
+        raise primary_error
 
     async for chunk in fallback.stream_reply(message, history):
         yield chunk
