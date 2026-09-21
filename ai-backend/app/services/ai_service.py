@@ -52,6 +52,7 @@ def _get_fallback_provider(model: str | None = None):
         provider_name=provider_name,
         api_key=api_key,
         base_url=settings.AI_FALLBACK_API_BASE_URL or settings.AI_API_BASE_URL,
+        validate_model=False,
     )
 
 
