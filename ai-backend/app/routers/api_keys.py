@@ -247,7 +247,8 @@ async def developer_chat(
 
     history = _build_history(conversation, db)
     ai_message, _sources = await _augment_message(payload.message, conversation, db)
-    reply = await get_ai_reply(ai_message, history, conversation.ai_model)
+    usage_meta: dict[str, str] = {}
+    reply = await get_ai_reply(ai_message, history, conversation.ai_model, meta=usage_meta)
 
     db.add(
         Message(
@@ -271,6 +272,8 @@ async def developer_chat(
             api_key_id=api_key.id,
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
+            provider=usage_meta.get("provider"),
+            model=usage_meta.get("model"),
         )
     )
     db.commit()
