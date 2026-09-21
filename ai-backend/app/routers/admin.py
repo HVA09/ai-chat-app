@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.audit import log_event
 from app.cache import cache_get, cache_set
 from app.config import settings as app_settings
+from app.services.ai_cost import estimate_cost_usd
 from app.database import get_db
 from app.dependencies import require_admin
 from app.models.audit_log import AuditLog
@@ -29,6 +30,7 @@ from app.schemas.admin import (
     AdminUserUpdate,
     AuditLogOut,
     DailyStatsPoint,
+    CostUsageStat,
     FeedbackAnalytics,
     ModelUsageStat,
     ProviderUsageStat,
@@ -250,6 +252,55 @@ def get_model_usage(
         )
         for model, requests, input_tokens, output_tokens in rows
     ]
+
+
+@router.get("/analytics/cost", response_model=list[CostUsageStat])
+def get_cost_usage(
+    days: int = 30,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    days = max(1, min(days, 365))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    rows = (
+        db.query(
+            UsageLog.provider,
+            UsageLog.model,
+            func.count(UsageLog.id),
+            func.coalesce(func.sum(UsageLog.input_tokens), 0),
+            func.coalesce(func.sum(UsageLog.output_tokens), 0),
+        )
+        .filter(
+            UsageLog.created_at >= since,
+            UsageLog.provider.is_not(None),
+            UsageLog.model.is_not(None),
+        )
+        .group_by(UsageLog.provider, UsageLog.model)
+        .order_by(func.count(UsageLog.id).desc(), UsageLog.provider.asc(), UsageLog.model.asc())
+        .all()
+    )
+
+    results = []
+    for provider, model, requests, input_tokens, output_tokens in rows:
+        input_cost, output_cost, total_cost = estimate_cost_usd(
+            provider, model, input_tokens, output_tokens
+        )
+        results.append(
+            CostUsageStat(
+                provider=provider,
+                model=model,
+                requests=requests,
+                input_tokens=input_tokens or 0,
+                output_tokens=output_tokens or 0,
+                total_tokens=(input_tokens or 0) + (output_tokens or 0),
+                input_cost_usd=input_cost,
+                output_cost_usd=output_cost,
+                total_cost_usd=total_cost,
+                pricing_configured=total_cost is not None,
+            )
+        )
+    return results
 
 
 @router.get("/analytics/feedback", response_model=FeedbackAnalytics)
