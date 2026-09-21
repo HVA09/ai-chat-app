@@ -12,6 +12,7 @@ class AIReply:
     text: str
     input_tokens: int | None = None
     output_tokens: int | None = None
+    provider: str | None = None
 
 
 @dataclass

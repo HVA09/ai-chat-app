@@ -588,6 +588,7 @@ async def generate_conversation_title(
             model=conversation.ai_model,
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
+            provider=reply.provider,
         )
     )
     db.commit()

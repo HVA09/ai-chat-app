@@ -553,6 +553,7 @@ async def analyze_attached_image(
             model=conversation.ai_model,
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
+            provider=reply.provider,
         )
     )
     db.commit()
@@ -668,6 +669,7 @@ async def chat(
                 endpoint="/chat/agent",
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                provider=settings.AI_PROVIDER.strip().lower(),
             )
         )
         db.commit()
@@ -1109,12 +1111,23 @@ async def chat_stream(
     db.commit()
 
     # FastAPI يُبقي اعتماديات الطلب حية حتى ينتهي مولّد StreamingResponse
+    selected_provider: str | None = None
+
+    def _on_provider_selected(provider_name: str) -> None:
+        nonlocal selected_provider
+        selected_provider = provider_name
+
     async def event_generator():
         yield f"event: conversation\ndata: {conversation.id}\n\n"
         yield f"event: sources\ndata: {json.dumps(sources, ensure_ascii=False)}\n\n"
         full_reply = ""
         try:
-            async for chunk in stream_ai_reply(ai_message, history, conversation.ai_model):
+            async for chunk in stream_ai_reply(
+                ai_message,
+                history,
+                conversation.ai_model,
+                on_provider_selected=_on_provider_selected,
+            ):
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
@@ -1132,7 +1145,15 @@ async def chat_stream(
                     sources=sources or None,
                 )
             )
-            db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/stream", model=conversation.ai_model))
+            db.add(
+                UsageLog(
+                    user_id=current_user.id,
+                    workspace_id=conversation.workspace_id,
+                    endpoint="/chat/stream",
+                    model=conversation.ai_model,
+                    provider=selected_provider,
+                )
+            )
             db.commit()
         except Exception:
             logger.exception("فشل حفظ رد البث لمحادثة %s", conversation.id)

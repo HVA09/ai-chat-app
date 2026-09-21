@@ -57,6 +57,14 @@ class DailyStatsPoint(BaseModel):
     output_tokens: int
 
 
+class ProviderUsageStat(BaseModel):
+    provider: str
+    requests: int
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+
 class ModelUsageStat(BaseModel):
     model: str
     requests: int

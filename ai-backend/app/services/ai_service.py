@@ -2,7 +2,7 @@
 طبقة الاتصال بمحرك الذكاء الاصطناعي — تفوّض لأي مزوّد مضبوط في AI_PROVIDER
 (openai, anthropic, gemini, deepseek). راجع app/services/ai_providers/
 """
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 import httpx
 from fastapi import HTTPException, status
@@ -68,11 +68,18 @@ def _raise_ai_http_error(exc: Exception) -> None:
     ) from exc
 
 
-async def get_ai_reply(message: str, history: list[dict[str, str]] | None = None, model: str | None = None) -> AIReply:
-    """رد كامل دفعة وحدة (نص + عدد توكنز لو متوفر) — تُستخدم في /chat"""
+async def get_ai_reply(
+    message: str,
+    history: list[dict[str, str]] | None = None,
+    model: str | None = None,
+) -> AIReply:
+    """رد كامل مع تسجيل المزوّد الذي نجح فعليًا."""
     provider = get_provider(model)
+    primary_provider_name = settings.AI_PROVIDER.strip().lower()
     try:
-        return await provider.get_reply(message, history)
+        reply = await provider.get_reply(message, history)
+        reply.provider = primary_provider_name
+        return reply
     except Exception as primary_exc:
         if not _is_retryable_provider_error(primary_exc):
             _raise_ai_http_error(primary_exc)
@@ -82,7 +89,9 @@ async def get_ai_reply(message: str, history: list[dict[str, str]] | None = None
             _raise_ai_http_error(primary_exc)
 
         try:
-            return await fallback.get_reply(message, history)
+            reply = await fallback.get_reply(message, history)
+            reply.provider = settings.AI_FALLBACK_PROVIDER.strip().lower()
+            return reply
         except Exception as fallback_exc:
             _raise_ai_http_error(fallback_exc)
 
@@ -91,6 +100,7 @@ async def stream_ai_reply(
     message: str,
     history: list[dict[str, str]] | None = None,
     model: str | None = None,
+    on_provider_selected: Callable[[str], None] | None = None,
 ) -> AsyncIterator[str]:
     """رد يُبَث تدريجيًا — تُستخدم في /chat/stream. الأخطاء تُترك للمستدعي يمسكها
     لأنها تصير أثناء البث نفسه (بعد ما الاستجابة بدأت)، مو قبل إرسالها."""
@@ -101,6 +111,9 @@ async def stream_ai_reply(
     try:
         async for chunk in provider.stream_reply(message, history):
             emitted = True
+            if on_provider_selected is not None:
+                on_provider_selected(settings.AI_PROVIDER.strip().lower())
+                on_provider_selected = None
             yield chunk
         return
     except Exception as exc:
@@ -115,6 +128,9 @@ async def stream_ai_reply(
         raise primary_error
 
     async for chunk in fallback.stream_reply(message, history):
+        if on_provider_selected is not None:
+            on_provider_selected(settings.AI_FALLBACK_PROVIDER.strip().lower())
+            on_provider_selected = None
         yield chunk
 
 
@@ -132,7 +148,9 @@ async def get_ai_vision_reply(
             detail="تحليل الصور غير مدعوم مع مزوّد الذكاء الاصطناعي الحالي",
         )
     try:
-        return await provider.get_vision_reply(message, image_data_url, history)
+        reply = await provider.get_vision_reply(message, image_data_url, history)
+        reply.provider = settings.AI_PROVIDER.strip().lower()
+        return reply
     except Exception as primary_exc:
         if not _is_retryable_provider_error(primary_exc):
             _raise_ai_http_error(primary_exc)
@@ -142,6 +160,8 @@ async def get_ai_vision_reply(
             _raise_ai_http_error(primary_exc)
 
         try:
-            return await fallback.get_vision_reply(message, image_data_url, history)
+            reply = await fallback.get_vision_reply(message, image_data_url, history)
+            reply.provider = settings.AI_FALLBACK_PROVIDER.strip().lower()
+            return reply
         except Exception as fallback_exc:
             _raise_ai_http_error(fallback_exc)
