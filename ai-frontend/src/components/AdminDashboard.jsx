@@ -12,6 +12,7 @@ import {
 import {
   getAdminStats,
   getDailyAnalytics,
+  getModelUsage,
   getFeedbackAnalytics,
   downloadAnalyticsCsv,
   listAllUsers,
@@ -41,14 +42,21 @@ function StatsTab() {
   const [stats, setStats] = useState(null);
   const [daily, setDaily] = useState([]);
   const [feedback, setFeedback] = useState(null);
+  const [modelUsage, setModelUsage] = useState([]);
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    Promise.all([getAdminStats(), getDailyAnalytics(30), getFeedbackAnalytics(30)])
-      .then(([statsData, dailyData, feedbackData]) => {
+    Promise.all([
+      getAdminStats(),
+      getDailyAnalytics(30),
+      getModelUsage(30),
+      getFeedbackAnalytics(30),
+    ])
+      .then(([statsData, dailyData, modelUsageData, feedbackData]) => {
         setStats(statsData);
         setDaily(dailyData.map((p) => ({ ...p, dateLabel: p.date.slice(5) })));
+        setModelUsage(modelUsageData);
         setFeedback(feedbackData);
       })
       .catch(() => setError(t("admin.statsError")));
@@ -87,6 +95,39 @@ function StatsTab() {
           </div>
         ))}
       </div>
+
+      {modelUsage.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium text-slate-900">{t("admin.modelUsageTitle")}</p>
+            <span className="text-xs text-slate-400">{t("admin.modelUsageLast30Days")}</span>
+          </div>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[520px] text-left text-sm">
+              <thead className="border-b border-slate-200 text-xs text-slate-500">
+                <tr>
+                  <th className="px-2 py-2 font-medium">{t("admin.modelColumn")}</th>
+                  <th className="px-2 py-2 text-right font-medium">{t("admin.modelRequests")}</th>
+                  <th className="px-2 py-2 text-right font-medium">{t("admin.modelInputTokens")}</th>
+                  <th className="px-2 py-2 text-right font-medium">{t("admin.modelOutputTokens")}</th>
+                  <th className="px-2 py-2 text-right font-medium">{t("admin.modelTotalTokens")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {modelUsage.map((item) => (
+                  <tr key={item.model} className="border-b border-slate-100 last:border-0">
+                    <td className="px-2 py-2 font-medium text-slate-900">{item.model}</td>
+                    <td className="px-2 py-2 text-right text-slate-600">{item.requests}</td>
+                    <td className="px-2 py-2 text-right text-slate-600">{item.input_tokens}</td>
+                    <td className="px-2 py-2 text-right text-slate-600">{item.output_tokens}</td>
+                    <td className="px-2 py-2 text-right font-medium text-slate-900">{item.total_tokens}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {feedback && (
         <div className="rounded-2xl border border-slate-200 p-4">
