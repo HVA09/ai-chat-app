@@ -178,6 +178,8 @@ def _execute_scheduled_task(
                 input_tokens=reply.input_tokens,
                 output_tokens=reply.output_tokens,
                 provider=reply.provider,
+                latency_ms=reply.latency_ms,
+            latency_ms=reply.latency_ms,
             )
         )
 
