@@ -355,6 +355,7 @@ const resources = {
         runNowError: "تعذر تشغيل المهمة الآن",
         finishedAt: "انتهى: {{date}}",
         conversationCreated: "تم إنشاء محادثة من هذا التنفيذ",
+        openConversation: "فتح المحادثة",
         status: {
           queued: "في الانتظار",
           running: "جارٍ التنفيذ",
@@ -1070,6 +1071,7 @@ const resources = {
         runNowError: "Couldn't run the task now",
         finishedAt: "Finished: {{date}}",
         conversationCreated: "A conversation was created from this run",
+        openConversation: "Open conversation",
         status: {
           queued: "Queued",
           running: "Running",
