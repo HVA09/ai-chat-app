@@ -4,6 +4,7 @@ import hashlib
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import update
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
@@ -87,6 +88,8 @@ def create_conversation_share(
         url=_share_url(token),
         created_at=share.created_at,
         expires_at=share.expires_at,
+        access_count=share.access_count,
+        last_accessed_at=share.last_accessed_at,
     )
 
 
@@ -114,6 +117,8 @@ def list_conversation_shares(
             expires_at=share.expires_at,
             is_expired=share.expires_at is not None and share.expires_at <= now,
             password_protected=share.password_hash is not None,
+            access_count=share.access_count,
+            last_accessed_at=share.last_accessed_at,
         )
         for share in shares
     ]
@@ -192,6 +197,20 @@ def _serialize_shared_conversation(share: ConversationShare) -> SharedConversati
     )
 
 
+
+def _record_share_access(share_id: int, db: Session) -> None:
+    now = datetime.now(timezone.utc)
+    db.execute(
+        update(ConversationShare)
+        .where(ConversationShare.id == share_id)
+        .values(
+            access_count=ConversationShare.access_count + 1,
+            last_accessed_at=now,
+        )
+    )
+    db.commit()
+
+
 @router.get(
     "/shared-conversations/{token}",
     response_model=SharedConversationOut,
@@ -207,6 +226,7 @@ def get_shared_conversation(
             detail="share_password_required",
         )
 
+    _record_share_access(share.id, db)
     share = (
         db.query(ConversationShare)
         .options(selectinload(ConversationShare.conversation).selectinload(Conversation.messages))
@@ -235,6 +255,7 @@ def access_password_protected_share(
             detail="invalid_share_password",
         )
 
+    _record_share_access(share.id, db)
     share = (
         db.query(ConversationShare)
         .options(selectinload(ConversationShare.conversation).selectinload(Conversation.messages))
