@@ -42,6 +42,7 @@ describe("ChatMessage voice output", () => {
       }
     };
 
+    document.documentElement.lang = "en";
     render(<ChatMessage role="assistant" text="Hello from AI" time="10:00" />);
 
     await user.click(screen.getByRole("button", { name: "Read aloud" }));
