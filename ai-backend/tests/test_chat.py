@@ -425,6 +425,86 @@ def test_admin_bypasses_daily_limit(client, monkeypatch):
         assert response.status_code == 200
 
 
+def test_monthly_ai_cost_budget_blocks_regular_user_when_exceeded(client, db_session, monkeypatch):
+    import json
+
+    from app.models.usage_log import UsageLog
+
+    mock_reply = AsyncMock(return_value=AIReply(text="لن يجب أن يصل هنا"))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
+    monkeypatch.setattr(app_settings, "AI_MONTHLY_BUDGET_USD", 5.0)
+    monkeypatch.setattr(
+        app_settings,
+        "AI_PRICING_JSON",
+        json.dumps(
+            {
+                "gemini:gemini-2.5-flash": {
+                    "input_per_million_usd": 1.0,
+                    "output_per_million_usd": 2.0,
+                }
+            }
+        ),
+    )
+
+    token = _register_and_login(client, "budget-blocked@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    user_id = client.get("/users/me", headers=headers).json()["id"]
+
+    db_session.add(
+        UsageLog(
+            user_id=user_id,
+            endpoint="/chat",
+            provider="gemini",
+            model="gemini-2.5-flash",
+            input_tokens=4_000_000,
+            output_tokens=500_000,
+        )
+    )
+    db_session.commit()
+
+    response = client.post(
+        "/chat",
+        json={"message": "رسالة بعد تجاوز الميزانية"},
+        headers=headers,
+    )
+
+    assert response.status_code == 429
+    assert "ميزانية AI الشهرية" in response.json()["detail"]
+    mock_reply.assert_not_awaited()
+
+
+def test_monthly_ai_cost_budget_is_disabled_when_zero(client, monkeypatch):
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", AsyncMock(return_value=AIReply(text="رد")))
+    monkeypatch.setattr(app_settings, "AI_MONTHLY_BUDGET_USD", 0.0)
+
+    token = _register_and_login(client, "budget-disabled@example.com")
+    response = client.post(
+        "/chat",
+        json={"message": "رسالة عادية"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+
+
+def test_admin_bypasses_monthly_ai_cost_budget(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد إداري")),
+    )
+    monkeypatch.setattr(app_settings, "AI_MONTHLY_BUDGET_USD", 1.0)
+
+    admin_token = _register_and_login(client, "budget-admin-bypass@example.com", admin=True)
+    response = client.post(
+        "/chat",
+        json={"message": "طلب إداري"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+
+
 def test_regular_user_hits_daily_limit(client, monkeypatch):
     monkeypatch.setattr(chat_router_module, "get_ai_reply", AsyncMock(return_value=AIReply(text="رد")))
     monkeypatch.setattr(app_settings, "DAILY_AI_REQUEST_LIMIT", 1)
