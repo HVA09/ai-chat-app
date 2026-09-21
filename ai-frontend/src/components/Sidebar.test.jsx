@@ -192,8 +192,10 @@ describe("Sidebar", () => {
     renderSidebar({
       searchValue: "خطة العمل",
     });
-    expect(screen.getByText("خطة العمل")).toBeInTheDocument();
-    expect(screen.getByText("ناقشنا ")).toBeInTheDocument();
+    const mark = document.querySelector("mark");
+    expect(mark).toBeInTheDocument();
+    expect(mark?.textContent).toBe("خطة العمل");
+    expect(screen.getByText(/ناقشنا/)).toBeInTheDocument();
   });
 
   it("تحميل المزيد يستدعي المعالج", async () => {
