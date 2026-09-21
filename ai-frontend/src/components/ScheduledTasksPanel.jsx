@@ -23,6 +23,7 @@ export default function ScheduledTasksPanel({
   workspaces = [],
   selectedWorkspaceId = null,
   onClose,
+  onOpenConversation,
 }) {
   const { t } = useTranslation();
   const [workspaceId, setWorkspaceId] = useState(selectedWorkspaceId);
@@ -309,9 +310,13 @@ export default function ScheduledTasksPanel({
                             <div className="text-red-600">{run.error}</div>
                           ) : null}
                           {run.conversation_id ? (
-                            <div className="text-slate-500">
-                              {t("scheduledTasks.conversationCreated")}
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => onOpenConversation?.(run.conversation_id)}
+                              className="mt-1 self-start rounded-lg px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                            >
+                              {t("scheduledTasks.openConversation")}
+                            </button>
                           ) : null}
                         </div>
                       ))
