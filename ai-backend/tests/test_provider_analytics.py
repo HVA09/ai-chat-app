@@ -14,7 +14,7 @@ def _register_and_login(client, email, password="StrongPass123"):
     return client.cookies.get("access_token")
 
 
-def test_admin_provider_usage_analytics(client):
+def test_admin_provider_usage_analytics(client, db_session):
     token = _register_and_login(client, "provider-admin@example.com")
     user_id_response = client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
     user_id = user_id_response.json()["id"]
@@ -107,10 +107,10 @@ def test_ai_reply_records_fallback_provider(monkeypatch):
     monkeypatch.setattr(ai_service, "get_provider", lambda *args, **kwargs: next(calls))
     monkeypatch.setattr(ai_service, "_is_retryable_provider_error", lambda exc: True)
 
-    ai_service.settings.AI_FALLBACK_PROVIDER = "deepseek"
-    ai_service.settings.AI_FALLBACK_API_KEY = "fallback-key"
-    ai_service.settings.AI_FALLBACK_MODEL = "fallback-model"
-    ai_service.settings.AI_FALLBACK_API_BASE_URL = "https://example.com"
+    monkeypatch.setattr(ai_service.settings, "AI_FALLBACK_PROVIDER", "deepseek")
+    monkeypatch.setattr(ai_service.settings, "AI_FALLBACK_API_KEY", "fallback-key")
+    monkeypatch.setattr(ai_service.settings, "AI_FALLBACK_MODEL", "fallback-model")
+    monkeypatch.setattr(ai_service.settings, "AI_FALLBACK_API_BASE_URL", "https://example.com")
 
     import asyncio
 
