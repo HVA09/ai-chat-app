@@ -369,7 +369,7 @@ export default function ScheduledTasksPanel({
                           className="mt-1 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
                         />
                       </label>
-                      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                         <label className="text-sm font-medium">
                           {t("scheduledTasks.frequency")}
                           <select
@@ -390,6 +390,18 @@ export default function ScheduledTasksPanel({
                             onChange={(event) => setEditNextRunAt(event.target.value)}
                             className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
                           />
+                        </label>
+                        <label className="text-sm font-medium">
+                          {t("scheduledTasks.timezone")}
+                          <select
+                            value={editTimezoneName}
+                            onChange={(event) => setEditTimezoneName(event.target.value)}
+                            className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                          >
+                            {timezoneOptions().map((zone) => (
+                              <option key={zone} value={zone}>{zone}</option>
+                            ))}
+                          </select>
                         </label>
                         {editScheduleType === "weekly" && (
                           <label className="text-sm font-medium">
