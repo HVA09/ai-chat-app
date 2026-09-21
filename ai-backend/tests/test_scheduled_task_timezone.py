@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.models.scheduled_task import ScheduledTask, ScheduledTaskType
-from app.routers.scheduled_tasks import _next_occurrence
+from app.tasks import _next_occurrence
 from app.schemas.scheduled_tasks import ScheduledTaskCreate
 
 
