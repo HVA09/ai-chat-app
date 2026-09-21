@@ -109,8 +109,6 @@ describe("ScheduledTasksPanel", () => {
       )
     );
   });
-});
-
 
   it("يشغّل المهمة الآن ويحمّل سجل التنفيذ", async () => {
     const user = userEvent.setup();
