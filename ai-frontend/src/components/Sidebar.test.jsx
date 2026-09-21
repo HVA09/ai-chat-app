@@ -66,7 +66,13 @@ vi.mock("react-i18next", () => ({
 }));
 
 const sampleConversations = [
-  { id: 1, title: "محادثة أولى", created_at: "2026-07-01T10:00:00Z", folder_id: 10 },
+  {
+    id: 1,
+    title: "محادثة أولى",
+    created_at: "2026-07-01T10:00:00Z",
+    folder_id: 10,
+    search_snippet: "ناقشنا خطة العمل للمشروع الجديد اليوم.",
+  },
   { id: 2, title: "محادثة ثانية", created_at: "2026-07-02T10:00:00Z", folder_id: null },
 ];
 const sampleWorkspaces = [
@@ -180,6 +186,16 @@ describe("Sidebar", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("يعرض مقتطف المطابقة ويُبرز كلمة البحث", () => {
+    renderSidebar({
+      searchValue: "خطة العمل",
+    });
+    const mark = document.querySelector("mark");
+    expect(mark).toBeInTheDocument();
+    expect(mark?.textContent).toBe("خطة العمل");
+    expect(screen.getByText(/ناقشنا/)).toBeInTheDocument();
   });
 
   it("تحميل المزيد يستدعي المعالج", async () => {

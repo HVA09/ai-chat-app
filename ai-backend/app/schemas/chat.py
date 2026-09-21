@@ -113,6 +113,7 @@ class ConversationOut(BaseModel):
     tags: list[TagOut] = Field(default_factory=list)
     parent_conversation_id: int | None
     branched_from_message_index: int | None
+    search_snippet: str | None = None
 
 
 class ConversationDetail(ConversationOut):
