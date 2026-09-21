@@ -491,6 +491,8 @@ async def _generate_conversation_title(
     conversation: Conversation,
     current_user: User,
     db: Session,
+    *,
+    usage_endpoint: str = "/conversations/generate-title",
 ) -> Conversation:
     if conversation.workspace_id is not None:
         enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
@@ -521,7 +523,7 @@ async def _generate_conversation_title(
         UsageLog(
             user_id=current_user.id,
             workspace_id=conversation.workspace_id,
-            endpoint="/conversations/generate-title",
+            endpoint=usage_endpoint,
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
         )
@@ -558,7 +560,12 @@ async def generate_conversation_title(
             detail="لا توجد رسائل كافية لتوليد عنوان",
         )
 
-    return await _generate_conversation_title(conversation, current_user, db)
+    return await _generate_conversation_title(
+        conversation,
+        current_user,
+        db,
+        usage_endpoint="/conversations/generate-title",
+    )
 
 
 @router.post("/{conversation_id}/auto-title", response_model=ConversationOut)
