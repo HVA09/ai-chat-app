@@ -72,7 +72,7 @@ def _execute_scheduled_task(task_id: int, run_id: int | None = None) -> None:
     now = datetime.now(timezone.utc).replace(microsecond=0)
     try:
         task = db.get(ScheduledTask, task_id)
-        if not task or not task.is_active:
+        if not task or (run_id is None and not task.is_active):
             return
 
         run = db.get(ScheduledTaskRun, run_id) if run_id is not None else None
@@ -100,6 +100,9 @@ def _execute_scheduled_task(task_id: int, run_id: int | None = None) -> None:
             task.is_active = False
             task.last_error = "المستخدم أو مساحة العمل غير متاحة."
             task.last_run_at = now
+            run.status = ScheduledTaskRunStatus.failed
+            run.finished_at = now
+            run.error = task.last_error
             db.commit()
             return
 
@@ -115,6 +118,9 @@ def _execute_scheduled_task(task_id: int, run_id: int | None = None) -> None:
             task.is_active = False
             task.last_error = "لم تعد تملك عضوية في مساحة العمل."
             task.last_run_at = now
+            run.status = ScheduledTaskRunStatus.failed
+            run.finished_at = now
+            run.error = task.last_error
             db.commit()
             return
 
@@ -283,6 +289,7 @@ try:
 except ImportError:
     celery_app = None
     send_email_task = None
+    execute_scheduled_task = None
     run_due_scheduled_tasks = None
     _CELERY_AVAILABLE = False
     logger.info("مكتبة celery غير مثبّتة — المهام الخلفية غير مفعّلة")
