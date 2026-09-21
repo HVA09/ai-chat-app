@@ -3,6 +3,7 @@
 """
 import asyncio
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from app.database import SessionLocal
 from app.logging_config import get_logger
@@ -24,13 +25,18 @@ def _next_occurrence(task: ScheduledTask, now: datetime) -> datetime | None:
     if task.schedule_type == ScheduledTaskType.once:
         return None
 
+    tz = ZoneInfo(task.timezone_name or "UTC")
+    local_next_run = task.next_run_at.astimezone(tz)
+    local_now = now.astimezone(tz)
     delta = timedelta(
         days=1 if task.schedule_type == ScheduledTaskType.daily else 7
     )
-    next_run = task.next_run_at
-    while next_run <= now:
-        next_run += delta
-    return next_run
+
+    while local_next_run <= local_now:
+        local_next_run += delta
+
+    # نحافظ على وقت المستخدم المحلي في المنطقة الزمنية المحددة، ثم نخزن UTC.
+    return local_next_run.astimezone(timezone.utc)
 
 
 def _ensure_ai_quota(user: User, workspace: Workspace, db) -> None:
