@@ -212,8 +212,7 @@ describe("ScheduledTasksPanel", () => {
 
     await waitFor(() => expect(screen.getByText("المهمة القديمة")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "تعديل" }));
-    const textareas = screen.getAllByRole("textbox");
-    const promptField = textareas.find((field) => field.tagName.toLowerCase() === "textarea");
+    const promptField = screen.getByDisplayValue("المهمة القديمة");
     await user.clear(promptField);
     await user.type(promptField, "المهمة الجديدة");
     await user.click(screen.getByRole("button", { name: "حفظ التعديل" }));
