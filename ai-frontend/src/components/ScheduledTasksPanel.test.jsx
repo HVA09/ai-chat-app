@@ -151,7 +151,7 @@ describe("ScheduledTasksPanel", () => {
     await user.click(screen.getByRole("button", { name: "تشغيل الآن" }));
 
     await waitFor(() => expect(api.runScheduledTask).toHaveBeenCalledWith(1));
-    await user.click(screen.getByRole("button", { name: "سجل التنفيذ" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "إخفاء السجل" })).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText("نجح")).toBeInTheDocument());
     expect(screen.getByText("تم إنشاء محادثة من هذا التنفيذ")).toBeInTheDocument();
   });
