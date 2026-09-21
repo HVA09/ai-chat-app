@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SharedConversationPage from "./SharedConversationPage";
 
 const getSharedConversation = vi.fn();
@@ -43,9 +43,12 @@ vi.mock("./ChatMessage", () => ({
 }));
 
 describe("SharedConversationPage", () => {
+  beforeEach(() => {
+    window.history.pushState({}, "", "/share/test-token");
+  });
+
   afterEach(() => {
     vi.clearAllMocks();
-    window.history.pushState({}, "", "/share/test-token");
   });
 
   it("يطلب كلمة المرور للرابط المحمي ثم يعرض المحادثة بعد فتحه", async () => {
