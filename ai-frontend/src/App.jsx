@@ -1363,33 +1363,6 @@ export default function App() {
     }
   };
 
-  const handleGenerateConversationTitle = async () => {
-    if (!conversationId || loading || titleLoading || readOnlyConversation) return;
-    setTitleLoading(true);
-    setError("");
-    try {
-      const result = await generateConversationTitle(conversationId);
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations,
-        selectedTagId
-      );
-      setToast({ message: t("conversationTitle.generated"), type: "success" });
-      return result;
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("conversationTitle.error"),
-        type: "error",
-      });
-    } finally {
-      setTitleLoading(false);
-    }
-  };
-
   const maybeAutoGenerateConversationTitle = async (id) => {
     if (!autoGenerateTitles || !id || titleLoading || readOnlyConversation) return;
     setTitleLoading(true);
