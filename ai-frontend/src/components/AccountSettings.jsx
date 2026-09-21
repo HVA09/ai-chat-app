@@ -20,7 +20,16 @@ function Section({ title, children }) {
   );
 }
 
-export default function AccountSettings({ user, autoGenerateTitles: autoGenerateTitlesProp = false, onAutoGenerateTitlesChanged, onClose, onUserUpdated, onAccountDeleted }) {
+export default function AccountSettings({
+  user,
+  autoGenerateTitles: autoGenerateTitlesProp = false,
+  onAutoGenerateTitlesChanged,
+  autoGenerateSummaries: autoGenerateSummariesProp = false,
+  onAutoGenerateSummariesChanged,
+  onClose,
+  onUserUpdated,
+  onAccountDeleted,
+}) {
   const { t } = useTranslation();
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -29,6 +38,9 @@ export default function AccountSettings({ user, autoGenerateTitles: autoGenerate
   const [fullName, setFullName] = useState(user?.full_name || "");
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || "");
   const [autoGenerateTitles, setAutoGenerateTitles] = useState(Boolean(autoGenerateTitlesProp));
+  const [autoGenerateSummaries, setAutoGenerateSummaries] = useState(
+    Boolean(autoGenerateSummariesProp)
+  );
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -81,6 +93,10 @@ export default function AccountSettings({ user, autoGenerateTitles: autoGenerate
   useEffect(() => {
     setAutoGenerateTitles(Boolean(autoGenerateTitlesProp));
   }, [autoGenerateTitlesProp]);
+
+  useEffect(() => {
+    setAutoGenerateSummaries(Boolean(autoGenerateSummariesProp));
+  }, [autoGenerateSummariesProp]);
 
   const handleToggleAutoGenerateTitles = (enabled) => {
     window.localStorage.setItem("ai-chat-auto-title", enabled ? "true" : "false");
@@ -279,6 +295,27 @@ export default function AccountSettings({ user, autoGenerateTitles: autoGenerate
               </span>
               <span className="mt-1 block text-xs text-slate-500">
                 {t("account.autoGenerateTitlesDescription")}
+              </span>
+            </span>
+          </label>
+        </Section>
+
+        <Section title={t("account.conversationSummariesSection")}>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={autoGenerateSummaries}
+              onChange={(event) =>
+                handleToggleAutoGenerateSummaries(event.target.checked)
+              }
+              className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+            />
+            <span>
+              <span className="block text-sm font-medium text-slate-900">
+                {t("account.autoGenerateSummaries")}
+              </span>
+              <span className="mt-1 block text-xs text-slate-500">
+                {t("account.autoGenerateSummariesDescription")}
               </span>
             </span>
           </label>
