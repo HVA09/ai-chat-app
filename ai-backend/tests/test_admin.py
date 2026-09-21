@@ -220,12 +220,14 @@ def test_model_usage_analytics_groups_requests_by_model(client, monkeypatch):
         "get_ai_reply",
         AsyncMock(return_value=AIReply(text="رد")),
     )
+    monkeypatch.setattr(app_settings, "AI_MODEL", "test-model")
+    monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["test-model"])
     admin_token = _register_and_login(client, "model-analytics-admin@example.com", admin=True)
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
 
     response = client.post(
         "/chat",
-        json={"message": "مرحبا", "model": "gemini-2.5-flash"},
+        json={"message": "مرحبا", "model": "test-model"},
         headers=admin_headers,
     )
     assert response.status_code == 200
@@ -237,7 +239,7 @@ def test_model_usage_analytics_groups_requests_by_model(client, monkeypatch):
     assert usage_response.status_code == 200
     rows = usage_response.json()
     assert rows
-    row = next(item for item in rows if item["model"] == "gemini-2.5-flash")
+    row = next(item for item in rows if item["model"] == "test-model")
     assert row["requests"] >= 1
     assert row["total_tokens"] >= 0
 
