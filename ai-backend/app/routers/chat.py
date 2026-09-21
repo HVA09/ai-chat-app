@@ -513,6 +513,7 @@ async def analyze_attached_image(
     if context_parts:
         prompt = "\n\n".join(context_parts) + f"\n\nUSER REQUEST:\n{payload.message}"
 
+    usage_meta: dict[str, str] = {}
     try:
         raw = image_path.read_bytes()
         image_data_url = (
@@ -524,6 +525,7 @@ async def analyze_attached_image(
             image_data_url,
             history,
             conversation.ai_model,
+            meta=usage_meta,
         )
     except OSError as exc:
         raise HTTPException(
@@ -552,6 +554,8 @@ async def analyze_attached_image(
             endpoint="/chat/vision",
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
+            provider=usage_meta.get("provider"),
+            model=usage_meta.get("model"),
         )
     )
     db.commit()
@@ -824,7 +828,8 @@ async def chat(
         Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
     )
 
-    reply = await get_ai_reply(ai_message, history, conversation.ai_model)
+    usage_meta: dict[str, str] = {}
+    reply = await get_ai_reply(ai_message, history, conversation.ai_model, meta=usage_meta)
 
     db.add(
         Message(conversation_id=conversation.id, role=MessageRole.assistant, content=reply.text, sources=sources or None)
@@ -836,6 +841,8 @@ async def chat(
             endpoint="/chat",
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
+            provider=usage_meta.get("provider"),
+            model=usage_meta.get("model"),
         )
     )
     db.commit()
@@ -1107,12 +1114,18 @@ async def chat_stream(
     db.commit()
 
     # FastAPI يُبقي اعتماديات الطلب حية حتى ينتهي مولّد StreamingResponse
+    usage_meta: dict[str, str] = {}
     async def event_generator():
         yield f"event: conversation\ndata: {conversation.id}\n\n"
         yield f"event: sources\ndata: {json.dumps(sources, ensure_ascii=False)}\n\n"
         full_reply = ""
         try:
-            async for chunk in stream_ai_reply(ai_message, history, conversation.ai_model):
+            async for chunk in stream_ai_reply(
+                ai_message,
+                history,
+                conversation.ai_model,
+                meta=usage_meta,
+            ):
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
@@ -1130,7 +1143,15 @@ async def chat_stream(
                     sources=sources or None,
                 )
             )
-            db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/stream"))
+            db.add(
+                UsageLog(
+                    user_id=current_user.id,
+                    workspace_id=conversation.workspace_id,
+                    endpoint="/chat/stream",
+                    provider=usage_meta.get("provider"),
+                    model=usage_meta.get("model"),
+                )
+            )
             db.commit()
         except Exception:
             logger.exception("فشل حفظ رد البث لمحادثة %s", conversation.id)
@@ -1280,12 +1301,18 @@ async def regenerate_chat_stream(
     history = [{"role": m.role.value, "content": m.content} for m in history_messages[-MAX_HISTORY_MESSAGES:]]
     ai_message, sources = await _augment_message(user_message.content, conversation, db)
 
+    usage_meta: dict[str, str] = {}
     async def event_generator():
         yield f"event: conversation\ndata: {conversation.id}\n\n"
         yield f"event: sources\ndata: {json.dumps(sources, ensure_ascii=False)}\n\n"
         full_reply = ""
         try:
-            async for chunk in stream_ai_reply(ai_message, history, conversation.ai_model):
+            async for chunk in stream_ai_reply(
+                ai_message,
+                history,
+                conversation.ai_model,
+                meta=usage_meta,
+            ):
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
@@ -1305,7 +1332,15 @@ async def regenerate_chat_stream(
                     sources=sources or None,
                 )
             )
-            db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/regenerate/stream"))
+            db.add(
+                UsageLog(
+                    user_id=current_user.id,
+                    workspace_id=conversation.workspace_id,
+                    endpoint="/chat/regenerate/stream",
+                    provider=usage_meta.get("provider"),
+                    model=usage_meta.get("model"),
+                )
+            )
             db.commit()
         except Exception:
             logger.exception("فشل حفظ الرد المعاد توليده لمحادثة %s", conversation.id)
@@ -1355,12 +1390,18 @@ async def edit_chat_stream(
     history = [{"role": m.role.value, "content": m.content} for m in history_messages[-MAX_HISTORY_MESSAGES:]]
     ai_message, sources = await _augment_message(payload.message, conversation, db)
 
+    usage_meta: dict[str, str] = {}
     async def event_generator():
         yield f"event: conversation\ndata: {conversation.id}\n\n"
         yield f"event: sources\ndata: {json.dumps(sources, ensure_ascii=False)}\n\n"
         full_reply = ""
         try:
-            async for chunk in stream_ai_reply(ai_message, history, conversation.ai_model):
+            async for chunk in stream_ai_reply(
+                ai_message,
+                history,
+                conversation.ai_model,
+                meta=usage_meta,
+            ):
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
@@ -1385,7 +1426,15 @@ async def edit_chat_stream(
                     sources=sources or None,
                 )
             )
-            db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/edit/stream"))
+            db.add(
+                UsageLog(
+                    user_id=current_user.id,
+                    workspace_id=conversation.workspace_id,
+                    endpoint="/chat/edit/stream",
+                    provider=usage_meta.get("provider"),
+                    model=usage_meta.get("model"),
+                )
+            )
             db.commit()
         except Exception:
             logger.exception("فشل حفظ الرسالة المعدلة لمحادثة %s", conversation.id)
