@@ -286,3 +286,37 @@ def test_failed_share_password_does_not_count_access(client, monkeypatch):
         headers=headers,
     )
     assert listed.json()[0]["access_count"] == 1
+
+
+def test_unprotected_access_endpoint_counts_view(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "share-unprotected-analytics@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "رسالة"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    created = client.post(
+        f"/conversations/{conversation_id}/share",
+        json={"expires_in_days": 7},
+        headers=headers,
+    ).json()
+    public_token = created["url"].split("/share/", 1)[1]
+
+    accessed = client.post(
+        f"/shared-conversations/{public_token}/access",
+        json={"password": "UnusedPass123"},
+    )
+    assert accessed.status_code == 200
+
+    listed = client.get(
+        f"/conversations/{conversation_id}/shares",
+        headers=headers,
+    )
+    assert listed.json()[0]["access_count"] == 1
