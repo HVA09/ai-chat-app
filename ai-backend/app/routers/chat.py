@@ -3,6 +3,7 @@
 """
 import base64
 import json
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -1113,6 +1114,7 @@ async def chat_stream(
 
     # FastAPI يُبقي اعتماديات الطلب حية حتى ينتهي مولّد StreamingResponse
     selected_provider: str | None = None
+    stream_started_at = time.perf_counter()
 
     def _on_provider_selected(provider_name: str) -> None:
         nonlocal selected_provider
@@ -1153,6 +1155,7 @@ async def chat_stream(
                     endpoint="/chat/stream",
                     model=conversation.ai_model,
                     provider=selected_provider,
+                    latency_ms=max(0, round((time.perf_counter() - stream_started_at) * 1000)),
                 )
             )
             db.commit()
