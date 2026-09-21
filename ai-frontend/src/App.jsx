@@ -54,6 +54,7 @@ import {
   importConversations,
   summarizeConversation,
   generateConversationTitle,
+  autoGenerateConversationTitle,
 } from "./lib/conversationsApi";
 import {
   listFolders,
@@ -184,6 +185,7 @@ export default function App() {
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const bottomRef = useRef(null);
   const streamAbortRef = useRef(null);
+  const generationStoppedRef = useRef(false);
 
   useDirection();
 
@@ -1744,6 +1746,7 @@ export default function App() {
   };
 
   const stopGeneration = () => {
+    generationStoppedRef.current = true;
     if (streamAbortRef.current) {
       streamAbortRef.current.abort();
       streamAbortRef.current = null;
