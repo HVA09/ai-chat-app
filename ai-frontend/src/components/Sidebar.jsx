@@ -9,6 +9,30 @@ const ROW_HEIGHT = 92;
 // الـ virtualization يفيد فعليًا لما تكبر القائمة (مستخدم عنده مئات المحادثات)
 const VIRTUALIZE_THRESHOLD = 30;
 
+function renderSearchSnippet(text, query) {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery || !text) return text;
+
+  const lowerText = text.toLocaleLowerCase();
+  const lowerQuery = normalizedQuery.toLocaleLowerCase();
+  const index = lowerText.indexOf(lowerQuery);
+  if (index < 0) return text;
+
+  const before = text.slice(0, index);
+  const match = text.slice(index, index + normalizedQuery.length);
+  const after = text.slice(index + normalizedQuery.length);
+
+  return (
+    <>
+      {before}
+      <mark className="rounded bg-yellow-100 px-0.5 text-slate-900 dark:bg-yellow-500/30 dark:text-slate-100">
+        {match}
+      </mark>
+      {after}
+    </>
+  );
+}
+
 export default function Sidebar({
   conversations,
   onSelectConversation,
@@ -228,15 +252,27 @@ export default function Sidebar({
         className="group relative h-full cursor-pointer rounded-xl border border-slate-200 px-3 py-3 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
       >
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <span className="flex min-w-0 items-center gap-2 truncate font-medium">
+          <div className="flex min-w-0 flex-1 items-start gap-2">
             <input
               type="checkbox"
               aria-label={t("sidebar.selectConversation", { title: item.title })}
               checked={selectedConversationIds.includes(item.id)}
               onChange={(e) => handleSelectConversationCheckbox(e, item)}
               onClick={(e) => e.stopPropagation()}
-              className="h-4 w-4 shrink-0 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
-            />{item.is_pinned ? <span aria-hidden="true">★</span> : null}<span className="truncate">{item.title}</span></span>
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-2 truncate font-medium">
+                {item.is_pinned ? <span aria-hidden="true">★</span> : null}
+                <span className="truncate">{item.title}</span>
+              </div>
+              {searchValue.trim() && item.search_snippet ? (
+                <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  {renderSearchSnippet(item.search_snippet, searchValue)}
+                </p>
+              ) : null}
+            </div>
+          </div>
           <div className="flex flex-wrap items-center justify-end gap-1">
             <span className="hidden text-xs text-slate-400 sm:inline">{new Date(item.updated_at ?? item.created_at).toLocaleDateString()}</span>
 {!showTrash && (
