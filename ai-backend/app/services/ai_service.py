@@ -3,6 +3,7 @@
 (openai, anthropic, gemini, deepseek). راجع app/services/ai_providers/
 """
 from collections.abc import AsyncIterator, Callable
+import time
 
 import httpx
 from fastapi import HTTPException, status
@@ -76,9 +77,11 @@ async def get_ai_reply(
     """رد كامل مع تسجيل المزوّد الذي نجح فعليًا."""
     provider = get_provider(model)
     primary_provider_name = settings.AI_PROVIDER.strip().lower()
+    started_at = time.perf_counter()
     try:
         reply = await provider.get_reply(message, history)
         reply.provider = primary_provider_name
+        reply.latency_ms = max(0, round((time.perf_counter() - started_at) * 1000))
         return reply
     except Exception as primary_exc:
         if not _is_retryable_provider_error(primary_exc):
@@ -91,6 +94,7 @@ async def get_ai_reply(
         try:
             reply = await fallback.get_reply(message, history)
             reply.provider = settings.AI_FALLBACK_PROVIDER.strip().lower()
+            reply.latency_ms = max(0, round((time.perf_counter() - started_at) * 1000))
             return reply
         except Exception as fallback_exc:
             _raise_ai_http_error(fallback_exc)
@@ -142,6 +146,7 @@ async def get_ai_vision_reply(
 ) -> AIReply:
     """رد متعدد الوسائط لصورة واحدة عبر المزوّد المتوافق مع OpenAI."""
     provider = get_provider(model)
+    started_at = time.perf_counter()
     if not isinstance(provider, OpenAICompatibleProvider):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -150,6 +155,7 @@ async def get_ai_vision_reply(
     try:
         reply = await provider.get_vision_reply(message, image_data_url, history)
         reply.provider = settings.AI_PROVIDER.strip().lower()
+        reply.latency_ms = max(0, round((time.perf_counter() - started_at) * 1000))
         return reply
     except Exception as primary_exc:
         if not _is_retryable_provider_error(primary_exc):
@@ -162,6 +168,7 @@ async def get_ai_vision_reply(
         try:
             reply = await fallback.get_vision_reply(message, image_data_url, history)
             reply.provider = settings.AI_FALLBACK_PROVIDER.strip().lower()
+            reply.latency_ms = max(0, round((time.perf_counter() - started_at) * 1000))
             return reply
         except Exception as fallback_exc:
             _raise_ai_http_error(fallback_exc)
