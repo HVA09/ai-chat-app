@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 """
 اختبارات مسار المحادثة — يتم عمل mock لاستدعاء محرك AI بدل الاتصال الحقيقي بالإنترنت
 """
