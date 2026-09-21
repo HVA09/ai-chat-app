@@ -13,6 +13,7 @@ import {
   getAdminStats,
   getDailyAnalytics,
   getFeedbackAnalytics,
+  getProviderUsageAnalytics,
   downloadAnalyticsCsv,
   listAllUsers,
   updateUser,
@@ -41,15 +42,22 @@ function StatsTab() {
   const [stats, setStats] = useState(null);
   const [daily, setDaily] = useState([]);
   const [feedback, setFeedback] = useState(null);
+  const [providerUsage, setProviderUsage] = useState([]);
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    Promise.all([getAdminStats(), getDailyAnalytics(30), getFeedbackAnalytics(30)])
-      .then(([statsData, dailyData, feedbackData]) => {
+    Promise.all([
+      getAdminStats(),
+      getDailyAnalytics(30),
+      getFeedbackAnalytics(30),
+      getProviderUsageAnalytics(30),
+    ])
+      .then(([statsData, dailyData, feedbackData, providerData]) => {
         setStats(statsData);
         setDaily(dailyData.map((p) => ({ ...p, dateLabel: p.date.slice(5) })));
         setFeedback(feedbackData);
+        setProviderUsage(providerData);
       })
       .catch(() => setError(t("admin.statsError")));
   }, [t]);
@@ -146,6 +154,41 @@ function StatsTab() {
             />
           </LineChart>
         </ResponsiveContainer>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-medium text-slate-900">{t("admin.providerUsageTitle")}</p>
+          <span className="text-xs text-slate-400">{t("admin.feedbackLast30Days")}</span>
+        </div>
+        {providerUsage.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-400">{t("admin.providerUsageEmpty")}</p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="min-w-full text-start text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 text-slate-500">
+                  <th className="px-2 py-2 font-medium">{t("admin.providerLabel")}</th>
+                  <th className="px-2 py-2 font-medium">{t("admin.modelLabel")}</th>
+                  <th className="px-2 py-2 font-medium">{t("admin.requestsLabel")}</th>
+                  <th className="px-2 py-2 font-medium">{t("admin.inputTokensLabel")}</th>
+                  <th className="px-2 py-2 font-medium">{t("admin.outputTokensLabel")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {providerUsage.map((row, index) => (
+                  <tr key={`${row.provider || "unknown"}-${row.model || "unknown"}-${index}`} className="border-b border-slate-100">
+                    <td className="px-2 py-2 text-slate-700">{row.provider || "—"}</td>
+                    <td className="px-2 py-2 text-slate-700">{row.model || "—"}</td>
+                    <td className="px-2 py-2 text-slate-700">{row.requests}</td>
+                    <td className="px-2 py-2 text-slate-700">{row.input_tokens}</td>
+                    <td className="px-2 py-2 text-slate-700">{row.output_tokens}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div>
