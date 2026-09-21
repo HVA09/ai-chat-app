@@ -53,6 +53,7 @@ import {
   importConversation,
   importConversations,
   summarizeConversation,
+  generateConversationTitle,
 } from "./lib/conversationsApi";
 import {
   listFolders,
@@ -177,6 +178,7 @@ export default function App() {
   const [conversationBranches, setConversationBranches] = useState([]);
   const [parentConversationId, setParentConversationId] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [titleLoading, setTitleLoading] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const bottomRef = useRef(null);
@@ -1324,6 +1326,33 @@ export default function App() {
     }
   };
 
+  const handleGenerateConversationTitle = async () => {
+    if (!conversationId || loading || titleLoading || readOnlyConversation) return;
+    setTitleLoading(true);
+    setError("");
+    try {
+      const result = await generateConversationTitle(conversationId);
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        selectedProjectId,
+        conversationSearch,
+        showTrashConversations,
+        selectedTagId
+      );
+      setToast({ message: t("conversationTitle.generated"), type: "success" });
+      return result;
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("conversationTitle.error"),
+        type: "error",
+      });
+    } finally {
+      setTitleLoading(false);
+    }
+  };
+
   const handleSummarizeConversation = async () => {
     if (!conversationId || loading || summaryLoading || readOnlyConversation) return;
     setSummaryLoading(true);
@@ -2081,6 +2110,9 @@ export default function App() {
           onSummarizeConversation={handleSummarizeConversation}
           canSummarizeConversation={conversationId !== null && !loading}
           summaryLoading={summaryLoading}
+          onGenerateConversationTitle={handleGenerateConversationTitle}
+          canGenerateConversationTitle={conversationId !== null && !loading && !readOnlyConversation}
+          titleLoading={titleLoading}
           conversationBranches={conversationBranches}
           onOpenConversationBranch={openConversation}
           parentConversationId={parentConversationId}

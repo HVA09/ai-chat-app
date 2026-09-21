@@ -14,6 +14,9 @@ vi.mock("react-i18next", () => ({
       "chat.branches": "Branches",
       "chat.branchListTitle": "View branches",
       "chat.branchListEmpty": "No branches",
+      "conversationTitle.generateButton": "Generate title",
+      "conversationTitle.loading": "Generating...",
+      "conversationTitle.disabled": "Start a conversation first",
     })[key] ?? key,
   }),
 }));
@@ -43,6 +46,9 @@ function renderHeader(overrides = {}) {
     onSummarizeConversation: vi.fn(),
     canSummarizeConversation: false,
     summaryLoading: false,
+    onGenerateConversationTitle: vi.fn(),
+    canGenerateConversationTitle: false,
+    titleLoading: false,
     conversationBranches: [],
     onOpenConversationBranch: vi.fn(),
     parentConversationId: null,
@@ -65,6 +71,17 @@ describe("ChatHeader parent conversation navigation", () => {
     await user.click(screen.getByRole("button", { name: "Parent conversation" }));
 
     expect(onOpenParentConversation).toHaveBeenCalledWith(41);
+  });
+
+  it("generates a conversation title when enabled", async () => {
+    const user = userEvent.setup();
+    const { onGenerateConversationTitle } = renderHeader({
+      canGenerateConversationTitle: true,
+    });
+
+    await user.click(screen.getByRole("button", { name: "Generate title" }));
+
+    expect(onGenerateConversationTitle).toHaveBeenCalled();
   });
 
   it("does not show the parent button for a root conversation", () => {

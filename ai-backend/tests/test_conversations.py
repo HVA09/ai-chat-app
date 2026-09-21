@@ -16,6 +16,29 @@ def _register_and_login(client, email="conv@example.com", password="StrongPass12
     return client.cookies.get("access_token")
 
 
+def test_generate_conversation_title(client, monkeypatch):
+    fake_reply = AsyncMock(return_value=AIReply(text='  Title: "Python Basics"  '))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", fake_reply)
+    monkeypatch.setattr(conversations_router_module, "get_ai_reply", fake_reply)
+    token = _register_and_login(client, "title@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    chat_response = client.post(
+        "/chat",
+        json={"message": "أريد تعلم أساسيات بايثون"},
+        headers=headers,
+    )
+    conversation_id = chat_response.json()["conversation_id"]
+
+    response = client.post(
+        f"/conversations/{conversation_id}/generate-title",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Python Basics"
+
+
 def test_list_conversations_empty(client):
     token = _register_and_login(client)
     response = client.get("/conversations", headers={"Authorization": f"Bearer {token}"})

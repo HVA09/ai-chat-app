@@ -134,6 +134,12 @@ export async function exportConversation(id, format = "markdown") {
   }
 }
 
+
+export async function generateConversationTitle(id) {
+  const { data } = await api.post(`/conversations/${id}/generate-title`);
+  return data;
+}
+
 export async function summarizeConversation(id) {
   const { data } = await api.post(`/conversations/${id}/summary`);
   return data;
