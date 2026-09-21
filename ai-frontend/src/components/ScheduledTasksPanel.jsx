@@ -7,6 +7,7 @@ import {
   updateScheduledTask,
   runScheduledTask,
   listScheduledTaskRuns,
+  retryScheduledTaskRun,
 } from "../lib/scheduledTasksApi";
 
 function defaultLocalDateTime() {
@@ -98,6 +99,21 @@ export default function ScheduledTasksPanel({
     }
     setExpandedTaskId(taskId);
     await loadRuns(taskId);
+  };
+
+  const retryRun = async (taskId, runId) => {
+    setRunningTaskId(`retry-${runId}`);
+    setError("");
+    try {
+      await retryScheduledTaskRun(taskId, runId);
+      await loadRuns(taskId);
+      await refresh();
+      setExpandedTaskId(taskId);
+    } catch (err) {
+      setError(err?.response?.data?.detail || t("scheduledTasks.retryError"));
+    } finally {
+      setRunningTaskId(null);
+    }
   };
 
   const runNow = async (task) => {
@@ -307,6 +323,18 @@ export default function ScheduledTasksPanel({
                           ) : null}
                           {run.error ? (
                             <div className="text-red-600">{run.error}</div>
+                          ) : null}
+                          {run.status === "failed" ? (
+                            <button
+                              type="button"
+                              onClick={() => retryRun(task.id, run.id)}
+                              disabled={runningTaskId === `retry-${run.id}`}
+                              className="mt-1 self-start rounded-lg bg-slate-900 px-2 py-1 text-xs text-white disabled:opacity-50"
+                            >
+                              {runningTaskId === `retry-${run.id}`
+                                ? t("scheduledTasks.retrying")
+                                : t("scheduledTasks.retry")}
+                            </button>
                           ) : null}
                           {run.conversation_id ? (
                             <div className="text-slate-500">
