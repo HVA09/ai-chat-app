@@ -108,6 +108,14 @@ export default function ConversationShareManager({ conversationId, onClose, onCh
                         date: share.expires_at ? formatDate(share.expires_at) : t("sharing.never"),
                       })}
                     </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      {t("sharing.accessCount", { count: share.access_count ?? 0 })}
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      {t("sharing.lastAccessedAt", {
+                        date: share.last_accessed_at ? formatDate(share.last_accessed_at) : t("sharing.never"),
+                      })}
+                    </div>
                   </div>
                   <button
                     type="button"
