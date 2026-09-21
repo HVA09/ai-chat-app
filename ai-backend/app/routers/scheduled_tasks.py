@@ -225,6 +225,88 @@ def run_scheduled_task_now(
     return ScheduledTaskRunOut(**row)
 
 
+@router.post(
+    "/{task_id}/runs/{run_id}/retry",
+    response_model=ScheduledTaskRunOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def retry_failed_scheduled_task_run(
+    task_id: int,
+    run_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    task = _get_owned_task(task_id, current_user, db)
+    original_run = (
+        db.query(ScheduledTaskRun)
+        .filter(
+            ScheduledTaskRun.id == run_id,
+            ScheduledTaskRun.scheduled_task_id == task.id,
+            ScheduledTaskRun.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not original_run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="سجل التنفيذ غير موجود",
+        )
+    if original_run.status != "failed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="يمكن إعادة محاولة التنفيذات الفاشلة فقط",
+        )
+
+    retry_run = ScheduledTaskRun(
+        scheduled_task_id=task.id,
+        user_id=current_user.id,
+        workspace_id=task.workspace_id,
+        prompt=task.prompt,
+    )
+    db.add(retry_run)
+    db.commit()
+    db.refresh(retry_run)
+
+    try:
+        from app.tasks import execute_scheduled_task
+
+        if execute_scheduled_task is not None:
+            execute_scheduled_task.delay(task.id, retry_run.id)
+            return retry_run
+    except Exception:
+        # Redis/Celery قد لا يكون متاحًا في التطوير؛ ننفذ مباشرة كـ fallback.
+        pass
+
+    from app.tasks import _execute_scheduled_task
+
+    _execute_scheduled_task(task.id, retry_run.id, db=db)
+
+    row = (
+        db.execute(
+            select(
+                ScheduledTaskRun.id,
+                ScheduledTaskRun.scheduled_task_id,
+                ScheduledTaskRun.workspace_id,
+                ScheduledTaskRun.prompt,
+                ScheduledTaskRun.status,
+                ScheduledTaskRun.started_at,
+                ScheduledTaskRun.finished_at,
+                ScheduledTaskRun.conversation_id,
+                ScheduledTaskRun.error,
+                ScheduledTaskRun.created_at,
+            ).where(ScheduledTaskRun.id == retry_run.id)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="تعذر تحميل سجل إعادة المحاولة",
+        )
+    return ScheduledTaskRunOut(**row)
+
+
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_scheduled_task(
     task_id: int,
