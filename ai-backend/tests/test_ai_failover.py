@@ -81,7 +81,7 @@ def test_stream_ai_reply_fails_over_before_first_chunk(monkeypatch):
     primary = FakeProvider(error=_http_error(503))
     fallback = FakeProvider(chunks=["A", "B"])
 
-    def fake_get_provider(*, model=None, provider_name=None, api_key=None, base_url=None):
+    def fake_get_provider(model=None, provider_name=None, api_key=None, base_url=None):
         return fallback if provider_name == "anthropic" else primary
 
     monkeypatch.setattr(ai_service, "get_provider", fake_get_provider)
