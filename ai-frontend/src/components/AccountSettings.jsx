@@ -105,6 +105,15 @@ export default function AccountSettings({
     window.dispatchEvent(new Event("ai-chat:auto-title-changed"));
   };
 
+  const handleToggleAutoGenerateSummaries = (enabled) => {
+    window.localStorage.setItem(
+      "ai-chat-auto-summary",
+      enabled ? "true" : "false"
+    );
+    setAutoGenerateSummaries(enabled);
+    onAutoGenerateSummariesChanged?.(enabled);
+    window.dispatchEvent(new Event("ai-chat:auto-summary-changed"));
+  };
 
   const runAction = async (action) => {
     setError("");
