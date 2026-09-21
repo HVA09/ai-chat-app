@@ -20,6 +20,12 @@ function formatRunAt(value) {
   return new Date(value).toLocaleString();
 }
 
+function toLocalDateTimeInput(value) {
+  const date = new Date(value);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
 export default function ScheduledTasksPanel({
   workspaces = [],
   selectedWorkspaceId = null,
@@ -38,6 +44,12 @@ export default function ScheduledTasksPanel({
   const [runsByTask, setRunsByTask] = useState({});
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [runningTaskId, setRunningTaskId] = useState(null);
+  const [editingTaskId, setEditingTaskId] = useState(null);
+  const [editPrompt, setEditPrompt] = useState("");
+  const [editScheduleType, setEditScheduleType] = useState("once");
+  const [editNextRunAt, setEditNextRunAt] = useState("");
+  const [editWeekday, setEditWeekday] = useState("0");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === Number(workspaceId)),
@@ -128,6 +140,44 @@ export default function ScheduledTasksPanel({
       setError(t("scheduledTasks.runNowError"));
     } finally {
       setRunningTaskId(null);
+    }
+  };
+
+  const startEdit = (task) => {
+    setEditingTaskId(task.id);
+    setEditPrompt(task.prompt);
+    setEditScheduleType(task.schedule_type);
+    setEditNextRunAt(toLocalDateTimeInput(task.next_run_at));
+    setEditWeekday(String(task.weekday ?? 0));
+    setError("");
+  };
+
+  const cancelEdit = () => {
+    setEditingTaskId(null);
+    setEditPrompt("");
+    setEditNextRunAt("");
+  };
+
+  const saveEdit = async (event) => {
+    event.preventDefault();
+    const trimmed = editPrompt.trim();
+    if (!trimmed || !editNextRunAt) return;
+
+    setSavingEdit(true);
+    setError("");
+    try {
+      await updateScheduledTask(editingTaskId, {
+        prompt: trimmed,
+        schedule_type: editScheduleType,
+        next_run_at: new Date(editNextRunAt).toISOString(),
+        weekday: editScheduleType === "weekly" ? Number(editWeekday) : null,
+      });
+      cancelEdit();
+      await refresh();
+    } catch (err) {
+      setError(err?.response?.data?.detail || t("scheduledTasks.editError"));
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -261,6 +311,73 @@ export default function ScheduledTasksPanel({
               {tasks.map((task) => (
                 <div key={task.id}>
                   <div className="rounded-2xl border border-slate-200 p-3 dark:border-slate-700">
+                  {editingTaskId === task.id ? (
+                    <form onSubmit={saveEdit} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                      <label className="block text-sm font-medium">
+                        {t("scheduledTasks.prompt")}
+                        <textarea
+                          value={editPrompt}
+                          onChange={(event) => setEditPrompt(event.target.value)}
+                          rows={3}
+                          maxLength={4000}
+                          className="mt-1 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                        />
+                      </label>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                        <label className="text-sm font-medium">
+                          {t("scheduledTasks.frequency")}
+                          <select
+                            value={editScheduleType}
+                            onChange={(event) => setEditScheduleType(event.target.value)}
+                            className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                          >
+                            <option value="once">{t("scheduledTasks.once")}</option>
+                            <option value="daily">{t("scheduledTasks.daily")}</option>
+                            <option value="weekly">{t("scheduledTasks.weekly")}</option>
+                          </select>
+                        </label>
+                        <label className="text-sm font-medium">
+                          {t("scheduledTasks.nextRun")}
+                          <input
+                            type="datetime-local"
+                            value={editNextRunAt}
+                            onChange={(event) => setEditNextRunAt(event.target.value)}
+                            className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                          />
+                        </label>
+                        {editScheduleType === "weekly" && (
+                          <label className="text-sm font-medium">
+                            {t("scheduledTasks.weekday")}
+                            <select
+                              value={editWeekday}
+                              onChange={(event) => setEditWeekday(event.target.value)}
+                              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                            >
+                              {[0,1,2,3,4,5,6].map((day) => (
+                                <option key={day} value={day}>{t(`scheduledTasks.day${day}`)}</option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="submit"
+                          disabled={savingEdit || !editPrompt.trim() || !editNextRunAt}
+                          className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-40"
+                        >
+                          {savingEdit ? t("scheduledTasks.savingEdit") : t("scheduledTasks.saveEdit")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEdit}
+                          className="rounded-xl border border-slate-300 px-3 py-2 text-sm dark:border-slate-700"
+                        >
+                          {t("scheduledTasks.cancelEdit")}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="whitespace-pre-wrap break-words text-sm font-medium">{task.prompt}</p>
@@ -279,6 +396,13 @@ export default function ScheduledTasksPanel({
                         className="rounded-lg px-2 py-1 text-xs text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 dark:hover:bg-emerald-900/20"
                       >
                         {runningTaskId === task.id ? t("scheduledTasks.running") : t("scheduledTasks.runNow")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => startEdit(task)}
+                        className="rounded-lg px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                      >
+                        {t("scheduledTasks.edit")}
                       </button>
                       <button
                         type="button"
@@ -303,7 +427,8 @@ export default function ScheduledTasksPanel({
                       </button>
                     </div>
                   </div>
-                  {expandedTaskId === task.id && (
+                  )}
+                  {editingTaskId !== task.id && expandedTaskId === task.id && (
                   <div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
                     {(runsByTask[task.id] || []).length === 0 ? (
                       <p className="text-xs text-slate-500">{t("scheduledTasks.historyEmpty")}</p>

@@ -356,6 +356,11 @@ const resources = {
         retryError: "تعذر إعادة المحاولة",
         retry: "إعادة المحاولة",
         retrying: "جارٍ إعادة المحاولة...",
+        edit: "تعديل",
+        savingEdit: "جارٍ حفظ التعديل...",
+        saveEdit: "حفظ التعديل",
+        cancelEdit: "إلغاء",
+        editError: "تعذر تعديل المهمة المجدولة",
         finishedAt: "انتهى: {{date}}",
         conversationCreated: "تم إنشاء محادثة من هذا التنفيذ",
         status: {
@@ -1074,6 +1079,11 @@ const resources = {
         retryError: "Couldn't retry the run",
         retry: "Retry",
         retrying: "Retrying...",
+        edit: "Edit",
+        savingEdit: "Saving changes...",
+        saveEdit: "Save changes",
+        cancelEdit: "Cancel",
+        editError: "Couldn't edit the scheduled task",
         finishedAt: "Finished: {{date}}",
         conversationCreated: "A conversation was created from this run",
         status: {

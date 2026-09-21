@@ -48,6 +48,11 @@ vi.mock("react-i18next", () => ({
         "scheduledTasks.retryError": "تعذر إعادة المحاولة",
         "scheduledTasks.retry": "إعادة المحاولة",
         "scheduledTasks.retrying": "جارٍ إعادة المحاولة...",
+        "scheduledTasks.edit": "تعديل",
+        "scheduledTasks.savingEdit": "جارٍ حفظ التعديل...",
+        "scheduledTasks.saveEdit": "حفظ التعديل",
+        "scheduledTasks.cancelEdit": "إلغاء",
+        "scheduledTasks.editError": "تعذر تعديل المهمة المجدولة",
         "scheduledTasks.finishedAt": "انتهى: {{date}}",
         "scheduledTasks.conversationCreated": "تم إنشاء محادثة من هذا التنفيذ",
         "scheduledTasks.status.queued": "في الانتظار",
@@ -169,6 +174,58 @@ describe("ScheduledTasksPanel", () => {
     expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "إعادة المحاولة" }));
     await waitFor(() => expect(api.retryScheduledTaskRun).toHaveBeenCalledWith(1, 9));
+  });
+
+  it("يعدل مهمة مجدولة", async () => {
+    const user = userEvent.setup();
+    api.listScheduledTasks.mockResolvedValue([
+      {
+        id: 1,
+        workspace_id: 7,
+        prompt: "المهمة القديمة",
+        schedule_type: "once",
+        next_run_at: "2026-09-22T10:00:00Z",
+        is_active: true,
+        last_run_at: null,
+        last_error: null,
+      },
+    ]);
+    api.updateScheduledTask.mockResolvedValue({
+      id: 1,
+      workspace_id: 7,
+      prompt: "المهمة الجديدة",
+      schedule_type: "daily",
+      next_run_at: "2026-09-23T10:00:00Z",
+      weekday: null,
+      is_active: true,
+      last_run_at: null,
+      last_error: null,
+    });
+
+    render(
+      <ScheduledTasksPanel
+        workspaces={[{ id: 7, name: "عمل" }]}
+        selectedWorkspaceId={7}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText("المهمة القديمة")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "تعديل" }));
+    const promptField = screen.getByDisplayValue("المهمة القديمة");
+    await user.clear(promptField);
+    await user.type(promptField, "المهمة الجديدة");
+    await user.click(screen.getByRole("button", { name: "حفظ التعديل" }));
+
+    await waitFor(() =>
+      expect(api.updateScheduledTask).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({
+          prompt: "المهمة الجديدة",
+          schedule_type: "once",
+        })
+      )
+    );
   });
 
   it("يشغّل المهمة الآن ويحمّل سجل التنفيذ", async () => {
