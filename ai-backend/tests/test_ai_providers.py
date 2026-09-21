@@ -98,6 +98,24 @@ def test_factory_rejects_disallowed_model(monkeypatch):
         raise AssertionError("Expected get_provider to reject a disallowed model")
 
 
+def test_factory_allows_internal_fallback_model_override(monkeypatch):
+    monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
+    monkeypatch.setattr(app_settings, "AI_API_KEY", "primary-key")
+    monkeypatch.setattr(app_settings, "AI_API_BASE_URL", "https://primary.example/v1")
+    monkeypatch.setattr(app_settings, "AI_MODEL", "gemini-2.5-flash")
+    monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["gemini-2.5-flash"])
+
+    provider = get_provider(
+        model="claude-test",
+        provider_name="anthropic",
+        api_key="fallback-key",
+        validate_model=False,
+    )
+
+    assert provider.api_key == "fallback-key"
+    assert provider.model == "claude-test"
+
+
 def test_factory_supports_explicit_provider_override(monkeypatch):
     monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
     monkeypatch.setattr(app_settings, "AI_API_KEY", "primary-key")
