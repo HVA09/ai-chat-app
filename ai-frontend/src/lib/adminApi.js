@@ -67,3 +67,8 @@ export async function getProviderUsage(days = 30) {
   const { data } = await api.get("/admin/analytics/providers", { params: { days } });
   return data;
 }
+
+export async function getProviderLatency(days = 30) {
+  const { data } = await api.get("/admin/analytics/latency", { params: { days } });
+  return data;
+}
