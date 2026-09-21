@@ -16,7 +16,7 @@ def _register_and_login(client, email, password="StrongPass123"):
 def test_ai_reply_records_latency(monkeypatch):
     from app.services import ai_service
 
-    async def fake_get_reply(message, history):
+    async def fake_get_reply(self, message, history):
         await asyncio.sleep(0.005)
         return AIReply(text="ok")
 
