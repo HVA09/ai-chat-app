@@ -1,5 +1,10 @@
 """اختبارات المهام المجدولة."""
 from datetime import datetime, timedelta, timezone
+import pytest
+from sqlalchemy.exc import IntegrityError
+
+from app.models.scheduled_task import ScheduledTask
+from app.models.scheduled_task_run import ScheduledTaskRun
 
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
@@ -96,3 +101,48 @@ def test_cannot_create_task_for_other_workspace(client):
         headers=headers_b,
     )
     assert response.status_code == 404
+
+
+def test_scheduled_run_slot_is_unique(client, db_session):
+    token = _register_and_login(client, "schedule-idempotency@example.com")
+    workspace = _create_workspace(client, token, "Idempotency")
+    headers = {"Authorization": f"Bearer {token}"}
+    future = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+
+    response = client.post(
+        "/scheduled-tasks",
+        json={
+            "workspace_id": workspace["id"],
+            "prompt": "مهمة لا يجب تكرارها",
+            "schedule_type": "daily",
+            "next_run_at": future,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 201
+
+    task = db_session.query(ScheduledTask).filter(ScheduledTask.id == response.json()["id"]).one()
+    scheduled_for = task.next_run_at
+
+    db_session.add(
+        ScheduledTaskRun(
+            scheduled_task_id=task.id,
+            user_id=task.user_id,
+            workspace_id=task.workspace_id,
+            prompt=task.prompt,
+            scheduled_for=scheduled_for,
+        )
+    )
+    db_session.commit()
+
+    duplicate = ScheduledTaskRun(
+        scheduled_task_id=task.id,
+        user_id=task.user_id,
+        workspace_id=task.workspace_id,
+        prompt=task.prompt,
+        scheduled_for=scheduled_for,
+    )
+    db_session.add(duplicate)
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
