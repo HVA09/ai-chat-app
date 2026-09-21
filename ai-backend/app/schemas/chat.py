@@ -165,6 +165,31 @@ class ConversationImportMessage(BaseModel):
         return v
 
 
+class ConversationImportRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    messages: list[ConversationImportMessage] = Field(min_length=1, max_length=500)
+    folder_id: int | None = None
+    project_id: int | None = None
+    assistant_id: int | None = None
+    ai_model: str | None = Field(default=None, max_length=100)
+
+    @field_validator("title")
+    @classmethod
+    def imported_title_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("عنوان المحادثة لا يمكن أن يكون فارغًا")
+        return v
+
+    @field_validator("messages")
+    @classmethod
+    def imported_messages_size(cls, v: list[ConversationImportMessage]) -> list[ConversationImportMessage]:
+        total_chars = sum(len(message.content) for message in v)
+        if total_chars > 200_000:
+            raise ValueError("حجم المحادثة المستوردة كبير جدًا")
+        return v
+
+
 class ConversationBulkImportRequest(BaseModel):
     version: Literal[1] = 1
     conversations: list[ConversationImportRequest] = Field(min_length=1, max_length=50)
@@ -190,26 +215,3 @@ class ConversationBulkImportOut(BaseModel):
     imported_count: int
 
 
-class ConversationImportRequest(BaseModel):
-    title: str = Field(min_length=1, max_length=255)
-    messages: list[ConversationImportMessage] = Field(min_length=1, max_length=500)
-    folder_id: int | None = None
-    project_id: int | None = None
-    assistant_id: int | None = None
-    ai_model: str | None = Field(default=None, max_length=100)
-
-    @field_validator("title")
-    @classmethod
-    def imported_title_not_blank(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("عنوان المحادثة لا يمكن أن يكون فارغًا")
-        return v
-
-    @field_validator("messages")
-    @classmethod
-    def imported_messages_size(cls, v: list[ConversationImportMessage]) -> list[ConversationImportMessage]:
-        total_chars = sum(len(message.content) for message in v)
-        if total_chars > 200_000:
-            raise ValueError("حجم المحادثة المستوردة كبير جدًا")
-        return v
