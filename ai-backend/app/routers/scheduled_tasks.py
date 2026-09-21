@@ -192,7 +192,10 @@ def run_scheduled_task_now(
 
     from app.tasks import _execute_scheduled_task
     run_id = run.id
-    _execute_scheduled_task(task.id, run_id, db=db)
+    # التنفيذ الاحتياطي يستخدم جلسة مستقلة حتى لا يكسر معاملة طلب FastAPI
+    # (خصوصًا اختبارات TestClient التي تستخدم nested transactions).
+    _execute_scheduled_task(task.id, run_id)
+    db.expire(run)
     refreshed_run = db.get(ScheduledTaskRun, run_id)
     return refreshed_run or run
 
