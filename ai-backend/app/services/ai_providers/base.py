@@ -13,6 +13,7 @@ class AIReply:
     input_tokens: int | None = None
     output_tokens: int | None = None
     provider: str | None = None
+    latency_ms: int | None = None
 
 
 @dataclass
