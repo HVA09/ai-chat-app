@@ -696,6 +696,76 @@ def test_cannot_rename_or_delete_other_users_conversation(client, monkeypatch):
     assert delete_response.status_code == 404
 
 
+
+def test_auto_generate_conversation_title_only_for_fallback_title(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد أول")),
+    )
+    token = _register_and_login(client, "auto-title@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "أريد خطة لتعلم بايثون"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    title_call = AsyncMock(
+        return_value=AIReply(
+            text="خطة تعلم بايثون",
+            input_tokens=20,
+            output_tokens=6,
+        )
+    )
+    monkeypatch.setattr(conversations_router_module, "get_ai_reply", title_call)
+
+    response = client.post(
+        f"/conversations/{conversation_id}/auto-title",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["title"] == "خطة تعلم بايثون"
+    title_call.assert_awaited_once()
+
+    rename_response = client.patch(
+        f"/conversations/{conversation_id}",
+        json={"title": "عنوان مخصص"},
+        headers=headers,
+    )
+    assert rename_response.status_code == 200
+
+    title_call.reset_mock()
+    response = client.post(
+        f"/conversations/{conversation_id}/auto-title",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["title"] == "عنوان مخصص"
+    title_call.assert_not_awaited()
+
+
+def test_auto_generate_conversation_title_requires_ownership(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token_a = _register_and_login(client, "auto-title-owner@example.com")
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "محتوى خاص"},
+        headers={"Authorization": f"Bearer {token_a}"},
+    ).json()["conversation_id"]
+
+    token_b = _register_and_login(client, "auto-title-other@example.com")
+    response = client.post(
+        f"/conversations/{conversation_id}/auto-title",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
+
 def test_create_conversation_summary(client, monkeypatch):
     monkeypatch.setattr(
         chat_router_module,
