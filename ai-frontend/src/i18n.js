@@ -346,6 +346,21 @@ const resources = {
         saveError: "تعذر إنشاء المهمة المجدولة",
         updateError: "تعذر تحديث المهمة المجدولة",
         deleteError: "تعذر حذف المهمة المجدولة",
+        runNow: "تشغيل الآن",
+        running: "جارٍ التشغيل...",
+        history: "سجل التنفيذ",
+        hideHistory: "إخفاء السجل",
+        historyEmpty: "لا توجد عمليات تنفيذ بعد",
+        historyLoadError: "تعذر تحميل سجل التنفيذ",
+        runNowError: "تعذر تشغيل المهمة الآن",
+        finishedAt: "انتهى: {{date}}",
+        conversationCreated: "تم إنشاء محادثة من هذا التنفيذ",
+        status: {
+          queued: "في الانتظار",
+          running: "جارٍ التنفيذ",
+          succeeded: "نجح",
+          failed: "فشل",
+        },
       },
 
       sidebar: {
@@ -1046,6 +1061,21 @@ const resources = {
         saveError: "Couldn't create scheduled task",
         updateError: "Couldn't update scheduled task",
         deleteError: "Couldn't delete scheduled task",
+        runNow: "Run now",
+        running: "Running...",
+        history: "Execution history",
+        hideHistory: "Hide history",
+        historyEmpty: "No executions yet",
+        historyLoadError: "Couldn't load execution history",
+        runNowError: "Couldn't run the task now",
+        finishedAt: "Finished: {{date}}",
+        conversationCreated: "A conversation was created from this run",
+        status: {
+          queued: "Queued",
+          running: "Running",
+          succeeded: "Succeeded",
+          failed: "Failed",
+        },
       },
 
       sidebar: {

@@ -15,6 +15,7 @@ from app.models.conversation_tag import ConversationTag
 from app.models.conversation_share import ConversationShare
 from app.models.usage_log import UsageLog
 from app.models.scheduled_task import ScheduledTask
+from app.models.scheduled_task_run import ScheduledTaskRun, ScheduledTaskRunStatus
 from app.models.file_attachment import FileAttachment
 from app.models.file_chunk import FileChunk
 from app.models.conversation_file_link import ConversationFileLink
@@ -47,6 +48,8 @@ __all__ = [
     "ConversationShare",
     "UsageLog",
     "ScheduledTask",
+    "ScheduledTaskRun",
+    "ScheduledTaskRunStatus",
     "FileAttachment",
     "FileChunk",
     "ConversationFileLink",

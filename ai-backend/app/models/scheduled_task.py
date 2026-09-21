@@ -44,3 +44,10 @@ class ScheduledTask(Base):
 
     owner = relationship("User", back_populates="scheduled_tasks")
     workspace = relationship("Workspace", back_populates="scheduled_tasks")
+    runs = relationship(
+        "ScheduledTaskRun",
+        back_populates="task",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="ScheduledTaskRun.created_at.desc()",
+    )

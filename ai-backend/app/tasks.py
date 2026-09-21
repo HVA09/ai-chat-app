@@ -8,6 +8,7 @@ from app.database import SessionLocal
 from app.logging_config import get_logger
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.scheduled_task import ScheduledTask, ScheduledTaskType
+from app.models.scheduled_task_run import ScheduledTaskRun, ScheduledTaskRunStatus
 from app.models.usage_log import UsageLog
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace, WorkspaceMember
@@ -66,13 +67,38 @@ def _ensure_ai_quota(user: User, workspace: Workspace, db) -> None:
             )
 
 
-def _execute_scheduled_task(task_id: int) -> None:
-    db = SessionLocal()
+def _execute_scheduled_task(
+    task_id: int,
+    run_id: int | None = None,
+    db=None,
+) -> None:
+    owns_session = db is None
+    if db is None:
+        db = SessionLocal()
     now = datetime.now(timezone.utc).replace(microsecond=0)
     try:
         task = db.get(ScheduledTask, task_id)
-        if not task or not task.is_active:
+        if not task or (run_id is None and not task.is_active):
             return
+
+        run = db.get(ScheduledTaskRun, run_id) if run_id is not None else None
+        if run is None:
+            run = ScheduledTaskRun(
+                scheduled_task_id=task.id,
+                user_id=task.user_id,
+                workspace_id=task.workspace_id,
+                prompt=task.prompt,
+                status=ScheduledTaskRunStatus.queued,
+            )
+            db.add(run)
+            db.flush()
+        else:
+            run.prompt = task.prompt
+
+        run.status = ScheduledTaskRunStatus.running
+        run.started_at = now
+        run.error = None
+        db.commit()
 
         user = db.get(User, task.user_id)
         workspace = db.get(Workspace, task.workspace_id)
@@ -80,6 +106,9 @@ def _execute_scheduled_task(task_id: int) -> None:
             task.is_active = False
             task.last_error = "المستخدم أو مساحة العمل غير متاحة."
             task.last_run_at = now
+            run.status = ScheduledTaskRunStatus.failed
+            run.finished_at = now
+            run.error = task.last_error
             db.commit()
             return
 
@@ -95,6 +124,9 @@ def _execute_scheduled_task(task_id: int) -> None:
             task.is_active = False
             task.last_error = "لم تعد تملك عضوية في مساحة العمل."
             task.last_run_at = now
+            run.status = ScheduledTaskRunStatus.failed
+            run.finished_at = now
+            run.error = task.last_error
             db.commit()
             return
 
@@ -139,6 +171,11 @@ def _execute_scheduled_task(task_id: int) -> None:
             )
         )
 
+        run.status = ScheduledTaskRunStatus.succeeded
+        run.finished_at = now
+        run.conversation_id = conversation.id
+        run.error = None
+
         task.last_run_at = now
         task.last_error = None
         next_run = _next_occurrence(task, now)
@@ -169,8 +206,18 @@ def _execute_scheduled_task(task_id: int) -> None:
 
     except Exception as exc:
         logger.exception("Scheduled task failed: %s", task_id)
-        db.rollback()
+        # عند استخدام fallback داخل طلب HTTP، تكون Session مملوكة للمسار
+        # وقد تكون فيها معاملة اختبار خارجية. لا نسوي rollback للـ Session
+        # المستلمة حتى لا نفقد سجل التنفيذ الذي أنشأناه قبل تشغيل المزود.
+        if owns_session:
+            db.rollback()
+
         task = db.get(ScheduledTask, task_id)
+        run = db.get(ScheduledTaskRun, run_id) if run_id is not None else None
+        if run is not None:
+            run.status = ScheduledTaskRunStatus.failed
+            run.finished_at = now
+            run.error = str(exc)[:500]
         if task:
             task.last_run_at = now
             task.last_error = str(exc)[:500]
@@ -193,7 +240,8 @@ def _execute_scheduled_task(task_id: int) -> None:
             except Exception:
                 logger.exception("Failed to notify about scheduled task error %s", task_id)
     finally:
-        db.close()
+        if owns_session:
+            db.close()
 
 
 def _run_due_scheduled_tasks() -> None:
@@ -240,6 +288,11 @@ try:
     def send_email_task(to: str, subject: str, body: str) -> None:
         send_email(to, subject, body)
 
+    @celery_app.task(name="execute_scheduled_task")
+    def execute_scheduled_task(task_id: int, run_id: int) -> None:
+        _execute_scheduled_task(task_id, run_id)
+
+
     @celery_app.task(name="run_due_scheduled_tasks")
     def run_due_scheduled_tasks() -> None:
         _run_due_scheduled_tasks()
@@ -248,6 +301,7 @@ try:
 except ImportError:
     celery_app = None
     send_email_task = None
+    execute_scheduled_task = None
     run_due_scheduled_tasks = None
     _CELERY_AVAILABLE = False
     logger.info("مكتبة celery غير مثبّتة — المهام الخلفية غير مفعّلة")
