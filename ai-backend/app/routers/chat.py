@@ -51,6 +51,7 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 logger = get_logger("chat")
 
 MAX_HISTORY_MESSAGES = 20  # يحدّ من نمو الاستعلام وتكلفة/زمن استدعاء AI بمحادثة طويلة جدًا
+MAX_SUMMARY_CONTEXT_CHARS = 8_000
 MAX_FILE_CONTEXT_CHARS = 24_000
 MAX_FILE_CONTEXT_PER_FILE_CHARS = 8_000
 
@@ -266,6 +267,30 @@ async def _build_file_context(
     context, sources = build_fallback_file_context(files)
     return context, list(sources)
 
+def _build_summary_context(conversation: Conversation) -> str:
+    summary = (conversation.summary or "").strip()
+    if not summary:
+        return ""
+
+    if len(summary) > MAX_SUMMARY_CONTEXT_CHARS:
+        summary = summary[:MAX_SUMMARY_CONTEXT_CHARS].rstrip() + "…"
+
+    updated_at = (
+        conversation.summary_updated_at.isoformat()
+        if conversation.summary_updated_at
+        else ""
+    )
+    timestamp = f"\nSummary updated: {updated_at}" if updated_at else ""
+
+    return (
+        "[CONVERSATION SUMMARY]\n"
+        f"{summary}{timestamp}\n"
+        "Use this as a compact summary of earlier turns. "
+        "Prefer the recent message history when the summary conflicts with it.\n"
+        "[END CONVERSATION SUMMARY]"
+    )
+
+
 def _build_memory_context(current_user_id: int, db: Session) -> str:
     memories = (
         db.query(UserMemory)
@@ -386,13 +411,19 @@ def _get_attached_data_file(
 async def _augment_message(
     message: str, conversation: Conversation, db: Session
 ) -> tuple[str, list[dict]]:
+    summary_context = _build_summary_context(conversation)
     assistant_context = _build_assistant_context(conversation, db)
     memory_context = _build_memory_context(conversation.user_id, db)
     file_context, sources = await _build_file_context(conversation, message, db)
 
     context_parts = [
         part
-        for part in (memory_context, assistant_context, file_context)
+        for part in (
+            summary_context,
+            memory_context,
+            assistant_context,
+            file_context,
+        )
         if part
     ]
     if not context_parts:
