@@ -16,9 +16,43 @@ vi.mock("react-i18next", () => ({
         "bookmarks.save": "Save message",
         "bookmarks.remove": "Remove from bookmarks",
         "chat.branchConversation": "Branch conversation",
+        "tools.voiceOutput": "Read aloud",
+        "tools.stopVoiceOutput": "Stop reading",
+        "app.voiceNotSupported": "Voice output is not supported in this browser",
+        "app.voiceError": "Couldn't read the message aloud",
       })[key] ?? key,
   }),
 }));
+
+describe("ChatMessage voice output", () => {
+  it("speaks assistant text when read aloud is pressed", async () => {
+    const user = userEvent.setup();
+    const speak = vi.fn((utterance) => utterance.onstart?.());
+
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: { speak, cancel: vi.fn() },
+    });
+    window.SpeechSynthesisUtterance = class {
+      constructor(text) {
+        this.text = text;
+        this.lang = "";
+        this.rate = 0;
+        this.pitch = 0;
+      }
+    };
+
+    document.documentElement.lang = "en";
+    render(<ChatMessage role="assistant" text="Hello from AI" time="10:00" />);
+
+    await user.click(screen.getByRole("button", { name: "Read aloud" }));
+
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect(speak.mock.calls[0][0].text).toBe("Hello from AI");
+    expect(speak.mock.calls[0][0].lang).toBe("en-US");
+    expect(screen.getByRole("button", { name: "Stop reading" })).toBeInTheDocument();
+  });
+});
 
 describe("ChatMessage feedback", () => {
   it("shows feedback controls for assistant messages and submits thumbs up", async () => {

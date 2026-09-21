@@ -1168,6 +1168,19 @@ export default function App() {
     }
   }, [authed]);
 
+  useEffect(() => {
+    const handleAppToast = (event) => {
+      if (event.detail?.message) {
+        setToast({
+          message: event.detail.message,
+          type: event.detail.type || "error",
+        });
+      }
+    };
+    window.addEventListener("app:toast", handleAppToast);
+    return () => window.removeEventListener("app:toast", handleAppToast);
+  }, []);
+
   // اتصال WebSocket للإشعارات الفورية — يُفتح عند الدخول، ويُغلق عند الخروج
   useEffect(() => {
     if (!authed) return;
