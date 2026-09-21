@@ -7,9 +7,64 @@ from collections.abc import AsyncIterator
 import httpx
 from fastapi import HTTPException, status
 
+from app.config import settings
+
 from app.services.ai_providers.base import AIReply
 from app.services.ai_providers.openai_provider import OpenAICompatibleProvider
 from app.services.ai_providers.factory import get_provider
+
+
+_RETRYABLE_STATUS_CODES = {408, 409, 429, 500, 502, 503, 504}
+
+
+def _is_retryable_provider_error(exc: Exception) -> bool:
+    if isinstance(exc, httpx.RequestError):
+        return True
+    return (
+        isinstance(exc, httpx.HTTPStatusError)
+        and exc.response.status_code in _RETRYABLE_STATUS_CODES
+    )
+
+
+def _get_fallback_provider(model: str | None = None):
+    provider_name = settings.AI_FALLBACK_PROVIDER.strip().lower()
+    api_key = settings.AI_FALLBACK_API_KEY.strip()
+    if not provider_name or not api_key:
+        return None
+
+    fallback_model = (settings.AI_FALLBACK_MODEL or model or settings.AI_MODEL).strip()
+    primary_model = (model or settings.AI_MODEL).strip()
+    primary_provider = settings.AI_PROVIDER.strip().lower()
+
+    if (
+        provider_name == primary_provider
+        and fallback_model == primary_model
+        and api_key == settings.AI_API_KEY
+        and (
+            not settings.AI_FALLBACK_API_BASE_URL
+            or settings.AI_FALLBACK_API_BASE_URL == settings.AI_API_BASE_URL
+        )
+    ):
+        return None
+
+    return get_provider(
+        model=fallback_model,
+        provider_name=provider_name,
+        api_key=api_key,
+        base_url=settings.AI_FALLBACK_API_BASE_URL or settings.AI_API_BASE_URL,
+    )
+
+
+def _raise_ai_http_error(exc: Exception) -> None:
+    if isinstance(exc, httpx.HTTPStatusError):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"خطأ من محرك الذكاء الاصطناعي: {exc.response.status_code}",
+        ) from exc
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="تعذر الوصول لمحرك الذكاء الاصطناعي",
+    ) from exc
 
 
 async def get_ai_reply(message: str, history: list[dict[str, str]] | None = None, model: str | None = None) -> AIReply:
