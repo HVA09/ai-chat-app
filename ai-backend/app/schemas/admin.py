@@ -81,6 +81,17 @@ class ModelUsageStat(BaseModel):
     total_tokens: int
 
 
+class CostBudgetStatus(BaseModel):
+    month_start: str
+    budget_usd: float | None
+    spent_usd: float
+    remaining_usd: float | None
+    usage_percent: float | None
+    over_budget: bool
+    pricing_configured: bool
+    unpriced_requests: int
+
+
 class FeedbackAnalytics(BaseModel):
     days: int
     total_rated: int

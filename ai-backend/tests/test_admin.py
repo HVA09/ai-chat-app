@@ -320,3 +320,87 @@ def test_cost_usage_analytics_marks_unknown_pricing(client, db_session, monkeypa
     row = response.json()[0]
     assert row["pricing_configured"] is False
     assert row["total_cost_usd"] is None
+
+
+
+def test_cost_budget_reports_month_spend_and_remaining(client, db_session, monkeypatch):
+    from app.models.usage_log import UsageLog
+    import json
+
+    admin_token = _register_and_login(client, "budget-admin@example.com", admin=True)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    user_id = client.get("/users/me", headers=headers).json()["id"]
+
+    monkeypatch.setattr(app_settings, "AI_MONTHLY_BUDGET_USD", 5.0)
+    monkeypatch.setattr(
+        app_settings,
+        "AI_PRICING_JSON",
+        json.dumps(
+            {
+                "gemini:gemini-2.5-flash": {
+                    "input_per_million_usd": 1.0,
+                    "output_per_million_usd": 2.0,
+                }
+            }
+        ),
+    )
+    db_session.add(
+        UsageLog(
+            user_id=user_id,
+            endpoint="/chat",
+            provider="gemini",
+            model="gemini-2.5-flash",
+            input_tokens=1_000_000,
+            output_tokens=500_000,
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/admin/analytics/budget", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["budget_usd"] == 5.0
+    assert data["spent_usd"] == 2.0
+    assert data["remaining_usd"] == 3.0
+    assert data["usage_percent"] == 40.0
+    assert data["over_budget"] is False
+    assert data["pricing_configured"] is True
+
+
+def test_cost_budget_marks_unpriced_usage_without_guessing_cost(client, db_session, monkeypatch):
+    from app.models.usage_log import UsageLog
+
+    admin_token = _register_and_login(client, "budget-unpriced-admin@example.com", admin=True)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    user_id = client.get("/users/me", headers=headers).json()["id"]
+
+    monkeypatch.setattr(app_settings, "AI_MONTHLY_BUDGET_USD", 5.0)
+    monkeypatch.setattr(app_settings, "AI_PRICING_JSON", "{}")
+    db_session.add(
+        UsageLog(
+            user_id=user_id,
+            endpoint="/chat",
+            provider="unknown-provider",
+            model="unknown-model",
+            input_tokens=100,
+            output_tokens=200,
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/admin/analytics/budget", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["spent_usd"] == 0.0
+    assert data["unpriced_requests"] == 1
+    assert data["pricing_configured"] is False
+    assert data["over_budget"] is False
+
+
+def test_cost_budget_requires_admin(client):
+    token = _register_and_login(client, "budget-user@example.com")
+    response = client.get(
+        "/admin/analytics/budget",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403

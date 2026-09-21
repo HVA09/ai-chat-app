@@ -16,6 +16,7 @@ import {
   getProviderUsage,
   getProviderLatency,
   getCostUsage,
+  getCostBudget,
   getFeedbackAnalytics,
   downloadAnalyticsCsv,
   listAllUsers,
@@ -49,6 +50,7 @@ function StatsTab() {
   const [providerUsage, setProviderUsage] = useState([]);
   const [providerLatency, setProviderLatency] = useState([]);
   const [costUsage, setCostUsage] = useState([]);
+  const [costBudget, setCostBudget] = useState(null);
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
 
@@ -60,15 +62,17 @@ function StatsTab() {
       getProviderUsage(30),
       getProviderLatency(30),
       getCostUsage(30),
+      getCostBudget(),
       getFeedbackAnalytics(30),
     ])
-.then(([statsData, dailyData, modelUsageData, providerUsageData, providerLatencyData, costUsageData, feedbackData]) => {
+.then(([statsData, dailyData, modelUsageData, providerUsageData, providerLatencyData, costUsageData, costBudgetData, feedbackData]) => {
         setStats(statsData);
         setDaily(dailyData.map((p) => ({ ...p, dateLabel: p.date.slice(5) })));
         setModelUsage(modelUsageData);
         setProviderUsage(providerUsageData);
         setProviderLatency(providerLatencyData);
         setCostUsage(costUsageData);
+        setCostBudget(costBudgetData);
         setFeedback(feedbackData);
       })
       .catch(() => setError(t("admin.statsError")));
@@ -248,6 +252,66 @@ function StatsTab() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {costBudget && (
+        <div className="rounded-2xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium text-slate-900">{t("admin.costBudgetTitle")}</p>
+            <span className="text-xs text-slate-400">{t("admin.costBudgetMonth", { month: costBudget.month_start })}</span>
+          </div>
+
+          {costBudget.budget_usd === null ? (
+            <p className="mt-3 text-sm text-slate-500">{t("admin.costBudgetDisabled")}</p>
+          ) : (
+            <>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-lg font-semibold text-slate-900">
+                    ${costBudget.spent_usd.toFixed(4)}
+                  </p>
+                  <p className="text-xs text-slate-500">{t("admin.costBudgetSpent")}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-lg font-semibold text-slate-900">
+                    ${costBudget.budget_usd.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-slate-500">{t("admin.costBudgetLimit")}</p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3">
+                  <p className="text-lg font-semibold text-slate-900">
+                    ${costBudget.remaining_usd.toFixed(4)}
+                  </p>
+                  <p className="text-xs text-slate-500">{t("admin.costBudgetRemaining")}</p>
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
+                  <span>{t("admin.costBudgetUsage")}</span>
+                  <span>{costBudget.usage_percent.toFixed(1)}%</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-slate-900"
+                    style={{ width: `${Math.min(costBudget.usage_percent, 100)}%` }}
+                  />
+                </div>
+              </div>
+
+              {costBudget.over_budget && (
+                <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                  {t("admin.costBudgetExceeded")}
+                </p>
+              )}
+              {costBudget.unpriced_requests > 0 && (
+                <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                  {t("admin.costBudgetUnpriced", { count: costBudget.unpriced_requests })}
+                </p>
+              )}
+            </>
+          )}
         </div>
       )}
 

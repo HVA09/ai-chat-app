@@ -1043,6 +1043,15 @@ const resources = {
         costInput: "Input cost",
         costOutput: "Output cost",
         costTotal: "Total cost",
+        costBudgetTitle: "AI cost budget",
+        costBudgetMonth: "Since {{month}}",
+        costBudgetDisabled: "No monthly budget is configured. Set AI_MONTHLY_BUDGET_USD on the server to enable the guardrail.",
+        costBudgetSpent: "Spent",
+        costBudgetLimit: "Monthly limit",
+        costBudgetRemaining: "Remaining",
+        costBudgetUsage: "Usage",
+        costBudgetExceeded: "The configured monthly budget has been exceeded.",
+        costBudgetUnpriced: "{{count}} requests have no cost estimate because pricing is not configured.",
       },
 
       files: {
