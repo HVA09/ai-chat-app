@@ -209,13 +209,39 @@ def list_conversations(
             )
         query = query.filter(Conversation.assistant_id == assistant_id)
 
-    conversations = (
-        query
-        .order_by(Conversation.is_pinned.desc(), Conversation.updated_at.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    if search and search.strip():
+        search_text = search.strip()[:100]
+        title_exact = func.lower(Conversation.title) == search_text.lower()
+        title_prefix = Conversation.title.ilike(
+            f"{escaped_search}%",
+            escape="\\",
+        )
+        message_similarity = (
+            db.query(func.max(func.similarity(Message.content, search_text)))
+            .filter(Message.conversation_id == Conversation.id)
+            .correlate(Conversation)
+            .scalar_subquery()
+        )
+        relevance = func.greatest(
+            func.similarity(Conversation.title, search_text),
+            func.coalesce(message_similarity, 0.0),
+        )
+        query = query.order_by(
+            Conversation.is_pinned.desc(),
+            title_exact.desc(),
+            title_prefix.desc(),
+            relevance.desc(),
+            Conversation.updated_at.desc(),
+            Conversation.id.desc(),
+        )
+    else:
+        query = query.order_by(
+            Conversation.is_pinned.desc(),
+            Conversation.updated_at.desc(),
+            Conversation.id.desc(),
+        )
+
+    conversations = query.offset(skip).limit(limit).all()
 
     if not search or not search.strip() or not conversations:
         return conversations
