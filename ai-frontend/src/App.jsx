@@ -32,6 +32,8 @@ const BillingCancelPage = lazy(() => import("./components/BillingCancelPage"));
 const TermsPage = lazy(() => import("./components/TermsPage"));
 const PrivacyPage = lazy(() => import("./components/PrivacyPage"));
 const PricingPage = lazy(() => import("./components/PricingPage"));
+
+const AUTO_SUMMARY_MESSAGE_THRESHOLD = 12;
 const SharedConversationPage = lazy(() => import("./components/SharedConversationPage"));
 const WorkspaceMembersPanel = lazy(() => import("./components/WorkspaceMembersPanel"));
 const WorkspaceInvitePage = lazy(() => import("./components/WorkspaceInvitePage"));
@@ -180,16 +182,24 @@ export default function App() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [titleLoading, setTitleLoading] = useState(false);
   const [autoGenerateTitles, setAutoGenerateTitles] = useState(false);
+  const [autoGenerateSummaries, setAutoGenerateSummaries] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const bottomRef = useRef(null);
   const streamAbortRef = useRef(null);
+  const autoSummaryInFlightRef = useRef(false);
+  const autoSummaryLastMessageCountRef = useRef({});
+  const messageCountRef = useRef(messages.length);
 
   useDirection();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  useEffect(() => {
+    messageCountRef.current = messages.length;
+  }, [messages.length]);
 
   const empty = useMemo(() => messages.length === 0, [messages.length]);
   const lastAssistantIndex = useMemo(() => {
@@ -240,6 +250,8 @@ export default function App() {
     setConversationSummary(null);
     setConversationSummaryUpdatedAt(null);
     setSummaryLoading(false);
+    autoSummaryLastMessageCountRef.current = {};
+    messageCountRef.current = 1;
     setNotifications([]);
   }, [t]);
 
@@ -254,6 +266,18 @@ export default function App() {
     readPreference();
     window.addEventListener("ai-chat:auto-title-changed", readPreference);
     return () => window.removeEventListener("ai-chat:auto-title-changed", readPreference);
+  }, []);
+
+  useEffect(() => {
+    const readPreference = () => {
+      setAutoGenerateSummaries(
+        window.localStorage.getItem("ai-chat-auto-summary") === "true"
+      );
+    };
+    readPreference();
+    window.addEventListener("ai-chat:auto-summary-changed", readPreference);
+    return () =>
+      window.removeEventListener("ai-chat:auto-summary-changed", readPreference);
   }, []);
 
   // لو أي طلب بأي مكان بالتطبيق رجع 401 (مو بس إرسال رسالة)، نسجّل خروج
@@ -615,7 +639,16 @@ export default function App() {
     try {
       await renameFolder(id, newName);
       await refreshFolders(selectedWorkspaceId);
-      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        selectedProjectId
+      );
+      void maybeAutoSummarizeConversation(
+        conversationId,
+        messageCountRef.current
+      );
     } catch {
       setToast({ message: t("app.folderRenameError"), type: "error" });
     }
@@ -1152,6 +1185,7 @@ export default function App() {
   };
 
   const startNewChat = () => {
+    messageCountRef.current = 1;
     setShowShareManager(false);
     setWorkspaceShare(null);
     setReadOnlyConversation(false);
@@ -1176,6 +1210,10 @@ export default function App() {
       const data = await getConversation(id);
       setConversationId(data.id);
       setParentConversationId(data.parent_conversation_id ?? null);
+      messageCountRef.current = data.messages.length;
+      autoSummaryLastMessageCountRef.current[data.id] = data.summary
+        ? data.messages.length
+        : 0;
       try {
         setConversationBranches(await listConversationBranches(data.id));
       } catch {
@@ -1276,6 +1314,7 @@ export default function App() {
     setError("");
     setShowFiles(false);
 
+    messageCountRef.current += 2;
     setMessages((prev) => [
       ...prev,
       {
@@ -1293,6 +1332,7 @@ export default function App() {
 
     try {
       const result = await analyzeImage(conversationId, file.id, prompt);
+      messageCountRef.current += 2;
       setConversationId(result.conversation_id);
       setMessages((prev) => {
         const next = [...prev];
@@ -1387,6 +1427,38 @@ export default function App() {
     }
   };
 
+  const maybeAutoSummarizeConversation = async (
+    id,
+    messageCount = messageCountRef.current
+  ) => {
+    if (
+      !autoGenerateSummaries ||
+      !id ||
+      readOnlyConversation ||
+      messageCount < AUTO_SUMMARY_MESSAGE_THRESHOLD ||
+      autoSummaryInFlightRef.current
+    ) {
+      return;
+    }
+
+    const lastCount = autoSummaryLastMessageCountRef.current[id] ?? 0;
+    if (messageCount - lastCount < AUTO_SUMMARY_MESSAGE_THRESHOLD) return;
+
+    autoSummaryInFlightRef.current = true;
+    try {
+      const result = await summarizeConversation(id);
+      autoSummaryLastMessageCountRef.current[id] = messageCount;
+      if (id === conversationId) {
+        setConversationSummary(result.summary);
+        setConversationSummaryUpdatedAt(result.summary_updated_at);
+      }
+    } catch {
+      // الملخص التلقائي اختياري؛ فشله لا يؤثر على الرسالة.
+    } finally {
+      autoSummaryInFlightRef.current = false;
+    }
+  };
+
   const handleSummarizeConversation = async () => {
     if (!conversationId || loading || summaryLoading || readOnlyConversation) return;
     setSummaryLoading(true);
@@ -1395,6 +1467,10 @@ export default function App() {
       const result = await summarizeConversation(conversationId);
       setConversationSummary(result.summary);
       setConversationSummaryUpdatedAt(result.summary_updated_at);
+      if (conversationId) {
+        autoSummaryLastMessageCountRef.current[conversationId] =
+          messageCountRef.current;
+      }
       setToast({ message: t("summary.saved"), type: "success" });
     } catch (err) {
       setToast({
@@ -1748,7 +1824,9 @@ export default function App() {
     if (!userMessageIndex) return;
 
     const previousMessages = messages;
+    autoSummaryLastMessageCountRef.current[conversationId] = 0;
     setError("");
+    messageCountRef.current = targetIndex + 2;
     setMessages((prev) => [
       ...prev.slice(0, targetIndex + 1).map((message, index) =>
         index === targetIndex ? { ...message, text: editedText } : message
@@ -1783,7 +1861,17 @@ export default function App() {
       onDone: () => {
         streamAbortRef.current = null;
         setLoading(false);
-        refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
+        refreshConversations(
+          showArchivedConversations,
+          selectedFolderId,
+          selectedWorkspaceId,
+          selectedProjectId
+        );
+        autoSummaryLastMessageCountRef.current[conversationId] = 0;
+        void maybeAutoSummarizeConversation(
+          conversationId,
+          messageCountRef.current
+        );
       },
       onError: (message) => {
         streamAbortRef.current = null;
@@ -1868,9 +1956,18 @@ export default function App() {
         streamAbortRef.current = null;
         setLoading(false);
         if (isNewConversation) {
-          refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
+          refreshConversations(
+            showArchivedConversations,
+            selectedFolderId,
+            selectedWorkspaceId,
+            selectedProjectId
+          );
           await maybeAutoGenerateConversationTitle(createdConversationId);
         }
+        void maybeAutoSummarizeConversation(
+          createdConversationId,
+          messageCountRef.current
+        );
       },
       onError: (message) => {
         streamAbortRef.current = null;
@@ -1922,7 +2019,16 @@ export default function App() {
       onDone: () => {
         streamAbortRef.current = null;
         setLoading(false);
-        refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
+        refreshConversations(
+          showArchivedConversations,
+          selectedFolderId,
+          selectedWorkspaceId,
+          selectedProjectId
+        );
+        void maybeAutoSummarizeConversation(
+          conversationId,
+          messageCountRef.current
+        );
       },
       onError: (message) => {
         streamAbortRef.current = null;
@@ -2340,6 +2446,8 @@ export default function App() {
             user={currentUser}
             autoGenerateTitles={autoGenerateTitles}
             onAutoGenerateTitlesChanged={setAutoGenerateTitles}
+            autoGenerateSummaries={autoGenerateSummaries}
+            onAutoGenerateSummariesChanged={setAutoGenerateSummaries}
             onClose={() => setShowAccountSettings(false)}
             onUserUpdated={refreshCurrentUser}
             onAccountDeleted={logout}
