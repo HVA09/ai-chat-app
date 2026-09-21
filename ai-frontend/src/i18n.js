@@ -1052,6 +1052,10 @@ const resources = {
         costBudgetUsage: "Usage",
         costBudgetExceeded: "The configured monthly budget has been exceeded.",
         costBudgetUnpriced: "{{count}} requests have no cost estimate because pricing is not configured.",
+        analyticsRangeTitle: "Analytics range",
+        analyticsRangeHint: "Choose the period used by the admin analytics.",
+        analyticsDays: "{{days}} days",
+        lastNDays: "Last {{days}} days",
       },
 
       files: {
