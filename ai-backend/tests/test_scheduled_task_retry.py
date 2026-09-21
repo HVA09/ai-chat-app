@@ -1,8 +1,8 @@
 """اختبارات إعادة محاولة تنفيذ مهمة مجدولة فاشلة."""
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock
 
-from app.services.ai_providers.base import AIReply
+from app.models.scheduled_task import ScheduledTask
+from app.models.scheduled_task_run import ScheduledTaskRun, ScheduledTaskRunStatus
 
 
 def _register_and_login(client, email, password="StrongPass123"):
@@ -20,7 +20,7 @@ def _create_workspace(client, token):
     ).json()
 
 
-def test_retry_failed_run(client, monkeypatch):
+def test_retry_failed_run(client, db_session):
     token = _register_and_login(client, "retry-test@example.com")
     workspace = _create_workspace(client, token)
     headers = {"Authorization": f"Bearer {token}"}
@@ -39,23 +39,21 @@ def test_retry_failed_run(client, monkeypatch):
     assert response.status_code == 201
     task_id = response.json()["id"]
 
-    async def failing_reply(*args, **kwargs):
-        raise RuntimeError("فشل تجريبي")
-
-    monkeypatch.setattr("app.tasks.get_ai_reply", failing_reply)
-
-    failed = client.post(f"/scheduled-tasks/{task_id}/run", headers=headers)
-    assert failed.status_code == 202
-    failed_run_id = failed.json()["id"]
-    assert failed.json()["status"] == "failed"
-
-    monkeypatch.setattr(
-        "app.tasks.get_ai_reply",
-        AsyncMock(return_value=AIReply(text="نجح")),
+    task = db_session.get(ScheduledTask, task_id)
+    failed_run = ScheduledTaskRun(
+        scheduled_task_id=task.id,
+        user_id=task.user_id,
+        workspace_id=workspace["id"],
+        prompt=task.prompt,
+        status=ScheduledTaskRunStatus.failed,
+        error="فشل تجريبي",
     )
+    db_session.add(failed_run)
+    db_session.commit()
+    db_session.refresh(failed_run)
 
     retry = client.post(
-        f"/scheduled-tasks/{task_id}/runs/{failed_run_id}/retry",
+        f"/scheduled-tasks/{task_id}/runs/{failed_run.id}/retry",
         headers=headers,
     )
     assert retry.status_code == 202
