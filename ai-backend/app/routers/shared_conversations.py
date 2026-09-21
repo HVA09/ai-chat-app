@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
 from app.database import get_db
+from app.auth.security import hash_password, verify_password
 from app.dependencies import get_current_user
 from app.models.conversation import Conversation
 from app.models.conversation_share import ConversationShare
@@ -17,6 +18,7 @@ from app.schemas.shares import (
     ConversationShareCreate,
     ConversationShareManageOut,
     ConversationShareOut,
+    SharedConversationAccessRequest,
     SharedConversationOut,
     SharedMessageOut,
 )
@@ -73,6 +75,7 @@ def create_conversation_share(
     share = ConversationShare(
         conversation_id=conversation.id,
         token_hash=_hash_token(token),
+        password_hash=hash_password(payload.password) if payload.password else None,
         expires_at=expires_at,
     )
     db.add(share)
@@ -110,6 +113,7 @@ def list_conversation_shares(
             created_at=share.created_at,
             expires_at=share.expires_at,
             is_expired=share.expires_at is not None and share.expires_at <= now,
+            password_protected=share.password_hash is not None,
         )
         for share in shares
     ]
@@ -143,26 +147,16 @@ def revoke_conversation_share(
     db.commit()
 
 
-@router.get(
-    "/shared-conversations/{token}",
-    response_model=SharedConversationOut,
-)
-def get_shared_conversation(
-    token: str,
-    db: Session = Depends(get_db),
-):
+def _get_valid_share(token: str, db: Session) -> ConversationShare:
     if not token or len(token) > 256:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="رابط المشاركة غير صالح",
         )
 
-    share = (
-        db.query(ConversationShare)
-        .options(selectinload(ConversationShare.conversation).selectinload(Conversation.messages))
-        .filter(ConversationShare.token_hash == _hash_token(token))
-        .first()
-    )
+    share = db.query(ConversationShare).filter(
+        ConversationShare.token_hash == _hash_token(token)
+    ).first()
 
     if not share:
         raise HTTPException(
@@ -177,6 +171,10 @@ def get_shared_conversation(
             detail="انتهت صلاحية رابط المشاركة",
         )
 
+    return share
+
+
+def _serialize_shared_conversation(share: ConversationShare) -> SharedConversationOut:
     conversation = share.conversation
     return SharedConversationOut(
         title=conversation.title,
@@ -192,3 +190,55 @@ def get_shared_conversation(
             for message in conversation.messages
         ],
     )
+
+
+@router.get(
+    "/shared-conversations/{token}",
+    response_model=SharedConversationOut,
+)
+def get_shared_conversation(
+    token: str,
+    db: Session = Depends(get_db),
+):
+    share = _get_valid_share(token, db)
+    if share.password_hash is not None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="share_password_required",
+        )
+
+    share = (
+        db.query(ConversationShare)
+        .options(selectinload(ConversationShare.conversation).selectinload(Conversation.messages))
+        .filter(ConversationShare.id == share.id)
+        .first()
+    )
+    return _serialize_shared_conversation(share)
+
+
+@router.post(
+    "/shared-conversations/{token}/access",
+    response_model=SharedConversationOut,
+)
+def access_password_protected_share(
+    token: str,
+    payload: SharedConversationAccessRequest,
+    db: Session = Depends(get_db),
+):
+    share = _get_valid_share(token, db)
+    if share.password_hash is None:
+        return _serialize_shared_conversation(share)
+
+    if not verify_password(payload.password, share.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid_share_password",
+        )
+
+    share = (
+        db.query(ConversationShare)
+        .options(selectinload(ConversationShare.conversation).selectinload(Conversation.messages))
+        .filter(ConversationShare.id == share.id)
+        .first()
+    )
+    return _serialize_shared_conversation(share)
