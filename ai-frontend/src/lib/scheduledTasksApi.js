@@ -29,3 +29,11 @@ export async function listScheduledTaskRuns(id, limit = 20) {
   const { data } = await api.get(`/scheduled-tasks/${id}/runs`, { params: { limit } });
   return data;
 }
+
+
+export async function retryScheduledTaskRun(taskId, runId) {
+  const { data } = await api.post(
+    `/scheduled-tasks/${taskId}/runs/${runId}/retry`
+  );
+  return data;
+}
