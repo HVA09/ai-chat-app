@@ -141,7 +141,8 @@ def _execute_scheduled_task(
         _ensure_ai_quota(user, workspace, db)
 
         ai_model = workspace.default_ai_model
-        reply = asyncio.run(get_ai_reply(task.prompt, [], ai_model))
+        usage_meta: dict[str, str] = {}
+        reply = asyncio.run(get_ai_reply(task.prompt, [], ai_model, meta=usage_meta))
 
         title_prefix = "Scheduled" if not task.prompt.startswith("م") else "مهمة مجدولة"
         title = f"{title_prefix}: {task.prompt[:70]}".strip()
@@ -176,6 +177,8 @@ def _execute_scheduled_task(
                 endpoint=f"/scheduled-tasks/{task.id}",
                 input_tokens=reply.input_tokens,
                 output_tokens=reply.output_tokens,
+                provider=usage_meta.get("provider"),
+                model=usage_meta.get("model"),
             )
         )
 
