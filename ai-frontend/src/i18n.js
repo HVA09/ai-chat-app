@@ -725,6 +725,8 @@ const resources = {
         python: "مفسّر بايثون آمن",
         voiceInput: "إدخال صوتي",
         voiceStop: "إيقاف الإدخال الصوتي",
+        voiceOutput: "قراءة الرسالة صوتيًا",
+        stopVoiceOutput: "إيقاف القراءة",
       },
     },
   },
