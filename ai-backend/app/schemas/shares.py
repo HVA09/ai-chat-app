@@ -18,6 +18,8 @@ class ConversationShareOut(BaseModel):
     url: str
     created_at: datetime
     expires_at: datetime | None
+    access_count: int = 0
+    last_accessed_at: datetime | None = None
 
 
 class ConversationShareManageOut(BaseModel):
@@ -26,6 +28,8 @@ class ConversationShareManageOut(BaseModel):
     expires_at: datetime | None
     is_expired: bool
     password_protected: bool
+    access_count: int
+    last_accessed_at: datetime | None
 
 
 class SharedMessageOut(BaseModel):
