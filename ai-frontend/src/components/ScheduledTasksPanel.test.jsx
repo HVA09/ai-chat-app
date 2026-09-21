@@ -28,6 +28,7 @@ vi.mock("react-i18next", () => ({
         "scheduledTasks.daily": "يومي",
         "scheduledTasks.weekly": "أسبوعي",
         "scheduledTasks.nextRun": "أول تنفيذ",
+        "scheduledTasks.timezone": "المنطقة الزمنية",
         "scheduledTasks.create": "إنشاء المهمة",
         "scheduledTasks.saving": "جارٍ الحفظ...",
         "scheduledTasks.listTitle": "المهام الحالية",
@@ -125,6 +126,7 @@ describe("ScheduledTasksPanel", () => {
           workspace_id: 7,
           prompt: "لخص الأخبار",
           schedule_type: "once",
+          timezone_name: expect.any(String),
         })
       )
     );
@@ -188,6 +190,7 @@ describe("ScheduledTasksPanel", () => {
         is_active: true,
         last_run_at: null,
         last_error: null,
+        timezone_name: "Africa/Tripoli",
       },
     ]);
     api.updateScheduledTask.mockResolvedValue({
