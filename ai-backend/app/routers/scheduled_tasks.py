@@ -193,9 +193,9 @@ def run_scheduled_task_now(
 
     from app.tasks import _execute_scheduled_task
     run_id = run.id
-    # التنفيذ الاحتياطي يستخدم جلسة مستقلة حتى لا يكسر معاملة طلب FastAPI
-    # (خصوصًا اختبارات TestClient التي تستخدم nested transactions).
-    _execute_scheduled_task(task.id, run_id)
+    # في fallback نستخدم نفس Session حتى تبقى نتيجة التنفيذ مرئية داخل
+    # معاملة الطلب (مهم خصوصًا مع nested transactions في الاختبارات).
+    _execute_scheduled_task(task.id, run_id, db=db)
 
     # أعد النتيجة كسجل scalar بدل كائن ORM قد يكون انتهت حالته بعد
     # عمليات commit/rollback داخل التنفيذ الاحتياطي.
