@@ -102,6 +102,8 @@ const resources = {
         voiceNotSupported: "الإدخال الصوتي غير مدعوم في هذا المتصفح",
         voiceError: "تعذر استخدام الإدخال الصوتي",
         sendMessageError: "تعذر إرسال الرسالة إلى الخادم.",
+        voiceNotSupported: "الإخراج الصوتي غير مدعوم في هذا المتصفح",
+        voiceError: "تعذر تشغيل الرسالة صوتيًا",
       },
 
       header: {
@@ -824,6 +826,8 @@ const resources = {
         loginSuccess: "Logged in successfully",
         connectionError: "Couldn't connect to the server",
         sendMessageError: "Couldn't send the message to the server.",
+        voiceNotSupported: "Voice output is not supported in this browser",
+        voiceError: "Couldn't read the message aloud",
         voiceNotSupported: "Voice input is not supported in this browser",
         voiceError: "Couldn't use voice input",
       },
@@ -1424,6 +1428,8 @@ const resources = {
         python: "Safe Python interpreter",
         voiceInput: "Voice input",
         voiceStop: "Stop voice input",
+        voiceOutput: "Read aloud",
+        stopVoiceOutput: "Stop reading",
         modelSelector: "AI model",
         defaultModel: "Default model",
       },
