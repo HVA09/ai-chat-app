@@ -495,7 +495,8 @@ def test_admin_bypasses_monthly_ai_cost_budget(client, monkeypatch):
     )
     monkeypatch.setattr(app_settings, "AI_MONTHLY_BUDGET_USD", 1.0)
 
-    admin_token = _register_and_login(client, "budget-admin-bypass@example.com", admin=True)
+    app_settings.INITIAL_ADMIN_EMAIL = "budget-admin-bypass@example.com"
+    admin_token = _register_and_login(client, "budget-admin-bypass@example.com")
     response = client.post(
         "/chat",
         json={"message": "طلب إداري"},
