@@ -243,7 +243,8 @@ export default function ScheduledTasksPanel({
           ) : (
             <div className="space-y-2">
               {tasks.map((task) => (
-                <div key={task.id} className="rounded-2xl border border-slate-200 p-3 dark:border-slate-700">
+                <div key={task.id}>
+                  <div className="rounded-2xl border border-slate-200 p-3 dark:border-slate-700">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="whitespace-pre-wrap break-words text-sm font-medium">{task.prompt}</p>
@@ -286,8 +287,7 @@ export default function ScheduledTasksPanel({
                       </button>
                     </div>
                   </div>
-                </div>
-                {expandedTaskId === task.id && (
+                  {expandedTaskId === task.id && (
                   <div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
                     {(runsByTask[task.id] || []).length === 0 ? (
                       <p className="text-xs text-slate-500">{t("scheduledTasks.historyEmpty")}</p>
@@ -318,6 +318,8 @@ export default function ScheduledTasksPanel({
                     )}
                   </div>
                 )}
+                </div>
+              ))}
             </div>
           )}
         </div>
