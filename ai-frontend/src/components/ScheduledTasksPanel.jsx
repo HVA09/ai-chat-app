@@ -10,6 +10,32 @@ import {
   retryScheduledTaskRun,
 } from "../lib/scheduledTasksApi";
 
+const COMMON_TIMEZONES = [
+  "UTC",
+  "Africa/Tripoli",
+  "Africa/Cairo",
+  "Europe/London",
+  "Europe/Berlin",
+  "Asia/Riyadh",
+  "Asia/Dubai",
+  "Asia/Tokyo",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+];
+
+function browserTimeZone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function timezoneOptions() {
+  const current = browserTimeZone();
+  return COMMON_TIMEZONES.includes(current)
+    ? COMMON_TIMEZONES
+    : [current, ...COMMON_TIMEZONES];
+}
+
 function defaultLocalDateTime() {
   const date = new Date(Date.now() + 60 * 60 * 1000);
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
@@ -38,6 +64,7 @@ export default function ScheduledTasksPanel({
   const [scheduleType, setScheduleType] = useState("once");
   const [nextRunAt, setNextRunAt] = useState(defaultLocalDateTime);
   const [weekday, setWeekday] = useState("0");
+  const [timezoneName, setTimezoneName] = useState(browserTimeZone);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -49,6 +76,7 @@ export default function ScheduledTasksPanel({
   const [editScheduleType, setEditScheduleType] = useState("once");
   const [editNextRunAt, setEditNextRunAt] = useState("");
   const [editWeekday, setEditWeekday] = useState("0");
+  const [editTimezoneName, setEditTimezoneName] = useState(browserTimeZone);
   const [savingEdit, setSavingEdit] = useState(false);
 
   const activeWorkspace = useMemo(
@@ -85,8 +113,10 @@ export default function ScheduledTasksPanel({
         schedule_type: scheduleType,
         next_run_at: new Date(nextRunAt).toISOString(),
         weekday: scheduleType === "weekly" ? Number(weekday) : null,
+        timezone_name: timezoneName,
       });
       setPrompt("");
+      setTimezoneName(browserTimeZone());
       await refresh();
     } catch (err) {
       setError(err?.response?.data?.detail || t("scheduledTasks.saveError"));
@@ -149,6 +179,7 @@ export default function ScheduledTasksPanel({
     setEditScheduleType(task.schedule_type);
     setEditNextRunAt(toLocalDateTimeInput(task.next_run_at));
     setEditWeekday(String(task.weekday ?? 0));
+    setEditTimezoneName(task.timezone_name || browserTimeZone());
     setError("");
   };
 
@@ -156,6 +187,7 @@ export default function ScheduledTasksPanel({
     setEditingTaskId(null);
     setEditPrompt("");
     setEditNextRunAt("");
+    setEditTimezoneName(browserTimeZone());
   };
 
   const saveEdit = async (event) => {
@@ -171,6 +203,7 @@ export default function ScheduledTasksPanel({
         schedule_type: editScheduleType,
         next_run_at: new Date(editNextRunAt).toISOString(),
         weekday: editScheduleType === "weekly" ? Number(editWeekday) : null,
+        timezone_name: editTimezoneName,
       });
       cancelEdit();
       await refresh();
@@ -239,7 +272,7 @@ export default function ScheduledTasksPanel({
             />
           </label>
 
-          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="text-sm font-medium">
               {t("scheduledTasks.frequency")}
               <select
@@ -261,6 +294,19 @@ export default function ScheduledTasksPanel({
                 onChange={(event) => setNextRunAt(event.target.value)}
                 className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
               />
+            </label>
+
+            <label className="text-sm font-medium">
+              {t("scheduledTasks.timezone")}
+              <select
+                value={timezoneName}
+                onChange={(event) => setTimezoneName(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+              >
+                {timezoneOptions().map((zone) => (
+                  <option key={zone} value={zone}>{zone}</option>
+                ))}
+              </select>
             </label>
 
             {scheduleType === "weekly" && (
@@ -382,7 +428,7 @@ export default function ScheduledTasksPanel({
                     <div className="min-w-0">
                       <p className="whitespace-pre-wrap break-words text-sm font-medium">{task.prompt}</p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {t(`scheduledTasks.${task.schedule_type}`)} · {formatRunAt(task.next_run_at)}
+                        {t(`scheduledTasks.${task.schedule_type}`)} · {formatRunAt(task.next_run_at)} · {task.timezone_name || "UTC"}
                       </p>
                       {task.last_error && (
                         <p className="mt-1 text-xs text-red-600">{task.last_error}</p>
