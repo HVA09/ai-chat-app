@@ -32,6 +32,17 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
 
+  celery_beat:
+    build: .
+    restart: unless-stopped
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   celery_worker:
     build: .
     restart: unless-stopped
