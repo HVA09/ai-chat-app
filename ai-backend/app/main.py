@@ -28,6 +28,7 @@ from app.routers.conversations import router as conversations_router
 from app.routers.files import router as files_router
 from app.routers.folders import router as folders_router
 from app.routers.notifications import router as notifications_router
+from app.routers.scheduled_tasks import router as scheduled_tasks_router
 from app.routers.projects import router as projects_router
 from app.routers.saved_prompts import router as saved_prompts_router
 from app.routers.memories import router as memories_router
@@ -152,6 +153,7 @@ app.include_router(folders_router)
 app.include_router(billing_router)
 app.include_router(api_keys_router)
 app.include_router(notifications_router)
+app.include_router(scheduled_tasks_router)
 app.include_router(projects_router)
 app.include_router(saved_prompts_router)
 app.include_router(memories_router)
