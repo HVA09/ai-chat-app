@@ -155,3 +155,4 @@ describe("ScheduledTasksPanel", () => {
     await waitFor(() => expect(screen.getByText("نجح")).toBeInTheDocument());
     expect(screen.getByText("تم إنشاء محادثة من هذا التنفيذ")).toBeInTheDocument();
   });
+});
