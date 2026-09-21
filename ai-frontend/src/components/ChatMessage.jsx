@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -40,9 +40,11 @@ export default function ChatMessage({
   const [copied, setCopied] = useState(false);
   const [speaking, setSpeaking] = useState(false);
 
-  // Stop speech when this message unmounts or another response replaces the UI.
-  // The browser API is global, so cleanup avoids audio continuing after navigation.
-  useState(() => () => window.speechSynthesis?.cancel());
+  useEffect(() => () => {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+  }, []);
 
   const copyMessage = async () => {
     if (!text || !navigator.clipboard) return;
