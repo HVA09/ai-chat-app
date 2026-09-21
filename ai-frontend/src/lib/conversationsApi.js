@@ -140,6 +140,11 @@ export async function generateConversationTitle(id) {
   return data;
 }
 
+export async function autoGenerateConversationTitle(id) {
+  const { data } = await api.post(`/conversations/${id}/auto-title`);
+  return data;
+}
+
 export async function summarizeConversation(id) {
   const { data } = await api.post(`/conversations/${id}/summary`);
   return data;
