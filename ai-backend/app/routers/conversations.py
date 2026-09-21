@@ -559,10 +559,12 @@ async def generate_conversation_title(
         )
 
     prompt = _build_title_prompt(conversation)
+    usage_meta: dict[str, str] = {}
     reply = await get_ai_reply(
         prompt,
         history=[],
         model=conversation.ai_model,
+        meta=usage_meta,
     )
     generated_title = _normalize_generated_title(reply.text or "")
     if not generated_title:
@@ -587,6 +589,8 @@ async def generate_conversation_title(
             endpoint="/conversations/generate-title",
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
+            provider=usage_meta.get("provider"),
+            model=usage_meta.get("model"),
         )
     )
     db.commit()
@@ -625,10 +629,12 @@ async def summarize_conversation(
             detail="لا توجد رسائل كافية لتلخيص المحادثة",
         )
 
+    usage_meta: dict[str, str] = {}
     reply = await get_ai_reply(
         prompt,
         history=[],
         model=conversation.ai_model,
+        meta=usage_meta,
     )
     summary = reply.text.strip()
     if not summary:
@@ -647,6 +653,8 @@ async def summarize_conversation(
             endpoint="/conversations/summary",
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
+            provider=usage_meta.get("provider"),
+            model=usage_meta.get("model"),
         )
     )
     db.commit()
