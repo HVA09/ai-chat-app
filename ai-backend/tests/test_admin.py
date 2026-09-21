@@ -251,3 +251,72 @@ def test_model_usage_analytics_requires_admin(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 403
+
+
+def test_cost_usage_analytics_estimates_configured_pricing(client, db_session, monkeypatch):
+    from app.models.usage_log import UsageLog
+    import json
+
+    admin_token = _register_and_login(client, "cost-analytics-admin@example.com", admin=True)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    user_id = client.get("/users/me", headers=headers).json()["id"]
+
+    monkeypatch.setattr(
+        app_settings,
+        "AI_PRICING_JSON",
+        json.dumps(
+            {
+                "gemini:gemini-2.5-flash": {
+                    "input_per_million_usd": 1.0,
+                    "output_per_million_usd": 2.0,
+                }
+            }
+        ),
+    )
+
+    db_session.add(
+        UsageLog(
+            user_id=user_id,
+            endpoint="/chat",
+            provider="gemini",
+            model="gemini-2.5-flash",
+            input_tokens=1_000_000,
+            output_tokens=500_000,
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/admin/analytics/cost?days=30", headers=headers)
+    assert response.status_code == 200
+    row = response.json()[0]
+    assert row["pricing_configured"] is True
+    assert row["input_cost_usd"] == 1.0
+    assert row["output_cost_usd"] == 1.0
+    assert row["total_cost_usd"] == 2.0
+
+
+def test_cost_usage_analytics_marks_unknown_pricing(client, db_session, monkeypatch):
+    from app.models.usage_log import UsageLog
+
+    admin_token = _register_and_login(client, "cost-unknown-admin@example.com", admin=True)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    user_id = client.get("/users/me", headers=headers).json()["id"]
+
+    monkeypatch.setattr(app_settings, "AI_PRICING_JSON", "{}")
+    db_session.add(
+        UsageLog(
+            user_id=user_id,
+            endpoint="/chat",
+            provider="unknown-provider",
+            model="unknown-model",
+            input_tokens=100,
+            output_tokens=200,
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/admin/analytics/cost?days=30", headers=headers)
+    assert response.status_code == 200
+    row = response.json()[0]
+    assert row["pricing_configured"] is False
+    assert row["total_cost_usd"] is None
