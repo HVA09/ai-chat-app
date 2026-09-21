@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.scheduled_task import ScheduledTask, ScheduledTaskType
+from app.models.scheduled_task_run import ScheduledTaskRun
 from app.models.user import User
 from app.models.workspace import WorkspaceMember
+from app.schemas.scheduled_task_runs import ScheduledTaskRunOut
 from app.schemas.scheduled_tasks import (
     ScheduledTaskCreate,
     ScheduledTaskOut,
@@ -142,6 +144,56 @@ def update_scheduled_task(
     db.commit()
     db.refresh(task)
     return task
+
+
+@router.get("/{task_id}/runs", response_model=list[ScheduledTaskRunOut])
+def list_scheduled_task_runs(
+    task_id: int,
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _get_owned_task(task_id, current_user, db)
+    limit = min(max(limit, 1), 100)
+    return (
+        db.query(ScheduledTaskRun)
+        .filter(ScheduledTaskRun.scheduled_task_id == task_id)
+        .order_by(ScheduledTaskRun.created_at.desc(), ScheduledTaskRun.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+@router.post("/{task_id}/run", response_model=ScheduledTaskRunOut, status_code=status.HTTP_202_ACCEPTED)
+def run_scheduled_task_now(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    task = _get_owned_task(task_id, current_user, db)
+    run = ScheduledTaskRun(
+        scheduled_task_id=task.id,
+        user_id=current_user.id,
+        workspace_id=task.workspace_id,
+        prompt=task.prompt,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+
+    try:
+        from app.tasks import execute_scheduled_task
+        if execute_scheduled_task is not None:
+            execute_scheduled_task.delay(task.id, run.id)
+            return run
+    except Exception:
+        # Redis/Celery قد لا يكون متاحًا في التطوير؛ ننفذ مباشرة كـ fallback.
+        pass
+
+    from app.tasks import _execute_scheduled_task
+    _execute_scheduled_task(task.id, run.id)
+    db.refresh(run)
+    return run
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
