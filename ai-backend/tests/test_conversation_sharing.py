@@ -115,3 +115,86 @@ def test_expired_share_returns_410(client, monkeypatch):
 
     # No direct DB mutation here; just verify endpoint shape and token path.
     assert len(created.json()["url"].split("/share/", 1)[1]) >= 20
+
+
+def test_password_protected_share_requires_and_accepts_password(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد محمي")),
+    )
+    token = _register_and_login(client, "share-password@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "رسالة محمية"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    created = client.post(
+        f"/conversations/{conversation_id}/share",
+        json={"expires_in_days": 7, "password": "SharePass123"},
+        headers=headers,
+    )
+    assert created.status_code == 200
+    share = created.json()
+    public_token = share["url"].split("/share/", 1)[1]
+
+    listed = client.get(
+        f"/conversations/{conversation_id}/shares",
+        headers=headers,
+    )
+    assert listed.status_code == 200
+    assert listed.json()[0]["password_protected"] is True
+
+    protected = client.get(f"/shared-conversations/{public_token}")
+    assert protected.status_code == 401
+    assert protected.json()["detail"] == "share_password_required"
+
+    wrong = client.post(
+        f"/shared-conversations/{public_token}/access",
+        json={"password": "WrongPass123"},
+    )
+    assert wrong.status_code == 401
+    assert wrong.json()["detail"] == "invalid_share_password"
+
+    unlocked = client.post(
+        f"/shared-conversations/{public_token}/access",
+        json={"password": "SharePass123"},
+    )
+    assert unlocked.status_code == 200
+    assert [message["content"] for message in unlocked.json()["messages"]] == [
+        "رسالة محمية",
+        "رد محمي",
+    ]
+
+
+def test_unprotected_share_access_endpoint_still_works(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "share-unprotected-access@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "رسالة"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    created = client.post(
+        f"/conversations/{conversation_id}/share",
+        json={"expires_in_days": 7},
+        headers=headers,
+    )
+    public_token = created.json()["url"].split("/share/", 1)[1]
+
+    unlocked = client.post(
+        f"/shared-conversations/{public_token}/access",
+        json={"password": "UnusedPass123"},
+    )
+    assert unlocked.status_code == 200
+    assert unlocked.json()["title"] == "رسالة"
