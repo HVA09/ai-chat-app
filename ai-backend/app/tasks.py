@@ -206,7 +206,12 @@ def _execute_scheduled_task(
 
     except Exception as exc:
         logger.exception("Scheduled task failed: %s", task_id)
-        db.rollback()
+        # عند استخدام fallback داخل طلب HTTP، تكون Session مملوكة للمسار
+        # وقد تكون فيها معاملة اختبار خارجية. لا نسوي rollback للـ Session
+        # المستلمة حتى لا نفقد سجل التنفيذ الذي أنشأناه قبل تشغيل المزود.
+        if owns_session:
+            db.rollback()
+
         task = db.get(ScheduledTask, task_id)
         run = db.get(ScheduledTaskRun, run_id) if run_id is not None else None
         if run is not None:
