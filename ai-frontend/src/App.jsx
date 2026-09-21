@@ -1314,7 +1314,8 @@ export default function App() {
     setError("");
     setShowFiles(false);
 
-    messageCountRef.current += 2;
+    const imageMessageCount = messageCountRef.current + 2;
+    messageCountRef.current = imageMessageCount;
     setMessages((prev) => [
       ...prev,
       {
@@ -1332,7 +1333,6 @@ export default function App() {
 
     try {
       const result = await analyzeImage(conversationId, file.id, prompt);
-      messageCountRef.current += 2;
       setConversationId(result.conversation_id);
       setMessages((prev) => {
         const next = [...prev];
@@ -1342,8 +1342,18 @@ export default function App() {
         };
         return next;
       });
-      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        selectedProjectId
+      );
+      void maybeAutoSummarizeConversation(
+        conversationId,
+        imageMessageCount
+      );
     } catch (err) {
+      messageCountRef.current = Math.max(0, messageCountRef.current - 2);
       setMessages((prev) => prev.slice(0, -2));
       setToast({ message: t("app.imageAnalyzeError"), type: "error" });
       throw err;
@@ -1895,6 +1905,7 @@ export default function App() {
     if (!userText) return;
 
     setError("");
+    messageCountRef.current += 2;
     setMessages((prev) => [
       ...prev,
       { role: "user", text: userText, time: new Date().toLocaleTimeString() },
@@ -1988,6 +1999,7 @@ export default function App() {
 
     const targetIndex = lastAssistantIndex;
     const previousText = messages[targetIndex]?.text ?? "";
+    autoSummaryLastMessageCountRef.current[conversationId] = 0;
     setError("");
     setMessages((prev) =>
       prev.map((message, index) =>
