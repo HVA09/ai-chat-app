@@ -27,6 +27,7 @@ const AccountSettings = lazy(() => import("./components/AccountSettings"));
 const FilesPanel = lazy(() => import("./components/FilesPanel"));
 const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
 const BillingPanel = lazy(() => import("./components/BillingPanel"));
+const ScheduledTasksPanel = lazy(() => import("./components/ScheduledTasksPanel"));
 const BillingSuccessPage = lazy(() => import("./components/BillingSuccessPage"));
 const BillingCancelPage = lazy(() => import("./components/BillingCancelPage"));
 const TermsPage = lazy(() => import("./components/TermsPage"));
@@ -171,6 +172,7 @@ export default function App() {
   const [showFiles, setShowFiles] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showBilling, setShowBilling] = useState(false);
+  const [showScheduledTasks, setShowScheduledTasks] = useState(false);
   const [showWorkspaceMembers, setShowWorkspaceMembers] = useState(false);
   const [showShareManager, setShowShareManager] = useState(false);
   const [workspaceShare, setWorkspaceShare] = useState(null);
@@ -242,6 +244,7 @@ export default function App() {
     setShowFiles(false);
     setShowAdmin(false);
     setShowBilling(false);
+    setShowScheduledTasks(false);
     setShowWorkspaceMembers(false);
     setShowShareManager(false);
     setWorkspaceShare(null);
@@ -2232,6 +2235,7 @@ export default function App() {
         onCreateWorkspace={handleCreateWorkspace}
         onRenameWorkspace={handleRenameWorkspace}
         onOpenWorkspaceMembers={handleOpenWorkspaceMembers}
+        onOpenScheduledTasks={() => setShowScheduledTasks(true)}
         onOpenWorkspaceSharedConversation={handleOpenWorkspaceSharedConversation}
         searchValue={conversationSearch}
         onSearchChange={setConversationSearch}
@@ -2515,6 +2519,16 @@ export default function App() {
       {showBilling && (
         <Suspense fallback={<ModalLoadingFallback />}>
           <BillingPanel onClose={() => setShowBilling(false)} />
+        </Suspense>
+      )}
+
+      {showScheduledTasks && (
+        <Suspense fallback={<ModalLoadingFallback />}>
+          <ScheduledTasksPanel
+            workspaces={workspaces}
+            selectedWorkspaceId={selectedWorkspaceId}
+            onClose={() => setShowScheduledTasks(false)}
+          />
         </Suspense>
       )}
 

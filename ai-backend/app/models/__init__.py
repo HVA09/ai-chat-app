@@ -14,6 +14,7 @@ from app.models.saved_prompt import SavedPrompt
 from app.models.conversation_tag import ConversationTag
 from app.models.conversation_share import ConversationShare
 from app.models.usage_log import UsageLog
+from app.models.scheduled_task import ScheduledTask
 from app.models.file_attachment import FileAttachment
 from app.models.file_chunk import FileChunk
 from app.models.conversation_file_link import ConversationFileLink
@@ -45,6 +46,7 @@ __all__ = [
     "ConversationTag",
     "ConversationShare",
     "UsageLog",
+    "ScheduledTask",
     "FileAttachment",
     "FileChunk",
     "ConversationFileLink",

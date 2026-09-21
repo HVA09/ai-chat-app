@@ -64,6 +64,9 @@ class User(Base):
     saved_prompts = relationship(
         "SavedPrompt", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )
+    scheduled_tasks = relationship(
+        "ScheduledTask", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
+    )
     conversations = relationship(
         "Conversation", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )
