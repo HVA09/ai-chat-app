@@ -895,3 +895,118 @@ def test_bulk_export_rejects_empty_selection(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 422
+
+
+def test_bulk_import_conversations(client):
+    token = _register_and_login(client, "bulk-import@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspaces = client.get("/workspaces", headers=headers)
+    assert workspaces.status_code == 200
+    workspace_id = workspaces.json()[0]["id"]
+
+    response = client.post(
+        "/conversations/import-bulk",
+        params={"workspace_id": workspace_id},
+        json={
+            "version": 1,
+            "conversations": [
+                {
+                    "title": "نسخة أولى",
+                    "messages": [
+                        {"role": "user", "content": "سؤال أول"},
+                        {"role": "assistant", "content": "جواب أول"},
+                    ],
+                    "folder_id": None,
+                    "project_id": None,
+                },
+                {
+                    "title": "نسخة ثانية",
+                    "messages": [
+                        {"role": "user", "content": "سؤال ثان"},
+                        {"role": "assistant", "content": "جواب ثان"},
+                    ],
+                    "folder_id": None,
+                    "project_id": None,
+                },
+            ],
+        },
+        headers=headers,
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["imported_count"] == 2
+    assert len(payload["conversation_ids"]) == 2
+
+    first = client.get(
+        f"/conversations/{payload['conversation_ids'][0]}",
+        headers=headers,
+    ).json()
+    second = client.get(
+        f"/conversations/{payload['conversation_ids'][1]}",
+        headers=headers,
+    ).json()
+    assert first["title"] == "نسخة أولى"
+    assert [m["content"] for m in first["messages"]] == ["سؤال أول", "جواب أول"]
+    assert second["title"] == "نسخة ثانية"
+    assert [m["content"] for m in second["messages"]] == ["سؤال ثان", "جواب ثان"]
+
+
+def test_bulk_import_ignores_inaccessible_folder_and_project(client):
+    token_a = _register_and_login(client, "bulk-import-owner@example.com")
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    workspace_a = client.get("/workspaces", headers=headers_a).json()[0]["id"]
+
+    token_b = _register_and_login(client, "bulk-import-other@example.com")
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+    workspace_b = client.get("/workspaces", headers=headers_b).json()[0]["id"]
+
+    owner_folder = client.post(
+        "/folders",
+        params={"workspace_id": workspace_a},
+        json={"name": "خاص"},
+        headers=headers_a,
+    ).json()
+
+    response = client.post(
+        "/conversations/import-bulk",
+        params={"workspace_id": workspace_b},
+        json={
+            "version": 1,
+            "conversations": [
+                {
+                    "title": "منقول",
+                    "messages": [{"role": "user", "content": "محتوى"}],
+                    "folder_id": owner_folder["id"],
+                    "project_id": None,
+                }
+            ],
+        },
+        headers=headers_b,
+    )
+    assert response.status_code == 201
+
+    imported = client.get(
+        f"/conversations/{response.json()['conversation_ids'][0]}",
+        headers=headers_b,
+    ).json()
+    assert imported["folder_id"] is None
+    assert imported["workspace_id"] == workspace_b
+
+
+def test_bulk_import_requires_workspace_membership(client):
+    token = _register_and_login(client, "bulk-import-no-workspace@example.com")
+    response = client.post(
+        "/conversations/import-bulk",
+        params={"workspace_id": 999999},
+        json={
+            "version": 1,
+            "conversations": [
+                {
+                    "title": "محادثة",
+                    "messages": [{"role": "user", "content": "محتوى"}],
+                }
+            ],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 404
