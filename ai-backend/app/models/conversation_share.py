@@ -29,5 +29,9 @@ class ConversationShare(Base):
     expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+    access_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    last_accessed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     conversation = relationship("Conversation", back_populates="shares")

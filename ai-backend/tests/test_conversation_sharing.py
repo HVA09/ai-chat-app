@@ -198,3 +198,125 @@ def test_unprotected_share_access_endpoint_still_works(client, monkeypatch):
     )
     assert unlocked.status_code == 200
     assert unlocked.json()["title"] == "رسالة"
+
+
+def test_share_access_analytics_count_successful_views(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "share-analytics@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "رسالة"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    created = client.post(
+        f"/conversations/{conversation_id}/share",
+        json={"expires_in_days": 7},
+        headers=headers,
+    ).json()
+    public_token = created["url"].split("/share/", 1)[1]
+
+    first = client.get(f"/shared-conversations/{public_token}")
+    assert first.status_code == 200
+    listed = client.get(
+        f"/conversations/{conversation_id}/shares",
+        headers=headers,
+    )
+    first_stats = listed.json()[0]
+    assert first_stats["access_count"] == 1
+    assert first_stats["last_accessed_at"] is not None
+
+    second = client.get(f"/shared-conversations/{public_token}")
+    assert second.status_code == 200
+    listed = client.get(
+        f"/conversations/{conversation_id}/shares",
+        headers=headers,
+    )
+    second_stats = listed.json()[0]
+    assert second_stats["access_count"] == 2
+    assert second_stats["last_accessed_at"] is not None
+
+
+def test_failed_share_password_does_not_count_access(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "share-password-analytics@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "رسالة"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    created = client.post(
+        f"/conversations/{conversation_id}/share",
+        json={"expires_in_days": 7, "password": "SharePass123"},
+        headers=headers,
+    ).json()
+    public_token = created["url"].split("/share/", 1)[1]
+
+    wrong = client.post(
+        f"/shared-conversations/{public_token}/access",
+        json={"password": "WrongPass123"},
+    )
+    assert wrong.status_code == 401
+
+    listed = client.get(
+        f"/conversations/{conversation_id}/shares",
+        headers=headers,
+    )
+    assert listed.json()[0]["access_count"] == 0
+
+    correct = client.post(
+        f"/shared-conversations/{public_token}/access",
+        json={"password": "SharePass123"},
+    )
+    assert correct.status_code == 200
+
+    listed = client.get(
+        f"/conversations/{conversation_id}/shares",
+        headers=headers,
+    )
+    assert listed.json()[0]["access_count"] == 1
+
+
+def test_unprotected_access_endpoint_counts_view(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "share-unprotected-analytics@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "رسالة"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    created = client.post(
+        f"/conversations/{conversation_id}/share",
+        json={"expires_in_days": 7},
+        headers=headers,
+    ).json()
+    public_token = created["url"].split("/share/", 1)[1]
+
+    accessed = client.post(
+        f"/shared-conversations/{public_token}/access",
+        json={"password": "UnusedPass123"},
+    )
+    assert accessed.status_code == 200
+
+    listed = client.get(
+        f"/conversations/{conversation_id}/shares",
+        headers=headers,
+    )
+    assert listed.json()[0]["access_count"] == 1
