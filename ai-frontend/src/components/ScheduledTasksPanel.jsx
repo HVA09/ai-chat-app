@@ -5,6 +5,8 @@ import {
   deleteScheduledTask,
   listScheduledTasks,
   updateScheduledTask,
+  runScheduledTask,
+  listScheduledTaskRuns,
 } from "../lib/scheduledTasksApi";
 
 function defaultLocalDateTime() {
@@ -32,6 +34,9 @@ export default function ScheduledTasksPanel({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [runsByTask, setRunsByTask] = useState({});
+  const [expandedTaskId, setExpandedTaskId] = useState(null);
+  const [runningTaskId, setRunningTaskId] = useState(null);
 
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === Number(workspaceId)),
@@ -74,6 +79,39 @@ export default function ScheduledTasksPanel({
       setError(err?.response?.data?.detail || t("scheduledTasks.saveError"));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const loadRuns = async (taskId) => {
+    try {
+      const runs = await listScheduledTaskRuns(taskId);
+      setRunsByTask((prev) => ({ ...prev, [taskId]: runs }));
+    } catch {
+      setError(t("scheduledTasks.historyLoadError"));
+    }
+  };
+
+  const toggleHistory = async (taskId) => {
+    if (expandedTaskId === taskId) {
+      setExpandedTaskId(null);
+      return;
+    }
+    setExpandedTaskId(taskId);
+    await loadRuns(taskId);
+  };
+
+  const runNow = async (task) => {
+    setRunningTaskId(task.id);
+    setError("");
+    try {
+      await runScheduledTask(task.id);
+      await loadRuns(task.id);
+      await refresh();
+      setExpandedTaskId(task.id);
+    } catch {
+      setError(t("scheduledTasks.runNowError"));
+    } finally {
+      setRunningTaskId(null);
     }
   };
 
@@ -219,6 +257,21 @@ export default function ScheduledTasksPanel({
                     <div className="flex shrink-0 gap-1">
                       <button
                         type="button"
+                        onClick={() => runNow(task)}
+                        disabled={runningTaskId === task.id}
+                        className="rounded-lg px-2 py-1 text-xs text-emerald-600 hover:bg-emerald-50 disabled:opacity-50 dark:hover:bg-emerald-900/20"
+                      >
+                        {runningTaskId === task.id ? t("scheduledTasks.running") : t("scheduledTasks.runNow")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleHistory(task.id)}
+                        className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        {expandedTaskId === task.id ? t("scheduledTasks.hideHistory") : t("scheduledTasks.history")}
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => toggle(task)}
                         className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
                       >
@@ -234,7 +287,37 @@ export default function ScheduledTasksPanel({
                     </div>
                   </div>
                 </div>
-              ))}
+                {expandedTaskId === task.id && (
+                  <div className="mt-3 space-y-2 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50">
+                    {(runsByTask[task.id] || []).length === 0 ? (
+                      <p className="text-xs text-slate-500">{t("scheduledTasks.historyEmpty")}</p>
+                    ) : (
+                      runsByTask[task.id].map((run) => (
+                        <div key={run.id} className="flex flex-col gap-1 rounded-xl border border-slate-200 bg-white p-2 text-xs dark:border-slate-700 dark:bg-slate-900">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">
+                              {t(`scheduledTasks.status.${run.status}`)}
+                            </span>
+                            <span className="text-slate-400">{formatRunAt(run.created_at)}</span>
+                          </div>
+                          {run.finished_at ? (
+                            <div className="text-slate-400">
+                              {t("scheduledTasks.finishedAt", { date: formatRunAt(run.finished_at) })}
+                            </div>
+                          ) : null}
+                          {run.error ? (
+                            <div className="text-red-600">{run.error}</div>
+                          ) : null}
+                          {run.conversation_id ? (
+                            <div className="text-slate-500">
+                              {t("scheduledTasks.conversationCreated")}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
             </div>
           )}
         </div>
