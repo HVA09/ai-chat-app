@@ -2,7 +2,6 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
-from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
 
 
@@ -43,7 +42,7 @@ def test_retry_failed_run(client, monkeypatch):
     async def failing_reply(*args, **kwargs):
         raise RuntimeError("فشل تجريبي")
 
-    monkeypatch.setattr(chat_router_module, "get_ai_reply", failing_reply)
+    monkeypatch.setattr("app.tasks.get_ai_reply", failing_reply)
 
     failed = client.post(f"/scheduled-tasks/{task_id}/run", headers=headers)
     assert failed.status_code == 202
@@ -51,8 +50,7 @@ def test_retry_failed_run(client, monkeypatch):
     assert failed.json()["status"] == "failed"
 
     monkeypatch.setattr(
-        chat_router_module,
-        "get_ai_reply",
+        "app.tasks.get_ai_reply",
         AsyncMock(return_value=AIReply(text="نجح")),
     )
 
