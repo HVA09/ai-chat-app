@@ -149,6 +149,68 @@ def test_daily_analytics_requires_admin(client):
     assert response.status_code == 403
 
 
+def test_provider_usage_analytics_groups_provider_and_model(client, db_session):
+    from app.models.usage_log import UsageLog
+    from app.models.user import User
+
+    admin_token = _register_and_login(client, "provider-analytics-admin@example.com", admin=True)
+    user = db_session.query(User).filter(User.email == "provider-analytics-admin@example.com").first()
+
+    db_session.add_all(
+        [
+            UsageLog(
+                user_id=user.id,
+                endpoint="/chat/stream",
+                provider="gemini",
+                model="gemini-2.5-flash",
+                input_tokens=100,
+                output_tokens=40,
+            ),
+            UsageLog(
+                user_id=user.id,
+                endpoint="/chat",
+                provider="gemini",
+                model="gemini-2.5-flash",
+                input_tokens=50,
+                output_tokens=20,
+            ),
+            UsageLog(
+                user_id=user.id,
+                endpoint="/chat",
+                provider="openai",
+                model="gpt-4o-mini",
+                input_tokens=10,
+                output_tokens=5,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    response = client.get(
+        "/admin/analytics/providers?days=30",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    rows = response.json()
+
+    gemini = next(
+        row for row in rows
+        if row["provider"] == "gemini" and row["model"] == "gemini-2.5-flash"
+    )
+    assert gemini["requests"] == 2
+    assert gemini["input_tokens"] == 150
+    assert gemini["output_tokens"] == 60
+
+
+def test_provider_usage_analytics_requires_admin(client):
+    token = _register_and_login(client, "provider-analytics-user@example.com")
+    response = client.get(
+        "/admin/analytics/providers",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403
+
+
 def test_export_analytics_csv(client):
     admin_token = _register_and_login(client, "csvadmin@example.com", admin=True)
     response = client.get(
