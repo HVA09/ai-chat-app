@@ -1393,10 +1393,19 @@ export default function App() {
   };
 
   const maybeAutoGenerateConversationTitle = async (id) => {
-    if (!autoGenerateTitles || !id || titleLoading || readOnlyConversation) return;
+    if (
+      !autoGenerateTitles ||
+      !id ||
+      titleLoading ||
+      readOnlyConversation ||
+      generationStoppedRef.current
+    ) {
+      return;
+    }
+
     setTitleLoading(true);
     try {
-      const result = await generateConversationTitle(id);
+      await autoGenerateConversationTitle(id);
       await refreshConversations(
         showArchivedConversations,
         selectedFolderId,
@@ -1406,9 +1415,6 @@ export default function App() {
         showTrashConversations,
         selectedTagId
       );
-      if (result?.title) {
-        setToast({ message: result.title, type: "success" });
-      }
     } catch {
       // Auto-title is optional; a title-generation failure must not affect the chat response.
     } finally {
@@ -1847,6 +1853,7 @@ export default function App() {
 
     const controller = new AbortController();
     streamAbortRef.current = controller;
+    generationStoppedRef.current = false;
 
     const isNewConversation = !conversationId;
     let createdConversationId = conversationId;
