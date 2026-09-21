@@ -273,6 +273,7 @@ async def developer_chat(
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
             provider=reply.provider,
+            latency_ms=reply.latency_ms,
         )
     )
     db.commit()

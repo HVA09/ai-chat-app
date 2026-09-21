@@ -32,6 +32,7 @@ from app.schemas.admin import (
     FeedbackAnalytics,
     ModelUsageStat,
     ProviderUsageStat,
+    ProviderLatencyStat,
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -139,6 +140,44 @@ def export_analytics_csv(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=analytics.csv"},
     )
+
+
+@router.get("/analytics/latency", response_model=list[ProviderLatencyStat])
+def get_provider_latency(
+    days: int = 30,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    days = max(1, min(days, 365))
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    rows = (
+        db.query(
+            UsageLog.provider,
+            func.count(UsageLog.id),
+            func.avg(UsageLog.latency_ms),
+            func.min(UsageLog.latency_ms),
+            func.max(UsageLog.latency_ms),
+        )
+        .filter(
+            UsageLog.created_at >= since,
+            UsageLog.provider.is_not(None),
+            UsageLog.latency_ms.is_not(None),
+        )
+        .group_by(UsageLog.provider)
+        .order_by(func.avg(UsageLog.latency_ms).asc(), UsageLog.provider.asc())
+        .all()
+    )
+    return [
+        ProviderLatencyStat(
+            provider=provider,
+            requests=requests,
+            avg_latency_ms=round(avg_latency),
+            min_latency_ms=min_latency,
+            max_latency_ms=max_latency,
+        )
+        for provider, requests, avg_latency, min_latency, max_latency in rows
+    ]
 
 
 @router.get("/analytics/providers", response_model=list[ProviderUsageStat])
