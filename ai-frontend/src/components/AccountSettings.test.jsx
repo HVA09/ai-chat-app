@@ -1,0 +1,104 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import AccountSettings from "./AccountSettings";
+
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({
+    t: (key) =>
+      ({
+        "account.title": "الحساب",
+        "account.conversationTitlesSection": "عناوين المحادثات",
+        "account.autoGenerateTitles": "توليد عنوان تلقائي",
+        "account.autoGenerateTitlesDescription": "وصف",
+        "account.conversationSummariesSection": "التلخيص التلقائي للمحادثات",
+        "account.autoGenerateSummaries": "إنشاء ملخصات تلقائيًا للمحادثات الطويلة",
+        "account.autoGenerateSummariesDescription": "وصف التلخيص",
+        "account.profileSection": "الملف الشخصي",
+        "account.namePlaceholder": "الاسم",
+        "account.avatarPlaceholder": "الصورة",
+        "account.save": "حفظ",
+        "account.memorySection": "الذاكرة",
+        "account.memoryDescription": "وصف",
+        "account.memoryPlaceholder": "مثال",
+        "account.memoryAdd": "إضافة",
+        "account.changePasswordSection": "كلمة المرور",
+        "account.emailSection": "البريد",
+        "account.twoFASection": "2FA",
+        "account.deleteAccountTitle": "حذف",
+        "account.apiKeysSection": "API",
+        "account.apiKeysDescription": "API",
+        "account.genericError": "خطأ",
+        "account.memoryLoadError": "ذاكرة",
+        "account.apiKeysLoadError": "API",
+      })[key] ?? key,
+  }),
+}));
+
+vi.mock("../lib/authApi", () => ({
+  requestEmailVerification: vi.fn().mockResolvedValue({ detail: "ok" }),
+  setupTwoFactor: vi.fn().mockResolvedValue({ qr_code_base64: "", secret: "test" }),
+  enableTwoFactor: vi.fn().mockResolvedValue({}),
+  disableTwoFactor: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock("../lib/usersApi", () => ({
+  updateProfile: vi.fn().mockResolvedValue({}),
+  changePassword: vi.fn().mockResolvedValue({}),
+  deleteAccount: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock("../lib/memoriesApi", () => ({
+  listMemories: vi.fn().mockResolvedValue([]),
+  createMemory: vi.fn().mockResolvedValue({}),
+  updateMemory: vi.fn().mockResolvedValue({}),
+  deleteMemory: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock("../lib/apiKeysApi", () => ({
+  listApiKeys: vi.fn().mockResolvedValue([]),
+  createApiKey: vi.fn().mockResolvedValue({}),
+  revokeApiKey: vi.fn().mockResolvedValue({}),
+  getApiKeyUsage: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("../lib/errors", () => ({
+  getErrorMessage: vi.fn((err, fallback) => fallback),
+}));
+
+describe("AccountSettings automatic conversation summaries", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("toggles the automatic summary preference and persists it locally", async () => {
+    const user = userEvent.setup();
+    const onAutoGenerateSummariesChanged = vi.fn();
+
+    render(
+      <AccountSettings
+        user={{
+          full_name: "",
+          avatar_url: "",
+          is_email_verified: true,
+          is_2fa_enabled: false,
+        }}
+        autoGenerateTitles={false}
+        onAutoGenerateTitlesChanged={vi.fn()}
+        autoGenerateSummaries={false}
+        onAutoGenerateSummariesChanged={onAutoGenerateSummariesChanged}
+        onClose={vi.fn()}
+        onUserUpdated={vi.fn()}
+        onAccountDeleted={vi.fn()}
+      />
+    );
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(2);
+
+    await user.click(checkboxes[1]);
+
+    expect(onAutoGenerateSummariesChanged).toHaveBeenCalledWith(true);
+    expect(window.localStorage.getItem("ai-chat-auto-summary")).toBe("true");
+  });
+});
