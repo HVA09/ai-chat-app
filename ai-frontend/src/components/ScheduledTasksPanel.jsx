@@ -29,6 +29,7 @@ function toLocalDateTimeInput(value) {
 export default function ScheduledTasksPanel({
   workspaces = [],
   selectedWorkspaceId = null,
+  onOpenConversation,
   onClose,
 }) {
   const { t } = useTranslation();
@@ -462,8 +463,15 @@ export default function ScheduledTasksPanel({
                             </button>
                           ) : null}
                           {run.conversation_id ? (
-                            <div className="text-slate-500">
-                              {t("scheduledTasks.conversationCreated")}
+                            <div className="mt-1 flex items-center gap-2 text-slate-500">
+                              <span>{t("scheduledTasks.conversationCreated")}</span>
+                              <button
+                                type="button"
+                                onClick={() => onOpenConversation?.(run.conversation_id)}
+                                className="rounded-lg bg-slate-900 px-2 py-1 text-xs text-white hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600"
+                              >
+                                {t("scheduledTasks.openConversation")}
+                              </button>
                             </div>
                           ) : null}
                         </div>
