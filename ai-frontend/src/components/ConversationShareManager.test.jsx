@@ -25,6 +25,8 @@ vi.mock("react-i18next", () => ({
       "sharing.expiredLink": "رابط منتهي",
       "sharing.createdAt": `أُنشئ: ${vars?.date ?? ""}`,
       "sharing.expiresAt": `ينتهي: ${vars?.date ?? ""}`,
+      "sharing.accessCount": `المشاهدات: ${vars?.count ?? 0}`,
+      "sharing.lastAccessedAt": `آخر مشاهدة: ${vars?.date ?? ""}`,
       "sharing.never": "بدون انتهاء",
       "sharing.revoking": "جارٍ الإلغاء",
       "sharing.revoke": "إلغاء الرابط",
@@ -47,6 +49,8 @@ describe("ConversationShareManager", () => {
         expires_at: null,
         is_expired: false,
         password_protected: true,
+        access_count: 3,
+        last_accessed_at: "2026-09-21T12:00:00Z",
       },
     ]);
     revokeConversationShare.mockResolvedValue(undefined);
