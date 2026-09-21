@@ -8,6 +8,7 @@ from app.database import SessionLocal
 from app.logging_config import get_logger
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.scheduled_task import ScheduledTask, ScheduledTaskType
+from app.models.scheduled_task_run import ScheduledTaskRun, ScheduledTaskRunStatus
 from app.models.usage_log import UsageLog
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace, WorkspaceMember
@@ -66,13 +67,32 @@ def _ensure_ai_quota(user: User, workspace: Workspace, db) -> None:
             )
 
 
-def _execute_scheduled_task(task_id: int) -> None:
+def _execute_scheduled_task(task_id: int, run_id: int | None = None) -> None:
     db = SessionLocal()
     now = datetime.now(timezone.utc).replace(microsecond=0)
     try:
         task = db.get(ScheduledTask, task_id)
         if not task or not task.is_active:
             return
+
+        run = db.get(ScheduledTaskRun, run_id) if run_id is not None else None
+        if run is None:
+            run = ScheduledTaskRun(
+                scheduled_task_id=task.id,
+                user_id=task.user_id,
+                workspace_id=task.workspace_id,
+                prompt=task.prompt,
+                status=ScheduledTaskRunStatus.queued,
+            )
+            db.add(run)
+            db.flush()
+        else:
+            run.prompt = task.prompt
+
+        run.status = ScheduledTaskRunStatus.running
+        run.started_at = now
+        run.error = None
+        db.commit()
 
         user = db.get(User, task.user_id)
         workspace = db.get(Workspace, task.workspace_id)
@@ -139,6 +159,11 @@ def _execute_scheduled_task(task_id: int) -> None:
             )
         )
 
+        run.status = ScheduledTaskRunStatus.succeeded
+        run.finished_at = now
+        run.conversation_id = conversation.id
+        run.error = None
+
         task.last_run_at = now
         task.last_error = None
         next_run = _next_occurrence(task, now)
@@ -171,6 +196,11 @@ def _execute_scheduled_task(task_id: int) -> None:
         logger.exception("Scheduled task failed: %s", task_id)
         db.rollback()
         task = db.get(ScheduledTask, task_id)
+        run = db.get(ScheduledTaskRun, run_id) if run_id is not None else None
+        if run is not None:
+            run.status = ScheduledTaskRunStatus.failed
+            run.finished_at = now
+            run.error = str(exc)[:500]
         if task:
             task.last_run_at = now
             task.last_error = str(exc)[:500]
@@ -239,6 +269,11 @@ try:
     @celery_app.task(name="send_email_task")
     def send_email_task(to: str, subject: str, body: str) -> None:
         send_email(to, subject, body)
+
+    @celery_app.task(name="execute_scheduled_task")
+    def execute_scheduled_task(task_id: int, run_id: int) -> None:
+        _execute_scheduled_task(task_id, run_id)
+
 
     @celery_app.task(name="run_due_scheduled_tasks")
     def run_due_scheduled_tasks() -> None:
