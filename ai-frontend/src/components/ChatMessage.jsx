@@ -38,6 +38,11 @@ export default function ChatMessage({
   const isUser = role === "user";
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+
+  // Stop speech when this message unmounts or another response replaces the UI.
+  // The browser API is global, so cleanup avoids audio continuing after navigation.
+  useState(() => () => window.speechSynthesis?.cancel());
 
   const copyMessage = async () => {
     if (!text || !navigator.clipboard) return;
@@ -52,6 +57,8 @@ export default function ChatMessage({
   };
 
   const editLabel = document.documentElement.lang === "ar" ? "تعديل" : "Edit";
+  const voiceOutputLabel = t("tools.voiceOutput");
+  const stopVoiceOutputLabel = t("tools.stopVoiceOutput");
   const deleteLabel = document.documentElement.lang === "ar" ? "حذف" : "Delete";
   const copyLabel = document.documentElement.lang === "ar"
     ? copied
@@ -70,6 +77,51 @@ export default function ChatMessage({
   const bookmarkLabel = isBookmarked
     ? t("bookmarks.remove")
     : t("bookmarks.save");
+
+  const toggleVoiceOutput = () => {
+    if (!text) return;
+
+    if (speaking) {
+      window.speechSynthesis?.cancel();
+      setSpeaking(false);
+      return;
+    }
+
+    if (
+      typeof window === "undefined" ||
+      !("speechSynthesis" in window) ||
+      typeof window.SpeechSynthesisUtterance === "undefined"
+    ) {
+      window.dispatchEvent(new CustomEvent("app:toast", {
+        detail: { message: t("app.voiceNotSupported"), type: "error" },
+      }));
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new window.SpeechSynthesisUtterance(text);
+      const hasArabic = /[\u0600-\u06ff]/.test(text);
+      const currentLang = document.documentElement.lang || "ar";
+      utterance.lang = hasArabic ? "ar-SA" : currentLang === "ar" ? "ar-SA" : "en-US";
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      utterance.onstart = () => setSpeaking(true);
+      utterance.onend = () => setSpeaking(false);
+      utterance.onerror = () => {
+        setSpeaking(false);
+        window.dispatchEvent(new CustomEvent("app:toast", {
+          detail: { message: t("app.voiceError"), type: "error" },
+        }));
+      };
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      setSpeaking(false);
+      window.dispatchEvent(new CustomEvent("app:toast", {
+        detail: { message: t("app.voiceError"), type: "error" },
+      }));
+    }
+  };
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -138,6 +190,16 @@ export default function ChatMessage({
 
           {!isUser && text ? (
             <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={toggleVoiceOutput}
+                className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                aria-label={speaking ? stopVoiceOutputLabel : voiceOutputLabel}
+                title={speaking ? stopVoiceOutputLabel : voiceOutputLabel}
+                aria-pressed={speaking}
+              >
+                {speaking ? "◼" : "🔊"}
+              </button>
               <button
                 type="button"
                 onClick={copyMessage}
