@@ -82,7 +82,7 @@ def enforce_daily_ai_limit(current_user: User = Depends(get_current_user), db: S
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"وصلت للحد اليومي المسموح ({daily_limit} طلب) — يمكنك ترقية خطتك لحد أعلى",
         )
-    return current_user
+    return enforce_ai_cost_budget(current_user, db)
 
 
 def enforce_ai_cost_budget(
