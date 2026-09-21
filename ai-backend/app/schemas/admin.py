@@ -65,6 +65,14 @@ class ProviderUsageStat(BaseModel):
     total_tokens: int
 
 
+class ProviderLatencyStat(BaseModel):
+    provider: str
+    requests: int
+    avg_latency_ms: int
+    min_latency_ms: int
+    max_latency_ms: int
+
+
 class ModelUsageStat(BaseModel):
     model: str
     requests: int
