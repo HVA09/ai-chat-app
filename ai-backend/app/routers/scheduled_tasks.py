@@ -191,9 +191,10 @@ def run_scheduled_task_now(
         pass
 
     from app.tasks import _execute_scheduled_task
-    _execute_scheduled_task(task.id, run.id, db=db)
-    db.refresh(run)
-    return run
+    run_id = run.id
+    _execute_scheduled_task(task.id, run_id, db=db)
+    refreshed_run = db.get(ScheduledTaskRun, run_id)
+    return refreshed_run or run
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
