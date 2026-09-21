@@ -64,6 +64,7 @@ export default function Sidebar({
   onClearSelectedConversations = () => {},
   onBulkArchive = () => {},
   onBulkDelete = () => {},
+  onBulkExport = () => {},
   onBulkMoveToFolder = () => {},
   workspaces = [],
   selectedWorkspaceId = null,
@@ -793,6 +794,13 @@ export default function Sidebar({
                   className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
                   {showArchived ? t("sidebar.bulkUnarchive") : t("sidebar.bulkArchive")}
+                </button>
+                <button
+                  type="button"
+                  onClick={onBulkExport}
+                  className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  {t("sidebar.bulkExport")}
                 </button>
                 <button
                   type="button"
