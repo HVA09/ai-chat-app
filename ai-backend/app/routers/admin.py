@@ -31,6 +31,7 @@ from app.schemas.admin import (
     AuditLogOut,
     DailyStatsPoint,
     CostUsageStat,
+    CostBudgetStatus,
     FeedbackAnalytics,
     ModelUsageStat,
     ProviderUsageStat,
@@ -301,6 +302,65 @@ def get_cost_usage(
             )
         )
     return results
+
+
+def _cost_totals_since(db: Session, since: datetime) -> tuple[float, int, bool]:
+    rows = (
+        db.query(
+            UsageLog.provider,
+            UsageLog.model,
+            func.count(UsageLog.id),
+            func.coalesce(func.sum(UsageLog.input_tokens), 0),
+            func.coalesce(func.sum(UsageLog.output_tokens), 0),
+        )
+        .filter(
+            UsageLog.created_at >= since,
+            UsageLog.provider.is_not(None),
+            UsageLog.model.is_not(None),
+        )
+        .group_by(UsageLog.provider, UsageLog.model)
+        .all()
+    )
+
+    spent = 0.0
+    unpriced_requests = 0
+    priced_any = False
+    for provider, model, requests, input_tokens, output_tokens in rows:
+        _, _, total_cost = estimate_cost_usd(
+            provider, model, input_tokens, output_tokens
+        )
+        if total_cost is None:
+            unpriced_requests += requests
+            continue
+        priced_any = True
+        spent += total_cost
+    return spent, unpriced_requests, priced_any
+
+
+@router.get("/analytics/budget", response_model=CostBudgetStatus)
+def get_cost_budget(
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    month_start_dt = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    spent, unpriced_requests, priced_any = _cost_totals_since(db, month_start_dt)
+
+    budget = float(app_settings.AI_MONTHLY_BUDGET_USD or 0)
+    budget_usd = budget if budget > 0 else None
+    remaining = max(budget - spent, 0.0) if budget_usd is not None else None
+    usage_percent = round((spent / budget) * 100, 1) if budget_usd is not None else None
+
+    return CostBudgetStatus(
+        month_start=month_start_dt.date().isoformat(),
+        budget_usd=budget_usd,
+        spent_usd=spent,
+        remaining_usd=remaining,
+        usage_percent=usage_percent,
+        over_budget=budget_usd is not None and spent >= budget,
+        pricing_configured=priced_any,
+        unpriced_requests=unpriced_requests,
+    )
 
 
 @router.get("/analytics/feedback", response_model=FeedbackAnalytics)
