@@ -706,7 +706,7 @@ export default function App() {
     setShowProjectEditor(true);
   };
 
-  const handleSaveProject = async ({ name, description, instructions }) => {
+  const handleSaveProject = async ({ name, description, instructions, assistant_id }) => {
     try {
       if (editingProjectId === null) {
         if (selectedWorkspaceId === null) return;
@@ -714,7 +714,8 @@ export default function App() {
           selectedWorkspaceId,
           name,
           description || "",
-          instructions || ""
+          instructions || "",
+          assistant_id ?? null
         );
         await refreshProjects(selectedWorkspaceId);
         setSelectedProjectId(project.id);
@@ -731,7 +732,8 @@ export default function App() {
           editingProjectId,
           name,
           description || "",
-          instructions || ""
+          instructions || "",
+          assistant_id ?? null
         );
         await refreshProjects(selectedWorkspaceId);
         if (selectedProjectId === editingProjectId) {
@@ -784,8 +786,10 @@ export default function App() {
   };
 
   const handleSelectProject = async (id) => {
+    const project = id === null ? null : projects.find((item) => item.id === Number(id));
     setSelectedProjectId(id);
     setSelectedFolderId(null);
+    setSelectedAssistantId(project?.assistant_id ?? null);
     startNewChat();
     await refreshConversations(
       showArchivedConversations,
@@ -2742,6 +2746,7 @@ export default function App() {
 
       {showProjectEditor && (
         <ProjectEditor
+          assistants={assistants}
           project={
             editingProjectId === null
               ? null

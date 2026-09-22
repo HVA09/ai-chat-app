@@ -170,16 +170,21 @@ def _get_or_create_conversation(
                 detail="المشروع غير موجود في مساحة العمل المحددة",
             )
 
-    selected_assistant = (
-        _get_assistant_for_workspace(
+    selected_assistant = None
+    if payload.assistant_id is not None:
+        selected_assistant = _get_assistant_for_workspace(
             payload.assistant_id,
             selected_workspace.id,
             current_user,
             db,
         )
-        if payload.assistant_id is not None
-        else None
-    )
+    elif selected_project is not None and selected_project.assistant_id is not None:
+        selected_assistant = _get_assistant_for_workspace(
+            selected_project.assistant_id,
+            selected_workspace.id,
+            current_user,
+            db,
+        )
     selected_model = _resolve_requested_model(
         payload.model,
         selected_workspace.default_ai_model,

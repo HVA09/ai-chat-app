@@ -4,6 +4,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.assistant import Assistant
+from app.models.assistant_workspace_share import AssistantWorkspaceShare
 from app.dependencies import get_current_user
 from app.models.conversation import Conversation
 from app.models.file_attachment import FileAttachment
@@ -63,6 +65,31 @@ def _ensure_unique_name(
         )
 
 
+def _get_accessible_assistant(
+    assistant_id: int, workspace_id: int, current_user: User, db: Session
+) -> Assistant:
+    assistant = (
+        db.query(Assistant)
+        .outerjoin(
+            AssistantWorkspaceShare,
+            (AssistantWorkspaceShare.assistant_id == Assistant.id)
+            & (AssistantWorkspaceShare.workspace_id == workspace_id),
+        )
+        .filter(
+            Assistant.id == assistant_id,
+            (Assistant.user_id == current_user.id)
+            | AssistantWorkspaceShare.id.is_not(None),
+        )
+        .first()
+    )
+    if not assistant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المساعد غير موجود",
+        )
+    return assistant
+
+
 def _can_manage(project: WorkspaceProject, membership: WorkspaceMember) -> None:
     if membership.role not in {WorkspaceRole.owner, WorkspaceRole.admin}:
         # منشئ المشروع يستطيع إدارة مشروعه.
@@ -104,6 +131,9 @@ def create_project(
         description=payload.description.strip() if payload.description else None,
         instructions=payload.instructions.strip() if payload.instructions else None,
     )
+    if payload.assistant_id is not None:
+        _get_accessible_assistant(payload.assistant_id, payload.workspace_id, current_user, db)
+        project.assistant_id = payload.assistant_id
     db.add(project)
     db.commit()
     db.refresh(project)
@@ -125,6 +155,9 @@ def update_project(
     project.name = payload.name
     project.description = payload.description.strip() if payload.description else None
     project.instructions = payload.instructions.strip() if payload.instructions else None
+    if payload.assistant_id is not None:
+        _get_accessible_assistant(payload.assistant_id, project.workspace_id, current_user, db)
+    project.assistant_id = payload.assistant_id
     db.commit()
     db.refresh(project)
     return project
