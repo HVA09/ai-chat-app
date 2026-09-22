@@ -35,6 +35,7 @@ export async function streamChatMessage(
     onChunk,
     onConversationId,
     onSources,
+    onAgentTool,
     onDone,
     onError,
     signal,
