@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.conversation import Conversation, Message
+from app.models.conversation_workspace_share import ConversationWorkspaceShare
 from app.models.conversation_comment import ConversationComment
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
@@ -45,15 +46,13 @@ def _get_shared_conversation(
     shared = (
         db.query(Conversation)
         .join(
-            __import__("app.models.conversation_workspace_share", fromlist=["ConversationWorkspaceShare"]).ConversationWorkspaceShare,
-            __import__("app.models.conversation_workspace_share", fromlist=["ConversationWorkspaceShare"]).ConversationWorkspaceShare.conversation_id
-            == Conversation.id,
+            ConversationWorkspaceShare,
+            ConversationWorkspaceShare.conversation_id == Conversation.id,
         )
         .filter(
             Conversation.id == conversation_id,
             Conversation.deleted_at.is_(None),
-            __import__("app.models.conversation_workspace_share", fromlist=["ConversationWorkspaceShare"]).ConversationWorkspaceShare.workspace_id
-            == workspace_id,
+            ConversationWorkspaceShare.workspace_id == workspace_id,
         )
         .first()
     )
