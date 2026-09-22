@@ -11,6 +11,7 @@ import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, listAiModels } from "./lib/chatApi";
 import { listBookmarkedMessages, toggleMessageBookmark } from "./lib/bookmarksApi";
+import { listMemories, createMemory, deleteMemory } from "./lib/memoriesApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
 import {
@@ -166,6 +167,7 @@ export default function App() {
   const [editingProjectId, setEditingProjectId] = useState(null);
   const [savedPrompts, setSavedPrompts] = useState([]);
   const [bookmarkedMessages, setBookmarkedMessages] = useState([]);
+  const [memories, setMemories] = useState([]);
   const [aiModels, setAiModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [input, setInput] = useState("");
@@ -235,6 +237,7 @@ export default function App() {
     setAssistants([]);
     setSavedPrompts([]);
     setBookmarkedMessages([]);
+    setMemories([]);
     setAiModels([]);
     setSelectedModel("");
     setSelectedFolderId(null);
@@ -815,6 +818,44 @@ export default function App() {
     } catch (err) {
       setToast({
         message: err?.response?.data?.detail || t("app.conversationMoveError"),
+        type: "error",
+      });
+    }
+  };
+
+  const refreshMemories = async () => {
+    try {
+      setMemories(await listMemories());
+    } catch {
+      // فشل تحميل الذاكرة لا يوقف الشات.
+    }
+  };
+
+  const handleToggleMessageMemory = async (index) => {
+    if (
+      readOnlyConversation ||
+      loading ||
+      editingMessageIndex !== null ||
+      messages[index]?.role !== "user"
+    ) return;
+
+    const content = messages[index]?.text?.trim();
+    if (!content) return;
+
+    const existing = memories.find((memory) => memory.content === content);
+    try {
+      if (existing) {
+        await deleteMemory(existing.id);
+        setMemories((current) => current.filter((memory) => memory.id !== existing.id));
+        setToast({ message: t("memory.removed"), type: "success" });
+      } else {
+        const created = await createMemory(content);
+        setMemories((current) => [created, ...current]);
+        setToast({ message: t("memory.saved"), type: "success" });
+      }
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("memory.error"),
         type: "error",
       });
     }
@@ -2558,6 +2599,15 @@ export default function App() {
                     feedback={msg.feedback ?? null}
                     isBookmarked={msg.isBookmarked ?? false}
                     onToggleBookmark={() => handleToggleMessageBookmark(index)}
+                    canRemember={
+                      msg.role === "user" &&
+                      !loading &&
+                      editingMessageIndex === null &&
+                      conversationId !== null &&
+                      !readOnlyConversation
+                    }
+                    isRemembered={msg.role === "user" && memories.some((memory) => memory.content === msg.text)}
+                    onToggleRemember={() => handleToggleMessageMemory(index)}
                     canFeedback={
                       msg.role === "assistant" &&
                       !loading &&
