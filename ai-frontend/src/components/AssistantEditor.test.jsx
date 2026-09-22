@@ -3,11 +3,19 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import AssistantEditor from "./AssistantEditor";
 
-const listAssistantKnowledgeFiles = vi.fn();
-const attachFileToAssistant = vi.fn();
-const detachFileFromAssistant = vi.fn();
-const listFiles = vi.fn();
-const uploadFile = vi.fn();
+const {
+  listAssistantKnowledgeFiles,
+  attachFileToAssistant,
+  detachFileFromAssistant,
+  listFiles,
+  uploadFile,
+} = vi.hoisted(() => ({
+  listAssistantKnowledgeFiles: vi.fn(),
+  attachFileToAssistant: vi.fn(),
+  detachFileFromAssistant: vi.fn(),
+  listFiles: vi.fn(),
+  uploadFile: vi.fn(),
+}));
 
 vi.mock("../lib/assistantKnowledgeApi", () => ({
   listAssistantKnowledgeFiles,
