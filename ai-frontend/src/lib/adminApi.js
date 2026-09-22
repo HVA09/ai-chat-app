@@ -63,6 +63,11 @@ export async function getFeedbackAnalytics(days = 30) {
   return data;
 }
 
+export async function getProviderStatus() {
+  const { data } = await api.get("/admin/analytics/provider-status");
+  return data;
+}
+
 export async function getProviderUsage(days = 30) {
   const { data } = await api.get("/admin/analytics/providers", { params: { days } });
   return data;
