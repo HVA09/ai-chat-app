@@ -449,11 +449,6 @@ def attach_file_to_conversation(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="ملف المشروع لا ينتمي إلى مشروع المحادثة",
         )
-    if file.workspace_id is not None and file.workspace_id != conversation.workspace_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="ملف مساحة العمل لا ينتمي إلى مساحة عمل المحادثة",
-        )
 
     link = (
         db.query(ConversationFileLink)
