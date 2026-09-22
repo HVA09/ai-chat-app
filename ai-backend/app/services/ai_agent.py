@@ -6,6 +6,7 @@ It never executes arbitrary Python/code supplied by the user.
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -27,6 +28,7 @@ MAX_AGENT_ROUNDS = 3
 MAX_TOOL_CALLS_PER_ROUND = 4
 MAX_TOOL_RESULT_CHARS = 8_000
 MAX_AGENT_HISTORY = 20
+AgentToolEventCallback = Callable[[dict], Awaitable[None]]
 
 
 class AgentModeError(ValueError):
@@ -237,6 +239,7 @@ async def run_agent(
     current_user: User,
     db: Session,
     model: str | None = None,
+    on_tool_event: AgentToolEventCallback | None = None,
 ) -> tuple[str, list[dict], int | None, int | None]:
     provider = get_provider(model)
     if not isinstance(provider, OpenAICompatibleProvider):
@@ -254,7 +257,10 @@ async def run_agent(
     total_input_tokens = 0
     total_output_tokens = 0
 
-    for _ in range(MAX_AGENT_ROUNDS):
+    for round_number in range(1, MAX_AGENT_ROUNDS + 1):
+        if on_tool_event is not None:
+            await on_tool_event({"phase": "round", "round": round_number})
+
         reply = await provider.get_reply_with_tools(messages, tools, tool_choice="auto")
         total_input_tokens += reply.input_tokens or 0
         total_output_tokens += reply.output_tokens or 0
@@ -271,10 +277,28 @@ async def run_agent(
         messages.append(_assistant_tool_message(reply))
 
         for call in calls:
+            if on_tool_event is not None:
+                await on_tool_event(
+                    {
+                        "phase": "start",
+                        "id": call.id,
+                        "name": call.name,
+                    }
+                )
+
             result, call_sources = await _execute_tool(
                 call.name, call.arguments, conversation, current_user, db
             )
             sources.extend(call_sources)
+
+            if on_tool_event is not None:
+                await on_tool_event(
+                    {
+                        "phase": "complete",
+                        "id": call.id,
+                        "name": call.name,
+                    }
+                )
             messages.append(
                 {
                     "role": "tool",
