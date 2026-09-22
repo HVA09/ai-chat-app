@@ -237,12 +237,13 @@ def test_project_file_cannot_attach_to_different_project_conversation(client, db
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     from app.models.user import User
     from app.routers import chat as chat_router_module
+    from app.services.ai_providers.base import AIReply
     from unittest.mock import AsyncMock
 
     monkeypatch.setattr(
         chat_router_module,
         "get_ai_reply",
-        AsyncMock(return_value=type("Reply", (), {"text": "رد"})()),
+        AsyncMock(return_value=AIReply(text="رد")),
     )
 
     token = _register_and_login(client, "project-file-mismatch@example.com")
