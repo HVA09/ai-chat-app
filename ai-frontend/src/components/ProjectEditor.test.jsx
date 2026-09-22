@@ -15,40 +15,42 @@ const {
   deleteProjectMemory: vi.fn(),
 }));
 
+const { t } = vi.hoisted(() => ({
+  t: (key) =>
+    ({
+      "projectEditor.createTitle": "إنشاء مشروع",
+      "projectEditor.editTitle": "تعديل المشروع",
+      "projectEditor.subtitle": "نظّم المشروع وحدد سلوكه الدائم للمساعد",
+      "projectEditor.close": "إغلاق",
+      "projectEditor.nameLabel": "الاسم",
+      "projectEditor.namePlaceholder": "اسم المشروع",
+      "projectEditor.descriptionLabel": "الوصف",
+      "projectEditor.descriptionPlaceholder": "وصف اختياري",
+      "projectEditor.instructionsLabel": "تعليمات المشروع",
+      "projectEditor.instructionsPlaceholder": "كيف يجب أن يتعامل المساعد مع هذا المشروع؟",
+      "projectEditor.requiredError": "أدخل اسم المشروع",
+      "projectEditor.memoryTitle": "ذاكرة المشروع",
+      "projectEditor.memoryDescription": "ذاكرة مشتركة",
+      "projectEditor.memoryPlaceholder": "ذاكرة",
+      "projectEditor.memoryAdd": "إضافة ذاكرة",
+      "projectEditor.memorySaving": "جارٍ الحفظ...",
+      "projectEditor.memoryLoading": "جارٍ تحميل الذاكرة...",
+      "projectEditor.memoryEmpty": "لا توجد ذكريات محفوظة لهذا المشروع.",
+      "projectEditor.memoryEdit": "تعديل",
+      "projectEditor.memoryDelete": "حذف",
+      "projectEditor.memoryEditPrompt": "عدّل ذاكرة المشروع:",
+      "projectEditor.memoryDeleteConfirm": "حذف ذاكرة المشروع؟",
+      "projectEditor.memoryLoadError": "تعذر تحميل ذاكرة المشروع",
+      "projectEditor.memorySaveError": "تعذر حفظ ذاكرة المشروع",
+      "projectEditor.memoryDeleteError": "تعذر حذف ذاكرة المشروع",
+      "projectEditor.cancel": "إلغاء",
+      "projectEditor.saving": "جارٍ الحفظ...",
+      "projectEditor.save": "حفظ",
+    }[key] ?? key),
+}));
+
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key) =>
-      ({
-        "projectEditor.createTitle": "إنشاء مشروع",
-        "projectEditor.editTitle": "تعديل المشروع",
-        "projectEditor.subtitle": "نظّم المشروع وحدد سلوكه الدائم للمساعد",
-        "projectEditor.close": "إغلاق",
-        "projectEditor.nameLabel": "الاسم",
-        "projectEditor.namePlaceholder": "اسم المشروع",
-        "projectEditor.descriptionLabel": "الوصف",
-        "projectEditor.descriptionPlaceholder": "وصف اختياري",
-        "projectEditor.instructionsLabel": "تعليمات المشروع",
-        "projectEditor.instructionsPlaceholder": "كيف يجب أن يتعامل المساعد مع هذا المشروع؟",
-        "projectEditor.requiredError": "أدخل اسم المشروع",
-        "projectEditor.memoryTitle": "ذاكرة المشروع",
-        "projectEditor.memoryDescription": "ذاكرة مشتركة",
-        "projectEditor.memoryPlaceholder": "ذاكرة",
-        "projectEditor.memoryAdd": "إضافة ذاكرة",
-        "projectEditor.memorySaving": "جارٍ الحفظ...",
-        "projectEditor.memoryLoading": "جارٍ تحميل الذاكرة...",
-        "projectEditor.memoryEmpty": "لا توجد ذكريات محفوظة لهذا المشروع.",
-        "projectEditor.memoryEdit": "تعديل",
-        "projectEditor.memoryDelete": "حذف",
-        "projectEditor.memoryEditPrompt": "عدّل ذاكرة المشروع:",
-        "projectEditor.memoryDeleteConfirm": "حذف ذاكرة المشروع؟",
-        "projectEditor.memoryLoadError": "تعذر تحميل ذاكرة المشروع",
-        "projectEditor.memorySaveError": "تعذر حفظ ذاكرة المشروع",
-        "projectEditor.memoryDeleteError": "تعذر حذف ذاكرة المشروع",
-        "projectEditor.cancel": "إلغاء",
-        "projectEditor.saving": "جارٍ الحفظ...",
-        "projectEditor.save": "حفظ",
-      })[key] ?? key,
-  }),
+  useTranslation: () => ({ t }),
 }));
 
 vi.mock("../lib/projectMemoriesApi", () => ({
