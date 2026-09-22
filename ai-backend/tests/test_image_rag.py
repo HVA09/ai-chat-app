@@ -37,18 +37,20 @@ def test_index_image_for_rag_is_explicit_and_persists_usage(client, monkeypatch,
 
     monkeypatch.setattr(
         files_router,
-        "get_ai_vision_reply",
+        "index_image_file",
         AsyncMock(
-            return_value=AIReply(
-                text="مخطط مبيعات يظهر ارتفاعًا في الربع الرابع.",
-                input_tokens=10,
-                output_tokens=20,
-                provider="gemini",
-                latency_ms=123,
+            return_value=(
+                AIReply(
+                    text="مخطط مبيعات يظهر ارتفاعًا في الربع الرابع.",
+                    input_tokens=10,
+                    output_tokens=20,
+                    provider="gemini",
+                    latency_ms=123,
+                ),
+                2,
             )
         ),
     )
-    monkeypatch.setattr(files_router, "index_file_chunks", lambda db, file: 2)
 
     response = client.post(
         f"/files/{file_id}/index-image",
@@ -60,8 +62,7 @@ def test_index_image_for_rag_is_explicit_and_persists_usage(client, monkeypatch,
     attachment = db_session.get(FileAttachment, file_id)
     assert "[IMAGE DESCRIPTION]" in attachment.extracted_text
 
-    usage = client.get("/admin/stats", headers=headers)
-    # The test user is not admin, so inspect the test DB directly instead.
+    # المستخدم ليس admin، لذا نفحص سجل الاستخدام مباشرة في قاعدة الاختبار.
     from app.models.usage_log import UsageLog
 
     logs = (
