@@ -57,14 +57,39 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
-def get_daily_ai_limit(current_user: User, db: Session) -> int:
+def get_active_subscription_plan(current_user: User, db: Session):
     subscription = (
         db.query(Subscription)
-        .filter(Subscription.user_id == current_user.id, Subscription.status == SubscriptionStatus.active)
+        .filter(
+            Subscription.user_id == current_user.id,
+            Subscription.status == SubscriptionStatus.active,
+        )
         .first()
     )
-    if subscription and subscription.plan:
-        return subscription.plan.daily_ai_request_limit
+    return subscription.plan if subscription else None
+
+
+def get_allowed_ai_models(current_user: User, db: Session) -> list[str]:
+    """Return the models this user may select, after global and plan-level policy."""
+    global_models = list(settings.AI_ALLOWED_MODELS or [settings.AI_MODEL])
+    if current_user.role == UserRole.admin:
+        return global_models
+
+    plan = get_active_subscription_plan(current_user, db)
+    plan_models = getattr(plan, "allowed_models", None) if plan is not None else None
+    if not plan_models:
+        return [settings.AI_MODEL] if settings.AI_MODEL in global_models else global_models[:1]
+    if "*" in plan_models:
+        return global_models
+
+    allowed = [model for model in global_models if model in set(plan_models)]
+    return allowed or ([settings.AI_MODEL] if settings.AI_MODEL in global_models else global_models[:1])
+
+
+def get_daily_ai_limit(current_user: User, db: Session) -> int:
+    plan = get_active_subscription_plan(current_user, db)
+    if plan is not None:
+        return plan.daily_ai_request_limit
     return settings.DAILY_AI_REQUEST_LIMIT
 
 

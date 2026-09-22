@@ -107,9 +107,24 @@ def test_chat_uses_workspace_default_model_when_request_does_not_choose_one(
         AsyncMock(return_value=AIReply(text="رد")),
     )
 
+    from app.models.plan import Plan
+    from app.models.subscription import Subscription, SubscriptionStatus
+
     token = _register_and_login(client, "workspace-model-chat@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     owner = client.get("/users/me", headers=headers).json()
+
+    pro_plan = db_session.query(Plan).filter(Plan.name == "Pro").one()
+    db_session.add(
+        Subscription(
+            user_id=owner["id"],
+            plan_id=pro_plan.id,
+            provider="test",
+            provider_subscription_id="workspace-default-model-sub",
+            status=SubscriptionStatus.active,
+        )
+    )
+    db_session.flush()
 
     workspace = Workspace(
         owner_id=owner["id"],

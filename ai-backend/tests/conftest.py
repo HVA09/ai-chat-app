@@ -38,6 +38,7 @@ def setup_test_db():
                         currency="usd",
                         interval="month",
                         daily_ai_request_limit=20,
+                        allowed_models=[],
                         is_active=True,
                     ),
                     Plan(
@@ -46,6 +47,7 @@ def setup_test_db():
                         currency="usd",
                         interval="month",
                         daily_ai_request_limit=200,
+                        allowed_models=["*"],
                         is_active=True,
                     ),
                 ]

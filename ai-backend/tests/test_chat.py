@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 from app.config import settings as app_settings
 from app.models.conversation import Message, MessageRole
+from app.models.user import User
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
 
@@ -17,14 +18,32 @@ def _register_and_login(client, email="chat@example.com", password="StrongPass12
     return client.cookies.get("access_token")
 
 
-def test_list_ai_models_returns_allowed_models(client, monkeypatch):
+def test_list_ai_models_returns_allowed_models(client, db_session, monkeypatch):
     from app.config import settings as app_settings
+    from app.models.plan import Plan
+    from app.models.subscription import Subscription, SubscriptionStatus
 
     monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
     monkeypatch.setattr(app_settings, "AI_MODEL", "gemini-2.5-flash")
     monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["gemini-2.5-flash", "gemini-test"])
 
     token = _register_and_login(client, "models@example.com")
+    user_id = client.get(
+        "/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()["id"]
+    pro_plan = db_session.query(Plan).filter(Plan.name == "Pro").one()
+    db_session.add(
+        Subscription(
+            user_id=user_id,
+            plan_id=pro_plan.id,
+            provider="test",
+            provider_subscription_id="models-test-sub",
+            status=SubscriptionStatus.active,
+        )
+    )
+    db_session.commit()
+
     response = client.get("/chat/models", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 200
@@ -37,6 +56,8 @@ def test_list_ai_models_returns_allowed_models(client, monkeypatch):
 def test_chat_persists_selected_model(client, monkeypatch, db_session):
     from app.config import settings as app_settings
     from app.models.conversation import Conversation
+    from app.models.plan import Plan
+    from app.models.subscription import Subscription, SubscriptionStatus
 
     monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["gemini-2.5-flash", "gemini-test"])
     monkeypatch.setattr(
@@ -46,6 +67,19 @@ def test_chat_persists_selected_model(client, monkeypatch, db_session):
     )
     token = _register_and_login(client, "selected-model@example.com")
     headers = {"Authorization": f"Bearer {token}"}
+
+    user = client.get("/users/me", headers=headers).json()
+    pro_plan = db_session.query(Plan).filter(Plan.name == "Pro").one()
+    db_session.add(
+        Subscription(
+            user_id=user["id"],
+            plan_id=pro_plan.id,
+            provider="test",
+            provider_subscription_id="selected-model-sub",
+            status=SubscriptionStatus.active,
+        )
+    )
+    db_session.commit()
 
     response = client.post(
         "/chat",
@@ -450,7 +484,6 @@ def test_chat_includes_attached_file_text_as_untrusted_context(client, monkeypat
 
     from app.models.conversation_file_link import ConversationFileLink
     from app.models.file_attachment import FileAttachment
-    from app.models.user import User
 
     user = (
         db_session.query(User)
@@ -568,4 +601,114 @@ def test_admin_bypasses_monthly_ai_cost_budget(client, monkeypatch):
         headers={"Authorization": f"Bearer {admin_token}"},
     )
 
+    assert response.status_code == 200
+
+
+ 
+ 
+def test_list_ai_models_respects_subscription_plan(client, db_session, monkeypatch):
+    from app.config import settings as app_settings
+    from app.models.plan import Plan
+    from app.models.subscription import Subscription, SubscriptionStatus
+    from app.models.user import User
+
+    monkeypatch.setattr(app_settings, "AI_MODEL", "gemini-2.5-flash")
+    monkeypatch.setattr(
+        app_settings,
+        "AI_ALLOWED_MODELS",
+        ["gemini-2.5-flash", "gemini-2.5-pro"],
+    )
+
+    free_token = _register_and_login(client, "model-plan-free@example.com")
+    free_models = client.get(
+        "/chat/models",
+        headers={"Authorization": f"Bearer {free_token}"},
+    )
+    assert free_models.status_code == 200
+    assert [item["id"] for item in free_models.json()] == ["gemini-2.5-flash"]
+
+    user_id = client.get(
+        "/users/me",
+        headers={"Authorization": f"Bearer {free_token}"},
+    ).json()["id"]
+    pro_plan = db_session.query(Plan).filter(Plan.name == "Pro").one()
+    db_session.add(
+        Subscription(
+            user_id=user_id,
+            plan_id=pro_plan.id,
+            provider="test",
+            provider_subscription_id="model-plan-pro-sub",
+            status=SubscriptionStatus.active,
+        )
+    )
+    db_session.commit()
+
+    pro_models = client.get(
+        "/chat/models",
+        headers={"Authorization": f"Bearer {free_token}"},
+    )
+    assert pro_models.status_code == 200
+    assert [item["id"] for item in pro_models.json()] == [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+    ]
+
+
+def test_free_plan_cannot_select_advanced_model(client, monkeypatch):
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "AI_MODEL", "gemini-2.5-flash")
+    monkeypatch.setattr(
+        app_settings,
+        "AI_ALLOWED_MODELS",
+        ["gemini-2.5-flash", "gemini-2.5-pro"],
+    )
+
+    token = _register_and_login(client, "model-plan-block@example.com")
+    response = client.post(
+        "/chat",
+        json={"message": "سؤال", "model": "gemini-2.5-pro"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 400
+
+
+def test_pro_plan_can_select_advanced_model(client, db_session, monkeypatch):
+    from app.config import settings as app_settings
+    from app.models.plan import Plan
+    from app.models.subscription import Subscription, SubscriptionStatus
+
+    monkeypatch.setattr(
+        app_settings,
+        "AI_ALLOWED_MODELS",
+        ["gemini-2.5-flash", "gemini-2.5-pro"],
+    )
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد النموذج المتقدم")),
+    )
+
+    token = _register_and_login(client, "model-plan-pro@example.com")
+    user_id = client.get(
+        "/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()["id"]
+    pro_plan = db_session.query(Plan).filter(Plan.name == "Pro").one()
+    db_session.add(
+        Subscription(
+            user_id=user_id,
+            plan_id=pro_plan.id,
+            provider="test",
+            provider_subscription_id="model-plan-pro-selection",
+            status=SubscriptionStatus.active,
+        )
+    )
+    db_session.commit()
+
+    response = client.post(
+        "/chat",
+        json={"message": "سؤال", "model": "gemini-2.5-pro"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert response.status_code == 200

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_current_user
+from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_allowed_ai_models, get_current_user
 from app.logging_config import get_logger
 from app.models.assistant import Assistant
 from app.models.assistant_workspace_share import AssistantWorkspaceShare
@@ -58,20 +58,24 @@ MAX_FILE_CONTEXT_PER_FILE_CHARS = 8_000
 
 
 @router.get("/models", response_model=list[ChatModelOut])
-def list_ai_models(current_user: User = Depends(get_current_user)):
+def list_ai_models(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     return [
         {
             "id": model,
             "label": model,
             "is_default": model == settings.AI_MODEL,
         }
-        for model in settings.AI_ALLOWED_MODELS
+        for model in get_allowed_ai_models(current_user, db)
     ]
 
 
-def _resolve_requested_model(model: str | None, fallback_model: str | None = None) -> str:
+def _resolve_requested_model(model: str | None, fallback_model: str | None = None, allowed_models: list[str] | None = None) -> str:
     selected = (model or fallback_model or settings.AI_MODEL).strip()
-    if selected not in settings.AI_ALLOWED_MODELS:
+    available = allowed_models or settings.AI_ALLOWED_MODELS
+    if selected not in available:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="نموذج الذكاء الاصطناعي غير متاح في الإعدادات الحالية",
@@ -166,6 +170,7 @@ def _get_or_create_conversation(
     selected_model = _resolve_requested_model(
         payload.model,
         selected_workspace.default_ai_model,
+        get_allowed_ai_models(current_user, db),
     )
 
     if payload.conversation_id:
