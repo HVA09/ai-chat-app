@@ -1424,6 +1424,22 @@ const resources = {
         backToApp: "Back to app",
       },
 
+      memory: {
+        save: "Save to memory",
+        remove: "Remove from memory",
+        saved: "Saved to memory",
+        removed: "Removed from memory",
+        error: "Couldn't update memory",
+      },
+
+      memory: {
+        save: "Save to memory",
+        remove: "Remove from memory",
+        saved: "Saved to memory",
+        removed: "Removed from memory",
+        error: "Couldn't update memory",
+      },
+
       bookmarks: {
         title: "Bookmarks",
         empty: "No bookmarked messages yet",
