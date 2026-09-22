@@ -62,6 +62,7 @@ export default function ChatComposer({
   };
 
   const handlePaste = (event) => {
+    if (loading || isEditing) return;
     const files = Array.from(event.clipboardData?.files || []);
     if (files.length) onAttachFiles?.(files);
   };
