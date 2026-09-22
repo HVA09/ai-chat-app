@@ -20,6 +20,7 @@ from app.audit import log_event
 from app.models.conversation import Conversation
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
+from app.models.project import WorkspaceProject
 from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
@@ -132,6 +133,16 @@ def _get_owned_conversation(conversation_id: int, current_user: User, db: Sessio
     return conversation
 
 
+def _get_accessible_project(
+    project_id: int, current_user: User, db: Session
+) -> WorkspaceProject:
+    project = db.get(WorkspaceProject, project_id)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المشروع غير موجود")
+    _get_workspace_membership(project.workspace_id, current_user, db)
+    return project
+
+
 def _get_workspace_membership(
     workspace_id: int, current_user: User, db: Session
 ) -> WorkspaceMember:
@@ -193,15 +204,31 @@ async def upload_file(
     file: UploadFile,
     conversation_id: int | None = None,
     workspace_id: int | None = None,
+    project_id: int | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    project = None
+    if project_id is not None:
+        project = _get_accessible_project(project_id, current_user, db)
+        if workspace_id is not None and workspace_id != project.workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="مساحة العمل لا تطابق مساحة عمل المشروع",
+            )
+        workspace_id = project.workspace_id
+
     if conversation_id is not None:
         conversation = _get_owned_conversation(conversation_id, current_user, db)
         if workspace_id is not None and workspace_id != conversation.workspace_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="مساحة العمل لا تطابق مساحة عمل المحادثة",
+            )
+        if project_id is not None and conversation.project_id != project_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="المشروع لا يطابق مشروع المحادثة",
             )
     if workspace_id is not None:
         _get_workspace_membership(workspace_id, current_user, db)
@@ -267,6 +294,7 @@ async def upload_file(
     attachment = FileAttachment(
         user_id=current_user.id,
         workspace_id=workspace_id,
+        project_id=project_id,
         original_filename=(file.filename or stored_filename)[:255],
         stored_filename=stored_filename,
         content_type=sniffed,
@@ -322,14 +350,15 @@ def list_files(
     conversation_id: int | None = None,
     include_unattached: bool = False,
     workspace_id: int | None = None,
+    project_id: int | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if workspace_id is not None:
-        _get_workspace_membership(workspace_id, current_user, db)
+    if project_id is not None:
+        project = _get_accessible_project(project_id, current_user, db)
         files = (
             db.query(FileAttachment)
-            .filter(FileAttachment.workspace_id == workspace_id)
+            .filter(FileAttachment.project_id == project.id)
             .order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc())
             .all()
         )
@@ -415,6 +444,17 @@ def attach_file_to_conversation(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="ملف مساحة العمل لا ينتمي إلى مساحة عمل المحادثة",
         )
+    if file.project_id is not None and file.project_id != conversation.project_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ملف المشروع لا ينتمي إلى مشروع المحادثة",
+        )
+    if file.workspace_id is not None and file.workspace_id != conversation.workspace_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ملف مساحة العمل لا ينتمي إلى مساحة عمل المحادثة",
+        )
+
     link = (
         db.query(ConversationFileLink)
         .filter(
