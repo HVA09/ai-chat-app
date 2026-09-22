@@ -558,6 +558,14 @@ const resources = {
         backToApp: "العودة للتطبيق",
       },
 
+      memory: {
+        save: "حفظ في الذاكرة",
+        remove: "إزالة من الذاكرة",
+        saved: "تم الحفظ في الذاكرة",
+        removed: "تمت إزالة الذاكرة",
+        error: "تعذر تحديث الذاكرة",
+      },
+
       bookmarks: {
         title: "المحفوظات",
         empty: "لا توجد رسائل محفوظة بعد",
@@ -1428,6 +1436,14 @@ const resources = {
         accepted: "Invitation accepted. You joined {{workspace}}.",
         error: "Couldn't accept the invitation. It may be expired or revoked.",
         backToApp: "Back to app",
+      },
+
+      memory: {
+        save: "Save to memory",
+        remove: "Remove from memory",
+        saved: "Saved to memory",
+        removed: "Removed from memory",
+        error: "Couldn't update memory",
       },
 
       bookmarks: {

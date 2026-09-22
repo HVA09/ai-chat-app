@@ -15,6 +15,8 @@ vi.mock("react-i18next", () => ({
         "sources.title": "Sources",
         "bookmarks.save": "Save message",
         "bookmarks.remove": "Remove from bookmarks",
+        "memory.save": "Save to memory",
+        "memory.remove": "Remove from memory",
         "chat.branchConversation": "Branch conversation",
         "tools.voiceOutput": "Read aloud",
         "tools.stopVoiceOutput": "Stop reading",
@@ -156,6 +158,56 @@ describe("ChatMessage feedback", () => {
     expect(link).toHaveAttribute("href", expect.stringContaining("/files/42"));
   });
 
+});
+
+describe("ChatMessage memory", () => {
+  it("shows and calls the save-memory control for user messages", async () => {
+    const user = userEvent.setup();
+    const onToggleRemember = vi.fn();
+
+    render(
+      <ChatMessage
+        role="user"
+        text="I prefer concise answers"
+        time="10:00"
+        canRemember
+        onToggleRemember={onToggleRemember}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Save to memory" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save to memory" }));
+    expect(onToggleRemember).toHaveBeenCalled();
+  });
+
+  it("shows remove-from-memory when the message is remembered", () => {
+    render(
+      <ChatMessage
+        role="user"
+        text="I prefer concise answers"
+        time="10:00"
+        canRemember
+        isRemembered
+        onToggleRemember={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Remove from memory" })).toBeInTheDocument();
+  });
+
+  it("does not show memory controls for assistant messages", () => {
+    render(
+      <ChatMessage
+        role="assistant"
+        text="Assistant reply"
+        time="10:00"
+        canRemember
+        onToggleRemember={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Save to memory" })).not.toBeInTheDocument();
+  });
 });
 
 describe("ChatMessage branching", () => {
