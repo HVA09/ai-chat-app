@@ -310,6 +310,7 @@ const resources = {
       files: {
         title: "الملفات",
         workspaceTitle: "مكتبة معرفة مساحة العمل",
+        projectTitle: "معرفة المشروع",
         myFiles: "ملفاتي",
         workspaceFiles: "معرفة مساحة العمل",
         projectFiles: "معرفة المشروع",
