@@ -6,8 +6,12 @@ import {
   attachFileToAssistant,
   detachFileFromAssistant,
 } from "../lib/assistantKnowledgeApi";
+import {
+  listAssistantVersions,
+  restoreAssistantVersion,
+} from "../lib/assistantVersionsApi";
 
-export default function AssistantEditor({ assistant = null, onClose, onSave }) {
+export default function AssistantEditor({ assistant = null, onClose, onSave, onRestored }) {
   const { t } = useTranslation();
   const isEditing = Boolean(assistant);
   const [name, setName] = useState("");
@@ -19,6 +23,9 @@ export default function AssistantEditor({ assistant = null, onClose, onSave }) {
   const [availableFiles, setAvailableFiles] = useState([]);
   const [knowledgeLoading, setKnowledgeLoading] = useState(false);
   const [knowledgeUploading, setKnowledgeUploading] = useState(false);
+  const [versions, setVersions] = useState([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [restoringVersion, setRestoringVersion] = useState(null);
 
   useEffect(() => {
     setName(assistant?.name ?? "");
@@ -48,7 +55,32 @@ export default function AssistantEditor({ assistant = null, onClose, onSave }) {
 
   useEffect(() => {
     refreshKnowledge();
+    if (!assistant?.id) {
+      setVersions([]);
+      return;
+    }
+    setVersionsLoading(true);
+    listAssistantVersions(assistant.id)
+      .then(setVersions)
+      .catch(() => setVersions([]))
+      .finally(() => setVersionsLoading(false));
   }, [assistant?.id]);
+
+  const restoreVersion = async (version) => {
+    if (!assistant?.id || restoringVersion !== null) return;
+    setRestoringVersion(version);
+    try {
+      const restored = await restoreAssistantVersion(assistant.id, version);
+      setName(restored.name);
+      setDescription(restored.description ?? "");
+      setInstructions(restored.instructions);
+      const nextVersions = await listAssistantVersions(assistant.id);
+      setVersions(nextVersions);
+      onRestored?.(restored);
+    } finally {
+      setRestoringVersion(null);
+    }
+  };
 
   const attachKnowledge = async (fileId) => {
     if (!assistant?.id) return;
@@ -176,6 +208,54 @@ export default function AssistantEditor({ assistant = null, onClose, onSave }) {
               {instructions.length}/6000
             </span>
           </label>
+
+          {isEditing && (
+            <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  {t("assistantEditor.versionHistoryTitle")}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {t("assistantEditor.versionHistorySubtitle")}
+                </p>
+              </div>
+              {versionsLoading ? (
+                <p className="text-xs text-slate-400">...</p>
+              ) : versions.length === 0 ? (
+                <p className="text-xs text-slate-400">
+                  {t("assistantEditor.noVersions")}
+                </p>
+              ) : (
+                <div className="max-h-48 space-y-2 overflow-y-auto">
+                  {versions.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-800"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                          {t("assistantEditor.versionLabel", { version: item.version })}
+                        </p>
+                        <p className="truncate text-xs text-slate-400">
+                          {item.name} · {new Date(item.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => restoreVersion(item.version)}
+                        disabled={restoringVersion !== null}
+                        className="shrink-0 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
+                      >
+                        {restoringVersion === item.version
+                          ? t("assistantEditor.restoring")
+                          : t("assistantEditor.restore")}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
           {isEditing && (
             <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
