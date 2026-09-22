@@ -115,7 +115,7 @@ export async function streamChatMessage(
       onDone?.();
       return;
     }
-    throw err;
+    onError?.(i18n.t("app.connectionError"));
   }
 }
 
