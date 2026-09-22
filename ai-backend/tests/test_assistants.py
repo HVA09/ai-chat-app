@@ -120,3 +120,78 @@ def test_chat_uses_assistant_instructions(client, monkeypatch):
     conversation_id = response.json()["conversation_id"]
     detail = client.get(f"/conversations/{conversation_id}", headers=headers)
     assert detail.json()["assistant_id"] == assistant["id"]
+
+
+def test_assistant_version_history_and_restore(client):
+    token = _register_and_login(client, "assistant-versions@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        "/assistants",
+        json={
+            "name": "Tutor",
+            "description": "Original",
+            "instructions": "اشرح بالعربية.",
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201
+    assistant = created.json()
+
+    versions = client.get(
+        f"/assistants/{assistant['id']}/versions",
+        headers=headers,
+    )
+    assert versions.status_code == 200
+    assert len(versions.json()) == 1
+    assert versions.json()[0]["version"] == 1
+    assert versions.json()[0]["instructions"] == "اشرح بالعربية."
+
+    updated = client.patch(
+        f"/assistants/{assistant['id']}",
+        json={"instructions": "اشرح بالإنجليزية وبأمثلة عملية."},
+        headers=headers,
+    )
+    assert updated.status_code == 200
+
+    versions = client.get(
+        f"/assistants/{assistant['id']}/versions",
+        headers=headers,
+    )
+    assert [item["version"] for item in versions.json()] == [2, 1]
+
+    restored = client.post(
+        f"/assistants/{assistant['id']}/versions/1/restore",
+        headers=headers,
+    )
+    assert restored.status_code == 200
+    assert restored.json()["instructions"] == "اشرح بالعربية."
+
+    versions = client.get(
+        f"/assistants/{assistant['id']}/versions",
+        headers=headers,
+    )
+    assert [item["version"] for item in versions.json()] == [3, 2, 1]
+    assert versions.json()[0]["instructions"] == "اشرح بالعربية."
+
+
+def test_assistant_versions_are_private_to_owner(client):
+    token_a = _register_and_login(client, "assistant-version-owner@example.com")
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    assistant = client.post(
+        "/assistants",
+        json={"name": "Private", "instructions": "Secret instructions."},
+        headers=headers_a,
+    ).json()
+
+    token_b = _register_and_login(client, "assistant-version-other@example.com")
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    assert client.get(
+        f"/assistants/{assistant['id']}/versions",
+        headers=headers_b,
+    ).status_code == 404
+    assert client.post(
+        f"/assistants/{assistant['id']}/versions/1/restore",
+        headers=headers_b,
+    ).status_code == 404

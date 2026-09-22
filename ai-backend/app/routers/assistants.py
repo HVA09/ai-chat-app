@@ -8,11 +8,28 @@ from app.dependencies import get_current_user
 from app.models.assistant import Assistant
 from app.models.assistant_file_link import AssistantFileLink
 from app.models.file_attachment import FileAttachment
+from app.models.assistant_version import AssistantVersion
 from app.models.user import User
+from app.schemas.assistant_versions import AssistantVersionOut
 from app.schemas.assistants import AssistantCreate, AssistantOut, AssistantUpdate
 from app.schemas.file import FileOut
 
 router = APIRouter(prefix="/assistants", tags=["Assistants"])
+
+def _create_assistant_version(assistant: Assistant, db: Session) -> AssistantVersion:
+    current_version = db.query(func.max(AssistantVersion.version)).filter(
+        AssistantVersion.assistant_id == assistant.id
+    ).scalar() or 0
+    version = AssistantVersion(
+        assistant_id=assistant.id,
+        version=current_version + 1,
+        name=assistant.name,
+        description=assistant.description,
+        instructions=assistant.instructions,
+    )
+    db.add(version)
+    return version
+
 
 
 def _get_owned_assistant(
@@ -80,6 +97,8 @@ def create_assistant(
         instructions=payload.instructions,
     )
     db.add(assistant)
+    db.flush()
+    _create_assistant_version(assistant, db)
     db.commit()
     db.refresh(assistant)
     return assistant
@@ -102,6 +121,57 @@ def update_assistant(
     if payload.instructions is not None:
         assistant.instructions = payload.instructions
 
+    db.flush()
+    _create_assistant_version(assistant, db)
+    db.commit()
+    db.refresh(assistant)
+    return assistant
+
+
+@router.get("/{assistant_id}/versions", response_model=list[AssistantVersionOut])
+def list_assistant_versions(
+    assistant_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    assistant = _get_owned_assistant(assistant_id, current_user, db)
+    return (
+        db.query(AssistantVersion)
+        .filter(AssistantVersion.assistant_id == assistant.id)
+        .order_by(AssistantVersion.version.desc())
+        .all()
+    )
+
+
+@router.post("/{assistant_id}/versions/{version}/restore", response_model=AssistantOut)
+def restore_assistant_version(
+    assistant_id: int,
+    version: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    assistant = _get_owned_assistant(assistant_id, current_user, db)
+    snapshot = (
+        db.query(AssistantVersion)
+        .filter(
+            AssistantVersion.assistant_id == assistant.id,
+            AssistantVersion.version == version,
+        )
+        .first()
+    )
+    if not snapshot:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="نسخة المساعد غير موجودة",
+        )
+
+    if snapshot.name != assistant.name:
+        _ensure_unique_name(snapshot.name, current_user, db, exclude_id=assistant.id)
+    assistant.name = snapshot.name
+    assistant.description = snapshot.description
+    assistant.instructions = snapshot.instructions
+    db.flush()
+    _create_assistant_version(assistant, db)
     db.commit()
     db.refresh(assistant)
     return assistant

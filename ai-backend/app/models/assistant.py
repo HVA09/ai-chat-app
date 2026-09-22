@@ -34,3 +34,6 @@ class Assistant(Base):
     file_links = relationship(
         "AssistantFileLink", back_populates="assistant", cascade="all, delete-orphan", passive_deletes=True
     )
+    versions = relationship(
+        "AssistantVersion", back_populates="assistant", cascade="all, delete-orphan", passive_deletes=True
+    )

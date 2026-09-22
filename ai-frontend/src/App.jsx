@@ -1042,6 +1042,16 @@ export default function App() {
     }
   };
 
+  const handleAssistantRestored = async (restored) => {
+    try {
+      await refreshAssistants(selectedWorkspaceId);
+      setSelectedAssistantId(restored.id);
+      setToast({ message: t("app.assistantVersionRestored"), type: "success" });
+    } catch {
+      setToast({ message: t("app.assistantUpdateError"), type: "error" });
+    }
+  };
+
   const handleSaveAssistant = async ({ name, description, instructions }) => {
     try {
       if (editingAssistantId === null) {
@@ -2791,6 +2801,7 @@ export default function App() {
             setEditingAssistantId(null);
           }}
           onSave={handleSaveAssistant}
+          onRestored={handleAssistantRestored}
         />
       )}
 
