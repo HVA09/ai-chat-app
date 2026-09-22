@@ -41,6 +41,8 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+const ANALYTICS_RANGES = [7, 30, 90, 365];
+
 function StatsTab() {
   const { t } = useTranslation();
   const [stats, setStats] = useState(null);
@@ -53,17 +55,18 @@ function StatsTab() {
   const [costBudget, setCostBudget] = useState(null);
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [analyticsDays, setAnalyticsDays] = useState(30);
 
   useEffect(() => {
     Promise.all([
       getAdminStats(),
-      getDailyAnalytics(30),
-      getModelUsage(30),
-      getProviderUsage(30),
-      getProviderLatency(30),
-      getCostUsage(30),
+      getDailyAnalytics(analyticsDays),
+      getModelUsage(analyticsDays),
+      getProviderUsage(analyticsDays),
+      getProviderLatency(analyticsDays),
+      getCostUsage(analyticsDays),
       getCostBudget(),
-      getFeedbackAnalytics(30),
+      getFeedbackAnalytics(analyticsDays),
     ])
 .then(([statsData, dailyData, modelUsageData, providerUsageData, providerLatencyData, costUsageData, costBudgetData, feedbackData]) => {
         setStats(statsData);
@@ -76,12 +79,12 @@ function StatsTab() {
         setFeedback(feedbackData);
       })
       .catch(() => setError(t("admin.statsError")));
-  }, [t]);
+  }, [t, analyticsDays]);
 
   const handleExport = async () => {
     setExporting(true);
     try {
-      await downloadAnalyticsCsv(30);
+      await downloadAnalyticsCsv(analyticsDays);
     } catch {
       setError(t("admin.exportError"));
     } finally {
@@ -103,6 +106,29 @@ function StatsTab() {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 p-3">
+        <div>
+          <p className="text-sm font-medium text-slate-900">{t("admin.analyticsRangeTitle")}</p>
+          <p className="text-xs text-slate-500">{t("admin.analyticsRangeHint")}</p>
+        </div>
+        <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+          {ANALYTICS_RANGES.map((days) => (
+            <button
+              key={days}
+              type="button"
+              onClick={() => setAnalyticsDays(days)}
+              aria-pressed={analyticsDays === days}
+              className={`rounded-lg px-3 py-1.5 text-xs transition ${
+                analyticsDays === days
+                  ? "bg-slate-900 font-medium text-white shadow-sm"
+                  : "text-slate-600 hover:bg-white hover:text-slate-900"
+              }`}
+            >
+              {t("admin.analyticsDays", { days })}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {cards.map(([label, value]) => (
           <div key={label} className="rounded-2xl border border-slate-200 p-4 text-center">
@@ -116,7 +142,7 @@ function StatsTab() {
         <div className="rounded-2xl border border-slate-200 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-slate-900">{t("admin.modelUsageTitle")}</p>
-            <span className="text-xs text-slate-400">{t("admin.modelUsageLast30Days")}</span>
+            <span className="text-xs text-slate-400">{t("admin.lastNDays", { days: analyticsDays })}</span>
           </div>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[520px] text-left text-sm">
@@ -149,7 +175,7 @@ function StatsTab() {
         <div className="rounded-2xl border border-slate-200 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-slate-900">{t("admin.providerUsageTitle")}</p>
-            <span className="text-xs text-slate-400">{t("admin.providerUsageLast30Days")}</span>
+            <span className="text-xs text-slate-400">{t("admin.lastNDays", { days: analyticsDays })}</span>
           </div>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[520px] text-left text-sm">
@@ -182,7 +208,7 @@ function StatsTab() {
         <div className="rounded-2xl border border-slate-200 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-slate-900">{t("admin.providerLatencyTitle")}</p>
-            <span className="text-xs text-slate-400">{t("admin.providerLatencyLast30Days")}</span>
+            <span className="text-xs text-slate-400">{t("admin.lastNDays", { days: analyticsDays })}</span>
           </div>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[560px] text-left text-sm">
@@ -217,7 +243,7 @@ function StatsTab() {
         <div className="rounded-2xl border border-slate-200 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-slate-900">{t("admin.costUsageTitle")}</p>
-            <span className="text-xs text-slate-400">{t("admin.costUsageLast30Days")}</span>
+            <span className="text-xs text-slate-400">{t("admin.lastNDays", { days: analyticsDays })}</span>
           </div>
           <p className="mt-1 text-xs text-slate-400">{t("admin.costUsageHint")}</p>
           <div className="mt-3 overflow-x-auto">
@@ -319,7 +345,7 @@ function StatsTab() {
         <div className="rounded-2xl border border-slate-200 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-slate-900">{t("admin.feedbackTitle")}</p>
-            <span className="text-xs text-slate-400">{t("admin.feedbackLast30Days")}</span>
+            <span className="text-xs text-slate-400">{t("admin.lastNDays", { days: analyticsDays })}</span>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="rounded-xl bg-slate-50 p-3 text-center">
@@ -356,7 +382,7 @@ function StatsTab() {
       </div>
 
       <div>
-        <p className="mb-2 text-xs text-slate-500">{t("admin.newUsersChartLabel")}</p>
+        <p className="mb-2 text-xs text-slate-500">{t("admin.newUsersChartLabel")} · {t("admin.lastNDays", { days: analyticsDays })}</p>
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={daily}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -376,7 +402,7 @@ function StatsTab() {
       </div>
 
       <div>
-        <p className="mb-2 text-xs text-slate-500">{t("admin.tokensChartLabel")}</p>
+        <p className="mb-2 text-xs text-slate-500">{t("admin.tokensChartLabel")} · {t("admin.lastNDays", { days: analyticsDays })}</p>
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={daily}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
