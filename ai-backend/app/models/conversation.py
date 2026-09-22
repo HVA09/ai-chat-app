@@ -73,6 +73,9 @@ class Conversation(Base):
     workspace_shares = relationship(
         "ConversationWorkspaceShare", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
     )
+    comments = relationship(
+        "ConversationComment", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
+    )
     file_links = relationship(
         "ConversationFileLink", back_populates="conversation", cascade="all, delete-orphan", passive_deletes=True
     )
@@ -100,6 +103,9 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     conversation = relationship("Conversation", back_populates="messages")
+    comments = relationship(
+        "ConversationComment", back_populates="message", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 @event.listens_for(Message, "after_insert")
