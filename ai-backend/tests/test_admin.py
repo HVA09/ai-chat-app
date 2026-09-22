@@ -404,3 +404,40 @@ def test_cost_budget_requires_admin(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 403
+
+
+def test_admin_can_list_and_update_plan_entitlements(client, db_session):
+    from app.models.plan import Plan
+
+    admin_token = _register_and_login(client, "plan-admin@example.com")
+    admin = client.get("/users/me", headers={"Authorization": f"Bearer {admin_token}"}).json()
+    user = db_session.get(User, admin["id"])
+    user.role = UserRole.admin
+    db_session.commit()
+
+    plans = client.get("/admin/plans", headers={"Authorization": f"Bearer {admin_token}"})
+    assert plans.status_code == 200
+    assert plans.json()
+
+    plan = plans.json()[0]
+    response = client.patch(
+        f"/admin/plans/{plan['id']}",
+        json={
+            "daily_ai_request_limit": 42,
+            "allowed_models": ["gemini-2.5-flash", "*", "gemini-2.5-flash"],
+            "is_active": False,
+        },
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["daily_ai_request_limit"] == 42
+    assert response.json()["allowed_models"] == ["gemini-2.5-flash", "*"]
+    assert response.json()["is_active"] is False
+
+
+def test_non_admin_cannot_manage_plans(client):
+    token = _register_and_login(client, "plan-user@example.com")
+    assert client.get(
+        "/admin/plans",
+        headers={"Authorization": f"Bearer {token}"},
+    ).status_code == 403
