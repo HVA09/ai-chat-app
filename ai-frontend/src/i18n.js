@@ -792,6 +792,9 @@ const resources = {
         updateError: "تعذر تحديث مشاركة مساحة العمل",
         loadError: "تعذر تحميل المحادثة المشتركة",
         readOnly: "هذه المحادثة مشتركة معك للقراءة فقط.",
+        duplicateButton: "نسخ إلى محادثاتي",
+        duplicated: "تم نسخ المحادثة إلى محادثاتك",
+        duplicateError: "تعذر نسخ المحادثة المشتركة",
       },
 
       sharing: {
@@ -1571,6 +1574,9 @@ const resources = {
         updateError: "Couldn't update workspace sharing",
         loadError: "Couldn't load the shared conversation",
         readOnly: "This conversation is shared with you as read-only.",
+        duplicateButton: "Copy to my chats",
+        duplicated: "A copy was added to your chats",
+        duplicateError: "Couldn't copy the shared conversation",
       },
 
       sharing: {
