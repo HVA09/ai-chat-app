@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 from app.config import settings as app_settings
 from app.models.conversation import Message, MessageRole
+from app.models.user import User
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
 
@@ -55,6 +56,8 @@ def test_list_ai_models_returns_allowed_models(client, db_session, monkeypatch):
 def test_chat_persists_selected_model(client, monkeypatch, db_session):
     from app.config import settings as app_settings
     from app.models.conversation import Conversation
+    from app.models.plan import Plan
+    from app.models.subscription import Subscription, SubscriptionStatus
 
     monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["gemini-2.5-flash", "gemini-test"])
     monkeypatch.setattr(
@@ -64,6 +67,19 @@ def test_chat_persists_selected_model(client, monkeypatch, db_session):
     )
     token = _register_and_login(client, "selected-model@example.com")
     headers = {"Authorization": f"Bearer {token}"}
+
+    user = client.get("/users/me", headers=headers).json()
+    pro_plan = db_session.query(Plan).filter(Plan.name == "Pro").one()
+    db_session.add(
+        Subscription(
+            user_id=user["id"],
+            plan_id=pro_plan.id,
+            provider="test",
+            provider_subscription_id="selected-model-sub",
+            status=SubscriptionStatus.active,
+        )
+    )
+    db_session.commit()
 
     response = client.post(
         "/chat",
