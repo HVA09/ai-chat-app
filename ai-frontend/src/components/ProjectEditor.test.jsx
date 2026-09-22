@@ -3,10 +3,17 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ProjectEditor from "./ProjectEditor";
 
-const listProjectMemories = vi.fn();
-const createProjectMemory = vi.fn();
-const updateProjectMemory = vi.fn();
-const deleteProjectMemory = vi.fn();
+const {
+  listProjectMemories,
+  createProjectMemory,
+  updateProjectMemory,
+  deleteProjectMemory,
+} = vi.hoisted(() => ({
+  listProjectMemories: vi.fn(),
+  createProjectMemory: vi.fn(),
+  updateProjectMemory: vi.fn(),
+  deleteProjectMemory: vi.fn(),
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
