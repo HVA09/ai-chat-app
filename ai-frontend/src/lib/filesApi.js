@@ -65,3 +65,9 @@ export async function attachFileToConversation(fileId, conversationId) {
 export async function detachFileFromConversation(fileId, conversationId) {
   await api.delete(`/files/${fileId}/attach/${conversationId}`);
 }
+
+
+export async function indexImageForRag(id) {
+  const { data } = await api.post(`/files/${id}/index-image`);
+  return data;
+}
