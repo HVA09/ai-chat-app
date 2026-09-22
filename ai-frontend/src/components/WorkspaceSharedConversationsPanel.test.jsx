@@ -55,7 +55,9 @@ describe("WorkspaceSharedConversationsPanel", () => {
       />
     );
 
-    expect(await screen.findByText("بحث مشترك")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /بحث مشترك/ })
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "نسخ إلى محادثاتي" }));
 
     expect(duplicateWorkspaceSharedConversation).toHaveBeenCalledWith(7, 42);
