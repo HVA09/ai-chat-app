@@ -197,6 +197,7 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [retryableUserMessage, setRetryableUserMessage] = useState(null);
+  const [agentToolEvents, setAgentToolEvents] = useState([]);
   const bottomRef = useRef(null);
   const streamAbortRef = useRef(null);
   const autoSummaryInFlightRef = useRef(false);
@@ -252,6 +253,7 @@ export default function App() {
     setChatAttachmentUploading(false);
     setEditingMessageIndex(null);
     setRetryableUserMessage(null);
+    setAgentToolEvents([]);
     setError("");
     setCurrentUser(null);
     setShowAccountSettings(false);
@@ -2097,6 +2099,9 @@ export default function App() {
 
     await streamChatMessage(userText, conversationId, selectedAssistantId, {
       signal: controller.signal,
+      onAgentTool: (event) => {
+        setAgentToolEvents((current) => [...current, event]);
+      },
       workspaceId: selectedWorkspaceId,
       projectId: selectedProjectId,
       model: selectedModel || null,
@@ -2654,6 +2659,24 @@ export default function App() {
                   />
                 );
               })
+            )}
+
+            {agentToolEvents.length > 0 && (
+              <div className="flex justify-start">
+                <div className="max-w-[80%] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  <div className="mb-2 font-semibold">{t("agent.activityTitle")}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {agentToolEvents.map((event, index) => (
+                      <span
+                        key={`${event.tool}-${event.round}-${index}`}
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1 dark:border-slate-600 dark:bg-slate-900"
+                      >
+                        {t(`agent.tools.${event.tool}`)} ✓
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
             )}
 
             {loading && (
