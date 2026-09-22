@@ -30,7 +30,13 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function FilesPanel({ onClose, conversationId = null, workspaceId = null, onAnalyzeImage }) {
+export default function FilesPanel({
+  onClose,
+  conversationId = null,
+  workspaceId = null,
+  projectId = null,
+  onAnalyzeImage,
+}) {
   const { t } = useTranslation();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,6 +47,7 @@ export default function FilesPanel({ onClose, conversationId = null, workspaceId
   const [analyzingId, setAnalyzingId] = useState(null);
   const [indexingId, setIndexingId] = useState(null);
   const [showWorkspaceFiles, setShowWorkspaceFiles] = useState(false);
+  const [showProjectFiles, setShowProjectFiles] = useState(false);
   const fileInputRef = useRef(null);
 
   const refresh = async () => {
@@ -48,9 +55,10 @@ export default function FilesPanel({ onClose, conversationId = null, workspaceId
     try {
       setFiles(
         await listFiles(
-          showWorkspaceFiles ? null : conversationId,
-          showWorkspaceFiles ? false : Boolean(conversationId),
-          showWorkspaceFiles ? workspaceId : null
+          showProjectFiles || showWorkspaceFiles ? null : conversationId,
+          showProjectFiles || showWorkspaceFiles ? false : Boolean(conversationId),
+          showProjectFiles || showWorkspaceFiles ? workspaceId : null,
+          showProjectFiles ? projectId : null
         )
       );
     } catch {
@@ -62,7 +70,7 @@ export default function FilesPanel({ onClose, conversationId = null, workspaceId
 
   useEffect(() => {
     refresh();
-  }, [conversationId, showWorkspaceFiles, workspaceId]);
+  }, [conversationId, showWorkspaceFiles, showProjectFiles, workspaceId, projectId]);
 
   const handleUpload = async (fileList) => {
     const file = fileList?.[0];
@@ -73,8 +81,9 @@ export default function FilesPanel({ onClose, conversationId = null, workspaceId
       await uploadFile(
         file,
         setUploadProgress,
-        showWorkspaceFiles ? null : conversationId,
-        showWorkspaceFiles ? workspaceId : null
+        showProjectFiles || showWorkspaceFiles ? null : conversationId,
+        showProjectFiles || showWorkspaceFiles ? workspaceId : null,
+        showProjectFiles ? projectId : null
       );
       await refresh();
     } catch (err) {
@@ -165,7 +174,11 @@ export default function FilesPanel({ onClose, conversationId = null, workspaceId
       <div className="my-0 flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900 sm:my-8 sm:max-h-[calc(100dvh-3rem)] sm:max-w-lg sm:rounded-3xl sm:p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">
-            {showWorkspaceFiles ? t("files.workspaceTitle") : t("files.title")}
+            {showProjectFiles
+              ? t("files.projectTitle")
+              : showWorkspaceFiles
+                ? t("files.workspaceTitle")
+                : t("files.title")}
           </h2>
           <button
             onClick={onClose}
@@ -175,22 +188,42 @@ export default function FilesPanel({ onClose, conversationId = null, workspaceId
           </button>
         </div>
 
-        {workspaceId !== null && (
-          <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 p-1 dark:border-slate-700">
+        {(workspaceId !== null || projectId !== null) && (
+          <div className={`mb-4 grid ${projectId !== null ? "grid-cols-3" : "grid-cols-2"} gap-2 rounded-xl border border-slate-200 p-1 dark:border-slate-700`}>
             <button
               type="button"
-              onClick={() => setShowWorkspaceFiles(false)}
-              className={`rounded-lg px-3 py-2 text-xs font-medium ${!showWorkspaceFiles ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
+              onClick={() => {
+                setShowWorkspaceFiles(false);
+                setShowProjectFiles(false);
+              }}
+              className={`rounded-lg px-2 py-2 text-xs font-medium ${!showWorkspaceFiles && !showProjectFiles ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
             >
               {t("files.myFiles")}
             </button>
-            <button
-              type="button"
-              onClick={() => setShowWorkspaceFiles(true)}
-              className={`rounded-lg px-3 py-2 text-xs font-medium ${showWorkspaceFiles ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
-            >
-              {t("files.workspaceFiles")}
-            </button>
+            {workspaceId !== null && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowProjectFiles(false);
+                  setShowWorkspaceFiles(true);
+                }}
+                className={`rounded-lg px-2 py-2 text-xs font-medium ${showWorkspaceFiles ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
+              >
+                {t("files.workspaceFiles")}
+              </button>
+            )}
+            {projectId !== null && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowWorkspaceFiles(false);
+                  setShowProjectFiles(true);
+                }}
+                className={`rounded-lg px-2 py-2 text-xs font-medium ${showProjectFiles ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
+              >
+                {t("files.projectFiles")}
+              </button>
+            )}
           </div>
         )}
 
@@ -224,7 +257,11 @@ export default function FilesPanel({ onClose, conversationId = null, workspaceId
             onChange={(e) => handleUpload(e.target.files)}
           />
           <p className="text-sm text-slate-500">
-            {showWorkspaceFiles ? t("files.workspaceDropHint") : t("files.dropHint")}
+            {showProjectFiles
+              ? t("files.projectDropHint")
+              : showWorkspaceFiles
+                ? t("files.workspaceDropHint")
+                : t("files.dropHint")}
           </p>
           <p className="mt-1 text-xs text-slate-400">{t("files.typesHint")}</p>
         </div>
@@ -298,7 +335,7 @@ export default function FilesPanel({ onClose, conversationId = null, workspaceId
                       {analyzingId === file.id ? "..." : "🔎"}
                     </button>
                   )}
-                  {!showWorkspaceFiles && conversationId && (
+                  {!showWorkspaceFiles && !showProjectFiles && conversationId && (
                     <button
                       onClick={() => handleToggleAttachment(file)}
                       title={file.is_attached ? t("files.detach") : t("files.attach")}

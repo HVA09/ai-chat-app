@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.conversation import Conversation
+from app.models.file_attachment import FileAttachment
 from app.models.project import WorkspaceProject
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
@@ -139,6 +140,9 @@ def delete_project(
 
     db.query(Conversation).filter(
         Conversation.project_id == project.id
+    ).update({"project_id": None}, synchronize_session=False)
+    db.query(FileAttachment).filter(
+        FileAttachment.project_id == project.id
     ).update({"project_id": None}, synchronize_session=False)
     db.delete(project)
     db.commit()

@@ -36,3 +36,8 @@ class WorkspaceProject(Base):
         back_populates="project",
         passive_deletes=True,
     )
+    file_attachments = relationship(
+        "FileAttachment",
+        back_populates="project",
+        passive_deletes=True,
+    )

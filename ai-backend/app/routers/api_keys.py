@@ -236,6 +236,7 @@ async def developer_chat(
         (),
         {
             "workspace_id": payload.workspace_id,
+            "project_id": getattr(payload, "project_id", None),
             "assistant_id": payload.assistant_id,
             "model": payload.model,
             "conversation_id": payload.conversation_id,

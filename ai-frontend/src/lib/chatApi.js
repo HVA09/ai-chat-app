@@ -7,6 +7,7 @@ export async function sendChatMessage(
   conversationId = null,
   assistantId = null,
   workspaceId = null,
+  projectId = null,
   model = null,
   fileIds = []
 ) {
@@ -15,6 +16,7 @@ export async function sendChatMessage(
     conversation_id: conversationId,
     assistant_id: assistantId,
     workspace_id: workspaceId,
+    project_id: projectId,
     model,
     file_ids: fileIds,
   });
@@ -37,6 +39,7 @@ export async function streamChatMessage(
     onError,
     signal,
     workspaceId = null,
+    projectId = null,
     model = null,
     fileIds = [],
   } = {}
@@ -56,6 +59,7 @@ export async function streamChatMessage(
         conversation_id: conversationId,
         assistant_id: assistantId,
         workspace_id: workspaceId,
+        project_id: projectId,
         model,
         file_ids: fileIds,
       }),

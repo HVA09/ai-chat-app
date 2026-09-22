@@ -162,3 +162,124 @@ def test_workspace_file_requires_workspace_membership(client, db_session, tmp_pa
         headers=headers,
     )
     assert response.status_code == 404
+
+
+def test_upload_file_to_project_and_list(client, db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+
+    token = _register_and_login(client, "project-file-owner@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    from app.models.user import User
+
+    owner = db_session.query(User).filter_by(email="project-file-owner@example.com").one()
+    workspace = owner.owned_workspaces[0]
+
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace.id, "name": "Research"},
+        headers=headers,
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    uploaded = client.post(
+        "/files/upload",
+        params={"project_id": project_id},
+        files={"file": ("knowledge.txt", b"project knowledge", "text/plain")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    assert uploaded.json()["project_id"] == project_id
+    assert uploaded.json()["workspace_id"] == workspace.id
+
+    listed = client.get(
+        "/files",
+        params={"project_id": project_id},
+        headers=headers,
+    )
+    assert listed.status_code == 200
+    assert [item["project_id"] for item in listed.json()] == [project_id]
+
+
+def test_project_file_requires_project_membership(client, db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+
+    token_owner = _register_and_login(client, "project-file-scope-owner@example.com")
+    headers_owner = {"Authorization": f"Bearer {token_owner}"}
+    from app.models.user import User
+
+    owner = db_session.query(User).filter_by(email="project-file-scope-owner@example.com").one()
+    workspace = owner.owned_workspaces[0]
+    project_id = client.post(
+        "/projects",
+        json={"workspace_id": workspace.id, "name": "Private Knowledge"},
+        headers=headers_owner,
+    ).json()["id"]
+
+    uploaded = client.post(
+        "/files/upload",
+        params={"project_id": project_id},
+        files={"file": ("secret.txt", b"private project knowledge", "text/plain")},
+        headers=headers_owner,
+    )
+    assert uploaded.status_code == 201
+
+    token_other = _register_and_login(client, "project-file-scope-other@example.com")
+    response = client.get(
+        "/files",
+        params={"project_id": project_id},
+        headers={"Authorization": f"Bearer {token_other}"},
+    )
+    assert response.status_code == 404
+
+
+def test_project_file_cannot_attach_to_different_project_conversation(client, db_session, tmp_path, monkeypatch):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    from app.models.user import User
+    from app.routers import chat as chat_router_module
+    from app.services.ai_providers.base import AIReply
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+
+    token = _register_and_login(client, "project-file-mismatch@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    owner = db_session.query(User).filter_by(email="project-file-mismatch@example.com").one()
+    workspace = owner.owned_workspaces[0]
+
+    project_a = client.post(
+        "/projects",
+        json={"workspace_id": workspace.id, "name": "A"},
+        headers=headers,
+    ).json()["id"]
+    project_b = client.post(
+        "/projects",
+        json={"workspace_id": workspace.id, "name": "B"},
+        headers=headers,
+    ).json()["id"]
+
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "ابدأ", "workspace_id": workspace.id, "project_id": project_a},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    uploaded = client.post(
+        "/files/upload",
+        params={"project_id": project_b},
+        files={"file": ("other.txt", b"other", "text/plain")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+
+    attached = client.post(
+        f"/files/{file_id}/attach/{conversation_id}",
+        headers=headers,
+    )
+    assert attached.status_code == 400
+

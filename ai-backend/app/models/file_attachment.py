@@ -21,6 +21,9 @@ class FileAttachment(Base):
     workspace_id: Mapped[int | None] = mapped_column(
         ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspace_projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     stored_filename: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -30,6 +33,7 @@ class FileAttachment(Base):
 
     user = relationship("User")
     workspace = relationship("Workspace", back_populates="file_attachments")
+    project = relationship("WorkspaceProject", back_populates="file_attachments")
     conversation_links = relationship(
         "ConversationFileLink", back_populates="file", cascade="all, delete-orphan", passive_deletes=True
     )

@@ -76,6 +76,7 @@ async def retrieve_relevant_chunks(
     query: str,
     top_k: int = TOP_K,
     workspace_id: int | None = None,
+    project_id: int | None = None,
 ) -> list[tuple[FileChunk, FileAttachment]]:
     from app.models.conversation_file_link import ConversationFileLink
 
@@ -91,8 +92,19 @@ async def retrieve_relevant_chunks(
         linked_to_conversation,
     )
     workspace_scope = (
-        and_(FileAttachment.workspace_id == workspace_id)
+        and_(
+            FileAttachment.workspace_id == workspace_id,
+            FileAttachment.project_id.is_(None),
+        )
         if workspace_id is not None
+        else False
+    )
+    project_scope = (
+        and_(
+            FileAttachment.workspace_id == workspace_id,
+            FileAttachment.project_id == project_id,
+        )
+        if workspace_id is not None and project_id is not None
         else False
     )
 
@@ -101,7 +113,7 @@ async def retrieve_relevant_chunks(
         .join(FileAttachment, FileAttachment.id == FileChunk.file_id)
         .filter(
             FileChunk.embedding.is_not(None),
-            or_(personal_scope, workspace_scope),
+            or_(personal_scope, workspace_scope, project_scope),
         )
         .order_by(FileChunk.embedding.cosine_distance(query_embedding))
         .limit(max(1, min(top_k, 12)))
