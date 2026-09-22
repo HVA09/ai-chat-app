@@ -73,6 +73,16 @@ class ProviderLatencyStat(BaseModel):
     max_latency_ms: int
 
 
+class ProviderStatusOut(BaseModel):
+    provider: str
+    role: str
+    model: str
+    configured: bool
+    recent_requests: int
+    last_request_at: datetime | None
+    avg_latency_ms: int | None
+
+
 class ModelUsageStat(BaseModel):
     model: str
     requests: int

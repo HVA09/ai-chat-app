@@ -140,6 +140,83 @@ def test_daily_analytics_includes_today_with_activity(client, monkeypatch):
     assert today["ai_requests"] >= 1
 
 
+def test_provider_status_requires_admin(client):
+    token = _register_and_login(client, "provider-status-user@example.com")
+    response = client.get(
+        "/admin/analytics/provider-status",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403
+
+
+def test_provider_status_reports_configured_primary_and_usage(client, db_session, monkeypatch):
+    from datetime import datetime, timezone
+    import time
+
+    admin_token = _register_and_login(client, "provider-status-admin@example.com", admin=True)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    user_id = client.get("/users/me", headers=headers).json()["id"]
+
+    monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
+    monkeypatch.setattr(app_settings, "AI_MODEL", "gemini-2.5-flash")
+    monkeypatch.setattr(app_settings, "AI_API_KEY", "test-key")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_PROVIDER", "")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_API_KEY", "")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_MODEL", "")
+
+    from app.models.usage_log import UsageLog
+
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        UsageLog(
+            user_id=user_id,
+            endpoint="/chat",
+            provider="gemini",
+            model="gemini-2.5-flash",
+            input_tokens=10,
+            output_tokens=20,
+            latency_ms=250,
+            created_at=now,
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/admin/analytics/provider-status", headers=headers)
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 1
+    assert rows[0]["provider"] == "gemini"
+    assert rows[0]["role"] == "primary"
+    assert rows[0]["model"] == "gemini-2.5-flash"
+    assert rows[0]["configured"] is True
+    assert rows[0]["recent_requests"] == 1
+    assert rows[0]["avg_latency_ms"] == 250
+    assert rows[0]["last_request_at"] is not None
+
+
+def test_provider_status_reports_fallback_without_exposing_secret(client, monkeypatch):
+    admin_token = _register_and_login(client, "provider-fallback-admin@example.com", admin=True)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+
+    monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
+    monkeypatch.setattr(app_settings, "AI_MODEL", "gemini-2.5-flash")
+    monkeypatch.setattr(app_settings, "AI_API_KEY", "primary-secret")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_PROVIDER", "openai")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_MODEL", "gpt-4o-mini")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_API_KEY", "fallback-secret")
+
+    response = client.get("/admin/analytics/provider-status", headers=headers)
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 2
+    fallback = next(item for item in rows if item["role"] == "fallback")
+    assert fallback["provider"] == "openai"
+    assert fallback["model"] == "gpt-4o-mini"
+    assert fallback["configured"] is True
+    assert "fallback-secret" not in response.text
+    assert "primary-secret" not in response.text
+
+
 def test_daily_analytics_requires_admin(client):
     _register_and_login(client, "first_for_analytics@example.com", admin=True)
     token = _register_and_login(client, "nonadmin_analytics@example.com")

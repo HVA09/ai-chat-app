@@ -39,6 +39,7 @@ from app.schemas.admin import (
     ModelUsageStat,
     ProviderUsageStat,
     ProviderLatencyStat,
+    ProviderStatusOut,
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -184,6 +185,70 @@ def get_provider_latency(
         )
         for provider, requests, avg_latency, min_latency, max_latency in rows
     ]
+
+
+@router.get("/analytics/provider-status", response_model=list[ProviderStatusOut])
+def get_provider_status(
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=30)
+
+    configured = [
+        (
+            "primary",
+            app_settings.AI_PROVIDER.strip().lower(),
+            app_settings.AI_MODEL.strip(),
+            bool(app_settings.AI_API_KEY.strip()),
+        )
+    ]
+    fallback_provider = app_settings.AI_FALLBACK_PROVIDER.strip().lower()
+    fallback_model = app_settings.AI_FALLBACK_MODEL.strip()
+    if fallback_provider:
+        configured.append(
+            (
+                "fallback",
+                fallback_provider,
+                fallback_model,
+                bool(app_settings.AI_FALLBACK_API_KEY.strip()),
+            )
+        )
+
+    results = []
+    seen = set()
+    for role, provider, model, is_configured in configured:
+        key = (role, provider, model)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        requests, last_request_at, avg_latency = (
+            db.query(
+                func.count(UsageLog.id),
+                func.max(UsageLog.created_at),
+                func.avg(UsageLog.latency_ms),
+            )
+            .filter(
+                UsageLog.created_at >= since,
+                UsageLog.provider == provider,
+            )
+            .one()
+        )
+
+        results.append(
+            ProviderStatusOut(
+                provider=provider or "unknown",
+                role=role,
+                model=model or "unknown",
+                configured=is_configured,
+                recent_requests=int(requests or 0),
+                last_request_at=last_request_at,
+                avg_latency_ms=round(avg_latency) if avg_latency is not None else None,
+            )
+        )
+
+    return results
 
 
 @router.get("/analytics/providers", response_model=list[ProviderUsageStat])
