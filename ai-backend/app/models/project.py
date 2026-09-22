@@ -23,6 +23,9 @@ class WorkspaceProject(Base):
     owner_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    assistant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assistants.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -32,6 +35,7 @@ class WorkspaceProject(Base):
 
     workspace = relationship("Workspace", back_populates="projects")
     owner = relationship("User", back_populates="owned_projects")
+    assistant = relationship("Assistant")
     conversations = relationship(
         "Conversation",
         back_populates="project",
