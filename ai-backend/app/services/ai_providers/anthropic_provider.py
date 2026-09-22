@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from app.config import settings
 from app.services.ai_providers.base import AIProvider, AIReply
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
@@ -32,7 +33,7 @@ class AnthropicProvider(AIProvider):
         return (history or []) + [{"role": "user", "content": message}]
 
     async def get_reply(self, message: str, history: list[dict[str, str]] | None = None) -> AIReply:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=settings.AI_REQUEST_TIMEOUT_SECONDS) as client:
             response = await client.post(
                 ANTHROPIC_API_URL,
                 headers=self._headers(),
