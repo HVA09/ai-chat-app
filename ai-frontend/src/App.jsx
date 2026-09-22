@@ -2694,6 +2694,7 @@ export default function App() {
           <FilesPanel
             conversationId={conversationId}
             workspaceId={selectedWorkspaceId}
+            projectId={selectedProjectId}
             onAnalyzeImage={handleAnalyzeImage}
             onClose={() => setShowFiles(false)}
           />
