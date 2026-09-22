@@ -2034,6 +2034,7 @@ export default function App() {
     await streamChatMessage(userText, conversationId, selectedAssistantId, {
       signal: controller.signal,
       workspaceId: selectedWorkspaceId,
+      projectId: selectedProjectId,
       model: selectedModel || null,
       fileIds,
       onConversationId: async (id) => {
