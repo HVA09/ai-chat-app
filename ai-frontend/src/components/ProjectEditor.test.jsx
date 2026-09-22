@@ -103,6 +103,7 @@ describe("ProjectEditor", () => {
   });
 
   it("selects a default assistant and restores it for an existing project", async () => {
+    listProjectMemories.mockResolvedValue([]);
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(
