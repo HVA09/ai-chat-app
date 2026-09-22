@@ -325,6 +325,9 @@ const resources = {
         attachmentError: "تعذر تحديث ارتباط الملف بالمحادثة",
         analyzeImage: "تحليل الصورة",
         analyzePrompt: "ماذا تريد أن تعرف عن الصورة؟",
+        indexImageForAi: "فهرسة الصورة للذكاء الاصطناعي",
+        imageIndexed: "الصورة مفهرسة بالفعل",
+        imageIndexError: "تعذر فهرسة الصورة للبحث الذكي",
       },
 
       scheduledTasks: {
@@ -1111,6 +1114,9 @@ const resources = {
         delete: "Delete",
         analyzeImage: "Analyze image",
         analyzePrompt: "What would you like to know about this image?",
+        indexImageForAi: "Index image for AI",
+        imageIndexed: "Image is already indexed",
+        imageIndexError: "Couldn't index the image for AI search",
         attach: "Attach to conversation",
         detach: "Remove from conversation",
         attachmentError: "Couldn't update the file attachment",
