@@ -9,6 +9,7 @@ from app.models.assistant_workspace_share import AssistantWorkspaceShare
 from app.models.assistant_version import AssistantVersion
 from app.models.assistant_file_link import AssistantFileLink
 from app.models.conversation import Conversation, Message, MessageRole
+from app.models.conversation_comment import ConversationComment
 from app.models.conversation_share import ConversationShare
 from app.models.conversation_workspace_share import ConversationWorkspaceShare
 from app.models.conversation_folder import ConversationFolder
@@ -43,6 +44,7 @@ __all__ = [
     "AssistantVersion",
     "AssistantFileLink",
     "Conversation",
+    "ConversationComment",
     "ConversationShare",
     "ConversationWorkspaceShare",
     "Message",

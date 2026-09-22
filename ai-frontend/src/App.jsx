@@ -4,6 +4,7 @@ import Sidebar from "./components/Sidebar";
 import ChatHeader from "./components/ChatHeader";
 import ChatMessage from "./components/ChatMessage";
 import ChatComposer from "./components/ChatComposer";
+import WorkspaceConversationCommentsPanel from "./components/WorkspaceConversationCommentsPanel";
 import AssistantEditor from "./components/AssistantEditor";
 import ProjectEditor from "./components/ProjectEditor";
 import AuthForm from "./components/AuthForm";
@@ -186,6 +187,7 @@ export default function App() {
   const [showShareManager, setShowShareManager] = useState(false);
   const [workspaceShare, setWorkspaceShare] = useState(null);
   const [readOnlyConversation, setReadOnlyConversation] = useState(false);
+  const [showWorkspaceComments, setShowWorkspaceComments] = useState(false);
   const [conversationSummary, setConversationSummary] = useState(null);
   const [conversationSummaryUpdatedAt, setConversationSummaryUpdatedAt] = useState(null);
   const [conversationBranches, setConversationBranches] = useState([]);
@@ -263,6 +265,7 @@ export default function App() {
     setShowShareManager(false);
     setWorkspaceShare(null);
     setReadOnlyConversation(false);
+    setShowWorkspaceComments(false);
     setShowTrashConversations(false);
     setConversationSummary(null);
     setConversationSummaryUpdatedAt(null);
@@ -1286,6 +1289,7 @@ export default function App() {
     setShowShareManager(false);
     setWorkspaceShare(null);
     setReadOnlyConversation(false);
+    setShowWorkspaceComments(false);
     setSelectedConversationIds([]);
     setConversationId(null);
     setConversationBranches([]);
@@ -1301,6 +1305,7 @@ export default function App() {
   const openConversation = async (id) => {
     setShowShareManager(false);
     setReadOnlyConversation(false);
+    setShowWorkspaceComments(false);
     setSelectedConversationIds([]);
     setError("");
     setInput("");
@@ -1361,6 +1366,7 @@ export default function App() {
       );
       setShowShareManager(false);
       setReadOnlyConversation(true);
+      setShowWorkspaceComments(true);
       setWorkspaceShare(null);
       setSelectedWorkspaceId(Number(workspaceId));
       setConversationId(data.conversation_id);
@@ -2574,6 +2580,29 @@ export default function App() {
         />
 
         <section className="flex flex-1 flex-col p-4">
+          {conversationId &&
+          selectedWorkspaceId !== null &&
+          (workspaceShare || readOnlyConversation) ? (
+            <div className="mb-3">
+              <button
+                type="button"
+                onClick={() => setShowWorkspaceComments((current) => !current)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                {showWorkspaceComments
+                  ? t("workspaceComments.hide")
+                  : t("workspaceComments.button")}
+              </button>
+              {showWorkspaceComments ? (
+                <div className="mt-2">
+                  <WorkspaceConversationCommentsPanel
+                    workspaceId={selectedWorkspaceId}
+                    conversationId={conversationId}
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {conversationId && (conversationSummary || summaryLoading) ? (
             <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div className="flex flex-wrap items-center justify-between gap-2">
