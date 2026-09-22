@@ -666,7 +666,7 @@ async def analyze_attached_image(
     history = _build_history(conversation, db)
     assistant_context = _build_assistant_context(conversation, db)
     project_context = _build_project_context(conversation, db)
-    memory_context = _build_memory_context(conversation.user_id, db)
+    memory_context = _build_memory_context(conversation.user_id, conversation.project_id, db)
     prompt = payload.message
     context_parts = [
         part for part in (memory_context, project_context, assistant_context) if part
