@@ -107,6 +107,7 @@ export async function streamChatMessage(
         const data = dataLine.slice("data: ".length);
 
         if (eventType === "conversation") onConversationId?.(Number(data));
+        else if (eventType === "agent_tool") onAgentTool?.(JSON.parse(data));
         else if (eventType === "sources") onSources?.(JSON.parse(data));
         else if (eventType === "chunk") onChunk?.(data.replace(/\\n/g, "\n"));
         else if (eventType === "error") onError?.(data);
