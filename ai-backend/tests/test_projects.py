@@ -25,11 +25,17 @@ def test_project_crud_and_conversation_filter(client, monkeypatch):
 
     created = client.post(
         "/projects",
-        json={"workspace_id": workspace["id"], "name": "Study", "description": "Study project"},
+        json={
+            "workspace_id": workspace["id"],
+            "name": "Study",
+            "description": "Study project",
+            "instructions": "Answer in Arabic and use practical examples.",
+        },
         headers=headers,
     )
     assert created.status_code == 201
     project = created.json()
+    assert project["instructions"] == "Answer in Arabic and use practical examples."
 
     listed = client.get(
         "/projects",
@@ -70,11 +76,16 @@ def test_project_crud_and_conversation_filter(client, monkeypatch):
 
     updated = client.patch(
         f"/projects/{project['id']}",
-        json={"name": "Study 2", "description": "Updated"},
+        json={
+            "name": "Study 2",
+            "description": "Updated",
+            "instructions": "Keep replies concise and structured.",
+        },
         headers=headers,
     )
     assert updated.status_code == 200
     assert updated.json()["name"] == "Study 2"
+    assert updated.json()["instructions"] == "Keep replies concise and structured."
 
     removed = client.delete(f"/projects/{project['id']}", headers=headers)
     assert removed.status_code == 204
@@ -118,3 +129,114 @@ def test_cannot_move_conversation_to_other_workspace_project(client, monkeypatch
         headers=owner_headers,
     )
     assert response.status_code == 404
+
+
+def test_project_instructions_are_applied_to_chat(client, monkeypatch):
+    token = _register_and_login(client, "project-instructions@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = _create_workspace(client, headers)
+
+    project = client.post(
+        "/projects",
+        json={
+            "workspace_id": workspace["id"],
+            "name": "Python",
+            "instructions": "Explain in Arabic, step by step, with one exercise.",
+        },
+        headers=headers,
+    )
+    assert project.status_code == 201
+    project_id = project.json()["id"]
+
+    captured = {}
+
+    async def fake_get_ai_reply(message, history, model):
+        captured["message"] = message
+        captured["history"] = history
+        captured["model"] = model
+        return AIReply(text="رد")
+
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", fake_get_ai_reply)
+
+    response = client.post(
+        "/chat",
+        json={
+            "message": "اشرح المتغيرات",
+            "workspace_id": workspace["id"],
+            "project_id": project_id,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert "[PROJECT INSTRUCTIONS]" in captured["message"]
+    assert "Explain in Arabic, step by step, with one exercise." in captured["message"]
+
+
+def test_project_instructions_are_scoped_to_project(client, monkeypatch):
+    token = _register_and_login(client, "project-instructions-scope@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = _create_workspace(client, headers)
+
+    first = client.post(
+        "/projects",
+        json={
+            "workspace_id": workspace["id"],
+            "name": "A",
+            "instructions": "Private project guidance A",
+        },
+        headers=headers,
+    ).json()
+    second = client.post(
+        "/projects",
+        json={
+            "workspace_id": workspace["id"],
+            "name": "B",
+            "instructions": "Private project guidance B",
+        },
+        headers=headers,
+    ).json()
+
+    captured = []
+    async def fake_get_ai_reply(message, history, model):
+        captured.append(message)
+        return AIReply(text="رد")
+
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", fake_get_ai_reply)
+
+    response_a = client.post(
+        "/chat",
+        json={
+            "message": "سؤال A",
+            "workspace_id": workspace["id"],
+            "project_id": first["id"],
+        },
+        headers=headers,
+    )
+    assert response_a.status_code == 200
+    assert "Private project guidance A" in captured[-1]
+    assert "Private project guidance B" not in captured[-1]
+
+    response_none = client.post(
+        "/chat",
+        json={
+            "message": "سؤال عام",
+            "workspace_id": workspace["id"],
+        },
+        headers=headers,
+    )
+    assert response_none.status_code == 200
+    assert "Private project guidance A" not in captured[-1]
+    assert "Private project guidance B" not in captured[-1]
+
+    response_b = client.post(
+        "/chat",
+        json={
+            "message": "سؤال B",
+            "workspace_id": workspace["id"],
+            "project_id": second["id"],
+        },
+        headers=headers,
+    )
+    assert response_b.status_code == 200
+    assert "Private project guidance B" in captured[-1]
+    assert "Private project guidance A" not in captured[-1]

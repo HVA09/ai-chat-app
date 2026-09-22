@@ -7,6 +7,7 @@ class ProjectCreate(BaseModel):
     workspace_id: int
     name: str = Field(min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=1000)
+    instructions: str | None = Field(default=None, max_length=6000)
 
     @field_validator("name")
     @classmethod
@@ -20,6 +21,7 @@ class ProjectCreate(BaseModel):
 class ProjectUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=1000)
+    instructions: str | None = Field(default=None, max_length=6000)
 
     @field_validator("name")
     @classmethod
@@ -38,6 +40,7 @@ class ProjectOut(BaseModel):
     owner_id: int
     name: str
     description: str | None
+    instructions: str | None
     created_at: datetime
 
 

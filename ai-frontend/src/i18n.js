@@ -635,6 +635,23 @@ const resources = {
         lastUpdated: "آخر تحديث: {{date}} — راجع محاميًا قبل الاعتماد التجاري النهائي.",
       },
 
+      projectEditor: {
+        createTitle: "إنشاء مشروع",
+        editTitle: "تعديل المشروع",
+        subtitle: "نظّم المشروع وحدد سلوك المساعد داخل هذا المشروع.",
+        close: "إغلاق",
+        nameLabel: "اسم المشروع",
+        namePlaceholder: "مثال: مشروع تعلم Python",
+        descriptionLabel: "الوصف",
+        descriptionPlaceholder: "وصف اختياري للمشروع",
+        instructionsLabel: "تعليمات المشروع",
+        instructionsPlaceholder: "كيف يجب أن يتعامل المساعد مع هذا المشروع؟",
+        requiredError: "أدخل اسم المشروع.",
+        cancel: "إلغاء",
+        saving: "جارٍ الحفظ...",
+        save: "حفظ",
+      },
+
       assistantEditor: {
         createTitle: "إنشاء مساعد",
         editTitle: "تعديل المساعد",
@@ -650,6 +667,23 @@ const resources = {
         cancel: "إلغاء",
         saving: "جارٍ الحفظ...",
         save: "حفظ",
+      },
+
+      projectEditor: {
+        createTitle: "Create project",
+        editTitle: "Edit project",
+        subtitle: "Organize the project and define persistent assistant behavior for it.",
+        close: "Close",
+        nameLabel: "Project name",
+        namePlaceholder: "Example: Python study",
+        descriptionLabel: "Description",
+        descriptionPlaceholder: "Optional project description",
+        instructionsLabel: "Project instructions",
+        instructionsPlaceholder: "How should the assistant behave in this project?",
+        requiredError: "Enter the project name.",
+        cancel: "Cancel",
+        saving: "Saving...",
+        save: "Save",
       },
 
       assistantEditor: {

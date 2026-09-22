@@ -5,6 +5,7 @@ import ChatHeader from "./components/ChatHeader";
 import ChatMessage from "./components/ChatMessage";
 import ChatComposer from "./components/ChatComposer";
 import AssistantEditor from "./components/AssistantEditor";
+import ProjectEditor from "./components/ProjectEditor";
 import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
@@ -161,6 +162,8 @@ export default function App() {
   const [selectedAssistantId, setSelectedAssistantId] = useState(null);
   const [showAssistantEditor, setShowAssistantEditor] = useState(false);
   const [editingAssistantId, setEditingAssistantId] = useState(null);
+  const [showProjectEditor, setShowProjectEditor] = useState(false);
+  const [editingProjectId, setEditingProjectId] = useState(null);
   const [savedPrompts, setSavedPrompts] = useState([]);
   const [bookmarkedMessages, setBookmarkedMessages] = useState([]);
   const [aiModels, setAiModels] = useState([]);
@@ -692,52 +695,67 @@ export default function App() {
     await refreshConversations(showArchivedConversations, id, selectedWorkspaceId, null);
   };
 
-  const handleCreateProject = async () => {
+  const handleCreateProject = () => {
     if (selectedWorkspaceId === null) return;
-    const name = window.prompt(t("sidebar.projectCreatePrompt"));
-    if (!name?.trim()) return;
-    const description = window.prompt(t("sidebar.projectCreateDescriptionPrompt"), "");
-    try {
-      const project = await createProject(selectedWorkspaceId, name.trim(), description?.trim() || "");
-      await refreshProjects(selectedWorkspaceId);
-      setSelectedProjectId(project.id);
-      setSelectedFolderId(null);
-      startNewChat();
-      await refreshConversations(
-        showArchivedConversations,
-        null,
-        selectedWorkspaceId,
-        project.id
-      );
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.projectCreateError"),
-        type: "error",
-      });
-    }
+    setEditingProjectId(null);
+    setShowProjectEditor(true);
   };
 
-  const handleRenameProject = async (id, currentName, currentDescription) => {
-    const name = window.prompt(t("sidebar.projectRenamePrompt"), currentName);
-    if (!name?.trim()) return;
-    const description = window.prompt(
-      t("sidebar.projectEditDescriptionPrompt"),
-      currentDescription || ""
-    );
+  const handleRenameProject = (id) => {
+    setEditingProjectId(id);
+    setShowProjectEditor(true);
+  };
+
+  const handleSaveProject = async ({ name, description, instructions }) => {
     try {
-      await updateProject(id, name.trim(), description?.trim() || "");
-      await refreshProjects(selectedWorkspaceId);
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId
-      );
+      if (editingProjectId === null) {
+        if (selectedWorkspaceId === null) return;
+        const project = await createProject(
+          selectedWorkspaceId,
+          name,
+          description || "",
+          instructions || ""
+        );
+        await refreshProjects(selectedWorkspaceId);
+        setSelectedProjectId(project.id);
+        setSelectedFolderId(null);
+        startNewChat();
+        await refreshConversations(
+          showArchivedConversations,
+          null,
+          selectedWorkspaceId,
+          project.id
+        );
+      } else {
+        const project = await updateProject(
+          editingProjectId,
+          name,
+          description || "",
+          instructions || ""
+        );
+        await refreshProjects(selectedWorkspaceId);
+        if (selectedProjectId === editingProjectId) {
+          setSelectedProjectId(project.id);
+        }
+        await refreshConversations(
+          showArchivedConversations,
+          selectedFolderId,
+          selectedWorkspaceId,
+          selectedProjectId
+        );
+      }
+      setShowProjectEditor(false);
+      setEditingProjectId(null);
     } catch (err) {
       setToast({
-        message: err?.response?.data?.detail || t("app.projectUpdateError"),
+        message:
+          err?.response?.data?.detail ||
+          (editingProjectId === null
+            ? t("app.projectCreateError")
+            : t("app.projectUpdateError")),
         type: "error",
       });
+      throw err;
     }
   };
 
@@ -2719,6 +2737,21 @@ export default function App() {
             setEditingAssistantId(null);
           }}
           onSave={handleSaveAssistant}
+        />
+      )}
+
+      {showProjectEditor && (
+        <ProjectEditor
+          project={
+            editingProjectId === null
+              ? null
+              : projects.find((project) => project.id === editingProjectId) || null
+          }
+          onClose={() => {
+            setShowProjectEditor(false);
+            setEditingProjectId(null);
+          }}
+          onSave={handleSaveProject}
         />
       )}
 
