@@ -87,7 +87,6 @@ import {
   shareAssistantWithWorkspace,
   unshareAssistantFromWorkspace,
 } from "./lib/assistantsApi";
-import { listAssistantVersions } from "./lib/assistantVersionsApi";
 import {
   listTags,
   createTag,
