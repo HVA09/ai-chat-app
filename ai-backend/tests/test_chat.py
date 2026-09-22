@@ -727,6 +727,108 @@ def test_chat_includes_attached_file_text_as_untrusted_context(client, monkeypat
     assert "Linux is an operating system" in sent_message
 
 
+
+
+def test_chat_attaches_requested_file_before_building_context(client, monkeypatch, db_session):
+    mock_reply = AsyncMock(return_value=AIReply(text="تم"))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
+
+    token = _register_and_login(client, "inline-attachment@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    user = client.get("/users/me", headers=headers).json()
+    first = client.post(
+        "/chat",
+        json={"message": "ابدأ"},
+        headers=headers,
+    )
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+
+    from app.models.conversation_file_link import ConversationFileLink
+    from app.models.file_attachment import FileAttachment
+
+    file = FileAttachment(
+        user_id=user["id"],
+        workspace_id=None,
+        original_filename="notes.txt",
+        stored_filename="notes.txt",
+        content_type="text/plain",
+        size_bytes=12,
+        extracted_text="معلومة داخل الملف",
+    )
+    db_session.add(file)
+    db_session.commit()
+    db_session.refresh(file)
+
+    response = client.post(
+        "/chat",
+        json={
+            "message": "لخص الملف",
+            "conversation_id": conversation_id,
+            "file_ids": [file.id],
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200
+
+    link = (
+        db_session.query(ConversationFileLink)
+        .filter(
+            ConversationFileLink.conversation_id == conversation_id,
+            ConversationFileLink.file_id == file.id,
+        )
+        .first()
+    )
+    assert link is not None
+
+    sent_message = mock_reply.await_args.args[0]
+    assert "معلومة داخل الملف" in sent_message
+    assert "[SOURCE S1: notes.txt]" in sent_message
+
+
+def test_chat_rejects_file_belonging_to_another_user(client, db_session, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+
+    owner_token = _register_and_login(client, "inline-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    first = client.post(
+        "/chat",
+        json={"message": "محادثة المالك"},
+        headers=owner_headers,
+    )
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+
+    from app.models.file_attachment import FileAttachment
+    owner = client.get("/users/me", headers=owner_headers).json()
+    file = FileAttachment(
+        user_id=owner["id"],
+        original_filename="private.txt",
+        stored_filename="private.txt",
+        content_type="text/plain",
+        size_bytes=10,
+        extracted_text="خاص",
+    )
+    db_session.add(file)
+    db_session.commit()
+    db_session.refresh(file)
+
+    other_token = _register_and_login(client, "inline-other@example.com")
+    response = client.post(
+        "/chat",
+        json={
+            "message": "حاول إرفاق الملف",
+            "conversation_id": conversation_id,
+            "file_ids": [file.id],
+        },
+        headers={"Authorization": f"Bearer {other_token}"},
+    )
+    assert response.status_code == 404
+
 def test_monthly_ai_cost_budget_blocks_regular_user_when_exceeded(client, db_session, monkeypatch):
     import json
 
