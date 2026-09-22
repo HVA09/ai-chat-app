@@ -1219,6 +1219,8 @@ export default function App() {
     setParentConversationId(null);
     setMessages([getWelcomeMessage(t)]);
     setInput("");
+    setChatAttachments([]);
+    setChatAttachmentUploading(false);
     setEditingMessageIndex(null);
     setError("");
   };
@@ -1229,6 +1231,8 @@ export default function App() {
     setSelectedConversationIds([]);
     setError("");
     setInput("");
+    setChatAttachments([]);
+    setChatAttachmentUploading(false);
     setEditingMessageIndex(null);
     setRetryableUserMessage(null);
     try {
