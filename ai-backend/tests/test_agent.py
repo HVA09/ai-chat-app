@@ -72,6 +72,9 @@ def test_agent_mode_streams_final_answer(client, monkeypatch):
 
     assert response.status_code == 200
     assert "event: conversation" in response.text
+    assert "event: agent_tool" in response.text
+    assert '"tool": "calculator"' in response.text
+    assert '"status": "completed"' in response.text
     assert "event: chunk" in response.text
     assert "حسبت العملية: الناتج 60." in response.text
     assert "event: done" in response.text
