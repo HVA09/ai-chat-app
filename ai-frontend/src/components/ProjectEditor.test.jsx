@@ -28,6 +28,9 @@ const { t } = vi.hoisted(() => ({
       "projectEditor.descriptionPlaceholder": "وصف اختياري",
       "projectEditor.instructionsLabel": "تعليمات المشروع",
       "projectEditor.instructionsPlaceholder": "كيف يجب أن يتعامل المساعد مع هذا المشروع؟",
+      "projectEditor.assistantLabel": "المساعد الافتراضي",
+      "projectEditor.noDefaultAssistant": "بدون مساعد افتراضي",
+      "projectEditor.assistantHint": "سيُستخدم تلقائيًا للمحادثات الجديدة داخل المشروع.",
       "projectEditor.requiredError": "أدخل اسم المشروع",
       "projectEditor.memoryTitle": "ذاكرة المشروع",
       "projectEditor.memoryDescription": "ذاكرة مشتركة",
@@ -95,6 +98,42 @@ describe("ProjectEditor", () => {
       name: "Python",
       description: "تعلم بايثون",
       instructions: "اشرح بالعربية وبخطوات بسيطة.",
+      assistant_id: null,
+    });
+  });
+
+  it("selects a default assistant and restores it for an existing project", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ProjectEditor
+        assistants={[
+          { id: 4, name: "مساعد الدراسة" },
+          { id: 7, name: "مساعد البرمجة" },
+        ]}
+        project={{
+          id: 3,
+          name: "Python",
+          description: "تعلم البرمجة",
+          instructions: "استخدم أمثلة عملية.",
+          assistant_id: 7,
+        }}
+        onClose={vi.fn()}
+        onSave={onSave}
+      />
+    );
+
+    const select = screen.getByLabelText("المساعد الافتراضي");
+    expect(select).toHaveValue("7");
+
+    await user.selectOptions(select, "4");
+    await user.click(screen.getByRole("button", { name: "حفظ" }));
+
+    expect(onSave).toHaveBeenCalledWith({
+      name: "Python",
+      description: "تعلم البرمجة",
+      instructions: "استخدم أمثلة عملية.",
+      assistant_id: 4,
     });
   });
 
