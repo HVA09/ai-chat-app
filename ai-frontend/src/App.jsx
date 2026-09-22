@@ -1391,6 +1391,20 @@ export default function App() {
     }
   };
 
+  const handleDuplicatedWorkspaceConversation = async (id) => {
+    if (!id) {
+      setToast({ message: t("workspaceSharing.duplicateError"), type: "error" });
+      return;
+    }
+    try {
+      await openConversation(id);
+      setReadOnlyConversation(false);
+      setToast({ message: t("workspaceSharing.duplicated"), type: "success" });
+    } catch {
+      setToast({ message: t("workspaceSharing.duplicateError"), type: "error" });
+    }
+  };
+
   const handleToggleWorkspaceShare = async () => {
     if (!conversationId || !selectedWorkspaceId || loading || readOnlyConversation) return;
     try {
@@ -2500,6 +2514,7 @@ export default function App() {
         onOpenWorkspaceMembers={handleOpenWorkspaceMembers}
         onOpenScheduledTasks={() => setShowScheduledTasks(true)}
         onOpenWorkspaceSharedConversation={handleOpenWorkspaceSharedConversation}
+        onDuplicatedWorkspaceConversation={handleDuplicatedWorkspaceConversation}
         searchValue={conversationSearch}
         onSearchChange={setConversationSearch}
         showArchived={showArchivedConversations}
