@@ -18,7 +18,7 @@ from app.models.workspace import Workspace, WorkspaceMember
 from app.notifications import notify
 from app.services.ai_service import get_ai_reply
 from app.services.email_service import send_email
-from app.dependencies import get_daily_ai_limit
+from app.dependencies import enforce_ai_cost_budget, get_daily_ai_limit
 
 logger = get_logger("tasks")
 
@@ -139,6 +139,7 @@ def _execute_scheduled_task(
             return
 
         _ensure_ai_quota(user, workspace, db)
+        enforce_ai_cost_budget(user, db)
 
         ai_model = workspace.default_ai_model
         reply = asyncio.run(get_ai_reply(task.prompt, [], ai_model))
