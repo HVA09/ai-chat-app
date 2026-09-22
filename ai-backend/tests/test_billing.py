@@ -21,9 +21,15 @@ def _register_and_login(client, email="billing@example.com", password="StrongPas
 def test_list_plans_is_public_and_seeded(client):
     response = client.get("/billing/plans")
     assert response.status_code == 200
-    names = [p["name"] for p in response.json()]
+    plans = response.json()
+    names = [p["name"] for p in plans]
     assert "Free" in names
     assert "Pro" in names
+
+    free = next(plan for plan in plans if plan["name"] == "Free")
+    pro = next(plan for plan in plans if plan["name"] == "Pro")
+    assert free["allowed_models"] == []
+    assert pro["allowed_models"] == ["*"]
 
 
 def test_get_subscription_returns_null_when_none(client):
