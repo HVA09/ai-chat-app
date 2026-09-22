@@ -7,6 +7,8 @@ from typing import TypedDict
 from sqlalchemy import and_, delete, exists, or_
 from sqlalchemy.orm import Session
 
+from app.models.assistant import Assistant
+from app.models.assistant_file_link import AssistantFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.file_chunk import FileChunk
 from app.services.embeddings import embed_documents_sync, embed_query
@@ -77,6 +79,7 @@ async def retrieve_relevant_chunks(
     top_k: int = TOP_K,
     workspace_id: int | None = None,
     project_id: int | None = None,
+    assistant_id: int | None = None,
 ) -> list[tuple[FileChunk, FileAttachment]]:
     from app.models.conversation_file_link import ConversationFileLink
 
@@ -108,12 +111,25 @@ async def retrieve_relevant_chunks(
         else False
     )
 
+    assistant_scope = (
+        and_(
+            AssistantFileLink.assistant_id == assistant_id,
+            FileAttachment.user_id == Assistant.user_id,
+            FileAttachment.workspace_id.is_(None),
+            FileAttachment.project_id.is_(None),
+        )
+        if assistant_id is not None
+        else False
+    )
+
     return (
         db.query(FileChunk, FileAttachment)
         .join(FileAttachment, FileAttachment.id == FileChunk.file_id)
+        .outerjoin(AssistantFileLink, AssistantFileLink.file_id == FileAttachment.id)
+        .outerjoin(Assistant, Assistant.id == AssistantFileLink.assistant_id)
         .filter(
             FileChunk.embedding.is_not(None),
-            or_(personal_scope, workspace_scope, project_scope),
+            or_(personal_scope, workspace_scope, project_scope, assistant_scope),
         )
         .order_by(FileChunk.embedding.cosine_distance(query_embedding))
         .limit(max(1, min(top_k, 12)))
