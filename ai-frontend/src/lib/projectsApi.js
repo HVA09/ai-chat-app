@@ -7,21 +7,35 @@ export async function listProjects(workspaceId) {
   return data;
 }
 
-export async function createProject(workspaceId, name, description = "", instructions = "") {
+export async function createProject(
+  workspaceId,
+  name,
+  description = "",
+  instructions = "",
+  assistantId = null
+) {
   const { data } = await api.post("/projects", {
     workspace_id: workspaceId,
     name,
     description: description || null,
     instructions: instructions || null,
+    assistant_id: assistantId ?? null,
   });
   return data;
 }
 
-export async function updateProject(id, name, description = "", instructions = "") {
+export async function updateProject(
+  id,
+  name,
+  description = "",
+  instructions = "",
+  assistantId = null
+) {
   const { data } = await api.patch(`/projects/${id}`, {
     name,
     description: description || null,
     instructions: instructions || null,
+    assistant_id: assistantId ?? null,
   });
   return data;
 }
