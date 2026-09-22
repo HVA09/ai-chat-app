@@ -781,6 +781,27 @@ const resources = {
         enableDark: "تفعيل الوضع الداكن",
       },
 
+
+      workspaceComments: {
+        button: "التعليقات",
+        hide: "إخفاء التعليقات",
+        title: "تعليقات المحادثة",
+        hint: "ناقش المحادثة مع أعضاء مساحة العمل.",
+        refresh: "تحديث",
+        empty: "لا توجد تعليقات بعد",
+        placeholder: "اكتب تعليقك...",
+        visibility: "مرئي لأعضاء مساحة العمل الذين لديهم وصول للمحادثة",
+        add: "إضافة تعليق",
+        edit: "تعديل",
+        delete: "حذف",
+        save: "حفظ",
+        cancel: "إلغاء",
+        loadError: "تعذر تحميل التعليقات",
+        saveError: "تعذر حفظ التعليق",
+        updateError: "تعذر تعديل التعليق",
+        deleteError: "تعذر حذف التعليق",
+      },
+
       workspaceSharing: {
         title: "محادثات مساحة العمل المشتركة",
         empty: "لا توجد محادثات مشتركة مع مساحة العمل",
@@ -1561,6 +1582,27 @@ const resources = {
       theme: {
         enableLight: "Switch to light mode",
         enableDark: "Switch to dark mode",
+      },
+
+
+      workspaceComments: {
+        button: "Comments",
+        hide: "Hide comments",
+        title: "Conversation comments",
+        hint: "Discuss the conversation with workspace members.",
+        refresh: "Refresh",
+        empty: "No comments yet",
+        placeholder: "Write a comment...",
+        visibility: "Visible to workspace members who can access this conversation",
+        add: "Add comment",
+        edit: "Edit",
+        delete: "Delete",
+        save: "Save",
+        cancel: "Cancel",
+        loadError: "Couldn't load comments",
+        saveError: "Couldn't save the comment",
+        updateError: "Couldn't update the comment",
+        deleteError: "Couldn't delete the comment",
       },
 
       workspaceSharing: {
