@@ -187,6 +187,7 @@ export default function App() {
   const [autoGenerateSummaries, setAutoGenerateSummaries] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
+  const [retryableUserMessage, setRetryableUserMessage] = useState(null);
   const bottomRef = useRef(null);
   const streamAbortRef = useRef(null);
   const autoSummaryInFlightRef = useRef(false);
@@ -238,6 +239,7 @@ export default function App() {
     setMessages([getWelcomeMessage(t)]);
     setInput("");
     setEditingMessageIndex(null);
+    setRetryableUserMessage(null);
     setError("");
     setCurrentUser(null);
     setShowAccountSettings(false);
@@ -1222,6 +1224,7 @@ export default function App() {
     setError("");
     setInput("");
     setEditingMessageIndex(null);
+    setRetryableUserMessage(null);
     try {
       const data = await getConversation(id);
       setConversationId(data.id);
@@ -1848,6 +1851,7 @@ export default function App() {
   const startEditingMessage = (index) => {
     if (readOnlyConversation || loading || !conversationId || messages[index]?.role !== "user") return;
     setError("");
+    setRetryableUserMessage(null);
     setEditingMessageIndex(index);
     setInput(messages[index]?.text ?? "");
   };
@@ -1865,6 +1869,7 @@ export default function App() {
     const previousMessages = messages;
     autoSummaryLastMessageCountRef.current[conversationId] = 0;
     setError("");
+    setRetryableUserMessage(null);
     messageCountRef.current = targetIndex + 2;
     setMessages((prev) => [
       ...prev.slice(0, targetIndex + 1).map((message, index) =>
@@ -1934,6 +1939,7 @@ export default function App() {
     if (!userText) return;
 
     setError("");
+    setRetryableUserMessage(null);
     messageCountRef.current += 2;
     setMessages((prev) => [
       ...prev,
@@ -1995,6 +2001,7 @@ export default function App() {
       onDone: async () => {
         streamAbortRef.current = null;
         setLoading(false);
+        setRetryableUserMessage(null);
         if (isNewConversation) {
           refreshConversations(
             showArchivedConversations,
@@ -2013,11 +2020,111 @@ export default function App() {
         streamAbortRef.current = null;
         setLoading(false);
         setError(message);
-        // نشيل فقاعة رد المساعد الفاضية لو ما وصل أي رد أصلًا
         setMessages((prev) => {
           const last = prev[prev.length - 1];
-          if (last?.role === "assistant" && last.text === "") return prev.slice(0, -1);
+          if (last?.role === "assistant" && last.text === "") {
+            const next = prev.slice(0, -1);
+            messageCountRef.current = next.length;
+            return next;
+          }
+          messageCountRef.current = prev.length;
           return prev;
+        });
+        const failedConversationId = createdConversationId || conversationId;
+        if (failedConversationId) {
+          setRetryableUserMessage({
+            conversationId: failedConversationId,
+            text: userText,
+          });
+        }
+      },
+    });
+  };
+
+  const retryFailedGeneration = async () => {
+    if (
+      readOnlyConversation ||
+      loading ||
+      !retryableUserMessage ||
+      !conversationId ||
+      retryableUserMessage.conversationId !== conversationId
+    ) {
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+    setRetryableUserMessage(null);
+    messageCountRef.current += 1;
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "assistant",
+        text: "",
+        time: new Date().toLocaleTimeString(),
+        feedback: null,
+        sources: [],
+      },
+    ]);
+
+    const controller = new AbortController();
+    streamAbortRef.current = controller;
+    const targetConversationId = conversationId;
+
+    const appendToLastMessage = (chunk) => {
+      setMessages((prev) => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        next[next.length - 1] = { ...last, text: last.text + chunk };
+        return next;
+      });
+    };
+
+    await streamRegenerateMessage(targetConversationId, {
+      signal: controller.signal,
+      onConversationId: (id) => setConversationId(id),
+      onSources: (sources) => {
+        setMessages((prev) => prev.map((message, index) =>
+          index === prev.length - 1 && message.role === "assistant"
+            ? { ...message, sources }
+            : message
+        ));
+      },
+      onChunk: appendToLastMessage,
+      onDone: () => {
+        streamAbortRef.current = null;
+        setLoading(false);
+        refreshConversations(
+          showArchivedConversations,
+          selectedFolderId,
+          selectedWorkspaceId,
+          selectedProjectId,
+          conversationSearch,
+          showTrashConversations,
+          selectedTagId
+        );
+        void maybeAutoSummarizeConversation(
+          targetConversationId,
+          messageCountRef.current
+        );
+      },
+      onError: (message) => {
+        streamAbortRef.current = null;
+        setLoading(false);
+        setError(message);
+        setMessages((prev) => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant" && last.text === "") {
+            const next = prev.slice(0, -1);
+            messageCountRef.current = next.length;
+            return next;
+          }
+          messageCountRef.current = prev.length;
+          return prev;
+        });
+        setRetryableUserMessage({
+          conversationId: targetConversationId,
+          text: retryableUserMessage.text,
         });
       },
     });
@@ -2026,6 +2133,7 @@ export default function App() {
   const regenerateLastResponse = async () => {
     if (readOnlyConversation || !conversationId || loading || lastAssistantIndex < 0) return;
 
+    setRetryableUserMessage(null);
     const targetIndex = lastAssistantIndex;
     const previousText = messages[targetIndex]?.text ?? "";
     autoSummaryLastMessageCountRef.current[conversationId] = 0;
@@ -2418,8 +2526,19 @@ export default function App() {
           </div>
 
           {error && (
-            <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <span>{error}</span>
+              {retryableUserMessage?.conversationId === conversationId &&
+              !loading &&
+              !readOnlyConversation ? (
+                <button
+                  type="button"
+                  onClick={retryFailedGeneration}
+                  className="rounded-xl border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-300 dark:border-red-800 dark:bg-slate-900 dark:text-red-300 dark:hover:bg-red-950"
+                >
+                  {t("app.retryLastMessage")}
+                </button>
+              ) : null}
             </div>
           )}
         </section>

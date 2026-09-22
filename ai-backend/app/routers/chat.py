@@ -1313,6 +1313,7 @@ async def delete_chat_message(
 @router.post("/{conversation_id}/regenerate/stream")
 async def regenerate_chat_stream(
     conversation_id: int,
+    request: Request,
     current_user: User = Depends(enforce_daily_ai_limit),
     db: Session = Depends(get_db),
 ):
@@ -1354,14 +1355,46 @@ async def regenerate_chat_stream(
         yield f"event: conversation\ndata: {conversation.id}\n\n"
         yield f"event: sources\ndata: {json.dumps(sources, ensure_ascii=False)}\n\n"
         full_reply = ""
+        stream_iterator = stream_ai_reply(ai_message, history, conversation.ai_model).__aiter__()
         try:
-            async for chunk in stream_ai_reply(ai_message, history, conversation.ai_model):
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(
+                        stream_iterator.__anext__(),
+                        timeout=settings.AI_STREAM_IDLE_TIMEOUT_SECONDS,
+                    )
+                except StopAsyncIteration:
+                    break
+                except TimeoutError:
+                    logger.warning(
+                        "انتهت مهلة خمول إعادة التوليد لمحادثة %s بعد %.1f ثانية",
+                        conversation.id,
+                        settings.AI_STREAM_IDLE_TIMEOUT_SECONDS,
+                    )
+                    yield "event: error\ndata: انتهت مهلة بث الرد بسبب عدم وصول بيانات جديدة\n\n"
+                    return
+
+                if await request.is_disconnected():
+                    logger.info("العميل أغلق إعادة توليد المحادثة %s أثناء التوليد", conversation.id)
+                    return
+
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
         except Exception:
             logger.exception("خطأ أثناء إعادة توليد الرد لمحادثة %s", conversation.id)
             yield "event: error\ndata: حدث خطأ أثناء إعادة توليد الرد\n\n"
+            return
+        finally:
+            close_iterator = getattr(stream_iterator, "aclose", None)
+            if close_iterator is not None:
+                try:
+                    await close_iterator()
+                except Exception:
+                    logger.debug("تعذر إغلاق مولد إعادة التوليد لمحادثة %s", conversation.id, exc_info=True)
+
+        if await request.is_disconnected():
+            logger.info("العميل أغلق إعادة توليد المحادثة %s قبل حفظ الرد", conversation.id)
             return
 
         try:
@@ -1392,6 +1425,7 @@ async def regenerate_chat_stream(
 async def edit_chat_stream(
     conversation_id: int,
     payload: ChatEditRequest,
+    request: Request,
     current_user: User = Depends(enforce_daily_ai_limit),
     db: Session = Depends(get_db),
 ):
@@ -1429,14 +1463,46 @@ async def edit_chat_stream(
         yield f"event: conversation\ndata: {conversation.id}\n\n"
         yield f"event: sources\ndata: {json.dumps(sources, ensure_ascii=False)}\n\n"
         full_reply = ""
+        stream_iterator = stream_ai_reply(ai_message, history, conversation.ai_model).__aiter__()
         try:
-            async for chunk in stream_ai_reply(ai_message, history, conversation.ai_model):
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(
+                        stream_iterator.__anext__(),
+                        timeout=settings.AI_STREAM_IDLE_TIMEOUT_SECONDS,
+                    )
+                except StopAsyncIteration:
+                    break
+                except TimeoutError:
+                    logger.warning(
+                        "انتهت مهلة خمول تعديل الرسالة لمحادثة %s بعد %.1f ثانية",
+                        conversation.id,
+                        settings.AI_STREAM_IDLE_TIMEOUT_SECONDS,
+                    )
+                    yield "event: error\ndata: انتهت مهلة بث الرد بسبب عدم وصول بيانات جديدة\n\n"
+                    return
+
+                if await request.is_disconnected():
+                    logger.info("العميل أغلق تعديل المحادثة %s أثناء التوليد", conversation.id)
+                    return
+
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
         except Exception:
             logger.exception("خطأ أثناء تعديل رسالة لمحادثة %s", conversation.id)
             yield "event: error\ndata: حدث خطأ أثناء تعديل الرسالة\n\n"
+            return
+        finally:
+            close_iterator = getattr(stream_iterator, "aclose", None)
+            if close_iterator is not None:
+                try:
+                    await close_iterator()
+                except Exception:
+                    logger.debug("تعذر إغلاق مولد تعديل الرسالة لمحادثة %s", conversation.id, exc_info=True)
+
+        if await request.is_disconnected():
+            logger.info("العميل أغلق تعديل المحادثة %s قبل حفظ الرد", conversation.id)
             return
 
         try:
