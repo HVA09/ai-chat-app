@@ -448,6 +448,7 @@ def test_stream_idle_timeout_does_not_persist_partial_reply(client, monkeypatch,
         json={"message": "اختبار مهلة البث"},
         headers=headers,
     ) as response:
+        response.read()
         body = response.text
 
     assert response.status_code == 200
