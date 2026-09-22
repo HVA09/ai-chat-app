@@ -13,6 +13,7 @@ class ChatRequest(BaseModel):
     assistant_id: int | None = None
     workspace_id: int | None = None
     model: str | None = Field(default=None, max_length=100)
+    file_ids: list[int] = Field(default_factory=list, max_length=10)
 
     @field_validator("model")
     @classmethod

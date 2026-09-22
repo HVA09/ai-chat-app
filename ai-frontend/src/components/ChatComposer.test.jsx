@@ -17,6 +17,10 @@ vi.mock("react-i18next", () => ({
       "tools.voiceInput": "إدخال صوتي",
       "tools.voiceStop": "إيقاف الإدخال الصوتي",
       "tools.modelSelector": "نموذج الذكاء الاصطناعي",
+      "tools.attachFiles": "إرفاق ملفات",
+      "tools.removeAttachment": "إزالة الملف",
+      "tools.uploadingAttachment": "جارٍ رفع الملف...",
+      "tools.dropFilesHere": "أسقط الملفات هنا",
     })[key] ?? key,
   }),
 }));
@@ -199,4 +203,48 @@ describe("ChatComposer tools", () => {
     expect(onInsertAgent).toHaveBeenCalled();
   });
 
+});
+
+
+describe("ChatComposer attachments", () => {
+  it("يستدعي رفع الملفات عند اختيارها", async () => {
+    const user = userEvent.setup();
+    const onAttachFiles = vi.fn();
+    const file = new File(["hello"], "notes.txt", { type: "text/plain" });
+
+    render(
+      <ChatComposer
+        value="سؤال"
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onAttachFiles={onAttachFiles}
+        attachments={[]}
+      />
+    );
+
+    const input = screen.getByLabelText("إرفاق ملفات");
+    await user.upload(input, file);
+
+    expect(onAttachFiles).toHaveBeenCalledWith([file]);
+  });
+
+  it("يستطيع إزالة مرفق موجود", async () => {
+    const user = userEvent.setup();
+    const onRemoveAttachment = vi.fn();
+
+    render(
+      <ChatComposer
+        value="سؤال"
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onRemoveAttachment={onRemoveAttachment}
+        attachments={[{ id: 7, original_filename: "notes.txt" }]}
+      />
+    );
+
+    await user.click(screen.getByLabelText("إزالة الملف"));
+    expect(onRemoveAttachment).toHaveBeenCalledWith(7);
+  });
 });

@@ -215,6 +215,67 @@ def _get_or_create_conversation(
     return conversation
 
 
+
+def _attach_requested_files(
+    file_ids: list[int],
+    conversation: Conversation,
+    current_user: User,
+    db: Session,
+) -> None:
+    """Validate and attach up to ten user/workspace files before building AI context."""
+    if not file_ids:
+        return
+
+    unique_ids = list(dict.fromkeys(file_ids))
+    if len(unique_ids) > 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="يمكن إرفاق 10 ملفات كحد أقصى في الرسالة",
+        )
+
+    files = db.query(FileAttachment).filter(FileAttachment.id.in_(unique_ids)).all()
+    by_id = {file.id: file for file in files}
+    forbidden = [
+        file_id
+        for file_id in unique_ids
+        if (
+            file_id not in by_id
+            or (
+                by_id[file_id].workspace_id is None
+                and by_id[file_id].user_id != current_user.id
+            )
+            or (
+                by_id[file_id].workspace_id is not None
+                and by_id[file_id].workspace_id != conversation.workspace_id
+            )
+        )
+    ]
+    if forbidden:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="أحد الملفات غير موجود أو غير متاح لهذه المحادثة",
+        )
+
+    existing_ids = {
+        link.file_id
+        for link in db.query(ConversationFileLink)
+        .filter(
+            ConversationFileLink.conversation_id == conversation.id,
+            ConversationFileLink.file_id.in_(unique_ids),
+        )
+        .all()
+    }
+    for file_id in unique_ids:
+        if file_id not in existing_ids:
+            db.add(
+                ConversationFileLink(
+                    conversation_id=conversation.id,
+                    file_id=file_id,
+                )
+            )
+    db.flush()
+
+
 def _build_history(conversation: Conversation, db: Session) -> list[dict[str, str]]:
     """يجيب آخر MAX_HISTORY_MESSAGES رسالة مباشرة من القاعدة (مش كل تاريخ المحادثة)"""
     recent_messages = (
@@ -635,6 +696,7 @@ async def chat(
     db: Session = Depends(get_db),
 ):
     conversation = _get_or_create_conversation(payload, current_user, db)
+    _attach_requested_files(payload.file_ids, conversation, current_user, db)
     if conversation.workspace_id is not None:
         enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
     agent_task = extract_agent_request(payload.message)
@@ -868,6 +930,7 @@ async def chat_stream(
     الأسطر الجديدة داخل chunk تُستبدل بـ \\\n نصية عشان ما تكسر صيغة السطر الواحد لكل حدث.
     """
     conversation = _get_or_create_conversation(payload, current_user, db)
+    _attach_requested_files(payload.file_ids, conversation, current_user, db)
     if conversation.workspace_id is not None:
         enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
     agent_task = extract_agent_request(payload.message)

@@ -98,6 +98,8 @@ import {
   updateSavedPrompt,
   deleteSavedPrompt,
 } from "./lib/savedPromptsApi";
+import { uploadFile } from "./lib/filesApi";
+import { getErrorMessage } from "./lib/errors";
 import { getCurrentUser } from "./lib/usersApi";
 import {
   listNotifications,
@@ -164,6 +166,8 @@ export default function App() {
   const [aiModels, setAiModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [input, setInput] = useState("");
+  const [chatAttachments, setChatAttachments] = useState([]);
+  const [chatAttachmentUploading, setChatAttachmentUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null); // { message, type }
@@ -238,6 +242,8 @@ export default function App() {
     setConversationSummaryUpdatedAt(null);
     setMessages([getWelcomeMessage(t)]);
     setInput("");
+    setChatAttachments([]);
+    setChatAttachmentUploading(false);
     setEditingMessageIndex(null);
     setRetryableUserMessage(null);
     setError("");
@@ -1213,6 +1219,8 @@ export default function App() {
     setParentConversationId(null);
     setMessages([getWelcomeMessage(t)]);
     setInput("");
+    setChatAttachments([]);
+    setChatAttachmentUploading(false);
     setEditingMessageIndex(null);
     setError("");
   };
@@ -1223,6 +1231,8 @@ export default function App() {
     setSelectedConversationIds([]);
     setError("");
     setInput("");
+    setChatAttachments([]);
+    setChatAttachmentUploading(false);
     setEditingMessageIndex(null);
     setRetryableUserMessage(null);
     try {
@@ -1326,6 +1336,60 @@ export default function App() {
         type: "error",
       });
     }
+  };
+
+  const handleAttachFiles = async (files) => {
+    if (
+      readOnlyConversation ||
+      loading ||
+      editingMessageIndex !== null ||
+      chatAttachmentUploading
+    ) {
+      return;
+    }
+
+    const selectedFiles = Array.from(files || []);
+    if (!selectedFiles.length) return;
+
+    const remainingSlots = 10 - chatAttachments.length;
+    if (remainingSlots <= 0) {
+      setToast({ message: t("app.tooManyAttachments"), type: "error" });
+      return;
+    }
+
+    const filesToUpload = selectedFiles.slice(0, remainingSlots);
+    if (filesToUpload.length < selectedFiles.length) {
+      setToast({ message: t("app.attachmentLimitReached"), type: "error" });
+    }
+
+    setChatAttachmentUploading(true);
+    try {
+      const uploaded = [];
+      for (const file of filesToUpload) {
+        const result = await uploadFile(file, undefined, null, selectedWorkspaceId);
+        uploaded.push(result);
+      }
+      setChatAttachments((current) => [
+        ...current,
+        ...uploaded.map((file) => ({
+          id: file.id,
+          original_filename: file.original_filename,
+          content_type: file.content_type,
+          size_bytes: file.size_bytes,
+        })),
+      ]);
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.attachmentUploadError")),
+        type: "error",
+      });
+    } finally {
+      setChatAttachmentUploading(false);
+    }
+  };
+
+  const handleRemoveAttachment = (fileId) => {
+    setChatAttachments((current) => current.filter((file) => file.id !== fileId));
   };
 
   const handleAnalyzeImage = async (file, prompt) => {
@@ -1852,6 +1916,7 @@ export default function App() {
     if (readOnlyConversation || loading || !conversationId || messages[index]?.role !== "user") return;
     setError("");
     setRetryableUserMessage(null);
+    setChatAttachments([]);
     setEditingMessageIndex(index);
     setInput(messages[index]?.text ?? "");
   };
@@ -1938,6 +2003,7 @@ export default function App() {
     const userText = input.trim();
     if (!userText) return;
 
+    const fileIds = chatAttachments.map((file) => file.id);
     setError("");
     setRetryableUserMessage(null);
     messageCountRef.current += 2;
@@ -1969,6 +2035,7 @@ export default function App() {
       signal: controller.signal,
       workspaceId: selectedWorkspaceId,
       model: selectedModel || null,
+      fileIds,
       onConversationId: async (id) => {
         createdConversationId = id;
         setConversationId(id);
@@ -2002,6 +2069,7 @@ export default function App() {
         streamAbortRef.current = null;
         setLoading(false);
         setRetryableUserMessage(null);
+        setChatAttachments([]);
         if (isNewConversation) {
           refreshConversations(
             showArchivedConversations,
@@ -2582,6 +2650,10 @@ export default function App() {
           isEditing={editingMessageIndex !== null}
           onCancelEdit={cancelEditing}
           onVoiceError={(message) => setToast({ message, type: "error" })}
+          attachments={chatAttachments}
+          onAttachFiles={handleAttachFiles}
+          onRemoveAttachment={handleRemoveAttachment}
+          attachmentUploading={chatAttachmentUploading}
           models={aiModels}
           selectedModel={selectedModel}
           onSelectModel={setSelectedModel}
