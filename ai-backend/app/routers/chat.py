@@ -1139,11 +1139,6 @@ async def chat_stream(
         ).__aiter__()
         try:
             while True:
-                # إذا أغلق المتصفح الاتصال، لا نستهلك المزيد من chunks ولا نحفظ ردًا جزئيًا.
-                if await request.is_disconnected():
-                    logger.info("العميل أغلق بث المحادثة %s أثناء التوليد", conversation.id)
-                    return
-
                 try:
                     chunk = await asyncio.wait_for(
                         stream_iterator.__anext__(),
@@ -1162,6 +1157,8 @@ async def chat_stream(
                     )
                     return
 
+                # افحص انقطاع العميل بعد استلام chunk، حتى نحافظ على أول chunk
+                # في حالة disconnect الذي يحدث بين chunks.
                 if await request.is_disconnected():
                     logger.info("العميل أغلق بث المحادثة %s أثناء التوليد", conversation.id)
                     return
