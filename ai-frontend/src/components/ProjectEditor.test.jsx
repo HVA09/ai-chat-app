@@ -124,7 +124,7 @@ describe("ProjectEditor", () => {
       />
     );
 
-    const select = screen.getByLabelText("المساعد الافتراضي");
+    const select = screen.getByRole("combobox");
     expect(select).toHaveValue("7");
 
     await user.selectOptions(select, "4");
