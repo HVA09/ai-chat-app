@@ -80,7 +80,7 @@ class OpenAICompatibleProvider(AIProvider):
         tools: list[dict],
         tool_choice: str = "auto",
     ) -> AIToolReply:
-        async with httpx.AsyncClient(timeout=settings.AI_REQUEST_TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(timeout=45.0) as client:
             response = await client.post(
                 f"{self.base_url}/chat/completions",
                 headers=self._headers(),
