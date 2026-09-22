@@ -25,6 +25,7 @@ def test_index_image_for_rag_is_explicit_and_persists_usage(client, monkeypatch,
 
     upload_root = tmp_path / "uploads"
     monkeypatch.setattr(files_router.settings, "UPLOAD_DIR", str(upload_root))
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda db, file: 0)
 
     uploaded = client.post(
         "/files/upload",
@@ -79,6 +80,7 @@ def test_index_image_for_rag_is_explicit_and_persists_usage(client, monkeypatch,
 def test_index_image_for_rag_rejects_non_image(client, monkeypatch):
     token = _register_and_login(client, "not-image@example.com")
     headers = {"Authorization": f"Bearer {token}"}
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda db, file: 0)
 
     uploaded = client.post(
         "/files/upload",
