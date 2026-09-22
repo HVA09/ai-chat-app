@@ -1,6 +1,7 @@
 from app.models.user import User, UserRole
 from app.models.api_key import APIKey
 from app.models.user_memory import UserMemory
+from app.models.project_memory import ProjectMemory
 from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
 from app.models.workspace_invitation import WorkspaceInvitation
 from app.models.assistant import Assistant
@@ -30,6 +31,7 @@ __all__ = [
     "UserRole",
     "APIKey",
     "UserMemory",
+    "ProjectMemory",
     "Workspace",
     "WorkspaceMember",
     "WorkspaceRole",
