@@ -156,3 +156,104 @@ def test_owner_can_unshare_workspace_conversation(client, monkeypatch):
         f"/conversations/{conversation_id}/workspace-share",
         headers=headers,
     ).status_code == 404
+
+
+def test_member_can_duplicate_shared_workspace_conversation(client, db_session, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+
+    owner_token = _register_and_login(client, "workspace-duplicate-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace = client.post(
+        "/workspaces",
+        json={"name": "Duplicate Team"},
+        headers=owner_headers,
+    ).json()
+
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "رسالة مشتركة", "workspace_id": workspace["id"]},
+        headers=owner_headers,
+    ).json()["conversation_id"]
+
+    member_token = _register_and_login(client, "workspace-duplicate-member@example.com")
+    member = (
+        db_session.query(User)
+        .filter(User.email == "workspace-duplicate-member@example.com")
+        .one()
+    )
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace["id"],
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    db_session.commit()
+
+    shared = client.post(
+        f"/conversations/{conversation_id}/workspace-share",
+        headers=owner_headers,
+    )
+    assert shared.status_code == 201
+
+    duplicated = client.post(
+        f"/workspaces/{workspace['id']}/shared-conversations/{conversation_id}/duplicate",
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
+    assert duplicated.status_code == 201
+    copied = duplicated.json()
+    assert copied["id"] != conversation_id
+    assert copied["title"].startswith("نسخة من")
+    assert copied["workspace_id"] == workspace["id"]
+    assert copied["folder_id"] is None
+    assert copied["project_id"] is None
+    assert copied["assistant_id"] is None
+    assert copied["ai_model"] is None
+
+    detail = client.get(
+        f"/conversations/{copied['id']}",
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
+    assert detail.status_code == 200
+    assert [message["content"] for message in detail.json()["messages"]] == [
+        "رسالة مشتركة",
+        "رد",
+    ]
+
+
+def test_non_member_cannot_duplicate_shared_workspace_conversation(client, db_session, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+
+    owner_token = _register_and_login(client, "workspace-duplicate-owner-2@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace = client.post(
+        "/workspaces",
+        json={"name": "Private Duplicate Team"},
+        headers=owner_headers,
+    ).json()
+
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "سر", "workspace_id": workspace["id"]},
+        headers=owner_headers,
+    ).json()["conversation_id"]
+
+    assert client.post(
+        f"/conversations/{conversation_id}/workspace-share",
+        headers=owner_headers,
+    ).status_code == 201
+
+    outsider_token = _register_and_login(client, "workspace-duplicate-outsider@example.com")
+    response = client.post(
+        f"/workspaces/{workspace['id']}/shared-conversations/{conversation_id}/duplicate",
+        headers={"Authorization": f"Bearer {outsider_token}"},
+    )
+    assert response.status_code == 404

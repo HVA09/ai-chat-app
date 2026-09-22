@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   listWorkspaceSharedConversations,
+  duplicateWorkspaceSharedConversation,
 } from "../lib/workspaceConversationSharesApi";
 
 export default function WorkspaceSharedConversationsPanel({
   workspaceId,
   onOpenConversation,
+  onDuplicatedConversation = () => {},
 }) {
   const { t } = useTranslation();
   const [items, setItems] = useState([]);
@@ -50,22 +52,44 @@ export default function WorkspaceSharedConversationsPanel({
       ) : (
         <div className="max-h-48 space-y-1 overflow-y-auto">
           {items.map((item) => (
-            <button
+            <div
               key={item.conversation_id}
-              type="button"
-              onClick={() =>
-                onOpenConversation(item.workspace_id, item.conversation_id)
-              }
-              className="w-full rounded-lg px-2 py-2 text-start hover:bg-slate-50 dark:hover:bg-slate-800"
-              title={item.title}
+              className="rounded-lg px-2 py-2 hover:bg-slate-50 dark:hover:bg-slate-800"
             >
-              <span className="block truncate text-sm font-medium text-slate-700 dark:text-slate-200">
-                👥 {item.title}
-              </span>
-              <span className="mt-0.5 block truncate text-xs text-slate-400">
-                {item.shared_by_email}
-              </span>
-            </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onOpenConversation(item.workspace_id, item.conversation_id)
+                }
+                className="w-full text-start"
+                title={item.title}
+              >
+                <span className="block truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+                  👥 {item.title}
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-slate-400">
+                  {item.shared_by_email}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const copy = await duplicateWorkspaceSharedConversation(
+                      item.workspace_id,
+                      item.conversation_id
+                    );
+                    onDuplicatedConversation(copy.id);
+                  } catch {
+                    // App handles the user-visible message.
+                    onDuplicatedConversation(null);
+                  }
+                }}
+                className="mt-1 rounded-lg border border-slate-200 px-2 py-1 text-[11px] text-slate-500 hover:bg-white dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
+              >
+                {t("workspaceSharing.duplicateButton")}
+              </button>
+            </div>
           ))}
         </div>
       )}

@@ -4,10 +4,11 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models.conversation import Conversation
+from app.models.conversation import Conversation, Message, MessageRole
 from app.models.conversation_workspace_share import ConversationWorkspaceShare
 from app.models.user import User
 from app.models.workspace import WorkspaceMember
+from app.schemas.chat import ConversationOut
 from app.schemas.workspace_conversation_shares import (
     WorkspaceConversationShareOut,
     WorkspaceSharedConversationDetail,
@@ -185,6 +186,67 @@ def list_workspace_shared_conversations(
         )
         for share, conversation, owner in rows
     ]
+
+
+@router.post(
+    "/workspaces/{workspace_id}/shared-conversations/{conversation_id}/duplicate",
+    response_model=ConversationOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def duplicate_workspace_shared_conversation(
+    workspace_id: int,
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _get_membership(workspace_id, current_user, db)
+
+    row = (
+        db.query(ConversationWorkspaceShare, Conversation)
+        .join(Conversation, Conversation.id == ConversationWorkspaceShare.conversation_id)
+        .filter(
+            ConversationWorkspaceShare.workspace_id == workspace_id,
+            ConversationWorkspaceShare.conversation_id == conversation_id,
+            Conversation.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="المحادثة المشتركة غير موجودة")
+
+    _, source = row
+    copy = Conversation(
+        user_id=current_user.id,
+        title=(f"نسخة من {source.title}" if source.title else "نسخة من المحادثة")[:255],
+        is_pinned=False,
+        is_archived=False,
+        folder_id=None,
+        project_id=None,
+        workspace_id=workspace_id,
+        ai_model=None,
+        assistant_id=None,
+        deleted_at=None,
+        summary=source.summary,
+        summary_updated_at=source.summary_updated_at,
+        parent_conversation_id=None,
+        branched_from_message_index=None,
+    )
+
+    for message in sorted(source.messages, key=lambda item: (item.created_at, item.id)):
+        copy.messages.append(
+            Message(
+                role=MessageRole(message.role.value),
+                content=message.content,
+                sources=message.sources,
+                feedback=None,
+                is_bookmarked=False,
+            )
+        )
+
+    db.add(copy)
+    db.commit()
+    db.refresh(copy)
+    return copy
 
 
 @router.get(

@@ -99,6 +99,7 @@ export default function Sidebar({
   onOpenWorkspaceMembers = () => {},
   onOpenScheduledTasks = () => {},
   onOpenWorkspaceSharedConversation = () => {},
+  onDuplicatedWorkspaceConversation = () => {},
   showArchived,
   onShowArchived,
   onShowTrash = () => {},
@@ -469,6 +470,7 @@ export default function Sidebar({
           <WorkspaceSharedConversationsPanel
             workspaceId={selectedWorkspaceId}
             onOpenConversation={onOpenWorkspaceSharedConversation}
+            onDuplicatedConversation={onDuplicatedWorkspaceConversation}
           />
 
           <button
