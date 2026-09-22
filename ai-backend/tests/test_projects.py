@@ -18,6 +18,19 @@ def _create_workspace(client, headers, name="Workspace"):
     return response.json()
 
 
+def _create_assistant(client, headers, name="Assistant", instructions="Help clearly."):
+    response = client.post(
+        "/assistants",
+        json={
+            "name": name,
+            "instructions": instructions,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
 def test_project_crud_and_conversation_filter(client, monkeypatch):
     token = _register_and_login(client, "project@example.com")
     headers = {"Authorization": f"Bearer {token}"}
@@ -240,3 +253,100 @@ def test_project_instructions_are_scoped_to_project(client, monkeypatch):
     assert response_b.status_code == 200
     assert "Private project guidance B" in captured[-1]
     assert "Private project guidance A" not in captured[-1]
+
+def test_project_default_assistant_is_used_and_explicit_override_wins(client, monkeypatch):
+    token = _register_and_login(client, "project-assistant@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = _create_workspace(client, headers)
+
+    default_assistant = _create_assistant(
+        client,
+        headers,
+        name="Project Helper",
+        instructions="Always explain project work step by step.",
+    )
+    explicit_assistant = _create_assistant(
+        client,
+        headers,
+        name="Explicit Helper",
+        instructions="Use concise answers.",
+    )
+
+    created = client.post(
+        "/projects",
+        json={
+            "workspace_id": workspace["id"],
+            "name": "Python",
+            "assistant_id": default_assistant["id"],
+        },
+        headers=headers,
+    )
+    assert created.status_code == 201
+    project = created.json()
+    assert project["assistant_id"] == default_assistant["id"]
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+
+    implicit = client.post(
+        "/chat",
+        json={
+            "message": "سؤال المشروع",
+            "workspace_id": workspace["id"],
+            "project_id": project["id"],
+        },
+        headers=headers,
+    )
+    assert implicit.status_code == 200
+    implicit_id = implicit.json()["conversation_id"]
+    implicit_detail = client.get(
+        f"/conversations/{implicit_id}",
+        headers=headers,
+    )
+    assert implicit_detail.status_code == 200
+    assert implicit_detail.json()["assistant_id"] == default_assistant["id"]
+
+    explicit = client.post(
+        "/chat",
+        json={
+            "message": "سؤال صريح",
+            "workspace_id": workspace["id"],
+            "project_id": project["id"],
+            "assistant_id": explicit_assistant["id"],
+        },
+        headers=headers,
+    )
+    assert explicit.status_code == 200
+    explicit_id = explicit.json()["conversation_id"]
+    explicit_detail = client.get(
+        f"/conversations/{explicit_id}",
+        headers=headers,
+    )
+    assert explicit_detail.status_code == 200
+    assert explicit_detail.json()["assistant_id"] == explicit_assistant["id"]
+
+
+def test_project_rejects_inaccessible_default_assistant(client):
+    owner_token = _register_and_login(client, "project-assistant-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace = _create_workspace(client, owner_headers)
+
+    other_token = _register_and_login(client, "project-assistant-other@example.com")
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    other_assistant = _create_assistant(client, other_headers, name="Private")
+
+    response = client.post(
+        "/projects",
+        json={
+            "workspace_id": workspace["id"],
+            "name": "Private Project",
+            "assistant_id": other_assistant["id"],
+        },
+        headers=owner_headers,
+    )
+    assert response.status_code == 404
+
+
