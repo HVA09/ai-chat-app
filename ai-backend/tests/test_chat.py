@@ -334,6 +334,11 @@ def test_regenerate_replaces_last_assistant_without_duplicate_user_message(clien
 
 
 def test_regenerate_retries_user_message_without_duplicate_user_turn(client, monkeypatch, db_session):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد أولي")),
+    )
     token = _register_and_login(client, "retry-generation@example.com")
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -382,6 +387,11 @@ def test_regenerate_retries_user_message_without_duplicate_user_turn(client, mon
 
 
 def test_regenerate_idle_timeout_does_not_persist_partial_reply(client, monkeypatch, db_session):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد أولي")),
+    )
     token = _register_and_login(client, "retry-timeout@example.com")
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -485,6 +495,11 @@ def test_edit_user_message_replaces_turn_and_truncates_following_history(client,
 
 
 def test_edit_stream_idle_timeout_does_not_persist_partial_reply(client, monkeypatch, db_session):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
     token = _register_and_login(client, "edit-timeout@example.com")
     headers = {"Authorization": f"Bearer {token}"}
 
