@@ -801,7 +801,7 @@ async def chat(
     if agent_task is not None:
         try:
             agent_history = _build_history(conversation, db)
-            agent_reply, sources, input_tokens, output_tokens = await run_agent(
+            agent_reply, sources, input_tokens, output_tokens, tool_events = await run_agent(
                 agent_task,
                 agent_history,
                 conversation,
@@ -1080,6 +1080,12 @@ async def chat_stream(
 
         async def agent_event_generator():
             yield f"event: conversation\\ndata: {conversation.id}\\n\\n"
+            for event in tool_events:
+                yield (
+                    "event: agent_tool\\ndata: "
+                    f"{json.dumps(event, ensure_ascii=False)}"
+                    "\\n\\n"
+                )
             yield f"event: sources\\ndata: {safe_sources}\\n\\n"
             yield f"event: chunk\\ndata: {safe_reply}\\n\\n"
             yield "event: done\\ndata: {}\\n\\n"
