@@ -102,6 +102,7 @@ def create_project(
         owner_id=current_user.id,
         name=payload.name,
         description=payload.description.strip() if payload.description else None,
+        instructions=payload.instructions.strip() if payload.instructions else None,
     )
     db.add(project)
     db.commit()
@@ -123,6 +124,7 @@ def update_project(
 
     project.name = payload.name
     project.description = payload.description.strip() if payload.description else None
+    project.instructions = payload.instructions.strip() if payload.instructions else None
     db.commit()
     db.refresh(project)
     return project
