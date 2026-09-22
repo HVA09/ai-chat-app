@@ -31,3 +31,10 @@ export async function getWorkspaceSharedConversation(workspaceId, conversationId
   );
   return data;
 }
+
+export async function duplicateWorkspaceSharedConversation(workspaceId, conversationId) {
+  const { data } = await api.post(
+    `/workspaces/${workspaceId}/shared-conversations/${conversationId}/duplicate`
+  );
+  return data;
+}
