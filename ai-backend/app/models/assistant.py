@@ -31,3 +31,6 @@ class Assistant(Base):
     workspace_shares = relationship(
         "AssistantWorkspaceShare", back_populates="assistant", cascade="all, delete-orphan", passive_deletes=True
     )
+    file_links = relationship(
+        "AssistantFileLink", back_populates="assistant", cascade="all, delete-orphan", passive_deletes=True
+    )
