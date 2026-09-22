@@ -1289,6 +1289,7 @@ export default function App() {
     setShowShareManager(false);
     setWorkspaceShare(null);
     setReadOnlyConversation(false);
+    setShowWorkspaceComments(false);
     setSelectedConversationIds([]);
     setConversationId(null);
     setConversationBranches([]);
