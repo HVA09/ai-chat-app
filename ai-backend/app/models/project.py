@@ -42,3 +42,9 @@ class WorkspaceProject(Base):
         back_populates="project",
         passive_deletes=True,
     )
+    memories = relationship(
+        "ProjectMemory",
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )

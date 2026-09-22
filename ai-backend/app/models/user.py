@@ -52,6 +52,9 @@ class User(Base):
     memories = relationship(
         "UserMemory", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )
+    project_memories = relationship(
+        "ProjectMemory", back_populates="created_by", passive_deletes=True
+    )
     api_keys = relationship(
         "APIKey", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )
