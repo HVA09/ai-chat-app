@@ -483,7 +483,7 @@ def download_file(
 @router.post("/{file_id}/index-image", response_model=FileOut)
 async def index_image_for_rag(
     file_id: int,
-    current_user: User = Depends(enforce_daily_ai_limit),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """يفهرس صورة صراحةً في RAG بدون استدعاء Vision مخفي أثناء كل رسالة."""
@@ -497,6 +497,8 @@ async def index_image_for_rag(
 
     if attachment.extracted_text:
         return _file_response(attachment, current_user, db)
+
+    enforce_daily_ai_limit(current_user, db)
 
     if attachment.workspace_id is not None:
         enforce_workspace_daily_ai_limit(attachment.workspace_id, current_user, db)
