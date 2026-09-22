@@ -1230,6 +1230,7 @@ export default function App() {
       refreshAssistants(selectedWorkspaceId);
       refreshSavedPrompts();
       refreshBookmarkedMessages();
+      refreshMemories();
       refreshCurrentUser();
       refreshNotifications();
     }
