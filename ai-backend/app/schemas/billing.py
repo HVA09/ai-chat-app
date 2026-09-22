@@ -14,6 +14,7 @@ class PlanOut(BaseModel):
     currency: str
     interval: str
     daily_ai_request_limit: int
+    allowed_models: list[str]
 
 
 class SubscriptionOut(BaseModel):
