@@ -21,6 +21,7 @@ from app.models.conversation import Conversation, Message, MessageRole
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.file_chunk import FileChunk
+from app.models.project import WorkspaceProject
 from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.models.user_memory import UserMemory
@@ -158,6 +159,15 @@ def _get_or_create_conversation(
         if payload.workspace_id is not None
         else _get_default_workspace(current_user, db)
     )
+    selected_project = None
+    if payload.project_id is not None:
+        selected_project = db.get(WorkspaceProject, payload.project_id)
+        if selected_project is None or selected_project.workspace_id != selected_workspace.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المشروع غير موجود في مساحة العمل المحددة",
+            )
+
     selected_assistant = (
         _get_assistant_for_workspace(
             payload.assistant_id,
@@ -190,6 +200,11 @@ def _get_or_create_conversation(
             )
 
         changed = False
+        if selected_project is not None and conversation.project_id != selected_project.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="المشروع لا يطابق مشروع المحادثة الحالية",
+            )
         if selected_assistant is not None and conversation.assistant_id != selected_assistant.id:
             conversation.assistant_id = selected_assistant.id
             changed = True
@@ -206,6 +221,7 @@ def _get_or_create_conversation(
         user_id=current_user.id,
         workspace_id=selected_workspace.id,
         title=payload.message[:50],
+        project_id=selected_project.id if selected_project else None,
         assistant_id=selected_assistant.id if selected_assistant else None,
         ai_model=selected_model,
     )
@@ -299,6 +315,7 @@ async def _build_file_context(
             conversation.id,
             message,
             workspace_id=conversation.workspace_id,
+            project_id=conversation.project_id,
         )
         context, sources = build_retrieval_context(rows)
         if context:
@@ -311,6 +328,22 @@ async def _build_file_context(
         )
 
     from sqlalchemy import or_
+    personal_scope = (
+        (FileAttachment.workspace_id.is_(None))
+        & (FileAttachment.user_id == conversation.user_id)
+        & (ConversationFileLink.conversation_id == conversation.id)
+    )
+    workspace_scope = (
+        (FileAttachment.workspace_id == conversation.workspace_id)
+        & (FileAttachment.project_id.is_(None))
+    )
+    project_scope = (
+        (FileAttachment.workspace_id == conversation.workspace_id)
+        & (FileAttachment.project_id == conversation.project_id)
+        if conversation.project_id is not None
+        else False
+    )
+
     files_query = (
         db.query(FileAttachment)
         .outerjoin(
@@ -319,12 +352,9 @@ async def _build_file_context(
         )
         .filter(
             or_(
-                (
-                    (FileAttachment.workspace_id.is_(None))
-                    & (FileAttachment.user_id == conversation.user_id)
-                    & (ConversationFileLink.conversation_id == conversation.id)
-                ),
-                FileAttachment.workspace_id == conversation.workspace_id,
+                personal_scope,
+                workspace_scope,
+                project_scope,
             ),
             FileAttachment.extracted_text.isnot(None),
         )
