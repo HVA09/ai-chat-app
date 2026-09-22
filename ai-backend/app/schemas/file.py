@@ -13,6 +13,7 @@ class FileOut(BaseModel):
     created_at: datetime
     is_attached: bool = False
     workspace_id: int | None = None
+    project_id: int | None = None
     is_owner: bool = False
     can_delete: bool = False
     is_ai_indexed: bool = False
