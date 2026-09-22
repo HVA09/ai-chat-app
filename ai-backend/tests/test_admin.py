@@ -407,13 +407,7 @@ def test_cost_budget_requires_admin(client):
 
 
 def test_admin_can_list_and_update_plan_entitlements(client, db_session):
-    from app.models.plan import Plan
-
-    admin_token = _register_and_login(client, "plan-admin@example.com")
-    admin = client.get("/users/me", headers={"Authorization": f"Bearer {admin_token}"}).json()
-    user = db_session.get(User, admin["id"])
-    user.role = UserRole.admin
-    db_session.commit()
+    admin_token = _register_and_login(client, "plan-admin@example.com", admin=True)
 
     plans = client.get("/admin/plans", headers={"Authorization": f"Bearer {admin_token}"})
     assert plans.status_code == 200
