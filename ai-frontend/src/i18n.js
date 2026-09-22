@@ -814,6 +814,17 @@ const resources = {
         parentConversationTitle: "العودة إلى المحادثة الأصلية",
       },
 
+
+      agent: {
+        activityTitle: "نشاط الوكيل",
+        tools: {
+          calculator: "آلة حاسبة",
+          python: "بايثون",
+          web_search: "بحث الويب",
+          analyze_data: "تحليل البيانات",
+        },
+      },
+
       tools: {
         branchConversation: "تفريع المحادثة",
         calculator: "الآلة الحاسبة — أدخل تعبيرًا مثل /calc (12 + 8) * 3",
@@ -1592,6 +1603,17 @@ const resources = {
         branchOpenError: "Couldn't open the conversation branch",
         parentConversation: "Parent conversation",
         parentConversationTitle: "Open the parent conversation",
+      },
+
+
+      agent: {
+        activityTitle: "Agent activity",
+        tools: {
+          calculator: "Calculator",
+          python: "Python",
+          web_search: "Web search",
+          analyze_data: "Data analysis",
+        },
       },
 
       tools: {
