@@ -1052,7 +1052,7 @@ export default function App() {
     }
   };
 
-    const handleSaveAssistant = async ({ name, description, instructions }) => {
+  const handleSaveAssistant = async ({ name, description, instructions }) => {
     try {
       if (editingAssistantId === null) {
         const assistant = await createAssistant({ name, description, instructions });
