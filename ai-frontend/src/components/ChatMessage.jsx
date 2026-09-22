@@ -34,6 +34,9 @@ export default function ChatMessage({
   onFeedback,
   isBookmarked = false,
   onToggleBookmark,
+  canRemember = false,
+  isRemembered = false,
+  onToggleRemember,
 }) {
   const isUser = role === "user";
   const { t } = useTranslation();
@@ -79,6 +82,9 @@ export default function ChatMessage({
   const bookmarkLabel = isBookmarked
     ? t("bookmarks.remove")
     : t("bookmarks.save");
+  const rememberLabel = isRemembered
+    ? t("memory.remove")
+    : t("memory.save");
 
   const toggleVoiceOutput = () => {
     if (!text) return;
@@ -163,6 +169,17 @@ export default function ChatMessage({
                   title={bookmarkLabel}
                 >
                   {isBookmarked ? "★" : "☆"}
+                </button>
+              ) : null}
+              {canRemember && onToggleRemember ? (
+                <button
+                  type="button"
+                  onClick={onToggleRemember}
+                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  aria-label={rememberLabel}
+                  title={rememberLabel}
+                >
+                  {isRemembered ? "🧠✓" : "🧠"}
                 </button>
               ) : null}
               {canDelete && onDelete ? (
