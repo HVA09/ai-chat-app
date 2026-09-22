@@ -367,6 +367,16 @@ def list_files(
             for file in files
         ]
 
+    if workspace_id is not None:
+        _get_workspace_membership(workspace_id, current_user, db)
+        files = (
+            db.query(FileAttachment)
+            .filter(FileAttachment.workspace_id == workspace_id)
+            .order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc())
+            .all()
+        )
+        return [_file_response(file, current_user, db) for file in files]
+
     if conversation_id is None:
         files = (
             db.query(FileAttachment)
