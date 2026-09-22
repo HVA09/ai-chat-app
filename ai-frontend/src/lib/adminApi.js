@@ -84,3 +84,14 @@ export async function getCostBudget() {
   const { data } = await api.get("/admin/analytics/budget");
   return data;
 }
+
+
+export async function listPlans() {
+  const { data } = await api.get("/admin/plans");
+  return data;
+}
+
+export async function updatePlan(id, fields) {
+  const { data } = await api.patch(`/admin/plans/${id}`, fields);
+  return data;
+}

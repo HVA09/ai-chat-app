@@ -13,18 +13,21 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.audit import log_event
-from app.cache import cache_get, cache_set
+from app.cache import cache_delete, cache_get, cache_set
 from app.config import settings as app_settings
 from app.services.ai_cost import estimate_cost_usd
 from app.database import get_db
 from app.dependencies import require_admin
 from app.models.audit_log import AuditLog
+from app.models.plan import Plan
 from app.models.conversation import Conversation, Message
 from app.models.file_attachment import FileAttachment
 from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.schemas.admin import (
     AdminConversationOut,
+    AdminPlanOut,
+    AdminPlanUpdate,
     AdminStats,
     AdminUserOut,
     AdminUserUpdate,
@@ -402,6 +405,58 @@ def get_feedback_analytics(
         negative=negative,
         positive_rate=positive_rate,
     )
+
+
+@router.get("/plans", response_model=list[AdminPlanOut])
+def list_plans(
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    return db.query(Plan).order_by(Plan.price_cents.asc(), Plan.id.asc()).all()
+
+
+@router.patch("/plans/{plan_id}", response_model=AdminPlanOut)
+def update_plan(
+    plan_id: int,
+    payload: AdminPlanUpdate,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    plan = db.get(Plan, plan_id)
+    if not plan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الخطة غير موجودة",
+        )
+
+    data = payload.model_dump(exclude_unset=True)
+    if "daily_ai_request_limit" in data and data["daily_ai_request_limit"] is not None:
+        if data["daily_ai_request_limit"] < 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="حد طلبات AI يجب أن يكون أكبر من صفر",
+            )
+    if "allowed_models" in data and data["allowed_models"] is not None:
+        models = []
+        for model in data["allowed_models"]:
+            normalized = model.strip()
+            if normalized and normalized not in models:
+                models.append(normalized)
+        data["allowed_models"] = models
+
+    for field, value in data.items():
+        setattr(plan, field, value)
+
+    db.commit()
+    db.refresh(plan)
+    cache_delete("billing:plans:v2")
+    log_event(
+        db,
+        "admin_plan_updated",
+        f"admin {admin.email} عدّل الخطة {plan.name}: {data}",
+        admin.id,
+    )
+    return plan
 
 
 @router.get("/users", response_model=list[AdminUserOut])

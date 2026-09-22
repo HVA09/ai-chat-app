@@ -111,3 +111,22 @@ class CostUsageStat(BaseModel):
     output_cost_usd: float | None
     total_cost_usd: float | None
     pricing_configured: bool
+
+
+class AdminPlanOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    price_cents: int
+    currency: str
+    interval: str
+    daily_ai_request_limit: int
+    allowed_models: list[str]
+    is_active: bool
+
+
+class AdminPlanUpdate(BaseModel):
+    daily_ai_request_limit: int | None = None
+    allowed_models: list[str] | None = None
+    is_active: bool | None = None
