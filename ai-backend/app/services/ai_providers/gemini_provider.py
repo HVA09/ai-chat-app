@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from app.config import settings
 from app.services.ai_providers.base import AIProvider, AIReply
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
@@ -29,7 +30,7 @@ class GeminiProvider(AIProvider):
 
     async def get_reply(self, message: str, history: list[dict[str, str]] | None = None) -> AIReply:
         url = f"{GEMINI_BASE_URL}/models/{self.model}:generateContent?key={self.api_key}"
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=settings.AI_REQUEST_TIMEOUT_SECONDS) as client:
             response = await client.post(url, json={"contents": self._contents(message, history)})
             response.raise_for_status()
         data = response.json()

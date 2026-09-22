@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from app.config import settings
 from app.services.ai_providers.base import AIProvider, AIReply, AIToolCall, AIToolReply
 
 
@@ -58,7 +59,7 @@ class OpenAICompatibleProvider(AIProvider):
         )
 
     async def get_reply(self, message: str, history: list[dict[str, str]] | None = None) -> AIReply:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=settings.AI_REQUEST_TIMEOUT_SECONDS) as client:
             response = await client.post(
                 f"{self.base_url}/chat/completions",
                 headers=self._headers(),
