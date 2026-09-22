@@ -26,13 +26,11 @@ def upgrade() -> None:
     )
     # The Free plan stays on the configured default model.
     # Pro can use every model exposed through AI_ALLOWED_MODELS.
-    op.execute(
-        sa.text(
-            "UPDATE plans SET allowed_models = CAST(:models AS JSON) "
-            "WHERE name = :name"
-        ),
-        {"models": "[\"*\"]", "name": "Pro"},
-    )
+    statement = sa.text(
+        "UPDATE plans SET allowed_models = CAST(:models AS JSON) "
+        "WHERE name = :name"
+    ).bindparams(models="[\\"*\\"]", name="Pro")
+    op.execute(statement)
 
 
 def downgrade() -> None:
