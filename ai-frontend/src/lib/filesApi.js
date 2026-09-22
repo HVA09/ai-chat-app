@@ -13,7 +13,6 @@ export async function uploadFile(
   if (conversationId) params.conversation_id = conversationId;
   if (workspaceId) params.workspace_id = workspaceId;
   if (projectId) params.project_id = projectId;
-  if (projectId) params.project_id = projectId;
   const { data } = await api.post("/files/upload", formData, {
     headers: { "Content-Type": "multipart/form-data" },
     params,
@@ -38,6 +37,7 @@ export async function listFiles(
     params.include_unattached = includeUnattached;
   }
   if (workspaceId) params.workspace_id = workspaceId;
+  if (projectId) params.project_id = projectId;
   const { data } = await api.get("/files", { params });
   return data;
 }
