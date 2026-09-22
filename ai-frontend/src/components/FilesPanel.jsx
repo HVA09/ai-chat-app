@@ -174,7 +174,11 @@ export default function FilesPanel({
       <div className="my-0 flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900 sm:my-8 sm:max-h-[calc(100dvh-3rem)] sm:max-w-lg sm:rounded-3xl sm:p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">
-            {showWorkspaceFiles ? t("files.workspaceTitle") : t("files.title")}
+            {showProjectFiles
+              ? t("files.projectTitle")
+              : showWorkspaceFiles
+                ? t("files.workspaceTitle")
+                : t("files.title")}
           </h2>
           <button
             onClick={onClose}
