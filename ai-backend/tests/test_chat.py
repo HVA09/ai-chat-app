@@ -484,6 +484,50 @@ def test_edit_user_message_replaces_turn_and_truncates_following_history(client,
     ]
 
 
+def test_edit_stream_idle_timeout_does_not_persist_partial_reply(client, monkeypatch, db_session):
+    token = _register_and_login(client, "edit-timeout@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post(
+        "/chat",
+        json={"message": "رسالة أولى"},
+        headers=headers,
+    )
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+
+    async def fake_stream(message, history, model=None):
+        yield "جزء أول"
+        await asyncio.sleep(0.05)
+        yield "جزء ثان"
+
+    monkeypatch.setattr(chat_router_module, "stream_ai_reply", fake_stream)
+    monkeypatch.setattr(app_settings, "AI_STREAM_IDLE_TIMEOUT_SECONDS", 0.01)
+
+    response = client.post(
+        f"/chat/{conversation_id}/edit/stream",
+        headers=headers,
+        json={"message_index": 1, "message": "رسالة معدلة"},
+    )
+    response.read()
+    assert response.status_code == 200
+    assert "جزء أول" in response.text
+    assert "جزء ثان" not in response.text
+    assert "event: error" in response.text
+    assert "event: done" not in response.text
+
+    messages = (
+        db_session.query(Message)
+        .filter(Message.conversation_id == conversation_id)
+        .order_by(Message.id.asc())
+        .all()
+    )
+    assert [(message.role, message.content) for message in messages] == [
+        (MessageRole.user, "رسالة أولى"),
+        (MessageRole.assistant, "رد"),
+    ]
+
+
 def test_delete_user_message_removes_its_assistant_reply_and_preserves_later_turn(
     client, monkeypatch, db_session
 ):
