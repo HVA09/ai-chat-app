@@ -147,7 +147,7 @@ export default function ChatMessage({
             <span>{time}</span>
           </div>
 
-          {isUser && (canEdit || canDelete || canBranch) ? (
+          {isUser && (canEdit || canDelete || canBranch || canRemember) ? (
             <div className="flex items-center gap-1">
               {canEdit && onEdit ? (
                 <button
