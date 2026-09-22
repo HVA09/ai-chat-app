@@ -282,7 +282,7 @@ export default function FilesPanel({ onClose, conversationId = null, workspaceId
                     <button
                       onClick={() => handleIndexImage(file)}
                       disabled={Boolean(file.is_ai_indexed) || indexingId === file.id}
-                      title={file.is_ai_indexed ? t("files.imageIndexed") : t("files.indexImage")}
+                      title={file.is_ai_indexed ? t("files.imageIndexed") : t("files.indexImageForAi")}
                       className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-slate-400"
                     >
                       {indexingId === file.id ? "..." : file.is_ai_indexed ? "✅" : "✨"}
