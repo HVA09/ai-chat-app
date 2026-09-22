@@ -786,8 +786,10 @@ export default function App() {
   };
 
   const handleSelectProject = async (id) => {
+    const project = id === null ? null : projects.find((item) => item.id === Number(id));
     setSelectedProjectId(id);
     setSelectedFolderId(null);
+    setSelectedAssistantId(project?.assistant_id ?? null);
     startNewChat();
     await refreshConversations(
       showArchivedConversations,
