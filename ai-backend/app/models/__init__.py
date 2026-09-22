@@ -6,6 +6,7 @@ from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
 from app.models.workspace_invitation import WorkspaceInvitation
 from app.models.assistant import Assistant
 from app.models.assistant_workspace_share import AssistantWorkspaceShare
+from app.models.assistant_file_link import AssistantFileLink
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.conversation_share import ConversationShare
 from app.models.conversation_workspace_share import ConversationWorkspaceShare
@@ -38,6 +39,7 @@ __all__ = [
     "WorkspaceInvitation",
     "Assistant",
     "AssistantWorkspaceShare",
+    "AssistantFileLink",
     "Conversation",
     "ConversationShare",
     "ConversationWorkspaceShare",

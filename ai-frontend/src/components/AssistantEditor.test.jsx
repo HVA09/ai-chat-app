@@ -1,7 +1,32 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import AssistantEditor from "./AssistantEditor";
+
+const {
+  listAssistantKnowledgeFiles,
+  attachFileToAssistant,
+  detachFileFromAssistant,
+  listFiles,
+  uploadFile,
+} = vi.hoisted(() => ({
+  listAssistantKnowledgeFiles: vi.fn(),
+  attachFileToAssistant: vi.fn(),
+  detachFileFromAssistant: vi.fn(),
+  listFiles: vi.fn(),
+  uploadFile: vi.fn(),
+}));
+
+vi.mock("../lib/assistantKnowledgeApi", () => ({
+  listAssistantKnowledgeFiles,
+  attachFileToAssistant,
+  detachFileFromAssistant,
+}));
+
+vi.mock("../lib/filesApi", () => ({
+  listFiles,
+  uploadFile,
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -21,11 +46,29 @@ vi.mock("react-i18next", () => ({
         "assistantEditor.cancel": "إلغاء",
         "assistantEditor.saving": "جارٍ الحفظ...",
         "assistantEditor.save": "حفظ",
+        "assistantEditor.knowledgeTitle": "ملفات المعرفة",
+        "assistantEditor.knowledgeSubtitle": "المعرفة الدائمة",
+        "assistantEditor.uploadFile": "رفع ملف",
+        "assistantEditor.uploading": "جارٍ الرفع",
+        "assistantEditor.noKnowledgeFiles": "لا توجد ملفات معرفة بعد.",
+        "assistantEditor.knowledgeAttached": "مرفق",
+        "assistantEditor.availableFiles": "ملفاتك المتاحة",
+        "assistantEditor.attach": "إرفاق",
+        "assistantEditor.detach": "إزالة",
       })[key] ?? key,
   }),
 }));
 
 describe("AssistantEditor", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listAssistantKnowledgeFiles.mockRejectedValue(new Error("knowledge unavailable"));
+    listFiles.mockRejectedValue(new Error("files unavailable"));
+    attachFileToAssistant.mockResolvedValue({});
+    detachFileFromAssistant.mockResolvedValue(undefined);
+    uploadFile.mockResolvedValue({ id: 10, original_filename: "linux.pdf" });
+  });
+
   it("validates required fields", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn();
@@ -58,7 +101,7 @@ describe("AssistantEditor", () => {
     });
   });
 
-  it("loads existing assistant data for editing", () => {
+  it("loads existing assistant data for editing and shows knowledge controls", () => {
     render(
       <AssistantEditor
         assistant={{
@@ -76,5 +119,11 @@ describe("AssistantEditor", () => {
     expect(screen.getByDisplayValue("Python")).toBeInTheDocument();
     expect(screen.getByDisplayValue("راجع الكود ثم اقترح تحسينات.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "تعديل المساعد" })).toBeInTheDocument();
+    expect(screen.getByText("ملفات المعرفة")).toBeInTheDocument();
+  });
+
+  it("does not show knowledge management while creating", () => {
+    render(<AssistantEditor onClose={vi.fn()} onSave={vi.fn()} />);
+    expect(screen.queryByText("ملفات المعرفة")).not.toBeInTheDocument();
   });
 });

@@ -1048,6 +1048,7 @@ export default function App() {
         const assistant = await createAssistant({ name, description, instructions });
         await refreshAssistants(selectedWorkspaceId);
         setSelectedAssistantId(assistant.id);
+        setEditingAssistantId(assistant.id);
         startNewChat();
       } else {
         const assistant = await updateAssistant(editingAssistantId, {
@@ -1060,8 +1061,6 @@ export default function App() {
           setSelectedAssistantId(assistant.id);
         }
       }
-      setShowAssistantEditor(false);
-      setEditingAssistantId(null);
     } catch (err) {
       setToast({
         message:

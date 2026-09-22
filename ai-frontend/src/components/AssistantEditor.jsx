@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { listFiles, uploadFile } from "../lib/filesApi";
+import {
+  listAssistantKnowledgeFiles,
+  attachFileToAssistant,
+  detachFileFromAssistant,
+} from "../lib/assistantKnowledgeApi";
 
 export default function AssistantEditor({ assistant = null, onClose, onSave }) {
   const { t } = useTranslation();
@@ -9,6 +15,10 @@ export default function AssistantEditor({ assistant = null, onClose, onSave }) {
   const [instructions, setInstructions] = useState("");
   const [validationError, setValidationError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [knowledgeFiles, setKnowledgeFiles] = useState([]);
+  const [availableFiles, setAvailableFiles] = useState([]);
+  const [knowledgeLoading, setKnowledgeLoading] = useState(false);
+  const [knowledgeUploading, setKnowledgeUploading] = useState(false);
 
   useEffect(() => {
     setName(assistant?.name ?? "");
@@ -16,6 +26,56 @@ export default function AssistantEditor({ assistant = null, onClose, onSave }) {
     setInstructions(assistant?.instructions ?? "");
     setValidationError("");
   }, [assistant]);
+
+  const refreshKnowledge = async () => {
+    if (!assistant?.id) return;
+    setKnowledgeLoading(true);
+    try {
+      const [attached, personalFiles] = await Promise.all([
+        listAssistantKnowledgeFiles(assistant.id),
+        listFiles(),
+      ]);
+      const attachedIds = new Set(attached.map((file) => file.id));
+      setKnowledgeFiles(attached);
+      setAvailableFiles(personalFiles.filter((file) => !attachedIds.has(file.id)));
+    } catch {
+      setKnowledgeFiles([]);
+      setAvailableFiles([]);
+    } finally {
+      setKnowledgeLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshKnowledge();
+  }, [assistant?.id]);
+
+  const attachKnowledge = async (fileId) => {
+    if (!assistant?.id) return;
+    await attachFileToAssistant(assistant.id, fileId);
+    await refreshKnowledge();
+  };
+
+  const detachKnowledge = async (fileId) => {
+    if (!assistant?.id) return;
+    await detachFileFromAssistant(assistant.id, fileId);
+    await refreshKnowledge();
+  };
+
+  const uploadAndAttachKnowledge = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !assistant?.id) return;
+
+    setKnowledgeUploading(true);
+    try {
+      const uploaded = await uploadFile(file, null, null, null, null);
+      await attachFileToAssistant(assistant.id, uploaded.id);
+      await refreshKnowledge();
+    } finally {
+      setKnowledgeUploading(false);
+    }
+  };
 
   const submit = async (event) => {
     event.preventDefault();
@@ -50,7 +110,7 @@ export default function AssistantEditor({ assistant = null, onClose, onSave }) {
     >
       <form
         onSubmit={submit}
-        className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
       >
         <div className="mb-5 flex items-center justify-between gap-4">
           <div>
@@ -116,6 +176,90 @@ export default function AssistantEditor({ assistant = null, onClose, onSave }) {
               {instructions.length}/6000
             </span>
           </label>
+
+          {isEditing && (
+            <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    {t("assistantEditor.knowledgeTitle")}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {t("assistantEditor.knowledgeSubtitle")}
+                  </p>
+                </div>
+                <label className="cursor-pointer rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+                  {knowledgeUploading ? t("assistantEditor.uploading") : t("assistantEditor.uploadFile")}
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={uploadAndAttachKnowledge}
+                    disabled={knowledgeUploading}
+                  />
+                </label>
+              </div>
+
+              {knowledgeLoading ? (
+                <p className="text-xs text-slate-400">...</p>
+              ) : (
+                <div className="space-y-2">
+                  {knowledgeFiles.length === 0 && availableFiles.length === 0 ? (
+                    <p className="text-xs text-slate-400">
+                      {t("assistantEditor.noKnowledgeFiles")}
+                    </p>
+                  ) : null}
+
+                  {knowledgeFiles.map((file) => (
+                    <div
+                      key={file.id}
+                      className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-800"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+                          📚 {file.original_filename}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {t("assistantEditor.knowledgeAttached")}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => detachKnowledge(file.id)}
+                        className="rounded-lg px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                      >
+                        {t("assistantEditor.detach")}
+                      </button>
+                    </div>
+                  ))}
+
+                  {availableFiles.length > 0 && (
+                    <div className="pt-2">
+                      <p className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                        {t("assistantEditor.availableFiles")}
+                      </p>
+                      <div className="max-h-40 space-y-1 overflow-y-auto">
+                        {availableFiles.map((file) => (
+                          <button
+                            key={file.id}
+                            type="button"
+                            onClick={() => attachKnowledge(file.id)}
+                            className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-start hover:bg-slate-50 dark:hover:bg-slate-800"
+                          >
+                            <span className="min-w-0 truncate text-sm text-slate-600 dark:text-slate-300">
+                              📎 {file.original_filename}
+                            </span>
+                            <span className="text-xs text-slate-400">
+                              {t("assistantEditor.attach")}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
 
           {validationError && (
             <div

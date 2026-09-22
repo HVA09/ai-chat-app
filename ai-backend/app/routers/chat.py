@@ -17,6 +17,7 @@ from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_
 from app.logging_config import get_logger
 from app.models.assistant import Assistant
 from app.models.assistant_workspace_share import AssistantWorkspaceShare
+from app.models.assistant_file_link import AssistantFileLink
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
@@ -323,6 +324,7 @@ async def _build_file_context(
             message,
             workspace_id=conversation.workspace_id,
             project_id=conversation.project_id,
+            assistant_id=conversation.assistant_id,
         )
         context, sources = build_retrieval_context(rows)
         if context:
@@ -351,17 +353,35 @@ async def _build_file_context(
         else False
     )
 
+    assistant_scope = (
+        (AssistantFileLink.assistant_id == conversation.assistant_id)
+        & (FileAttachment.user_id == Assistant.user_id)
+        & (FileAttachment.workspace_id.is_(None))
+        & (FileAttachment.project_id.is_(None))
+        if conversation.assistant_id is not None
+        else False
+    )
+
     files_query = (
         db.query(FileAttachment)
         .outerjoin(
             ConversationFileLink,
             ConversationFileLink.file_id == FileAttachment.id,
         )
+        .outerjoin(
+            AssistantFileLink,
+            AssistantFileLink.file_id == FileAttachment.id,
+        )
+        .outerjoin(
+            Assistant,
+            Assistant.id == AssistantFileLink.assistant_id,
+        )
         .filter(
             or_(
                 personal_scope,
                 workspace_scope,
                 project_scope,
+                assistant_scope,
             ),
             FileAttachment.extracted_text.isnot(None),
         )

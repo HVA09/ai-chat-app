@@ -40,3 +40,6 @@ class FileAttachment(Base):
     chunks = relationship(
         "FileChunk", back_populates="file", cascade="all, delete-orphan", passive_deletes=True
     )
+    assistant_links = relationship(
+        "AssistantFileLink", back_populates="file", cascade="all, delete-orphan", passive_deletes=True
+    )

@@ -692,6 +692,15 @@ const resources = {
         cancel: "إلغاء",
         saving: "جارٍ الحفظ...",
         save: "حفظ",
+        knowledgeTitle: "ملفات المعرفة",
+        knowledgeSubtitle: "أرفق ملفاتك الشخصية ليستخدمها هذا المساعد كمرجع دائم أثناء الإجابة.",
+        uploadFile: "رفع ملف",
+        uploading: "جارٍ الرفع...",
+        noKnowledgeFiles: "لا توجد ملفات معرفة بعد.",
+        knowledgeAttached: "مرفق كمعرفة للمساعد",
+        availableFiles: "ملفاتك المتاحة",
+        attach: "إرفاق",
+        detach: "إزالة",
       },
 
       projectEditor: {
@@ -743,6 +752,15 @@ const resources = {
         cancel: "Cancel",
         saving: "Saving...",
         save: "Save",
+        knowledgeTitle: "Knowledge files",
+        knowledgeSubtitle: "Attach your personal files so this assistant can use them as persistent reference material.",
+        uploadFile: "Upload file",
+        uploading: "Uploading...",
+        noKnowledgeFiles: "No knowledge files yet.",
+        knowledgeAttached: "Attached as assistant knowledge",
+        availableFiles: "Available personal files",
+        attach: "Attach",
+        detach: "Remove",
       },
 
       theme: {
