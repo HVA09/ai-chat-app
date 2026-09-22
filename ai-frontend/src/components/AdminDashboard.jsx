@@ -25,11 +25,14 @@ import {
   listAllConversations,
   adminDeleteConversation,
   listAuditLogs,
+  listPlans,
+  updatePlan,
 } from "../lib/adminApi";
 import { getErrorMessage } from "../lib/errors";
 
 const TAB_IDS = [
   { id: "stats", labelKey: "admin.tabStats" },
+  { id: "plans", labelKey: "admin.tabPlans" },
   { id: "users", labelKey: "admin.tabUsers" },
   { id: "conversations", labelKey: "admin.tabConversations" },
   { id: "logs", labelKey: "admin.tabLogs" },
@@ -424,6 +427,159 @@ function StatsTab() {
   );
 }
 
+function PlansTab() {
+  const { t } = useTranslation();
+  const [plans, setPlans] = useState([]);
+  const [drafts, setDrafts] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState(null);
+  const [error, setError] = useState("");
+  const [savedId, setSavedId] = useState(null);
+
+  const refresh = () => {
+    setLoading(true);
+    listPlans()
+      .then((items) => {
+        setPlans(items);
+        setDrafts(
+          Object.fromEntries(
+            items.map((plan) => [
+              plan.id,
+              {
+                daily_ai_request_limit: String(plan.daily_ai_request_limit),
+                allowed_models: (plan.allowed_models || []).join(", "),
+                is_active: Boolean(plan.is_active),
+              },
+            ])
+          )
+        );
+      })
+      .catch((err) => setError(getErrorMessage(err, t("admin.plansLoadError"))))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(refresh, []);
+
+  const updateDraft = (id, patch) => {
+    setDrafts((previous) => ({
+      ...previous,
+      [id]: { ...previous[id], ...patch },
+    }));
+  };
+
+  const save = async (plan) => {
+    const draft = drafts[plan.id];
+    setSavingId(plan.id);
+    setSavedId(null);
+    setError("");
+    try {
+      const allowed_models = draft.allowed_models
+        .split(",")
+        .map((model) => model.trim())
+        .filter(Boolean);
+      const updated = await updatePlan(plan.id, {
+        daily_ai_request_limit: Number(draft.daily_ai_request_limit),
+        allowed_models,
+        is_active: draft.is_active,
+      });
+      setPlans((previous) => previous.map((item) => (item.id === plan.id ? updated : item)));
+      setDrafts((previous) => ({
+        ...previous,
+        [plan.id]: {
+          daily_ai_request_limit: String(updated.daily_ai_request_limit),
+          allowed_models: (updated.allowed_models || []).join(", "),
+          is_active: Boolean(updated.is_active),
+        },
+      }));
+      setSavedId(plan.id);
+    } catch (err) {
+      setError(getErrorMessage(err, t("admin.planSaveError")));
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  if (loading) return <p className="text-sm text-slate-400">...</p>;
+  if (error && plans.length === 0) return <p className="text-sm text-red-600">{error}</p>;
+
+  return (
+    <div className="space-y-3">
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      {plans.map((plan) => {
+        const draft = drafts[plan.id];
+        return (
+          <div key={plan.id} className="rounded-2xl border border-slate-200 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="font-semibold text-slate-900">{plan.name}</p>
+                <p className="text-xs text-slate-400">
+                  {plan.price_cents / 100} {plan.currency.toUpperCase()} / {plan.interval}
+                </p>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={draft.is_active}
+                  onChange={(event) => updateDraft(plan.id, { is_active: event.target.checked })}
+                />
+                {t("admin.planActive")}
+              </label>
+            </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-500">
+                  {t("admin.planDailyLimit")}
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  value={draft.daily_ai_request_limit}
+                  onChange={(event) =>
+                    updateDraft(plan.id, { daily_ai_request_limit: event.target.value })
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-500">
+                  {t("admin.planModels")}
+                </span>
+                <input
+                  type="text"
+                  value={draft.allowed_models}
+                  onChange={(event) =>
+                    updateDraft(plan.id, { allowed_models: event.target.value })
+                  }
+                  placeholder='gemini-2.5-flash, gemini-2.5-pro or *'
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+                />
+              </label>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between">
+              <p className="text-xs text-slate-400">{t("admin.planModelsHint")}</p>
+              <button
+                type="button"
+                onClick={() => save(plan)}
+                disabled={savingId === plan.id}
+                className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+              >
+                {savingId === plan.id
+                  ? "..."
+                  : savedId === plan.id
+                    ? t("admin.planSaved")
+                    : t("admin.planSave")}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function UsersTab({ currentUserId }) {
   const { t } = useTranslation();
   const [users, setUsers] = useState([]);
@@ -639,6 +795,7 @@ export default function AdminDashboard({ currentUserId, onClose }) {
 
         <div className="flex-1 overflow-y-auto p-4">
           {tab === "stats" && <StatsTab />}
+          {tab === "plans" && <PlansTab />}
           {tab === "users" && <UsersTab currentUserId={currentUserId} />}
           {tab === "conversations" && <ConversationsTab />}
           {tab === "logs" && <LogsTab />}
