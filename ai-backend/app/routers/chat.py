@@ -1,6 +1,7 @@
 """
 مسارات المحادثة مع الذكاء الاصطناعي: عادي (/chat) ومباشر تدريجيًا (/chat/stream)
 """
+import asyncio
 import base64
 import json
 import time
@@ -1130,17 +1131,38 @@ async def chat_stream(
         yield f"event: conversation\ndata: {conversation.id}\n\n"
         yield f"event: sources\ndata: {json.dumps(sources, ensure_ascii=False)}\n\n"
         full_reply = ""
+        stream_iterator = stream_ai_reply(
+            ai_message,
+            history,
+            conversation.ai_model,
+            on_provider_selected=_on_provider_selected,
+        ).__aiter__()
         try:
-            async for chunk in stream_ai_reply(
-                ai_message,
-                history,
-                conversation.ai_model,
-                on_provider_selected=_on_provider_selected,
-            ):
-                # إذا أغلق المتصفح الاتصال، لا نستهلك المزيد من chunks ولا نحفظ ردًا جزئيًا.
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(
+                        stream_iterator.__anext__(),
+                        timeout=settings.AI_STREAM_IDLE_TIMEOUT_SECONDS,
+                    )
+                except StopAsyncIteration:
+                    break
+                except TimeoutError:
+                    logger.warning(
+                        "انتهت مهلة خمول بث المحادثة %s بعد %.1f ثانية",
+                        conversation.id,
+                        settings.AI_STREAM_IDLE_TIMEOUT_SECONDS,
+                    )
+                    yield (
+                        "event: error\ndata: انتهت مهلة بث الرد بسبب عدم وصول بيانات جديدة\n\n"
+                    )
+                    return
+
+                # افحص انقطاع العميل بعد استلام chunk، حتى نحافظ على أول chunk
+                # في حالة disconnect الذي يحدث بين chunks.
                 if await request.is_disconnected():
                     logger.info("العميل أغلق بث المحادثة %s أثناء التوليد", conversation.id)
                     return
+
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
@@ -1148,6 +1170,13 @@ async def chat_stream(
             logger.exception("خطأ أثناء بث الرد لمحادثة %s", conversation.id)
             yield "event: error\ndata: حدث خطأ أثناء توليد الرد\n\n"
             return
+        finally:
+            close_iterator = getattr(stream_iterator, "aclose", None)
+            if close_iterator is not None:
+                try:
+                    await close_iterator()
+                except Exception:
+                    logger.debug("تعذر إغلاق مولد البث لمحادثة %s", conversation.id, exc_info=True)
 
         if await request.is_disconnected():
             logger.info("العميل أغلق بث المحادثة %s قبل حفظ الرد", conversation.id)

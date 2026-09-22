@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 """
 اختبارات مسار المحادثة — يتم عمل mock لاستدعاء محرك AI بدل الاتصال الحقيقي بالإنترنت
@@ -424,6 +425,52 @@ def test_delete_user_message_removes_its_assistant_reply_and_preserves_later_tur
     assert [(message.role, message.content) for message in messages] == [
         (MessageRole.user, "السؤال الثاني"),
         (MessageRole.assistant, "رد ثان"),
+    ]
+
+
+def test_stream_idle_timeout_does_not_persist_partial_reply(client, monkeypatch, db_session):
+    async def fake_stream(message, history=None, model=None, on_provider_selected=None):
+        if on_provider_selected:
+            on_provider_selected("gemini")
+        yield "الجزء الأول"
+        await asyncio.sleep(0.05)
+        yield "الجزء الثاني"
+
+    monkeypatch.setattr(chat_router_module, "stream_ai_reply", fake_stream)
+    monkeypatch.setattr(app_settings, "AI_STREAM_IDLE_TIMEOUT_SECONDS", 0.01)
+
+    token = _register_and_login(client, "stream-timeout@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with client.stream(
+        "POST",
+        "/chat/stream",
+        json={"message": "اختبار مهلة البث"},
+        headers=headers,
+    ) as response:
+        response.read()
+        body = response.text
+
+    assert response.status_code == 200
+    assert "event: chunk" in body
+    assert "الجزء الأول" in body
+    assert "الجزء الثاني" not in body
+    assert "event: error" in body
+    assert "انتهت مهلة بث الرد" in body
+    assert "event: done" not in body
+
+    conversations = client.get("/conversations", headers=headers)
+    assert conversations.status_code == 200
+    conversation_id = conversations.json()[0]["id"]
+
+    messages = (
+        db_session.query(Message)
+        .filter(Message.conversation_id == conversation_id)
+        .order_by(Message.created_at.asc(), Message.id.asc())
+        .all()
+    )
+    assert [(message.role, message.content) for message in messages] == [
+        (MessageRole.user, "اختبار مهلة البث"),
     ]
 
 

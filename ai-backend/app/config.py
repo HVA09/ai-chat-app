@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSIONS: int = 768
     DAILY_AI_REQUEST_LIMIT: int = 20
     MAX_AI_OUTPUT_TOKENS: int = 1200
+    # Maximum time to wait for the next provider chunk while streaming.
+    AI_STREAM_IDLE_TIMEOUT_SECONDS: float = 60.0
     # Optional JSON pricing map for admin cost analytics. Keep empty when
     # provider/model prices are not configured.
     AI_PRICING_JSON: str = "{}"
@@ -96,6 +98,13 @@ class Settings(BaseSettings):
     def validate_monthly_budget(cls, value: float) -> float:
         if value < 0:
             raise ValueError("AI_MONTHLY_BUDGET_USD cannot be negative")
+        return value
+
+    @field_validator("AI_STREAM_IDLE_TIMEOUT_SECONDS")
+    @classmethod
+    def validate_stream_idle_timeout(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("AI_STREAM_IDLE_TIMEOUT_SECONDS must be greater than 0")
         return value
 
     @field_validator("AI_ALLOWED_MODELS", mode="before")
