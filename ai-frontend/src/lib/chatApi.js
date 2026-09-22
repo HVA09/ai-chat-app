@@ -7,7 +7,8 @@ export async function sendChatMessage(
   conversationId = null,
   assistantId = null,
   workspaceId = null,
-  model = null
+  model = null,
+  fileIds = []
 ) {
   const { data } = await api.post("/chat", {
     message,
@@ -15,6 +16,7 @@ export async function sendChatMessage(
     assistant_id: assistantId,
     workspace_id: workspaceId,
     model,
+    file_ids: fileIds,
   });
   return data;
 }
@@ -36,6 +38,7 @@ export async function streamChatMessage(
     signal,
     workspaceId = null,
     model = null,
+    fileIds = [],
   } = {}
 ) {
   const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -54,6 +57,7 @@ export async function streamChatMessage(
         assistant_id: assistantId,
         workspace_id: workspaceId,
         model,
+        file_ids: fileIds,
       }),
       signal,
     });
