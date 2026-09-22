@@ -6,6 +6,7 @@ It never executes arbitrary Python/code supplied by the user.
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -237,7 +238,8 @@ async def run_agent(
     current_user: User,
     db: Session,
     model: str | None = None,
-) -> tuple[str, list[dict], int | None, int | None]:
+    on_tool_event: Callable[[dict], Awaitable[None]] | None = None,
+) -> tuple[str, list[dict], int | None, int | None, list[dict]]:
     provider = get_provider(model)
     if not isinstance(provider, OpenAICompatibleProvider):
         raise AgentModeError(
@@ -251,6 +253,7 @@ async def run_agent(
     messages: list[dict] = _history(history) + [{"role": "user", "content": task}]
     tools = _tool_definitions()
     sources: list[dict] = []
+    tool_events: list[dict] = []
     total_input_tokens = 0
     total_output_tokens = 0
 
@@ -265,12 +268,22 @@ async def run_agent(
                 sources,
                 total_input_tokens or None,
                 total_output_tokens or None,
+                tool_events,
             )
 
         calls = reply.tool_calls[:MAX_TOOL_CALLS_PER_ROUND]
         messages.append(_assistant_tool_message(reply))
 
         for call in calls:
+            event = {
+                "tool": call.name,
+                "status": "completed",
+                "round": _ + 1,
+            }
+            tool_events.append(event)
+            if on_tool_event is not None:
+                await on_tool_event(event)
+
             result, call_sources = await _execute_tool(
                 call.name, call.arguments, conversation, current_user, db
             )
@@ -290,4 +303,5 @@ async def run_agent(
         sources,
         total_input_tokens or None,
         total_output_tokens or None,
+        tool_events,
     )
