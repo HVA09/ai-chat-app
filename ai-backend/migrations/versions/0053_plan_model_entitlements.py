@@ -28,9 +28,10 @@ def upgrade() -> None:
     # Pro can use every model exposed through AI_ALLOWED_MODELS.
     op.execute(
         sa.text(
-            "UPDATE plans SET allowed_models = '["*"]'::json "
-            "WHERE name = 'Pro'"
-        )
+            "UPDATE plans SET allowed_models = CAST(:models AS JSON) "
+            "WHERE name = :name"
+        ),
+        {"models": "[\"*\"]", "name": "Pro"},
     )
 
 
