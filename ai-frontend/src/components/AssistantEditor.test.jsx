@@ -233,7 +233,7 @@ describe("AssistantEditor", () => {
     expect(compareAssistantVersionWithCurrent).toHaveBeenCalledWith(7, 1);
     expect(await screen.findByText("مقارنة الإصدار 1")).toBeInTheDocument();
     expect(screen.getByText(/-old/)).toBeInTheDocument();
-    expect(screen.getByText(/+new/)).toBeInTheDocument();
+    expect(screen.getByText("+new", { exact: false })).toBeInTheDocument();
   });
 
   it("does not show knowledge management while creating", () => {
