@@ -7,12 +7,18 @@ import {
   updateProjectMemory,
 } from "../lib/projectMemoriesApi";
 
-export default function ProjectEditor({ project = null, onClose, onSave }) {
+export default function ProjectEditor({
+  project = null,
+  assistants = [],
+  onClose,
+  onSave,
+}) {
   const { t } = useTranslation();
   const isEditing = Boolean(project);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
+  const [assistantId, setAssistantId] = useState("");
   const [validationError, setValidationError] = useState("");
   const [saving, setSaving] = useState(false);
   const [memories, setMemories] = useState([]);
@@ -25,6 +31,7 @@ export default function ProjectEditor({ project = null, onClose, onSave }) {
     setName(project?.name ?? "");
     setDescription(project?.description ?? "");
     setInstructions(project?.instructions ?? "");
+    setAssistantId(project?.assistant_id ? String(project.assistant_id) : "");
     setValidationError("");
     setMemoryDraft("");
     setMemoryError("");
@@ -70,6 +77,7 @@ export default function ProjectEditor({ project = null, onClose, onSave }) {
         name: normalizedName,
         description: normalizedDescription || null,
         instructions: normalizedInstructions || null,
+        assistant_id: assistantId ? Number(assistantId) : null,
       });
     } finally {
       setSaving(false);
@@ -210,6 +218,27 @@ export default function ProjectEditor({ project = null, onClose, onSave }) {
               placeholder={t("projectEditor.descriptionPlaceholder")}
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-slate-500"
             />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">
+              {t("projectEditor.assistantLabel")}
+            </span>
+            <select
+              value={assistantId}
+              onChange={(event) => setAssistantId(event.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-slate-500"
+            >
+              <option value="">{t("projectEditor.noDefaultAssistant")}</option>
+              {assistants.map((assistant) => (
+                <option key={assistant.id} value={assistant.id}>
+                  {assistant.name}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-slate-400">
+              {t("projectEditor.assistantHint")}
+            </span>
           </label>
 
           <label className="block">
