@@ -132,3 +132,47 @@ def test_factory_supports_explicit_provider_override(monkeypatch):
     assert isinstance(provider, OpenAICompatibleProvider)
     assert provider.api_key == "fallback-key"
     assert provider.base_url == "https://fallback.example/v1"
+
+
+def test_non_stream_ai_request_uses_configured_timeout(monkeypatch):
+    import asyncio
+    import httpx
+
+    monkeypatch.setattr(app_settings, "AI_REQUEST_TIMEOUT_SECONDS", 17.0)
+    seen = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": "رد"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 2},
+            }
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            seen["timeout"] = kwargs.get("timeout")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, *args, **kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+
+    reply = asyncio.run(
+        OpenAICompatibleProvider(
+            api_key="fake",
+            base_url="https://example.com/v1",
+            model="test-model",
+        ).get_reply("hello")
+    )
+
+    assert reply.text == "رد"
+    assert seen["timeout"] == 17.0
