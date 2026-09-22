@@ -7,19 +7,21 @@ export async function listProjects(workspaceId) {
   return data;
 }
 
-export async function createProject(workspaceId, name, description = "") {
+export async function createProject(workspaceId, name, description = "", instructions = "") {
   const { data } = await api.post("/projects", {
     workspace_id: workspaceId,
     name,
     description: description || null,
+    instructions: instructions || null,
   });
   return data;
 }
 
-export async function updateProject(id, name, description = "") {
+export async function updateProject(id, name, description = "", instructions = "") {
   const { data } = await api.patch(`/projects/${id}`, {
     name,
     description: description || null,
+    instructions: instructions || null,
   });
   return data;
 }
