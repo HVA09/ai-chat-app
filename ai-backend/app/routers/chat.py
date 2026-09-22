@@ -1033,56 +1033,111 @@ async def chat_stream(
         enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
     agent_task = extract_agent_request(payload.message)
     if agent_task is not None:
-        try:
-            agent_history = _build_history(conversation, db)
-            agent_reply, sources, input_tokens, output_tokens = await run_agent(
-                agent_task,
-                agent_history,
-                conversation,
-                current_user,
-                db,
-                conversation.ai_model,
-            )
-        except AgentModeError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(exc),
-            ) from exc
+        event_queue: asyncio.Queue[dict] = asyncio.Queue()
 
-        db.add(
-            Message(
-                conversation_id=conversation.id,
-                role=MessageRole.user,
-                content=payload.message,
-            )
-        )
-        db.add(
-            Message(
-                conversation_id=conversation.id,
-                role=MessageRole.assistant,
-                content=agent_reply,
-                sources=sources or None,
-            )
-        )
-        db.add(
-            UsageLog(
-                user_id=current_user.id,
-                workspace_id=conversation.workspace_id,
-                endpoint="/chat/agent",
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-            )
-        )
-        db.commit()
+        async def publish_agent_event(event: dict):
+            await event_queue.put({"type": event.get("phase", "event"), **event})
 
-        safe_reply = agent_reply.replace("\n", "\\n")
-        safe_sources = json.dumps(sources, ensure_ascii=False)
+        async def run_agent_job():
+            try:
+                agent_history = _build_history(conversation, db)
+                agent_reply, sources, input_tokens, output_tokens = await run_agent(
+                    agent_task,
+                    agent_history,
+                    conversation,
+                    current_user,
+                    db,
+                    conversation.ai_model,
+                    on_tool_event=publish_agent_event,
+                )
+
+                db.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        role=MessageRole.user,
+                        content=payload.message,
+                    )
+                )
+                db.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        role=MessageRole.assistant,
+                        content=agent_reply,
+                        sources=sources or None,
+                    )
+                )
+                db.add(
+                    UsageLog(
+                        user_id=current_user.id,
+                        workspace_id=conversation.workspace_id,
+                        endpoint="/chat/agent",
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                    )
+                )
+                db.commit()
+
+                await event_queue.put(
+                    {
+                        "type": "result",
+                        "reply": agent_reply,
+                        "sources": sources,
+                    }
+                )
+            except AgentModeError as exc:
+                await event_queue.put({"type": "error", "detail": str(exc)})
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("خطأ أثناء تشغيل وضع الوكيل لمحادثة %s", conversation.id)
+                db.rollback()
+                await event_queue.put(
+                    {
+                        "type": "error",
+                        "detail": "حدث خطأ أثناء تنفيذ وضع الوكيل",
+                    }
+                )
+            finally:
+                await event_queue.put({"type": "done"})
+
+        agent_task_handle = asyncio.create_task(run_agent_job())
 
         async def agent_event_generator():
-            yield f"event: conversation\\ndata: {conversation.id}\\n\\n"
-            yield f"event: sources\\ndata: {safe_sources}\\n\\n"
-            yield f"event: chunk\\ndata: {safe_reply}\\n\\n"
-            yield "event: done\\ndata: {}\\n\\n"
+            try:
+                yield f"event: conversation\ndata: {conversation.id}\n\n"
+
+                while True:
+                    event = await event_queue.get()
+                    event_type = event.get("type")
+
+                    if event_type in {"round", "start", "complete"}:
+                        payload_data = {
+                            "phase": event_type,
+                            "id": event.get("id"),
+                            "name": event.get("name"),
+                            "round": event.get("round"),
+                        }
+                        yield (
+                            "event: agent_tool\ndata: "
+                            f"{json.dumps(payload_data, ensure_ascii=False)}\n\n"
+                        )
+                    elif event_type == "result":
+                        safe_sources = json.dumps(event.get("sources") or [], ensure_ascii=False)
+                        safe_reply = str(event.get("reply") or "").replace("\n", "\\n")
+                        yield f"event: sources\ndata: {safe_sources}\n\n"
+                        yield f"event: chunk\ndata: {safe_reply}\n\n"
+                    elif event_type == "error":
+                        yield f"event: error\ndata: {event.get('detail', 'حدث خطأ')}\n\n"
+                    elif event_type == "done":
+                        yield "event: done\ndata: {}\n\n"
+                        return
+            finally:
+                if not agent_task_handle.done():
+                    agent_task_handle.cancel()
+                    try:
+                        await agent_task_handle
+                    except asyncio.CancelledError:
+                        pass
 
         return StreamingResponse(agent_event_generator(), media_type="text/event-stream")
 
