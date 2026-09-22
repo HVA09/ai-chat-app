@@ -11,6 +11,7 @@ const {
   uploadFile,
   listAssistantVersions,
   restoreAssistantVersion,
+  compareAssistantVersionWithCurrent,
 } = vi.hoisted(() => ({
   listAssistantKnowledgeFiles: vi.fn(),
   attachFileToAssistant: vi.fn(),
@@ -19,6 +20,7 @@ const {
   uploadFile: vi.fn(),
   listAssistantVersions: vi.fn(),
   restoreAssistantVersion: vi.fn(),
+  compareAssistantVersionWithCurrent: vi.fn(),
 }));
 
 vi.mock("../lib/assistantKnowledgeApi", () => ({
@@ -35,6 +37,7 @@ vi.mock("../lib/filesApi", () => ({
 vi.mock("../lib/assistantVersionsApi", () => ({
   listAssistantVersions,
   restoreAssistantVersion,
+  compareAssistantVersionWithCurrent,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -70,6 +73,14 @@ vi.mock("react-i18next", () => ({
         "assistantEditor.versionLabel": "الإصدار {{version}}",
         "assistantEditor.restore": "استرجاع",
         "assistantEditor.restoring": "جارٍ الاسترجاع...",
+      "assistantEditor.compare": "مقارنة",
+      "assistantEditor.comparing": "جارٍ المقارنة...",
+      "assistantEditor.compareTitle": "مقارنة الإصدار {{version}}",
+      "assistantEditor.compareChanged": "هناك تغييرات.",
+      "assistantEditor.compareUnchanged": "لا توجد تغييرات.",
+      "assistantEditor.compareNoDiff": "لا يوجد فرق.",
+      "assistantEditor.compareError": "تعذر المقارنة.",
+      "assistantEditor.closeCompare": "إغلاق المقارنة",
       })[key] ?? key,
   }),
 }));
@@ -83,6 +94,12 @@ describe("AssistantEditor", () => {
     detachFileFromAssistant.mockResolvedValue(undefined);
     uploadFile.mockResolvedValue({ id: 10, original_filename: "linux.pdf" });
     listAssistantVersions.mockResolvedValue([]);
+    compareAssistantVersionWithCurrent.mockResolvedValue({
+      from_version: 1,
+      current_version: 2,
+      changed: true,
+      diff: "@@ -1 +1 @@\n-old\n+new",
+    });
     restoreAssistantVersion.mockResolvedValue({
       id: 7,
       name: "مساعد قديم",
@@ -183,6 +200,40 @@ describe("AssistantEditor", () => {
         instructions: "تعليمات قديمة",
       })
     );
+  });
+
+  it("compares a historical version with the current assistant", async () => {
+    listAssistantVersions.mockResolvedValue([
+      {
+        id: 1,
+        version: 1,
+        name: "مساعد قديم",
+        description: "قديم",
+        instructions: "تعليمات قديمة",
+        created_at: "2026-09-22T10:00:00Z",
+      },
+    ]);
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "مقارنة" }));
+
+    expect(compareAssistantVersionWithCurrent).toHaveBeenCalledWith(7, 1);
+    expect(await screen.findByText("مقارنة الإصدار 1")).toBeInTheDocument();
+    expect(screen.getByText(/-old/)).toBeInTheDocument();
+    expect(screen.getByText(/+new/)).toBeInTheDocument();
   });
 
   it("does not show knowledge management while creating", () => {
