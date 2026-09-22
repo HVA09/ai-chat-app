@@ -17,14 +17,32 @@ def _register_and_login(client, email="chat@example.com", password="StrongPass12
     return client.cookies.get("access_token")
 
 
-def test_list_ai_models_returns_allowed_models(client, monkeypatch):
+def test_list_ai_models_returns_allowed_models(client, db_session, monkeypatch):
     from app.config import settings as app_settings
+    from app.models.plan import Plan
+    from app.models.subscription import Subscription, SubscriptionStatus
 
     monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
     monkeypatch.setattr(app_settings, "AI_MODEL", "gemini-2.5-flash")
     monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["gemini-2.5-flash", "gemini-test"])
 
     token = _register_and_login(client, "models@example.com")
+    user_id = client.get(
+        "/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()["id"]
+    pro_plan = db_session.query(Plan).filter(Plan.name == "Pro").one()
+    db_session.add(
+        Subscription(
+            user_id=user_id,
+            plan_id=pro_plan.id,
+            provider="test",
+            provider_subscription_id="models-test-sub",
+            status=SubscriptionStatus.active,
+        )
+    )
+    db_session.commit()
+
     response = client.get("/chat/models", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == 200
@@ -450,7 +468,6 @@ def test_chat_includes_attached_file_text_as_untrusted_context(client, monkeypat
 
     from app.models.conversation_file_link import ConversationFileLink
     from app.models.file_attachment import FileAttachment
-    from app.models.user import User
 
     user = (
         db_session.query(User)
