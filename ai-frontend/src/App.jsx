@@ -1916,6 +1916,7 @@ export default function App() {
     if (readOnlyConversation || loading || !conversationId || messages[index]?.role !== "user") return;
     setError("");
     setRetryableUserMessage(null);
+    setChatAttachments([]);
     setEditingMessageIndex(index);
     setInput(messages[index]?.text ?? "");
   };
