@@ -73,6 +73,9 @@ class User(Base):
     conversations = relationship(
         "Conversation", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )
+    conversation_comments = relationship(
+        "ConversationComment", back_populates="author", cascade="all, delete-orphan", passive_deletes=True
+    )
     usage_logs = relationship(
         "UsageLog", back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )
