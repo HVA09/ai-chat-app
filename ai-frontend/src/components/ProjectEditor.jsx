@@ -221,10 +221,14 @@ export default function ProjectEditor({
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">
+            <span
+              className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200"
+              id="project-default-assistant-label"
+            >
               {t("projectEditor.assistantLabel")}
             </span>
             <select
+              aria-labelledby="project-default-assistant-label"
               value={assistantId}
               onChange={(event) => setAssistantId(event.target.value)}
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-800 dark:focus:border-slate-500"
