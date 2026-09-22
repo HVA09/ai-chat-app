@@ -82,6 +82,71 @@ def enforce_daily_ai_limit(current_user: User = Depends(get_current_user), db: S
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"وصلت للحد اليومي المسموح ({daily_limit} طلب) — يمكنك ترقية خطتك لحد أعلى",
         )
+    return enforce_ai_cost_budget(current_user, db)
+
+
+def enforce_ai_cost_budget(
+    current_user: User,
+    db: Session,
+) -> User:
+    """يمنع المستخدمين غير الإداريين من بدء طلبات AI بعد تجاوز ميزانية الشهر."""
+    budget = float(settings.AI_MONTHLY_BUDGET_USD or 0)
+    if budget <= 0 or current_user.role == UserRole.admin:
+        return current_user
+
+    now = datetime.now(timezone.utc)
+    month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    rows = (
+        db.query(
+            UsageLog.provider,
+            UsageLog.model,
+            func.coalesce(func.sum(UsageLog.input_tokens), 0),
+            func.coalesce(func.sum(UsageLog.output_tokens), 0),
+        )
+        .filter(
+            UsageLog.created_at >= month_start,
+            UsageLog.provider.is_not(None),
+            UsageLog.model.is_not(None),
+        )
+        .group_by(UsageLog.provider, UsageLog.model)
+        .all()
+    )
+
+    from app.services.ai_cost import estimate_cost_usd
+
+    spent = 0.0
+    priced_any = False
+    for provider, model, input_tokens, output_tokens in rows:
+        _, _, total_cost = estimate_cost_usd(
+            provider,
+            model,
+            int(input_tokens or 0),
+            int(output_tokens or 0),
+        )
+        if total_cost is None:
+            continue
+        priced_any = True
+        spent += total_cost
+
+    if not priced_any:
+        return current_user
+
+    if spent >= budget:
+        remaining = max(budget - spent, 0.0)
+        logger.warning(
+            "AI monthly budget exceeded: user=%s spent=%.4f budget=%.4f",
+            current_user.email,
+            spent,
+            budget,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"تم تجاوز ميزانية AI الشهرية المهيأة ({budget:.2f} USD). "
+                f"المتبقي: {remaining:.2f} USD."
+            ),
+        )
+
     return current_user
 
 
