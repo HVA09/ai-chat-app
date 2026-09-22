@@ -39,6 +39,7 @@ from app.schemas.admin import (
     ModelUsageStat,
     ProviderUsageStat,
     ProviderLatencyStat,
+    ProviderStatusOut,
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
