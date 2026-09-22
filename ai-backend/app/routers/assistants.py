@@ -1,4 +1,6 @@
 """إدارة المساعدين المخصصين للمستخدم الحالي."""
+import difflib
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -10,7 +12,7 @@ from app.models.assistant_file_link import AssistantFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.assistant_version import AssistantVersion
 from app.models.user import User
-from app.schemas.assistant_versions import AssistantVersionOut
+from app.schemas.assistant_versions import AssistantVersionCompareOut, AssistantVersionOut
 from app.schemas.assistants import AssistantCreate, AssistantOut, AssistantUpdate
 from app.schemas.file import FileOut
 
@@ -140,6 +142,62 @@ def list_assistant_versions(
         .filter(AssistantVersion.assistant_id == assistant.id)
         .order_by(AssistantVersion.version.desc())
         .all()
+    )
+
+
+@router.get("/{assistant_id}/versions/{version}/compare-current", response_model=AssistantVersionCompareOut)
+def compare_assistant_version_with_current(
+    assistant_id: int,
+    version: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    assistant = _get_owned_assistant(assistant_id, current_user, db)
+    snapshot = (
+        db.query(AssistantVersion)
+        .filter(
+            AssistantVersion.assistant_id == assistant.id,
+            AssistantVersion.version == version,
+        )
+        .first()
+    )
+    if not snapshot:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="نسخة المساعد غير موجودة",
+        )
+
+    previous = [
+        f"name: {snapshot.name}",
+        f"description: {snapshot.description or ''}",
+        "instructions:",
+        snapshot.instructions,
+    ]
+    current = [
+        f"name: {assistant.name}",
+        f"description: {assistant.description or ''}",
+        "instructions:",
+        assistant.instructions,
+    ]
+    diff = "\n".join(
+        difflib.unified_diff(
+            previous,
+            current,
+            fromfile=f"version-{snapshot.version}",
+            tofile="current",
+            lineterm="",
+        )
+    )
+    return AssistantVersionCompareOut(
+        from_version=snapshot.version,
+        current_version=(
+            db.query(func.max(AssistantVersion.version))
+            .filter(AssistantVersion.assistant_id == assistant.id)
+            .scalar()
+            or 0
+        ),
+        diff=diff[:20000],
+        changed=previous != current,
     )
 
 
