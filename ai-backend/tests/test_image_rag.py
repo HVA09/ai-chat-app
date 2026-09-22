@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 from app.models.file_attachment import FileAttachment
 from app.services.ai_providers.base import AIReply
 from app.routers import files as files_router
+from app.services import image_rag
 
 
 PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"fake-image-bytes"
@@ -37,21 +38,19 @@ def test_index_image_for_rag_is_explicit_and_persists_usage(client, monkeypatch,
     assert uploaded.json()["is_ai_indexed"] is False
 
     monkeypatch.setattr(
-        files_router,
-        "index_image_file",
+        image_rag,
+        "get_ai_vision_reply",
         AsyncMock(
-            return_value=(
-                AIReply(
-                    text="مخطط مبيعات يظهر ارتفاعًا في الربع الرابع.",
-                    input_tokens=10,
-                    output_tokens=20,
-                    provider="gemini",
-                    latency_ms=123,
-                ),
-                2,
+            return_value=AIReply(
+                text="مخطط مبيعات يظهر ارتفاعًا في الربع الرابع.",
+                input_tokens=10,
+                output_tokens=20,
+                provider="gemini",
+                latency_ms=123,
             )
         ),
     )
+    monkeypatch.setattr(image_rag, "index_file_chunks", lambda db, file: 2)
 
     response = client.post(
         f"/files/{file_id}/index-image",
