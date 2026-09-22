@@ -14,6 +14,7 @@ import {
   getDailyAnalytics,
   getModelUsage,
   getProviderUsage,
+  getProviderStatus,
   getProviderLatency,
   getCostUsage,
   getCostBudget,
@@ -53,6 +54,7 @@ function StatsTab() {
   const [feedback, setFeedback] = useState(null);
   const [modelUsage, setModelUsage] = useState([]);
   const [providerUsage, setProviderUsage] = useState([]);
+  const [providerStatus, setProviderStatus] = useState([]);
   const [providerLatency, setProviderLatency] = useState([]);
   const [costUsage, setCostUsage] = useState([]);
   const [costBudget, setCostBudget] = useState(null);
@@ -66,6 +68,7 @@ function StatsTab() {
       getDailyAnalytics(analyticsDays),
       getModelUsage(analyticsDays),
       getProviderUsage(analyticsDays),
+      getProviderStatus(),
       getProviderLatency(analyticsDays),
       getCostUsage(analyticsDays),
       getCostBudget(),
@@ -76,6 +79,7 @@ function StatsTab() {
         setDaily(dailyData.map((p) => ({ ...p, dateLabel: p.date.slice(5) })));
         setModelUsage(modelUsageData);
         setProviderUsage(providerUsageData);
+        setProviderStatus(providerStatusData);
         setProviderLatency(providerLatencyData);
         setCostUsage(costUsageData);
         setCostBudget(costBudgetData);
@@ -203,6 +207,37 @@ function StatsTab() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {providerStatus.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium text-slate-900">{t("admin.providerStatusTitle")}</p>
+            <span className="text-xs text-slate-400">{t("admin.providerStatusHint")}</span>
+          </div>
+          <div className="mt-3 space-y-2">
+            {providerStatus.map((item) => (
+              <div key={`${item.role}:${item.provider}:${item.model}`} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-medium text-slate-900">{item.provider}</p>
+                    <p className="text-xs text-slate-500">
+                      {item.role === "primary" ? t("admin.providerPrimary") : t("admin.providerFallback")} · {item.model}
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-xs ${item.configured ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                    {item.configured ? t("admin.providerConfigured") : t("admin.providerMisconfigured")}
+                  </span>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-slate-600 sm:grid-cols-3">
+                  <div>{t("admin.providerRecentRequests")}: <strong>{item.recent_requests}</strong></div>
+                  <div>{t("admin.providerLastRequest")}: <strong>{item.last_request_at ? new Date(item.last_request_at).toLocaleString() : t("admin.providerNever")}</strong></div>
+                  <div>{t("admin.providerAvgLatency")}: <strong>{item.avg_latency_ms === null ? "—" : `${item.avg_latency_ms} ms`}</strong></div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
