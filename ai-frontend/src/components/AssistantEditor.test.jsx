@@ -9,12 +9,16 @@ const {
   detachFileFromAssistant,
   listFiles,
   uploadFile,
+  listAssistantVersions,
+  restoreAssistantVersion,
 } = vi.hoisted(() => ({
   listAssistantKnowledgeFiles: vi.fn(),
   attachFileToAssistant: vi.fn(),
   detachFileFromAssistant: vi.fn(),
   listFiles: vi.fn(),
   uploadFile: vi.fn(),
+  listAssistantVersions: vi.fn(),
+  restoreAssistantVersion: vi.fn(),
 }));
 
 vi.mock("../lib/assistantKnowledgeApi", () => ({
@@ -26,6 +30,11 @@ vi.mock("../lib/assistantKnowledgeApi", () => ({
 vi.mock("../lib/filesApi", () => ({
   listFiles,
   uploadFile,
+}));
+
+vi.mock("../lib/assistantVersionsApi", () => ({
+  listAssistantVersions,
+  restoreAssistantVersion,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -55,6 +64,12 @@ vi.mock("react-i18next", () => ({
         "assistantEditor.availableFiles": "ملفاتك المتاحة",
         "assistantEditor.attach": "إرفاق",
         "assistantEditor.detach": "إزالة",
+        "assistantEditor.versionHistoryTitle": "سجل نسخ المساعد",
+        "assistantEditor.versionHistorySubtitle": "استرجاع النسخ",
+        "assistantEditor.noVersions": "لا توجد نسخ محفوظة بعد.",
+        "assistantEditor.versionLabel": "الإصدار {{version}}",
+        "assistantEditor.restore": "استرجاع",
+        "assistantEditor.restoring": "جارٍ الاسترجاع...",
       })[key] ?? key,
   }),
 }));
@@ -67,6 +82,14 @@ describe("AssistantEditor", () => {
     attachFileToAssistant.mockResolvedValue({});
     detachFileFromAssistant.mockResolvedValue(undefined);
     uploadFile.mockResolvedValue({ id: 10, original_filename: "linux.pdf" });
+    listAssistantVersions.mockResolvedValue([]);
+    restoreAssistantVersion.mockResolvedValue({
+      id: 7,
+      name: "مساعد قديم",
+      description: "قديم",
+      instructions: "تعليمات قديمة",
+      version: 1,
+    });
   });
 
   it("validates required fields", async () => {
@@ -120,6 +143,46 @@ describe("AssistantEditor", () => {
     expect(screen.getByDisplayValue("راجع الكود ثم اقترح تحسينات.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "تعديل المساعد" })).toBeInTheDocument();
     expect(screen.getByText("ملفات المعرفة")).toBeInTheDocument();
+  });
+
+  it("shows version history and can restore a previous version", async () => {
+    listAssistantVersions.mockResolvedValue([
+      {
+        id: 1,
+        version: 1,
+        name: "مساعد قديم",
+        description: "قديم",
+        instructions: "تعليمات قديمة",
+        created_at: "2026-09-22T10:00:00Z",
+      },
+    ]);
+    const onRestored = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onRestored={onRestored}
+      />
+    );
+
+    expect(await screen.findByText("سجل نسخ المساعد")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "استرجاع" }));
+
+    expect(restoreAssistantVersion).toHaveBeenCalledWith(7, 1);
+    expect(onRestored).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 7,
+        instructions: "تعليمات قديمة",
+      })
+    );
   });
 
   it("does not show knowledge management while creating", () => {
