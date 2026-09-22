@@ -6,7 +6,7 @@ import json
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -857,6 +857,7 @@ async def chat(
 @router.post("/stream")
 async def chat_stream(
     payload: ChatRequest,
+    request: Request,
     current_user: User = Depends(enforce_daily_ai_limit),
     db: Session = Depends(get_db),
 ):
@@ -1136,12 +1137,20 @@ async def chat_stream(
                 conversation.ai_model,
                 on_provider_selected=_on_provider_selected,
             ):
+                # إذا أغلق المتصفح الاتصال، لا نستهلك المزيد من chunks ولا نحفظ ردًا جزئيًا.
+                if await request.is_disconnected():
+                    logger.info("العميل أغلق بث المحادثة %s أثناء التوليد", conversation.id)
+                    return
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
         except Exception:
             logger.exception("خطأ أثناء بث الرد لمحادثة %s", conversation.id)
             yield "event: error\ndata: حدث خطأ أثناء توليد الرد\n\n"
+            return
+
+        if await request.is_disconnected():
+            logger.info("العميل أغلق بث المحادثة %s قبل حفظ الرد", conversation.id)
             return
 
         try:
