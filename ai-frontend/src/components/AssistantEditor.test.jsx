@@ -231,7 +231,7 @@ describe("AssistantEditor", () => {
     await user.click(await screen.findByRole("button", { name: "مقارنة" }));
 
     expect(compareAssistantVersionWithCurrent).toHaveBeenCalledWith(7, 1);
-    expect(await screen.findByText("مقارنة الإصدار 1")).toBeInTheDocument();
+    expect(await screen.findByText("مقارنة الإصدار {{version}}")).toBeInTheDocument();
     expect(screen.getByText(/-old/)).toBeInTheDocument();
     expect(screen.getByText("+new", { exact: false })).toBeInTheDocument();
   });
