@@ -33,7 +33,7 @@ logger = get_logger("billing")
 
 @router.get("/plans", response_model=list[PlanOut])
 def list_plans(db: Session = Depends(get_db)):
-    cache_key = "billing:plans"
+    cache_key = "billing:plans:v2"
     cached = cache_get(cache_key)
     if cached is not None:
         return cached
