@@ -333,6 +333,104 @@ def test_regenerate_replaces_last_assistant_without_duplicate_user_message(clien
     ]
 
 
+def test_regenerate_retries_user_message_without_duplicate_user_turn(client, monkeypatch, db_session):
+    token = _register_and_login(client, "retry-generation@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "رسالة فشلت لاحقًا"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    assistant = (
+        db_session.query(Message)
+        .filter(
+            Message.conversation_id == conversation_id,
+            Message.role == MessageRole.assistant,
+        )
+        .one()
+    )
+    db_session.delete(assistant)
+    db_session.commit()
+
+    async def fake_stream(message, history, model=None):
+        assert message == "رسالة فشلت لاحقًا"
+        assert history == []
+        yield "رد بعد إعادة المحاولة"
+
+    monkeypatch.setattr(chat_router_module, "stream_ai_reply", fake_stream)
+
+    response = client.post(
+        f"/chat/{conversation_id}/regenerate/stream",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert "رد بعد إعادة المحاولة" in response.text
+    assert "event: done" in response.text
+
+    messages = (
+        db_session.query(Message)
+        .filter(Message.conversation_id == conversation_id)
+        .order_by(Message.id.asc())
+        .all()
+    )
+    assert [(message.role, message.content) for message in messages] == [
+        (MessageRole.user, "رسالة فشلت لاحقًا"),
+        (MessageRole.assistant, "رد بعد إعادة المحاولة"),
+    ]
+
+
+def test_regenerate_idle_timeout_does_not_persist_partial_reply(client, monkeypatch, db_session):
+    token = _register_and_login(client, "retry-timeout@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "رسالة ستتوقف"},
+        headers=headers,
+    ).json()["conversation_id"]
+    assistant = (
+        db_session.query(Message)
+        .filter(
+            Message.conversation_id == conversation_id,
+            Message.role == MessageRole.assistant,
+        )
+        .one()
+    )
+    db_session.delete(assistant)
+    db_session.commit()
+
+    async def fake_stream(message, history, model=None):
+        yield "جزء أول"
+        await asyncio.sleep(0.05)
+        yield "جزء ثان"
+
+    monkeypatch.setattr(chat_router_module, "stream_ai_reply", fake_stream)
+    monkeypatch.setattr(app_settings, "AI_STREAM_IDLE_TIMEOUT_SECONDS", 0.01)
+
+    response = client.post(
+        f"/chat/{conversation_id}/regenerate/stream",
+        headers=headers,
+    )
+    response.read()
+    assert response.status_code == 200
+    assert "جزء أول" in response.text
+    assert "جزء ثان" not in response.text
+    assert "event: error" in response.text
+    assert "event: done" not in response.text
+
+    messages = (
+        db_session.query(Message)
+        .filter(Message.conversation_id == conversation_id)
+        .order_by(Message.id.asc())
+        .all()
+    )
+    assert [(message.role, message.content) for message in messages] == [
+        (MessageRole.user, "رسالة ستتوقف"),
+    ]
+
+
 def test_edit_user_message_replaces_turn_and_truncates_following_history(client, monkeypatch, db_session):
     replies = iter(["رد الرسالة الأولى", "رد الرسالة الثانية"])
     mock_get_reply = AsyncMock()
