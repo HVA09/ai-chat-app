@@ -8,6 +8,7 @@ import {
   fetchFileBlob,
   listFiles,
   uploadFile,
+  indexImageForRag,
 } from "../lib/filesApi";
 import { getErrorMessage } from "../lib/errors";
 
@@ -38,6 +39,7 @@ export default function FilesPanel({ onClose, conversationId = null, workspaceId
   const [dragOver, setDragOver] = useState(false);
   const [preview, setPreview] = useState(null); // { url, contentType, name }
   const [analyzingId, setAnalyzingId] = useState(null);
+  const [indexingId, setIndexingId] = useState(null);
   const [showWorkspaceFiles, setShowWorkspaceFiles] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -109,6 +111,21 @@ export default function FilesPanel({ onClose, conversationId = null, workspaceId
       setError(getErrorMessage(err, t("files.imageAnalyzeError")));
     } finally {
       setAnalyzingId(null);
+    }
+  };
+
+  const handleIndexImage = async (file) => {
+    if (!file.content_type.startsWith("image/") || file.is_ai_indexed) return;
+
+    setError("");
+    setIndexingId(file.id);
+    try {
+      await indexImageForRag(file.id);
+      await refresh();
+    } catch (err) {
+      setError(getErrorMessage(err, t("files.imageIndexError")));
+    } finally {
+      setIndexingId(null);
     }
   };
 
@@ -261,6 +278,16 @@ export default function FilesPanel({ onClose, conversationId = null, workspaceId
                   >
                     ⬇
                   </button>
+                  {file.content_type.startsWith("image/") && (
+                    <button
+                      onClick={() => handleIndexImage(file)}
+                      disabled={Boolean(file.is_ai_indexed) || indexingId === file.id}
+                      title={file.is_ai_indexed ? t("files.imageIndexed") : t("files.indexImageForAi")}
+                      className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                    >
+                      {indexingId === file.id ? "..." : file.is_ai_indexed ? "✅" : "✨"}
+                    </button>
+                  )}
                   {conversationId && file.is_attached && file.content_type.startsWith("image/") && onAnalyzeImage && (
                     <button
                       onClick={() => handleAnalyzeImage(file)}
