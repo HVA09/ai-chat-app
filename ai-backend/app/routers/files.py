@@ -2,6 +2,7 @@
 مسارات رفع الملفات وإدارتها: صور، PDF، Word، Excel، CSV
 تُخزَّن الملفات على القرص (مجلد UPLOAD_DIR) والبيانات الوصفية بقاعدة البيانات
 """
+import base64
 import uuid
 from pathlib import Path
 import tempfile
@@ -14,17 +15,19 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_allowed_ai_models, get_current_user
 from app.audit import log_event
 from app.models.conversation import Conversation
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
+from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.file import FileOut
 from app.services.embeddings import EmbeddingServiceError
 from app.services.file_text_extractor import FileTextExtractionError, extract_text
 from app.services.rag import index_file_chunks
+from app.services.image_rag import index_image_file
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
@@ -474,6 +477,63 @@ def download_file(
     return FileResponse(
         path, media_type=attachment.content_type, filename=attachment.original_filename
     )
+
+
+@router.post("/{file_id}/index-image", response_model=FileOut)
+async def index_image_for_rag(
+    file_id: int,
+    current_user: User = Depends(enforce_daily_ai_limit),
+    db: Session = Depends(get_db),
+):
+    """يفهرس صورة صراحةً في RAG بدون استدعاء Vision مخفي أثناء كل رسالة."""
+    attachment = _get_accessible_file(file_id, current_user, db)
+
+    if not attachment.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="يمكن فهرسة الصور فقط",
+        )
+
+    if attachment.extracted_text:
+        return _file_response(attachment, current_user, db)
+
+    if attachment.workspace_id is not None:
+        enforce_workspace_daily_ai_limit(attachment.workspace_id, current_user, db)
+
+    allowed_models = get_allowed_ai_models(current_user, db)
+    model = allowed_models[0] if allowed_models else settings.AI_MODEL
+
+    try:
+        reply, indexed_chunks = await index_image_file(attachment, db, model)
+    except (FileNotFoundError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    db.add(
+        UsageLog(
+            user_id=current_user.id,
+            workspace_id=attachment.workspace_id,
+            endpoint="/files/index-image",
+            model=model,
+            provider=reply.provider,
+            input_tokens=reply.input_tokens,
+            output_tokens=reply.output_tokens,
+            latency_ms=reply.latency_ms,
+        )
+    )
+    db.commit()
+    db.refresh(attachment)
+
+    log_event(
+        db,
+        "file_rag_indexed",
+        f"فهرسة صورة للـ RAG: {attachment.original_filename} ({indexed_chunks} مقطع)",
+        current_user.id,
+    )
+    return _file_response(attachment, current_user, db)
 
 
 @router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
