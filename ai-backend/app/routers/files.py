@@ -184,6 +184,7 @@ def _file_response(
         membership = _get_workspace_membership(file.workspace_id, current_user, db)
         can_delete = membership.role in {WorkspaceRole.owner, WorkspaceRole.admin}
     response.can_delete = can_delete
+    response.is_ai_indexed = file.extracted_text is not None
     return response
 
 
