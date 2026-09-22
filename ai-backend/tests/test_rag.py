@@ -283,3 +283,143 @@ def test_workspace_knowledge_does_not_cross_workspace_scope(db_session, monkeypa
         )
     )
     assert rows == []
+
+
+def test_project_knowledge_isolated_by_project(db_session, monkeypatch):
+    import asyncio
+    from app.models.conversation import Conversation
+    from app.models.project import WorkspaceProject
+    from app.models.workspace import Workspace
+
+    user = User(email="project-rag@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+
+    workspace = Workspace(owner_id=user.id, name="Project RAG")
+    db_session.add(workspace)
+    db_session.flush()
+
+    project_a = WorkspaceProject(workspace_id=workspace.id, owner_id=user.id, name="A")
+    project_b = WorkspaceProject(workspace_id=workspace.id, owner_id=user.id, name="B")
+    db_session.add_all([project_a, project_b])
+    db_session.flush()
+
+    conversation = Conversation(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        project_id=project_a.id,
+        title="A chat",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+
+    file_a = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        project_id=project_a.id,
+        original_filename="a.txt",
+        stored_filename="a.txt",
+        content_type="text/plain",
+        size_bytes=10,
+        extracted_text="A knowledge",
+    )
+    file_b = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        project_id=project_b.id,
+        original_filename="b.txt",
+        stored_filename="b.txt",
+        content_type="text/plain",
+        size_bytes=10,
+        extracted_text="B knowledge",
+    )
+    db_session.add_all([file_a, file_b])
+    db_session.flush()
+    db_session.add_all([
+        FileChunk(file_id=file_a.id, chunk_index=0, content="A evidence", embedding=[0.1] * 768),
+        FileChunk(file_id=file_b.id, chunk_index=0, content="B evidence", embedding=[0.1] * 768),
+    ])
+    db_session.commit()
+
+    async def fake_embed_query(_query):
+        return [0.1] * 768
+
+    monkeypatch.setattr(rag, "embed_query", fake_embed_query)
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            user.id,
+            conversation.id,
+            "evidence",
+            workspace_id=workspace.id,
+            project_id=project_a.id,
+        )
+    )
+
+    assert [file.id for _, file in rows] == [file_a.id]
+
+
+def test_project_knowledge_not_visible_to_unscoped_workspace_chat(db_session, monkeypatch):
+    import asyncio
+    from app.models.conversation import Conversation
+    from app.models.project import WorkspaceProject
+    from app.models.workspace import Workspace
+
+    user = User(email="project-rag-none@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+
+    workspace = Workspace(owner_id=user.id, name="Project RAG None")
+    db_session.add(workspace)
+    db_session.flush()
+
+    project = WorkspaceProject(workspace_id=workspace.id, owner_id=user.id, name="Private")
+    db_session.add(project)
+    db_session.flush()
+
+    conversation = Conversation(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        title="General chat",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+
+    file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        project_id=project.id,
+        original_filename="private.txt",
+        stored_filename="private.txt",
+        content_type="text/plain",
+        size_bytes=10,
+        extracted_text="private",
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(
+        FileChunk(
+            file_id=file.id,
+            chunk_index=0,
+            content="private project evidence",
+            embedding=[0.1] * 768,
+        )
+    )
+    db_session.commit()
+
+    async def fake_embed_query(_query):
+        return [0.1] * 768
+
+    monkeypatch.setattr(rag, "embed_query", fake_embed_query)
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            user.id,
+            conversation.id,
+            "evidence",
+            workspace_id=workspace.id,
+            project_id=None,
+        )
+    )
+    assert rows == []
+
