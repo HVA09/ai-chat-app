@@ -38,7 +38,6 @@ from app.services.ai_agent import AgentModeError, extract_agent_request, run_age
 from app.services.ai_service import get_ai_reply, get_ai_vision_reply, stream_ai_reply
 from app.services.embeddings import EmbeddingServiceError
 from app.services.rag import build_fallback_file_context, build_retrieval_context, retrieve_relevant_chunks
-from app.services.image_rag import ensure_image_rag_indexed
 from app.services.tools.calculator import CalculatorError, calculate_expression, extract_calculator_expression
 from app.services.tools.code_execution import CodeExecutionError, execute_python_code, extract_code_request
 from app.services.tools.data_analysis import (
@@ -231,11 +230,6 @@ async def _build_file_context(
     conversation: Conversation, message: str, db: Session
 ) -> tuple[str, list[dict]]:
     """يرجع سياق RAG ومصادره، مع fallback للنص المستخرج الكامل."""
-    try:
-        await ensure_image_rag_indexed(conversation, db)
-    except Exception:
-        logger.exception("تعذر تجهيز فهرسة صور محادثة %s", conversation.id)
-
     try:
         rows = await retrieve_relevant_chunks(
             db,
