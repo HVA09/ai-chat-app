@@ -116,6 +116,11 @@ import {
   markAllNotificationsRead,
   buildNotificationsWebSocketUrl,
 } from "./lib/notificationsApi";
+import {
+  loadNotificationPreferences,
+  saveNotificationPreferences,
+  NOTIFICATION_PREFERENCE_EVENT,
+} from "./lib/notificationPreferences";
 import "./i18n";
 
 // دالة بدل ثابت — لازم نستدعيها بعد ما يصير عندنا t() جوا المكوّن عشان رسالة
@@ -206,6 +211,9 @@ export default function App() {
   const [autoGenerateTitles, setAutoGenerateTitles] = useState(false);
   const [autoGenerateSummaries, setAutoGenerateSummaries] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [notificationPreferences, setNotificationPreferences] = useState({
+    realtimeToasts: true,
+  });
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [retryableUserMessage, setRetryableUserMessage] = useState(null);
   const [toolActivity, setToolActivity] = useState(null);
@@ -300,6 +308,34 @@ export default function App() {
   useEffect(() => {
     restoreSession().then(() => setAuthed(true)).catch(() => setAuthed(false)).finally(() => setSessionChecking(false));
   }, []);
+
+  useEffect(() => {
+    if (!authed || !currentUser?.id) return;
+    setNotificationPreferences(loadNotificationPreferences(currentUser.id));
+  }, [authed, currentUser?.id]);
+
+  useEffect(() => {
+    const handlePreferenceChange = (event) => {
+      if (event.detail) {
+        setNotificationPreferences((current) => ({ ...current, ...event.detail }));
+      } else if (currentUser?.id) {
+        setNotificationPreferences(loadNotificationPreferences(currentUser.id));
+      }
+    };
+    window.addEventListener(NOTIFICATION_PREFERENCE_EVENT, handlePreferenceChange);
+    return () =>
+      window.removeEventListener(NOTIFICATION_PREFERENCE_EVENT, handlePreferenceChange);
+  }, [currentUser?.id]);
+
+  const handleNotificationToastsChanged = useCallback(
+    (enabled) => {
+      if (!currentUser?.id) return;
+      const next = { realtimeToasts: enabled };
+      setNotificationPreferences(next);
+      saveNotificationPreferences(currentUser.id, next);
+    },
+    [currentUser?.id]
+  );
 
   useEffect(() => {
     if (!authed || !currentUser?.id || typeof window === "undefined") return;
@@ -1365,11 +1401,13 @@ export default function App() {
     ws.onmessage = (event) => {
       const notification = JSON.parse(event.data);
       setNotifications((prev) => [notification, ...prev]);
-      setToast({ message: notification.title, type: "success" });
+      if (notificationPreferences.realtimeToasts) {
+        setToast({ message: notification.title, type: "success" });
+      }
     };
 
     return () => ws.close();
-  }, [authed]);
+  }, [authed, notificationPreferences.realtimeToasts]);
 
   const switchLang = (nextLang) => {
     setLang(nextLang);
@@ -3121,6 +3159,8 @@ export default function App() {
         <Suspense fallback={<ModalLoadingFallback />}>
           <AccountSettings
             user={currentUser}
+            notificationToastsEnabled={notificationPreferences.realtimeToasts}
+            onNotificationToastsChanged={handleNotificationToastsChanged}
             autoGenerateTitles={autoGenerateTitles}
             onAutoGenerateTitlesChanged={setAutoGenerateTitles}
             autoGenerateSummaries={autoGenerateSummaries}

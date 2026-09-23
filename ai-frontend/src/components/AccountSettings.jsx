@@ -23,6 +23,8 @@ function Section({ title, children }) {
 
 export default function AccountSettings({
   user,
+  notificationToastsEnabled = true,
+  onNotificationToastsChanged,
   autoGenerateTitles: autoGenerateTitlesProp = false,
   onAutoGenerateTitlesChanged,
   autoGenerateSummaries: autoGenerateSummariesProp = false,
@@ -41,6 +43,9 @@ export default function AccountSettings({
   const [autoGenerateTitles, setAutoGenerateTitles] = useState(Boolean(autoGenerateTitlesProp));
   const [autoGenerateSummaries, setAutoGenerateSummaries] = useState(
     Boolean(autoGenerateSummariesProp)
+  );
+  const [notificationToasts, setNotificationToasts] = useState(
+    Boolean(notificationToastsEnabled)
   );
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -108,6 +113,15 @@ export default function AccountSettings({
   useEffect(() => {
     setAutoGenerateSummaries(Boolean(autoGenerateSummariesProp));
   }, [autoGenerateSummariesProp]);
+
+  useEffect(() => {
+    setNotificationToasts(Boolean(notificationToastsEnabled));
+  }, [notificationToastsEnabled]);
+
+  const handleToggleNotificationToasts = (enabled) => {
+    setNotificationToasts(enabled);
+    onNotificationToastsChanged?.(enabled);
+  };
 
   const handleToggleAutoGenerateTitles = (enabled) => {
     window.localStorage.setItem("ai-chat-auto-title", enabled ? "true" : "false");
@@ -322,6 +336,25 @@ export default function AccountSettings({
               {t("account.save")}
             </button>
           </div>
+        </Section>
+
+        <Section title={t("account.notificationPreferencesSection")}>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              checked={notificationToasts}
+              onChange={(event) => handleToggleNotificationToasts(event.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+            />
+            <span>
+              <span className="block text-sm font-medium text-slate-900">
+                {t("account.notificationToasts")}
+              </span>
+              <span className="mt-1 block text-xs text-slate-500">
+                {t("account.notificationToastsDescription")}
+              </span>
+            </span>
+          </label>
         </Section>
 
         <Section title={t("account.conversationTitlesSection")}>
