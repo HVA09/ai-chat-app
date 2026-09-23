@@ -258,8 +258,8 @@ def _enforce_api_key_daily_limit(api_key: APIKey, db: Session) -> tuple[int, int
 @router.post("/v1/chat", response_model=APIChatResponse)
 async def developer_chat(
     payload: APIChatRequest,
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     response: Response,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     db: Session = Depends(get_db),
 ):
     current_user, api_key = _get_api_key_auth(x_api_key, db)
