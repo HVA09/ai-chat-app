@@ -9,7 +9,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_folder import ConversationFolder
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
-from app.schemas.folders import FolderCreate, FolderOut, FolderRename
+from app.schemas.folders import FolderCreate, FolderMoveRequest, FolderOut, FolderRename
 
 router = APIRouter(prefix="/folders", tags=["Conversation Folders"])
 
@@ -53,6 +53,15 @@ def _get_accessible_folder(
 
     _get_workspace_membership(folder.workspace_id, current_user, db)
     return folder
+
+
+def _folder_scope_filter(current_user: User, workspace_id: int | None):
+    if workspace_id is None:
+        return (
+            ConversationFolder.user_id == current_user.id,
+            ConversationFolder.workspace_id.is_(None),
+        )
+    return (ConversationFolder.workspace_id == workspace_id,)
 
 
 def _ensure_unique_name(
@@ -130,7 +139,12 @@ def list_folders(
 
     return (
         query
-        .order_by(ConversationFolder.created_at.asc(), ConversationFolder.id.asc())
+        .order_by(
+            ConversationFolder.workspace_id.is_not(None).asc(),
+            ConversationFolder.sort_order.asc(),
+            ConversationFolder.created_at.asc(),
+            ConversationFolder.id.asc(),
+        )
         .all()
     )
 
@@ -146,11 +160,19 @@ def create_folder(
 
     _ensure_unique_name(payload.name, current_user, db, payload.workspace_id)
 
+    scope_filters = _folder_scope_filter(current_user, payload.workspace_id)
+    max_sort_order = (
+        db.query(func.max(ConversationFolder.sort_order))
+        .filter(*scope_filters)
+        .scalar()
+    )
+
     folder = ConversationFolder(
         user_id=current_user.id,
         workspace_id=payload.workspace_id,
         name=payload.name,
         color=payload.color,
+        sort_order=(max_sort_order + 1) if max_sort_order is not None else 0,
     )
     db.add(folder)
     db.commit()
@@ -177,6 +199,47 @@ def rename_folder(
     folder.name = payload.name
     if payload.color is not None:
         folder.color = payload.color
+    db.commit()
+    db.refresh(folder)
+    return folder
+
+
+@router.patch("/{folder_id}/position", response_model=FolderOut)
+def move_folder_position(
+    folder_id: int,
+    payload: FolderMoveRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    folder = _get_accessible_folder(folder_id, current_user, db)
+    _can_manage_folder(folder, current_user, db)
+
+    scope_filters = _folder_scope_filter(current_user, folder.workspace_id)
+    siblings = (
+        db.query(ConversationFolder)
+        .filter(*scope_filters)
+        .order_by(
+            ConversationFolder.sort_order.asc(),
+            ConversationFolder.created_at.asc(),
+            ConversationFolder.id.asc(),
+        )
+        .all()
+    )
+
+    index = next((i for i, item in enumerate(siblings) if item.id == folder.id), None)
+    if index is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المجلد غير موجود",
+        )
+
+    target_index = index - 1 if payload.direction == "up" else index + 1
+    if target_index < 0 or target_index >= len(siblings):
+        db.refresh(folder)
+        return folder
+
+    target = siblings[target_index]
+    folder.sort_order, target.sort_order = target.sort_order, folder.sort_order
     db.commit()
     db.refresh(folder)
     return folder
