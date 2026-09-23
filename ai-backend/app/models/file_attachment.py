@@ -26,6 +26,7 @@ class FileAttachment(Base):
     )
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     stored_filename: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    object_key: Mapped[str | None] = mapped_column(String(512), unique=True, nullable=True, index=True)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
