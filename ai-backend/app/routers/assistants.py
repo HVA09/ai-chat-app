@@ -8,12 +8,13 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.assistant import Assistant
+from app.models.conversation import Conversation, Message
 from app.models.assistant_file_link import AssistantFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.assistant_version import AssistantVersion
 from app.models.user import User
 from app.schemas.assistant_versions import AssistantVersionCompareOut, AssistantVersionOut
-from app.schemas.assistants import AssistantCreate, AssistantOut, AssistantUpdate
+from app.schemas.assistants import AssistantAnalyticsOut, AssistantCreate, AssistantOut, AssistantUpdate
 from app.schemas.file import FileOut
 
 router = APIRouter(prefix="/assistants", tags=["Assistants"])
@@ -128,6 +129,66 @@ def update_assistant(
     db.commit()
     db.refresh(assistant)
     return assistant
+
+
+@router.get("/{assistant_id}/analytics", response_model=AssistantAnalyticsOut)
+def get_assistant_analytics(
+    assistant_id: int,
+    days: int = 30,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    assistant = _get_owned_assistant(assistant_id, current_user, db)
+    days = min(max(days, 1), 90)
+    since = func.now() - func.make_interval(0, 0, 0, days)
+
+    conversation_count = (
+        db.query(func.count(Conversation.id))
+        .filter(
+            Conversation.assistant_id == assistant.id,
+            Conversation.updated_at >= since,
+            Conversation.deleted_at.is_(None),
+        )
+        .scalar()
+        or 0
+    )
+    message_count = (
+        db.query(func.count(Message.id))
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .filter(
+            Conversation.assistant_id == assistant.id,
+            Message.created_at >= since,
+            Conversation.deleted_at.is_(None),
+        )
+        .scalar()
+        or 0
+    )
+    active_user_count = (
+        db.query(func.count(func.distinct(Conversation.user_id)))
+        .filter(
+            Conversation.assistant_id == assistant.id,
+            Conversation.updated_at >= since,
+            Conversation.deleted_at.is_(None),
+        )
+        .scalar()
+        or 0
+    )
+    last_used_at = (
+        db.query(func.max(Conversation.updated_at))
+        .filter(
+            Conversation.assistant_id == assistant.id,
+            Conversation.deleted_at.is_(None),
+        )
+        .scalar()
+    )
+    return AssistantAnalyticsOut(
+        assistant_id=assistant.id,
+        days=days,
+        conversation_count=conversation_count,
+        message_count=message_count,
+        active_user_count=active_user_count,
+        last_used_at=last_used_at,
+    )
 
 
 @router.get("/{assistant_id}/versions", response_model=list[AssistantVersionOut])
