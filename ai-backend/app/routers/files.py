@@ -10,7 +10,7 @@ import zipfile
 from sqlalchemy import and_, case, func
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -30,6 +30,7 @@ from app.services.embeddings import EmbeddingServiceError
 from app.services.file_text_extractor import FileTextExtractionError, extract_text
 from app.services.rag import index_file_chunks
 from app.services.image_rag import index_image_file
+from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
@@ -253,6 +254,7 @@ async def upload_file(
 
     extension = Path(file.filename or "").suffix.lower()
     stored_filename = f"{uuid.uuid4().hex}{extension}"
+    object_key = f"users/{current_user.id}/{stored_filename}"
     destination = _user_upload_dir(current_user.id) / stored_filename
     temp_path = None
     total = 0
@@ -286,6 +288,11 @@ async def upload_file(
 
         temp_path.replace(destination)
         temp_path = None
+        try:
+            put_file(destination, object_key, sniffed)
+        except StorageError as exc:
+            destination.unlink(missing_ok=True)
+            raise HTTPException(status_code=503, detail="تعذر تخزين الملف بشكل دائم") from exc
     finally:
         if temp_path:
             temp_path.unlink(missing_ok=True)
@@ -308,6 +315,7 @@ async def upload_file(
         project_id=project_id,
         original_filename=(file.filename or stored_filename)[:255],
         stored_filename=stored_filename,
+        object_key=object_key,
         content_type=sniffed,
         size_bytes=total,
         extracted_text=extracted_text,
@@ -534,10 +542,14 @@ def download_file(
 ):
     attachment = _get_accessible_file(file_id, current_user, db)
     path = _user_upload_dir(attachment.user_id) / attachment.stored_filename
-    if not path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود على القرص")
-    return FileResponse(
-        path, media_type=attachment.content_type, filename=attachment.original_filename
+    try:
+        body = open_file(attachment.object_key or f"users/{attachment.user_id}/{attachment.stored_filename}", path)
+    except (FileNotFoundError, StorageError) as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود") from exc
+    return StreamingResponse(
+        body,
+        media_type=attachment.content_type,
+        headers={"Content-Disposition": "attachment; filename=\"" + attachment.original_filename + "\""},
     )
 
 
@@ -613,7 +625,13 @@ def delete_file(
             detail="ليس لديك صلاحية حذف هذا الملف",
         )
     path = _user_upload_dir(attachment.user_id) / attachment.stored_filename
-    path.unlink(missing_ok=True)
+    try:
+        delete_stored_file(
+            attachment.object_key or f"users/{attachment.user_id}/{attachment.stored_filename}",
+            path,
+        )
+    except StorageError as exc:
+        raise HTTPException(status_code=503, detail="تعذر حذف الملف من Object Storage") from exc
     db.delete(attachment)
     db.commit()
     log_event(
