@@ -215,6 +215,9 @@ const resources = {
 
       account: {
         title: "الحساب",
+        notificationPreferencesSection: "إعدادات الإشعارات",
+        notificationToasts: "إظهار تنبيهات الإشعارات الفورية",
+        notificationToastsDescription: "عطّلها إذا كنت لا تريد ظهور إشعار منبثق عند وصول إشعار جديد. سيبقى مركز الإشعارات يعمل.",
         genericError: "حدث خطأ.",
         conversationTitlesSection: "عناوين المحادثات",
         autoGenerateTitles: "توليد عنوان تلقائي للمحادثة الجديدة",
@@ -1287,6 +1290,9 @@ const resources = {
 
       account: {
         title: "Account",
+        notificationPreferencesSection: "Notification preferences",
+        notificationToasts: "Show real-time notification popups",
+        notificationToastsDescription: "Turn this off to stop pop-up alerts when new notifications arrive. The notification center remains available.",
         genericError: "Something went wrong.",
         conversationTitlesSection: "Conversation titles",
         autoGenerateTitles: "Automatically generate titles for new conversations",
