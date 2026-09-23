@@ -105,6 +105,7 @@ import {
 } from "./lib/savedPromptsApi";
 import { uploadFile } from "./lib/filesApi";
 import { getErrorMessage } from "./lib/errors";
+import { clearChatDraft, loadChatDraft, saveChatDraft } from "./lib/chatDrafts";
 import { getCurrentUser } from "./lib/usersApi";
 import {
   listNotifications,
@@ -207,6 +208,8 @@ export default function App() {
   const autoSummaryInFlightRef = useRef(false);
   const autoSummaryLastMessageCountRef = useRef({});
   const messageCountRef = useRef(messages.length);
+  const draftHydratedRef = useRef(false);
+  const draftSaveTimerRef = useRef(null);
 
   useDirection();
   useEffect(() => {
@@ -280,6 +283,41 @@ export default function App() {
   useEffect(() => {
     restoreSession().then(() => setAuthed(true)).catch(() => setAuthed(false)).finally(() => setSessionChecking(false));
   }, []);
+
+  useEffect(() => {
+    if (!authed || !currentUser?.id) return;
+
+    draftHydratedRef.current = false;
+    const draft = loadChatDraft(currentUser.id, conversationId);
+    setInput(draft);
+
+    const frame = window.requestAnimationFrame(() => {
+      draftHydratedRef.current = true;
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [authed, currentUser?.id, conversationId]);
+
+  useEffect(() => {
+    if (!authed || !currentUser?.id || !draftHydratedRef.current) return;
+
+    if (draftSaveTimerRef.current) {
+      window.clearTimeout(draftSaveTimerRef.current);
+    }
+
+    draftSaveTimerRef.current = window.setTimeout(() => {
+      saveChatDraft(currentUser.id, conversationId, input);
+      draftSaveTimerRef.current = null;
+    }, 300);
+
+    return () => {
+      if (draftSaveTimerRef.current) {
+        window.clearTimeout(draftSaveTimerRef.current);
+      }
+    };
+  }, [authed, currentUser?.id, conversationId, input]);
 
   useEffect(() => {
     const readPreference = () => {
@@ -2051,6 +2089,7 @@ export default function App() {
     setError("");
     setRetryableUserMessage(null);
     messageCountRef.current = targetIndex + 2;
+    clearChatDraft(currentUser?.id, conversationId);
     setMessages((prev) => [
       ...prev.slice(0, targetIndex + 1).map((message, index) =>
         index === targetIndex ? { ...message, text: editedText } : message
@@ -2119,6 +2158,7 @@ export default function App() {
     if (!userText) return;
 
     const fileIds = chatAttachments.map((file) => file.id);
+    clearChatDraft(currentUser?.id, conversationId);
     setError("");
     setRetryableUserMessage(null);
     messageCountRef.current += 2;
