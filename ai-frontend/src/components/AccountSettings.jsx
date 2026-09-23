@@ -7,6 +7,7 @@ import {
   disableTwoFactor,
 } from "../lib/authApi";
 import { updateProfile, changePassword, deleteAccount, exportAccountData } from "../lib/usersApi";
+import { listSessions, revokeSession, revokeAllSessions } from "../lib/sessionsApi";
 import { listMemories, createMemory, updateMemory, deleteMemory } from "../lib/memoriesApi";
 import { listApiKeys, createApiKey, revokeApiKey, getApiKeyUsage } from "../lib/apiKeysApi";
 import { getErrorMessage } from "../lib/errors";
