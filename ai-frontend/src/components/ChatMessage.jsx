@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -42,6 +42,20 @@ export default function ChatMessage({
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const sourceAnchorPrefix = useId().replace(/:/g, "");
+  const sourceIds = useMemo(
+    () => new Set(sources.map((source) => String(source.id || "").trim()).filter(Boolean)),
+    [sources]
+  );
+  const citationText = useMemo(() => {
+    if (isUser || sourceIds.size === 0 || !text) return text;
+
+    return text.replace(/\[([A-Z]\d+)\](?!\()/g, (match, sourceId) => {
+      if (!sourceIds.has(sourceId)) return match;
+      const safeId = sourceId.replace(/[^a-zA-Z0-9_-]/g, "_");
+      return `[${match}](#${sourceAnchorPrefix}-${safeId})`;
+    });
+  }, [isUser, sourceIds, sourceAnchorPrefix, text]);
 
   useEffect(() => () => {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -276,8 +290,26 @@ export default function ChatMessage({
           ) : null}
         </div>
 
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock }}>
-          {text}
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            code: CodeBlock,
+            a: ({ href, children, ...props }) => (
+              <a
+                {...props}
+                href={href}
+                className={
+                  href?.startsWith("#")
+                    ? "font-semibold text-blue-700 underline decoration-dotted underline-offset-2 dark:text-blue-300"
+                    : "text-blue-700 underline underline-offset-2 dark:text-blue-300"
+                }
+              >
+                {children}
+              </a>
+            ),
+          }}
+        >
+          {citationText}
         </ReactMarkdown>
 
         {!isUser && canFeedback ? (
@@ -314,6 +346,7 @@ export default function ChatMessage({
             <div className="flex flex-wrap gap-1.5">
               {sources.map((source) => {
                 const label = source.filename || source.title || source.url || source.id;
+                const safeSourceId = String(source.id || "source").replace(/[^a-zA-Z0-9_-]/g, "_");
                 const text = `[${source.id}] ${label}${source.chunk ? ` · ${t("sources.chunkShort", { chunk: source.chunk })}` : ""}`;
                 const fileUrl = source.file_id
                   ? `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"}/files/${source.file_id}`
@@ -341,7 +374,15 @@ export default function ChatMessage({
                     {text}
                   </span>
                 );
-                return <span key={source.id}>{content}</span>;
+                return (
+                  <span
+                    key={source.id}
+                    id={`${sourceAnchorPrefix}-${safeSourceId}`}
+                    className="scroll-mt-24"
+                  >
+                    {content}
+                  </span>
+                );
               })}
             </div>
           </div>

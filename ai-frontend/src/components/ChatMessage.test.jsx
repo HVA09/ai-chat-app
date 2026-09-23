@@ -13,6 +13,7 @@ vi.mock("react-i18next", () => ({
         "feedback.notHelpful": "Not helpful",
         "feedback.saved": "Feedback saved",
         "sources.title": "Sources",
+        "sources.chunkShort": "chunk {{chunk}}",
         "bookmarks.save": "Save message",
         "bookmarks.remove": "Remove from bookmarks",
         "memory.save": "Save to memory",
@@ -144,6 +145,34 @@ describe("ChatMessage feedback", () => {
     expect(screen.queryByRole("button", { name: "Helpful" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Not helpful" })).not.toBeInTheDocument();
   });
+  it("renders cited source ids as inline links", () => {
+    render(
+      <ChatMessage
+        role="assistant"
+        text="The answer uses [S1]."
+        time="10:00"
+        sources={[{ id: "S1", filename: "linux.pdf", chunk: 2, file_id: 42 }]}
+      />
+    );
+
+    const citation = screen.getByRole("link", { name: "[S1]" });
+    expect(citation).toHaveAttribute("href", expect.stringMatching(/^#/));
+  });
+
+  it("does not turn unknown source ids into links", () => {
+    render(
+      <ChatMessage
+        role="assistant"
+        text="The answer mentions [S2] but only S1 exists."
+        time="10:00"
+        sources={[{ id: "S1", filename: "linux.pdf", chunk: 2, file_id: 42 }]}
+      />
+    );
+
+    expect(screen.queryByRole("link", { name: "[S2]" })).not.toBeInTheDocument();
+    expect(screen.getByText(/\[S2\]/)).toBeInTheDocument();
+  });
+
   it("renders file sources as clickable links", () => {
     render(
       <ChatMessage
