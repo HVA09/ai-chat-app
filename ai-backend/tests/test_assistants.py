@@ -209,7 +209,8 @@ def test_assistant_version_compare_current(client):
     assert payload["changed"] is True
     assert "-name: Tutor" in payload["diff"]
     assert "+name: Tutor Updated" in payload["diff"]
-    assert "-instructions:" in payload["diff"]
+    assert "-اشرح بالعربية." in payload["diff"]
+    assert "+اشرح بالإنجليزية وبأمثلة." in payload["diff"]
 
     assert client.get(
         f"/assistants/{assistant['id']}/versions/999/compare-current",
