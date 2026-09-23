@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.cache import check_daily_rate_limit
 from app.config import settings
 from app.database import get_db
 from app.dependencies import (
@@ -234,16 +235,65 @@ def _enforce_api_key_daily_limit(api_key: APIKey, db: Session) -> tuple[int, int
     if state is None:
         return None
 
-    limit, remaining, reset_at = state
-    if remaining <= 0:
-        now = datetime.now(timezone.utc)
-        retry_after = max(1, math.ceil(reset_at - now.timestamp()))
+    limit, _db_remaining, _db_reset_at = state
+    since = datetime.now(timezone.utc) - timedelta(days=1)
+    used = int(
+        db.query(func.count(UsageLog.id))
+        .filter(
+            UsageLog.api_key_id == api_key.id,
+            UsageLog.created_at >= since,
+        )
+        .scalar()
+        or 0
+    )
+
+    redis_result = check_daily_rate_limit(
+        f"api_key:{api_key.id}",
+        limit,
+        used,
+    )
+    if redis_result is None:
+        if settings.ENVIRONMENT == "production":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="خدمة تحديد المعدل غير متاحة مؤقتًا",
+                headers={"Retry-After": "30"},
+            )
+
+        # Development/test fallback keeps the existing database-based behavior.
+        if used >= limit:
+            now = datetime.now(timezone.utc)
+            oldest = (
+                db.query(func.min(UsageLog.created_at))
+                .filter(
+                    UsageLog.api_key_id == api_key.id,
+                    UsageLog.created_at >= since,
+                )
+                .scalar()
+            )
+            reset_at = int((oldest + timedelta(days=1)).timestamp()) if oldest else int((now + timedelta(days=1)).timestamp())
+            retry_after = max(1, math.ceil(reset_at - now.timestamp()))
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"وصل مفتاح API إلى حده اليومي ({limit} طلب).",
+                headers={
+                    "Retry-After": str(retry_after),
+                    "X-RateLimit-Limit": str(limit),
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Reset": str(reset_at),
+                },
+            )
+        remaining_before = max(limit - used, 0)
+        reset_at = int((datetime.now(timezone.utc) + timedelta(days=1)).timestamp())
+        return limit, remaining_before, reset_at
+
+    allowed, current_count, reset_at = redis_result
+    remaining_before = max(limit - (current_count - 1), 0)
+    if not allowed:
+        retry_after = max(1, math.ceil(reset_at - datetime.now(timezone.utc).timestamp()))
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=(
-                f"وصل مفتاح API إلى حده اليومي "
-                f"({limit} طلب)."
-            ),
+            detail=f"وصل مفتاح API إلى حده اليومي ({limit} طلب).",
             headers={
                 "Retry-After": str(retry_after),
                 "X-RateLimit-Limit": str(limit),
@@ -252,7 +302,7 @@ def _enforce_api_key_daily_limit(api_key: APIKey, db: Session) -> tuple[int, int
             },
         )
 
-    return state
+    return limit, remaining_before, reset_at
 
 
 @router.post("/v1/chat", response_model=APIChatResponse)
