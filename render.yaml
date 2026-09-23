@@ -171,6 +171,10 @@ services:
         generateValue: true
       - key: AI_API_KEY
         sync: false
+      - key: INITIAL_ADMIN_EMAIL
+        sync: false
+      - key: CORS_ORIGINS
+        value: '["https://ai-chat-frontend-v8ma.onrender.com"]'
       - key: TOTP_ENCRYPTION_KEY
         generateValue: true
       - key: SMTP_HOST
