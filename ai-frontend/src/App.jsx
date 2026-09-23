@@ -1548,7 +1548,7 @@ export default function App() {
     try {
       for (const file of validFiles) {
         try {
-          const result = await uploadFile(file, undefined, null, selectedWorkspaceId);
+          const result = await uploadFile(file, undefined, conversationId, null);
           uploadedAny = true;
           setChatAttachments((current) => [
             ...current,
