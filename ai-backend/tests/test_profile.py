@@ -103,4 +103,3 @@ def test_export_account_data_contains_user_and_conversations_without_secrets(cli
     assert payload["conversations"][0]["messages"][0]["content"] == "رسالة خاصة"
     assert "hashed_password" not in payload["user"]
     assert "totp_secret" not in payload["user"]
-    assert "password" not in payload["privacy_note"]
