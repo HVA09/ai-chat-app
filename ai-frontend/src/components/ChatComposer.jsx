@@ -35,6 +35,7 @@ export default function ChatComposer({
   const [isListening, setIsListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const nearLimit = value.length > MAX_MESSAGE_LENGTH - 200;
   const lang = document.documentElement.lang;
   const saveEditLabel = lang === "ar" ? "حفظ التعديل" : "Save edit";
@@ -302,73 +303,121 @@ export default function ChatComposer({
                 disabled={attachmentUploading}
               />
             </label>
-            {models.length > 0 ? (
-              <select
-                value={selectedModel || ""}
-                onChange={(event) => onSelectModel?.(event.target.value || null)}
-                title={t("tools.modelSelector")}
-                aria-label={t("tools.modelSelector")}
-                className="max-w-[180px] rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-              >
-                {models.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.label}
-                  </option>
-                ))}
-              </select>
-            ) : null}
-            {voiceSupported ? (
+
+            <div className="relative md:hidden">
               <button
                 type="button"
-                onClick={toggleVoiceInput}
-                title={isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
-                aria-label={isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
-                aria-pressed={isListening}
-                className={`rounded-2xl border px-3 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-slate-400 ${isListening ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-300" : "border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"}`}
+                onClick={() => setToolsOpen((open) => !open)}
+                title={t("tools.mobileMenu")}
+                aria-label={t("tools.mobileMenu")}
+                aria-expanded={toolsOpen}
+                className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
               >
-                {isListening ? "⏹️" : "🎙️"}
+                🧰
               </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={onInsertCalculator}
-              title={t("tools.calculator")}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
-            >
-              🧮
-            </button>
-            <button
-              type="button"
-              onClick={onInsertWebSearch}
-              title={t("tools.webSearch")}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
-            >
-              🔎
-            </button>
-            <button
-              type="button"
-              onClick={onInsertAgent}
-              title={t("tools.agent")}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
-            >
-              🤖
-            </button>
-            <button
-              type="button"
-              onClick={onInsertPython}
-              title={t("tools.python")}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
-            >
-              🐍
-            </button>
-            <button
-              type="button"
-              onClick={onInsertDataAnalysis}
-              title={t("tools.dataAnalysis")}
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
-            >
-              📊
-            </button>
+              {toolsOpen ? (
+                <div className="absolute bottom-full end-0 z-30 mb-2 w-[min(92vw,20rem)] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                  <div className="grid grid-cols-2 gap-2">
+                    {models.length > 0 ? (
+                      <label className="col-span-2 text-xs text-slate-500 dark:text-slate-400">
+                        {t("tools.modelSelector")}
+                        <select
+                          value={selectedModel || ""}
+                          onChange={(event) => onSelectModel?.(event.target.value || null)}
+                          aria-label={t("tools.modelSelector")}
+                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        >
+                          {models.map((model) => (
+                            <option key={model.id} value={model.id}>
+                              {model.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => { onInsertCalculator?.(); setToolsOpen(false); }}
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                    >
+                      🧮 {t("tools.calculatorShort")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { onInsertWebSearch?.(); setToolsOpen(false); }}
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                    >
+                      🔎 {t("tools.webSearchShort")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { onInsertDataAnalysis?.(); setToolsOpen(false); }}
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                    >
+                      📊 {t("tools.dataAnalysisShort")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { onInsertAgent?.(); setToolsOpen(false); }}
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                    >
+                      🤖 {t("tools.agentShort")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { onInsertPython?.(); setToolsOpen(false); }}
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                    >
+                      🐍 {t("tools.pythonShort")}
+                    </button>
+                    {voiceSupported ? (
+                      <button
+                        type="button"
+                        onClick={() => { toggleVoiceInput(); setToolsOpen(false); }}
+                        className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                      >
+                        🎙️ {isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="hidden md:flex min-w-0 items-center gap-2">
+              {models.length > 0 ? (
+                <select
+                  value={selectedModel || ""}
+                  onChange={(event) => onSelectModel?.(event.target.value || null)}
+                  title={t("tools.modelSelector")}
+                  aria-label={t("tools.modelSelector")}
+                  className="max-w-[180px] rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                >
+                  {models.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              {voiceSupported ? (
+                <button
+                  type="button"
+                  onClick={toggleVoiceInput}
+                  title={isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
+                  aria-label={isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
+                  aria-pressed={isListening}
+                  className={`rounded-2xl border px-3 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-slate-400 ${isListening ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-300" : "border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"}`}
+                >
+                  {isListening ? "⏹️" : "🎙️"}
+                </button>
+              ) : null}
+              <button type="button" onClick={onInsertCalculator} title={t("tools.calculator")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">🧮</button>
+              <button type="button" onClick={onInsertWebSearch} title={t("tools.webSearch")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">🔎</button>
+              <button type="button" onClick={onInsertAgent} title={t("tools.agent")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">🤖</button>
+              <button type="button" onClick={onInsertPython} title={t("tools.python")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">🐍</button>
+              <button type="button" onClick={onInsertDataAnalysis} title={t("tools.dataAnalysis")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">📊</button>
+            </div>
           </>
         ) : null}
         {loading ? (
