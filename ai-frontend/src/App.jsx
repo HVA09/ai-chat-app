@@ -3134,7 +3134,12 @@ export default function App() {
           onClose={() => {
             setShowProjectEditor(false);
             setEditingProjectId(null);
-           {showModelCompare && (
+          }}
+          onSave={handleSaveProject}
+        />
+      )}
+
+      {showModelCompare && (
         <ModelCompareDialog
           models={aiModels}
           initialPrompt={input}
@@ -3143,11 +3148,6 @@ export default function App() {
           projectId={selectedProjectId}
           assistantId={selectedAssistantId}
           onClose={() => setShowModelCompare(false)}
-        />
-      )}
-
-     }}
-          onSave={handleSaveProject}
         />
       )}
 
