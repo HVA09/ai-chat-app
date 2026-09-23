@@ -1,10 +1,11 @@
 """إدارة مفاتيح API الشخصية + نقطة chat بسيطة للمطورين."""
 from datetime import datetime, timedelta, timezone
 import hashlib
+import math
 import hmac
 import secrets
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -197,38 +198,72 @@ def get_api_key_usage(
     )
 
 
-def _enforce_api_key_daily_limit(api_key: APIKey, db: Session) -> None:
+def _api_key_rate_limit_state(api_key: APIKey, db: Session) -> tuple[int, int, int] | None:
+    """Return limit, remaining before this request, and rolling-window reset timestamp."""
     if api_key.daily_request_limit is None:
-        return
+        return None
 
-    since = datetime.now(timezone.utc) - timedelta(days=1)
-    used = (
-        db.query(func.count(UsageLog.id))
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=1)
+    used, oldest_at = (
+        db.query(
+            func.count(UsageLog.id),
+            func.min(UsageLog.created_at),
+        )
         .filter(
             UsageLog.api_key_id == api_key.id,
             UsageLog.created_at >= since,
         )
-        .scalar()
-        or 0
+        .one()
     )
-    if used >= api_key.daily_request_limit:
+    used = int(used or 0)
+    remaining = max(api_key.daily_request_limit - used, 0)
+
+    if oldest_at is None:
+        reset_at = int((now + timedelta(days=1)).timestamp())
+    else:
+        if oldest_at.tzinfo is None:
+            oldest_at = oldest_at.replace(tzinfo=timezone.utc)
+        reset_at = int((oldest_at + timedelta(days=1)).timestamp())
+
+    return api_key.daily_request_limit, remaining, reset_at
+
+
+def _enforce_api_key_daily_limit(api_key: APIKey, db: Session) -> tuple[int, int, int] | None:
+    state = _api_key_rate_limit_state(api_key, db)
+    if state is None:
+        return None
+
+    limit, remaining, reset_at = state
+    if remaining <= 0:
+        now = datetime.now(timezone.utc)
+        retry_after = max(1, math.ceil(reset_at - now.timestamp()))
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=(
                 f"وصل مفتاح API إلى حده اليومي "
-                f"({api_key.daily_request_limit} طلب)."
+                f"({limit} طلب)."
             ),
+            headers={
+                "Retry-After": str(retry_after),
+                "X-RateLimit-Limit": str(limit),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Reset": str(reset_at),
+            },
         )
+
+    return state
 
 
 @router.post("/v1/chat", response_model=APIChatResponse)
 async def developer_chat(
     payload: APIChatRequest,
+    response: Response,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     db: Session = Depends(get_db),
 ):
     current_user, api_key = _get_api_key_auth(x_api_key, db)
-    _enforce_api_key_daily_limit(api_key, db)
+    rate_limit_state = _enforce_api_key_daily_limit(api_key, db)
     enforce_daily_ai_limit(current_user=current_user, db=db)
 
     chat_payload = type(
@@ -278,6 +313,12 @@ async def developer_chat(
         )
     )
     db.commit()
+
+    if rate_limit_state is not None:
+        limit, remaining_before, reset_at = rate_limit_state
+        response.headers["X-RateLimit-Limit"] = str(limit)
+        response.headers["X-RateLimit-Remaining"] = str(max(remaining_before - 1, 0))
+        response.headers["X-RateLimit-Reset"] = str(reset_at)
 
     return APIChatResponse(
         conversation_id=conversation.id,
