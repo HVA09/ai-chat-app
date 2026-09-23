@@ -70,6 +70,9 @@ class User(Base):
     scheduled_tasks = relationship(
         "ScheduledTask", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )
+    sessions = relationship(
+        "UserSession", back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
     conversations = relationship(
         "Conversation", back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )
