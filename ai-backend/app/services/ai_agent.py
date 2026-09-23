@@ -291,7 +291,7 @@ async def run_agent(
                     "type": "result",
                     "name": call.name,
                     "ok": succeeded,
-                    "duration_ms": int((__import__("time").perf_counter() - started_at) * 1000),
+                    "duration_ms": int((time.perf_counter() - started_at) * 1000),
                 })
 
             messages.append(
