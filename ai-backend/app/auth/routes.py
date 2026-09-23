@@ -286,11 +286,16 @@ def revoke_all_sessions(
     db.commit()
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/auth")
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(request: Request, response: Response):
+def logout(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
     refresh_token = request.cookies.get("refresh_token")
     if refresh_token:
         try:
