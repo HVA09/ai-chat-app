@@ -92,6 +92,45 @@ class ChatModelOut(BaseModel):
     is_default: bool
 
 
+class ChatCompareRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    model_a: str = Field(min_length=1, max_length=100)
+    model_b: str = Field(min_length=1, max_length=100)
+    conversation_id: int | None = None
+    workspace_id: int | None = None
+    project_id: int | None = None
+    assistant_id: int | None = None
+
+    @field_validator("message")
+    @classmethod
+    def compare_message_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("السؤال لا يمكن أن يكون فارغًا")
+        return v
+
+    @field_validator("model_a", "model_b")
+    @classmethod
+    def compare_model_normalize(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("يجب تحديد نموذجين")
+        return v
+
+
+class ChatCompareResult(BaseModel):
+    model: str
+    text: str
+    provider: str | None = None
+    latency_ms: int | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+class ChatCompareResponse(BaseModel):
+    results: list[ChatCompareResult]
+
+
 class ChatResponse(BaseModel):
     conversation_id: int
     reply: str
