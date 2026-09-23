@@ -23,6 +23,7 @@ vi.mock("react-i18next", () => ({
       "sidebar.bulkTrash": "نقل المحدد إلى سلة المحذوفات",
       "sidebar.confirmDelete": "حذف المحادثة؟",
       "sidebar.foldersTitle": "المجلدات",
+      "sidebar.changeFolderColorTitle": "تغيير لون المجلد",
       "sidebar.allConversations": "كل المحادثات",
       "sidebar.createFolderTitle": "إنشاء مجلد",
       "sidebar.folderCreatePrompt": "اسم المجلد:",
@@ -281,6 +282,13 @@ describe("Sidebar", () => {
     const { onSelectWorkspace } = renderSidebar();
     await user.selectOptions(screen.getByLabelText("مساحة العمل"), "2");
     expect(onSelectWorkspace).toHaveBeenCalledWith("2");
+  });
+
+  it("يمكنه تغيير لون المجلد", async () => {
+    const user = userEvent.setup();
+    const { onRenameFolder } = renderSidebar();
+    await user.click(screen.getAllByTitle("تغيير لون المجلد")[0]);
+    expect(onRenameFolder).toHaveBeenCalledWith(10, "عمل", "blue");
   });
 
   it("يستطيع اختيار مجلد للمحادثات", async () => {
