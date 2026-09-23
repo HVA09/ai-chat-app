@@ -6,7 +6,9 @@ It never executes arbitrary Python/code supplied by the user.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
+from typing import Awaitable, Callable
 
 from sqlalchemy.orm import Session
 
@@ -170,29 +172,29 @@ async def _execute_tool(
     conversation: Conversation,
     current_user: User,
     db: Session,
-) -> tuple[str, list[dict]]:
+) -> tuple[str, list[dict], bool]:
     if name == "calculator":
         expression = str(arguments.get("expression") or "").strip()
         try:
-            return calculate_expression(expression), []
+            return calculate_expression(expression), [], True
         except CalculatorError as exc:
-            return f"تعذر تنفيذ الحساب: {exc}", []
+            return f"تعذر تنفيذ الحساب: {exc}", [], False
 
     if name == "python":
         code = str(arguments.get("code") or "")
         try:
-            return execute_python_code(code), []
+            return execute_python_code(code), [], True
         except CodeExecutionError as exc:
-            return f"تعذر تنفيذ كود بايثون: {exc}", []
+            return f"تعذر تنفيذ كود بايثون: {exc}", [], False
 
     if name == "web_search":
         query = str(arguments.get("query") or "").strip()
         try:
             results = await search_web(query)
             reply, sources = format_web_search_response(query, results)
-            return reply, sources
+            return reply, sources, True
         except WebSearchError as exc:
-            return f"تعذر تنفيذ بحث الويب: {exc}", []
+            return f"تعذر تنفيذ بحث الويب: {exc}", [], False
 
     if name == "analyze_data":
         filename = str(arguments.get("filename") or "").strip()
@@ -205,11 +207,11 @@ async def _execute_tool(
                 "chunk": None,
                 "kind": "data-analysis",
             }
-            return result, [source]
+            return result, [source], True
         except DataAnalysisError as exc:
-            return f"تعذر تحليل ملف البيانات: {exc}", []
+            return f"تعذر تحليل ملف البيانات: {exc}", [], False
 
-    return f"الأداة '{name}' غير متاحة.", []
+    return f"الأداة '{name}' غير متاحة.", [], False
 
 
 def _assistant_tool_message(reply: AIToolReply) -> dict:
@@ -237,6 +239,7 @@ async def run_agent(
     current_user: User,
     db: Session,
     model: str | None = None,
+    on_tool_event: Callable[[dict], Awaitable[None]] | None = None,
 ) -> tuple[str, list[dict], int | None, int | None]:
     provider = get_provider(model)
     if not isinstance(provider, OpenAICompatibleProvider):
@@ -271,10 +274,26 @@ async def run_agent(
         messages.append(_assistant_tool_message(reply))
 
         for call in calls:
-            result, call_sources = await _execute_tool(
+            started_at = time.perf_counter()
+            if on_tool_event is not None:
+                await on_tool_event({
+                    "type": "start",
+                    "name": call.name,
+                })
+
+            result, call_sources, succeeded = await _execute_tool(
                 call.name, call.arguments, conversation, current_user, db
             )
             sources.extend(call_sources)
+
+            if on_tool_event is not None:
+                await on_tool_event({
+                    "type": "result",
+                    "name": call.name,
+                    "ok": succeeded,
+                    "duration_ms": int((time.perf_counter() - started_at) * 1000),
+                })
+
             messages.append(
                 {
                     "role": "tool",
@@ -291,3 +310,4 @@ async def run_agent(
         total_input_tokens or None,
         total_output_tokens or None,
     )
+
