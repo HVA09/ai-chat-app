@@ -246,7 +246,7 @@ export default function Sidebar({
     setOpen(false);
   };
 
-  const handleMoveFolder = (e, folder, direction) => {
+  const handleMoveFolderPosition = (e, folder, direction) => {
     e.stopPropagation();
     onMoveFolder(folder.id, direction);
   };
