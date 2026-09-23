@@ -737,7 +737,10 @@ const resources = {
       notif: {
         title: "الإشعارات",
         markAllRead: "تعليم الكل كمقروء",
+        all: "الكل",
+        unread: "غير مقروءة",
         empty: "لا توجد إشعارات",
+        noUnread: "لا توجد إشعارات غير مقروءة",
       },
 
       verifyEmail: {
@@ -1820,7 +1823,10 @@ const resources = {
       notif: {
         title: "Notifications",
         markAllRead: "Mark all as read",
+        all: "All",
+        unread: "Unread",
         empty: "No notifications",
+        noUnread: "No unread notifications",
       },
 
       verifyEmail: {
