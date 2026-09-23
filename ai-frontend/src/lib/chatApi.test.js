@@ -55,11 +55,11 @@ describe("chatApi agent tool activity", () => {
     const onDone = vi.fn();
     const encoder = new TextEncoder();
     const chunks = [
-      'event: conversation\\ndata: 7\\n\\n',
-      'event: tool\\ndata: {"type":"start","name":"calculator"}\\n\\n',
-      'event: tool\\ndata: {"type":"result","name":"calculator","ok":true,"duration_ms":18}\\n\\n',
-      'event: chunk\\ndata: الناتج\\n\\n',
-      'event: done\\ndata: {}\\n\\n',
+      'event: conversation\ndata: 7\n\n',
+      'event: tool\ndata: {"type":"start","name":"calculator"}\n\n',
+      'event: tool\ndata: {"type":"result","name":"calculator","ok":true,"duration_ms":18}\n\n',
+      'event: chunk\ndata: الناتج\n\n',
+      'event: done\ndata: {}\n\n',
     ];
     let index = 0;
 
