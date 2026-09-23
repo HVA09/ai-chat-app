@@ -3,13 +3,15 @@ from datetime import datetime, timezone
 import hashlib
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import update
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
 from app.database import get_db
 from app.auth.security import hash_password, verify_password
+from app.cache import check_rate_limit
+from app.middleware import _client_ip
 from app.dependencies import get_current_user
 from app.models.conversation import Conversation
 from app.models.conversation_share import ConversationShare
@@ -243,8 +245,10 @@ def get_shared_conversation(
 def access_password_protected_share(
     token: str,
     payload: SharedConversationAccessRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
+
     share = _get_valid_share(token, db)
     if share.password_hash is None:
         _record_share_access(share.id, db)
@@ -255,6 +259,26 @@ def access_password_protected_share(
             .first()
         )
         return _serialize_shared_conversation(share)
+
+    ip = _client_ip(request)
+    rate_limit = check_rate_limit(
+        f"share-password:{_hash_token(token)}:{ip}",
+        5,
+        60,
+    )
+    if rate_limit is None:
+        if settings.ENVIRONMENT == "production":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="خدمة تحديد المعدل غير متاحة مؤقتًا",
+                headers={"Retry-After": "30"},
+            )
+    elif not rate_limit[0]:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="محاولات كثيرة. حاول بعد دقيقة.",
+            headers={"Retry-After": "60"},
+        )
 
     if not verify_password(payload.password, share.password_hash):
         raise HTTPException(
