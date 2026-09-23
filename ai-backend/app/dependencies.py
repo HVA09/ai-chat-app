@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth.security import decode_token
+from app.cache import check_daily_rate_limit
 from app.config import settings
 from app.database import get_db
 from app.logging_config import get_logger
@@ -96,17 +97,51 @@ def get_daily_ai_limit(current_user: User, db: Session) -> int:
 def enforce_daily_ai_limit(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> User:
     if current_user.role == UserRole.admin:
         return current_user
+
     daily_limit = get_daily_ai_limit(current_user, db)
     since = datetime.now(timezone.utc) - timedelta(days=1)
-    count = db.query(func.count(UsageLog.id)).filter(
-        UsageLog.user_id == current_user.id, UsageLog.created_at >= since
-    ).scalar()
-    if count >= daily_limit:
+    count = int(
+        db.query(func.count(UsageLog.id))
+        .filter(UsageLog.user_id == current_user.id, UsageLog.created_at >= since)
+        .scalar()
+        or 0
+    )
+
+    redis_result = check_daily_rate_limit(
+        f"user:{current_user.id}",
+        daily_limit,
+        count,
+    )
+    if redis_result is None:
+        if settings.ENVIRONMENT == "production":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="خدمة تحديد المعدل غير متاحة مؤقتًا",
+                headers={"Retry-After": "30"},
+            )
+        if count >= daily_limit:
+            logger.warning("تجاوز الحد اليومي: %s", current_user.email)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"وصلت للحد اليومي المسموح ({daily_limit} طلب) — يمكنك ترقية خطتك لحد أعلى",
+            )
+        return enforce_ai_cost_budget(current_user, db)
+
+    allowed, _current_count, reset_at = redis_result
+    if not allowed:
         logger.warning("تجاوز الحد اليومي: %s", current_user.email)
+        retry_after = max(1, int(reset_at - datetime.now(timezone.utc).timestamp()))
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"وصلت للحد اليومي المسموح ({daily_limit} طلب) — يمكنك ترقية خطتك لحد أعلى",
+            headers={
+                "Retry-After": str(retry_after),
+                "X-RateLimit-Limit": str(daily_limit),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Reset": str(reset_at),
+            },
         )
+
     return enforce_ai_cost_budget(current_user, db)
 
 
@@ -180,7 +215,7 @@ def enforce_workspace_daily_ai_limit(
     current_user: User,
     db: Session,
 ) -> None:
-    """يطبق حد الطلبات اليومي الاختياري لمساحة العمل."""
+    """يطبق حد الطلبات اليومي الاختياري لمساحة العمل بشكل ذري عبر Redis."""
     if current_user.role == UserRole.admin:
         return
 
@@ -204,7 +239,7 @@ def enforce_workspace_daily_ai_limit(
         return
 
     since = datetime.now(timezone.utc) - timedelta(days=1)
-    used = (
+    used = int(
         db.query(func.count(UsageLog.id))
         .filter(
             UsageLog.workspace_id == workspace_id,
@@ -213,13 +248,46 @@ def enforce_workspace_daily_ai_limit(
         .scalar()
         or 0
     )
-    if used >= limit:
+
+    redis_result = check_daily_rate_limit(
+        f"workspace:{workspace_id}",
+        int(limit),
+        used,
+    )
+    if redis_result is None:
+        if settings.ENVIRONMENT == "production":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="خدمة تحديد المعدل غير متاحة مؤقتًا",
+                headers={"Retry-After": "30"},
+            )
+        if used >= limit:
+            logger.warning(
+                "تجاوز حد مساحة العمل: workspace_id=%s user=%s",
+                workspace_id,
+                current_user.email,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"تم الوصول إلى حد مساحة العمل اليومي ({limit} طلب).",
+            )
+        return
+
+    allowed, _current_count, reset_at = redis_result
+    if not allowed:
         logger.warning(
             "تجاوز حد مساحة العمل: workspace_id=%s user=%s",
             workspace_id,
             current_user.email,
         )
+        retry_after = max(1, int(reset_at - datetime.now(timezone.utc).timestamp()))
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"تم الوصول إلى حد مساحة العمل اليومي ({limit} طلب).",
+            headers={
+                "Retry-After": str(retry_after),
+                "X-RateLimit-Limit": str(limit),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Reset": str(reset_at),
+            },
         )
