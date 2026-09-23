@@ -18,6 +18,7 @@ export default function ChatComposer({
   onInsertDataAnalysis,
   onInsertAgent,
   onInsertPython,
+  onCompareModels,
   onVoiceError,
   models = [],
   selectedModel = "",
@@ -365,6 +366,14 @@ export default function ChatComposer({
                     </button>
                     <button
                       type="button"
+                      onClick={() => { onCompareModels?.(); setToolsOpen(false); }}
+                      disabled={models.length < 2}
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                    >
+                      ⚖️ {t("tools.compareModelsShort")}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => { onInsertPython?.(); setToolsOpen(false); }}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
@@ -417,6 +426,7 @@ export default function ChatComposer({
               <button type="button" onClick={onInsertAgent} title={t("tools.agent")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">🤖</button>
               <button type="button" onClick={onInsertPython} title={t("tools.python")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">🐍</button>
               <button type="button" onClick={onInsertDataAnalysis} title={t("tools.dataAnalysis")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">📊</button>
+              <button type="button" onClick={onCompareModels} disabled={models.length < 2} title={t("tools.compareModels")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">⚖️</button>
             </div>
           </>
         ) : null}
