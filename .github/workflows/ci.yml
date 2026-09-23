@@ -88,3 +88,6 @@ jobs:
           : > .env.production
           docker compose -f docker-compose.prod.yml config --quiet
           rm -f .env.production
+      - name: Build backend image
+        working-directory: ai-backend
+        run: docker build --tag ai-chat-backend:test .

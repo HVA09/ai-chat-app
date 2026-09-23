@@ -23,14 +23,17 @@ COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
 COPY --chown=appuser:appuser app ./app
 COPY --chown=appuser:appuser migrations ./migrations
 COPY --chown=appuser:appuser alembic.ini .
+COPY --chown=appuser:appuser scripts/start.sh ./scripts/start.sh
+
+RUN chmod +x ./scripts/start.sh
 
 ENV PATH=/home/appuser/.local/bin:$PATH \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    EMBEDDED_CELERY=false
 
 USER appuser
 
 EXPOSE 8000
 
-# يطبّق أي migration جديدة قبل ما يشغّل السيرفر
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["./scripts/start.sh"]
