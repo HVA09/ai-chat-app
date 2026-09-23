@@ -69,3 +69,37 @@ def test_delete_account_success(client):
 def test_profile_endpoints_require_authentication(client):
     assert client.patch("/users/me", json={"full_name": "x"}).status_code == 401
     assert client.post("/users/me/change-password", json={"current_password": "a", "new_password": "bbbbbbbb"}).status_code == 401
+
+
+def test_export_account_data_contains_user_and_conversations_without_secrets(client, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from app.routers import chat as chat_router_module
+    from app.services.ai_providers.base import AIReply
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تجريبي")),
+    )
+    token = _register_and_login(client, "export@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    client.patch(
+        "/users/me",
+        json={"full_name": "مستخدم التصدير", "avatar_url": "https://example.com/a.png"},
+        headers=headers,
+    )
+    client.post("/chat", json={"message": "رسالة خاصة"}, headers=headers)
+
+    response = client.get("/users/me/export", headers=headers)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    assert "attachment" in response.headers["content-disposition"]
+
+    payload = response.json()
+    assert payload["user"]["email"] == "export@example.com"
+    assert payload["user"]["full_name"] == "مستخدم التصدير"
+    assert payload["conversations"][0]["messages"][0]["content"] == "رسالة خاصة"
+    assert "hashed_password" not in payload["user"]
+    assert "totp_secret" not in payload["user"]
