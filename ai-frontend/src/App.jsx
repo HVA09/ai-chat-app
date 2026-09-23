@@ -1542,6 +1542,7 @@ export default function App() {
 
     setChatAttachmentUploading(true);
     let uploadedAny = false;
+    let failed = 0;
     try {
       for (const file of validFiles) {
         try {
@@ -1557,6 +1558,7 @@ export default function App() {
             },
           ]);
         } catch (err) {
+          failed += 1;
           setToast({
             message: getErrorMessage(
               err,
