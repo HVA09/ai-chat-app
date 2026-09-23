@@ -1570,7 +1570,7 @@ export default function App() {
       setChatAttachmentUploading(false);
     }
 
-    if (uploadedAny) {
+    if (uploadedAny && failed === 0 && oversized.length === 0) {
       setToast({ message: t("app.attachmentsReady"), type: "success" });
     }
   };
