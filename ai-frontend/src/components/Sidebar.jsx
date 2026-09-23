@@ -700,8 +700,8 @@ export default function Sidebar({
                   </button>
                   {(!folder.workspace_id || selectedWorkspaceRole === "owner" || selectedWorkspaceRole === "admin") && (
                     <>
-                      <button type="button" onClick={(e) => handleMoveFolder(e, folder, "up")} title={t("sidebar.moveFolderUpTitle")} aria-label={t("sidebar.moveFolderUpTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700">↑</button>
-                      <button type="button" onClick={(e) => handleMoveFolder(e, folder, "down")} title={t("sidebar.moveFolderDownTitle")} aria-label={t("sidebar.moveFolderDownTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700">↓</button>
+                      <button type="button" onClick={(e) => handleMoveFolderPosition(e, folder, "up")} title={t("sidebar.moveFolderUpTitle")} aria-label={t("sidebar.moveFolderUpTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700">↑</button>
+                      <button type="button" onClick={(e) => handleMoveFolderPosition(e, folder, "down")} title={t("sidebar.moveFolderDownTitle")} aria-label={t("sidebar.moveFolderDownTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700">↓</button>
                       <button type="button" onClick={(e) => handleRenameFolder(e, folder)} title={t("sidebar.renameFolderTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700">✎</button>
                       <button type="button" onClick={(e) => handleDeleteFolder(e, folder)} title={t("sidebar.deleteFolderTitle")} className="rounded-lg px-1.5 py-1 text-xs text-slate-400 hover:bg-red-100 hover:text-red-600">✕</button>
                     </>
