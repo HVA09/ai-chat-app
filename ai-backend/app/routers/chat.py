@@ -819,53 +819,104 @@ async def chat(
         enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
     agent_task = extract_agent_request(payload.message)
     if agent_task is not None:
-        try:
-            agent_history = _build_history(conversation, db)
-            agent_reply, sources, input_tokens, output_tokens = await run_agent(
-                agent_task,
-                agent_history,
-                conversation,
-                current_user,
-                db,
-                conversation.ai_model,
-            )
-        except AgentModeError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(exc),
-            ) from exc
+        async def agent_event_generator():
+            queue: asyncio.Queue[dict] = asyncio.Queue()
+            agent_result = None
+            agent_error = None
 
-        db.add(
-            Message(
-                conversation_id=conversation.id,
-                role=MessageRole.user,
-                content=payload.message,
-            )
-        )
-        db.add(
-            Message(
-                conversation_id=conversation.id,
-                role=MessageRole.assistant,
-                content=agent_reply,
-                sources=sources or None,
-            )
-        )
-        db.add(
-            UsageLog(
-                user_id=current_user.id,
-                workspace_id=conversation.workspace_id,
-                endpoint="/chat/agent",
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                provider=settings.AI_PROVIDER.strip().lower(),
-            )
-        )
-        db.commit()
+            async def on_tool_event(event: dict) -> None:
+                await queue.put({"type": "tool", "payload": event})
 
-        return ChatResponse(
-            conversation_id=conversation.id,
-            reply=agent_reply,
-            sources=sources,
+            async def run_agent_task() -> None:
+                nonlocal agent_result, agent_error
+                try:
+                    agent_history = _build_history(conversation, db)
+                    agent_result = await run_agent(
+                        agent_task,
+                        agent_history,
+                        conversation,
+                        current_user,
+                        db,
+                        conversation.ai_model,
+                        on_tool_event=on_tool_event,
+                    )
+                except AgentModeError as exc:
+                    agent_error = str(exc)
+                except Exception:
+                    logger.exception("فشل وضع الوكيل في محادثة %s", conversation.id)
+                    agent_error = "حدث خطأ غير متوقع أثناء تشغيل وضع الوكيل"
+                finally:
+                    await queue.put({"type": "finished"})
+
+            task = asyncio.create_task(run_agent_task())
+            yield f"event: conversation\ndata: {conversation.id}\n\n"
+
+            try:
+                while True:
+                    event = await queue.get()
+
+                    if event["type"] == "tool":
+                        payload_json = json.dumps(event["payload"], ensure_ascii=False)
+                        yield f"event: tool\ndata: {payload_json}\n\n"
+                        continue
+
+                    if event["type"] != "finished":
+                        continue
+
+                    if agent_error is not None:
+                        yield f"event: error\ndata: {agent_error}\n\n"
+                        return
+
+                    if agent_result is None:
+                        yield "event: error\ndata: تعذر تشغيل وضع الوكيل\n\n"
+                        return
+
+                    agent_reply, sources, input_tokens, output_tokens = agent_result
+
+                    db.add(
+                        Message(
+                            conversation_id=conversation.id,
+                            role=MessageRole.user,
+                            content=payload.message,
+                        )
+                    )
+                    db.add(
+                        Message(
+                            conversation_id=conversation.id,
+                            role=MessageRole.assistant,
+                            content=agent_reply,
+                            sources=sources or None,
+                        )
+                    )
+                    db.add(
+                        UsageLog(
+                            user_id=current_user.id,
+                            workspace_id=conversation.workspace_id,
+                            endpoint="/chat/agent",
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                        )
+                    )
+                    db.commit()
+
+                    safe_reply = agent_reply.replace("\n", "\\n")
+                    safe_sources = json.dumps(sources, ensure_ascii=False)
+                    yield f"event: sources\ndata: {safe_sources}\n\n"
+                    yield f"event: chunk\ndata: {safe_reply}\n\n"
+                    yield "event: done\ndata: {}\n\n"
+                    return
+            finally:
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+
+        return StreamingResponse(
+            agent_event_generator(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache"},
         )
 
     calculator_expression = extract_calculator_expression(payload.message)
