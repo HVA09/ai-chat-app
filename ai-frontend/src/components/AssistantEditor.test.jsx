@@ -13,6 +13,10 @@ const {
   restoreAssistantVersion,
   compareAssistantVersionWithCurrent,
   getAssistantAnalytics,
+  getAssistantPublicSettings,
+  enableAssistantPublicLink,
+  rotateAssistantPublicLink,
+  disableAssistantPublicLink,
 } = vi.hoisted(() => ({
   listAssistantKnowledgeFiles: vi.fn(),
   attachFileToAssistant: vi.fn(),
@@ -23,6 +27,10 @@ const {
   restoreAssistantVersion: vi.fn(),
   compareAssistantVersionWithCurrent: vi.fn(),
   getAssistantAnalytics: vi.fn(),
+  getAssistantPublicSettings: vi.fn(),
+  enableAssistantPublicLink: vi.fn(),
+  rotateAssistantPublicLink: vi.fn(),
+  disableAssistantPublicLink: vi.fn(),
 }));
 
 vi.mock("../lib/assistantKnowledgeApi", () => ({
@@ -44,6 +52,13 @@ vi.mock("../lib/assistantVersionsApi", () => ({
 
 vi.mock("../lib/assistantAnalyticsApi", () => ({
   getAssistantAnalytics,
+}));
+
+vi.mock("../lib/assistantsApi", () => ({
+  getAssistantPublicSettings,
+  enableAssistantPublicLink,
+  rotateAssistantPublicLink,
+  disableAssistantPublicLink,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -113,6 +128,26 @@ describe("AssistantEditor", () => {
       current_version: 2,
       changed: true,
       diff: "@@ -1 +1 @@\n-old\n+new",
+    });
+    getAssistantPublicSettings.mockResolvedValue({
+      is_public: false,
+      public_token: null,
+      public_url: null,
+    });
+    enableAssistantPublicLink.mockResolvedValue({
+      is_public: true,
+      public_token: "token",
+      public_url: "https://example.com/public-assistant/token",
+    });
+    rotateAssistantPublicLink.mockResolvedValue({
+      is_public: true,
+      public_token: "token-2",
+      public_url: "https://example.com/public-assistant/token-2",
+    });
+    disableAssistantPublicLink.mockResolvedValue({
+      is_public: false,
+      public_token: null,
+      public_url: null,
     });
     getAssistantAnalytics.mockResolvedValue({
       assistant_id: 7,
@@ -256,6 +291,36 @@ describe("AssistantEditor", () => {
     expect(await screen.findByText("مقارنة الإصدار {{version}}")).toBeInTheDocument();
     expect(screen.getByText(/-old/)).toBeInTheDocument();
     expect(screen.getByText("+new", { exact: false })).toBeInTheDocument();
+  });
+
+  it("can enable a public assistant link", async () => {
+    const user = userEvent.setup();
+    enableAssistantPublicLink.mockResolvedValueOnce({
+      is_public: true,
+      public_token: "token",
+      public_url: "https://example.com/public-assistant/token",
+    });
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد عام",
+          description: "عام",
+          instructions: "تعليمات",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    const button = await screen.findByRole("button", { name: "تفعيل الرابط العام" });
+    await user.click(button);
+
+    await waitFor(() =>
+      expect(enableAssistantPublicLink).toHaveBeenCalledWith(7)
+    );
+    expect(await screen.findByDisplayValue("https://example.com/public-assistant/token")).toBeInTheDocument();
   });
 
   it("shows assistant usage analytics while editing", async () => {
