@@ -40,3 +40,23 @@ export async function unshareAssistantFromWorkspace(assistantId, workspaceId) {
     `/assistants/${assistantId}/workspace-share/${workspaceId}`
   );
 }
+
+export async function getAssistantPublicSettings(id) {
+  const { data } = await api.get(`/assistants/${id}/public`);
+  return data;
+}
+
+export async function enableAssistantPublicLink(id, { rotate = false } = {}) {
+  const { data } = await api.post(`/assistants/${id}/public`, { rotate });
+  return data;
+}
+
+export async function rotateAssistantPublicLink(id) {
+  const { data } = await api.post(`/assistants/${id}/public/rotate`);
+  return data;
+}
+
+export async function disableAssistantPublicLink(id) {
+  const { data } = await api.delete(`/assistants/${id}/public`);
+  return data;
+}
