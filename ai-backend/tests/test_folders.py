@@ -35,6 +35,14 @@ def test_folder_crud(client):
     )
     assert renamed.status_code == 200
     assert renamed.json()["name"] == "Work Projects"
+    assert renamed.json()["color"] == "blue"
+
+    invalid_color = client.patch(
+        f"/folders/{folder['id']}",
+        json={"name": "Work Projects", "color": "magenta"},
+        headers=headers,
+    )
+    assert invalid_color.status_code == 422
 
     deleted = client.delete(f"/folders/{folder['id']}", headers=headers)
     assert deleted.status_code == 204
