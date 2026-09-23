@@ -57,6 +57,17 @@ class AssistantOut(BaseModel):
     description: str | None
     instructions: str
     created_at: datetime
+    is_public: bool
+
+
+class AssistantPublicSettingsUpdate(BaseModel):
+    rotate: bool = False
+
+
+class AssistantPublicSettingsOut(BaseModel):
+    is_public: bool
+    public_token: str | None
+    public_url: str | None
 
 
 class AssistantAnalyticsOut(BaseModel):
