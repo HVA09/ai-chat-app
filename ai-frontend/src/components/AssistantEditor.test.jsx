@@ -12,6 +12,7 @@ const {
   listAssistantVersions,
   restoreAssistantVersion,
   compareAssistantVersionWithCurrent,
+  getAssistantAnalytics,
 } = vi.hoisted(() => ({
   listAssistantKnowledgeFiles: vi.fn(),
   attachFileToAssistant: vi.fn(),
@@ -21,6 +22,7 @@ const {
   listAssistantVersions: vi.fn(),
   restoreAssistantVersion: vi.fn(),
   compareAssistantVersionWithCurrent: vi.fn(),
+  getAssistantAnalytics: vi.fn(),
 }));
 
 vi.mock("../lib/assistantKnowledgeApi", () => ({
@@ -38,6 +40,10 @@ vi.mock("../lib/assistantVersionsApi", () => ({
   listAssistantVersions,
   restoreAssistantVersion,
   compareAssistantVersionWithCurrent,
+}));
+
+vi.mock("../lib/assistantAnalyticsApi", () => ({
+  getAssistantAnalytics,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -99,6 +105,14 @@ describe("AssistantEditor", () => {
       current_version: 2,
       changed: true,
       diff: "@@ -1 +1 @@\n-old\n+new",
+    });
+    getAssistantAnalytics.mockResolvedValue({
+      assistant_id: 7,
+      days: 30,
+      conversation_count: 12,
+      message_count: 48,
+      active_user_count: 4,
+      last_used_at: "2026-09-23T00:00:00Z",
     });
     restoreAssistantVersion.mockResolvedValue({
       id: 7,
@@ -234,6 +248,26 @@ describe("AssistantEditor", () => {
     expect(await screen.findByText("مقارنة الإصدار {{version}}")).toBeInTheDocument();
     expect(screen.getByText(/-old/)).toBeInTheDocument();
     expect(screen.getByText("+new", { exact: false })).toBeInTheDocument();
+  });
+
+  it("shows assistant usage analytics while editing", async () => {
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText("إحصائيات الاستخدام")).toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
+    expect(screen.getByText("48")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
   });
 
   it("does not show knowledge management while creating", () => {
