@@ -26,6 +26,10 @@ vi.mock("react-i18next", () => ({
         "account.emailSection": "البريد",
         "account.twoFASection": "2FA",
         "account.deleteAccountTitle": "حذف",
+        "account.dataExportSection": "تصدير",
+        "account.dataExportDescription": "وصف",
+        "account.exportData": "تصدير بياناتي",
+        "account.dataExported": "تم",
         "account.apiKeysSection": "API",
         "account.apiKeysDescription": "API",
         "account.genericError": "خطأ",
@@ -46,6 +50,7 @@ vi.mock("../lib/usersApi", () => ({
   updateProfile: vi.fn().mockResolvedValue({}),
   changePassword: vi.fn().mockResolvedValue({}),
   deleteAccount: vi.fn().mockResolvedValue({}),
+  exportAccountData: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock("../lib/memoriesApi", () => ({
@@ -66,7 +71,7 @@ vi.mock("../lib/errors", () => ({
   getErrorMessage: vi.fn((err, fallback) => fallback),
 }));
 
-describe("AccountSettings automatic conversation summaries", () => {
+describe("AccountSettings", () => {
   beforeEach(() => {
     window.localStorage.clear();
   });
@@ -100,5 +105,32 @@ describe("AccountSettings automatic conversation summaries", () => {
 
     expect(onAutoGenerateSummariesChanged).toHaveBeenCalledWith(true);
     expect(window.localStorage.getItem("ai-chat-auto-summary")).toBe("true");
+  });
+
+
+  it("exports account data", async () => {
+    const user = userEvent.setup();
+    const { exportAccountData } = await import("../lib/usersApi");
+
+    render(
+      <AccountSettings
+        user={{
+          full_name: "",
+          avatar_url: "",
+          is_email_verified: true,
+          is_2fa_enabled: false,
+        }}
+        autoGenerateTitles={false}
+        onAutoGenerateTitlesChanged={vi.fn()}
+        autoGenerateSummaries={false}
+        onAutoGenerateSummariesChanged={vi.fn()}
+        onClose={vi.fn()}
+        onUserUpdated={vi.fn()}
+        onAccountDeleted={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByText("تصدير بياناتي"));
+    expect(exportAccountData).toHaveBeenCalledTimes(1);
   });
 });
