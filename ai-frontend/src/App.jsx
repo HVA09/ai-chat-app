@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Sidebar from "./components/Sidebar";
+import CommandPalette from "./components/CommandPalette";
 import ChatHeader from "./components/ChatHeader";
 import ChatMessage from "./components/ChatMessage";
 import ChatComposer from "./components/ChatComposer";
@@ -183,6 +184,7 @@ export default function App() {
   const [showFiles, setShowFiles] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showBilling, setShowBilling] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [showScheduledTasks, setShowScheduledTasks] = useState(false);
   const [showWorkspaceMembers, setShowWorkspaceMembers] = useState(false);
   const [showShareManager, setShowShareManager] = useState(false);
@@ -207,7 +209,6 @@ export default function App() {
   const messageCountRef = useRef(messages.length);
 
   useDirection();
-
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
@@ -403,6 +404,17 @@ export default function App() {
       false
     );
   };
+
+  useEffect(() => {
+    const handleCommandShortcut = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandPaletteOpen((current) => !current);
+      }
+    };
+    window.addEventListener("keydown", handleCommandShortcut);
+    return () => window.removeEventListener("keydown", handleCommandShortcut);
+  }, []);
 
   useEffect(() => {
     if (!authed) return;
@@ -2382,6 +2394,121 @@ export default function App() {
     }
   };
 
+  const commandPaletteActions = [
+    {
+      id: "new-chat",
+      label: t("commandPalette.actions.newChat"),
+      keywords: ["new", "chat", "محادثة"],
+      icon: "＋",
+      onSelect: startNewChat,
+    },
+    {
+      id: "archived",
+      label: showArchivedConversations
+        ? t("commandPalette.actions.backToChats")
+        : t("commandPalette.actions.archived"),
+      keywords: ["archive", "archived", "أرشيف", "المؤرشفة"],
+      icon: "▱",
+      onSelect: () => {
+        const next = !showArchivedConversations;
+        setShowArchivedConversations(next);
+        setShowTrashConversations(false);
+        refreshConversations(
+          next,
+          selectedFolderId,
+          selectedWorkspaceId,
+          selectedProjectId,
+          conversationSearch,
+          false
+        );
+        if (next) startNewChat();
+      },
+    },
+    {
+      id: "trash",
+      label: showTrashConversations
+        ? t("commandPalette.actions.backToChats")
+        : t("commandPalette.actions.trash"),
+      keywords: ["trash", "deleted", "سلة", "محذوفة"],
+      icon: "🗑",
+      onSelect: () => {
+        const next = !showTrashConversations;
+        setShowTrashConversations(next);
+        setShowArchivedConversations(false);
+        setSelectedFolderId(null);
+        setSelectedConversationIds([]);
+        if (next) startNewChat();
+        refreshConversations(
+          false,
+          next ? null : selectedFolderId,
+          selectedWorkspaceId,
+          next ? null : selectedProjectId,
+          conversationSearch,
+          next
+        );
+      },
+    },
+    {
+      id: "files",
+      label: t("commandPalette.actions.files"),
+      keywords: ["files", "pdf", "ملفات"],
+      icon: "📎",
+      onSelect: () => setShowFiles(true),
+    },
+    {
+      id: "account",
+      label: t("commandPalette.actions.account"),
+      keywords: ["account", "profile", "حساب"],
+      icon: "👤",
+      onSelect: () => setShowAccountSettings(true),
+    },
+    {
+      id: "billing",
+      label: t("commandPalette.actions.billing"),
+      keywords: ["billing", "subscription", "اشتراك"],
+      icon: "💳",
+      onSelect: () => setShowBilling(true),
+    },
+    {
+      id: "new-folder",
+      label: t("commandPalette.actions.newFolder"),
+      keywords: ["folder", "folders", "مجلد"],
+      icon: "📁",
+      onSelect: handleCreateFolder,
+    },
+    {
+      id: "new-project",
+      label: t("commandPalette.actions.newProject"),
+      keywords: ["project", "projects", "مشروع"],
+      icon: "🗂",
+      onSelect: handleCreateProject,
+    },
+    {
+      id: "new-assistant",
+      label: t("commandPalette.actions.newAssistant"),
+      keywords: ["assistant", "مساعد"],
+      icon: "🤖",
+      onSelect: openCreateAssistantEditor,
+    },
+    {
+      id: "scheduled-tasks",
+      label: t("commandPalette.actions.scheduledTasks"),
+      keywords: ["schedule", "task", "مهام", "مجدولة"],
+      icon: "⏰",
+      onSelect: () => setShowScheduledTasks(true),
+    },
+    ...(currentUser?.role === "admin"
+      ? [{
+          id: "admin",
+          label: t("commandPalette.actions.admin"),
+          keywords: ["admin", "dashboard", "إدارة"],
+          icon: "⚙",
+          onSelect: () => setShowAdmin(true),
+        }]
+      : []),
+  ];
+
+
   const path = normalizedPath;
   if (path === "/workspace-invite") {
     return (
@@ -2457,6 +2584,11 @@ export default function App() {
           }}
         />
         <Toast message={toast?.message} type={toast?.type} onDismiss={() => setToast(null)} />
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        actions={commandPaletteActions}
+      />
       </>
     );
   }
