@@ -312,6 +312,20 @@ describe("Sidebar", () => {
     expect(onCreateWorkspace).toHaveBeenCalled();
   });
 
+  it("تحريك المجلد لأعلى يستدعي المعالج", async () => {
+    const user = userEvent.setup();
+    const { onMoveFolder } = renderSidebar({ onMoveFolder: vi.fn() });
+    await user.click(screen.getAllByTitle("تحريك المجلد لأعلى")[0]);
+    expect(onMoveFolder).toHaveBeenCalledWith(10, "up");
+  });
+
+  it("تحريك المجلد لأسفل يستدعي المعالج", async () => {
+    const user = userEvent.setup();
+    const { onMoveFolder } = renderSidebar({ onMoveFolder: vi.fn() });
+    await user.click(screen.getAllByTitle("تحريك المجلد لأسفل")[0]);
+    expect(onMoveFolder).toHaveBeenCalledWith(10, "down");
+  });
+
   it("زر إنشاء مجلد يستدعي المعالج", async () => {
     const user = userEvent.setup();
     const { onCreateFolder } = renderSidebar();
