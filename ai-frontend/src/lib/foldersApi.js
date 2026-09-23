@@ -37,3 +37,9 @@ export async function moveConversationToFolder(conversationId, folderId) {
   });
   return data;
 }
+
+
+export async function moveFolder(id, direction) {
+  const { data } = await api.patch(`/folders/${id}/position`, { direction });
+  return data;
+}

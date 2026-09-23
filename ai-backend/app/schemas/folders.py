@@ -42,6 +42,10 @@ class FolderRename(BaseModel):
         return v
 
 
+class FolderMoveRequest(BaseModel):
+    direction: Literal["up", "down"]
+
+
 class FolderOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -49,6 +53,7 @@ class FolderOut(BaseModel):
     name: str
     workspace_id: int | None
     color: FolderColor
+    sort_order: int
     created_at: datetime
 
 

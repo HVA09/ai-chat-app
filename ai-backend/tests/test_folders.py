@@ -49,6 +49,60 @@ def test_folder_crud(client):
     assert client.get("/folders", headers=headers).json() == []
 
 
+
+def test_folders_have_persistent_order_and_can_move_up_and_down(client):
+    token = _register_and_login(client, "folder-order@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    first = client.post("/folders", json={"name": "First"}, headers=headers)
+    second = client.post("/folders", json={"name": "Second"}, headers=headers)
+    third = client.post("/folders", json={"name": "Third"}, headers=headers)
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert third.status_code == 201
+
+    listed = client.get("/folders", headers=headers).json()
+    assert [item["name"] for item in listed] == ["First", "Second", "Third"]
+
+    moved = client.patch(
+        f"/folders/{third.json()['id']}/position",
+        json={"direction": "up"},
+        headers=headers,
+    )
+    assert moved.status_code == 200
+    assert [item["name"] for item in client.get("/folders", headers=headers).json()] == [
+        "First",
+        "Third",
+        "Second",
+    ]
+
+    moved = client.patch(
+        f"/folders/{first.json()['id']}/position",
+        json={"direction": "down"},
+        headers=headers,
+    )
+    assert moved.status_code == 200
+    assert [item["name"] for item in client.get("/folders", headers=headers).json()] == [
+        "Third",
+        "First",
+        "Second",
+    ]
+
+    top = client.patch(
+        f"/folders/{third.json()['id']}/position",
+        json={"direction": "up"},
+        headers=headers,
+    )
+    assert top.status_code == 200
+
+    invalid = client.patch(
+        f"/folders/{first.json()['id']}/position",
+        json={"direction": "sideways"},
+        headers=headers,
+    )
+    assert invalid.status_code == 422
+
+
 def test_duplicate_folder_name_rejected_case_insensitively(client):
     token = _register_and_login(client, "folder-dup@example.com")
     headers = {"Authorization": f"Bearer {token}"}

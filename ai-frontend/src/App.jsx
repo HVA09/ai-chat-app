@@ -66,6 +66,7 @@ import {
   createFolder,
   renameFolder,
   deleteFolder,
+  moveFolder,
 } from "./lib/foldersApi";
 import {
   listProjects,
@@ -671,6 +672,15 @@ export default function App() {
       );
     } catch {
       setToast({ message: t("app.folderRenameError"), type: "error" });
+    }
+  };
+
+  const handleMoveFolder = async (id, direction) => {
+    try {
+      await moveFolder(id, direction);
+      await refreshFolders(selectedWorkspaceId);
+    } catch {
+      setToast({ message: t("app.folderReorderError"), type: "error" });
     }
   };
 
@@ -2489,6 +2499,7 @@ export default function App() {
         onCreateFolder={handleCreateFolder}
         onRenameFolder={handleRenameFolder}
         onDeleteFolder={handleDeleteFolder}
+        onMoveFolder={handleMoveFolder}
         onMoveConversationToFolder={handleMoveConversationToFolder}
         projects={projects}
         selectedProjectId={selectedProjectId}

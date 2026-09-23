@@ -30,6 +30,8 @@ vi.mock("react-i18next", () => ({
       "sidebar.folderRenamePrompt": "اسم المجلد الجديد:",
       "sidebar.renameFolderTitle": "إعادة تسمية المجلد",
       "sidebar.deleteFolderTitle": "حذف المجلد",
+       "sidebar.moveFolderUpTitle": "تحريك المجلد لأعلى",
+       "sidebar.moveFolderDownTitle": "تحريك المجلد لأسفل",
       "sidebar.folderDeleteConfirm": "حذف المجلد {{name}}؟",
       "sidebar.moveFolderTitle": "نقل إلى مجلد",
       "sidebar.noFolder": "بدون مجلد",
@@ -95,7 +97,6 @@ function renderSidebar(overrides = {}) {
     onRenameConversation: vi.fn(),
     onDeleteConversation: vi.fn(),
     onToggleShareAssistant: vi.fn(),
-    selectedWorkspaceId: 7,
     onTogglePinConversation: vi.fn(),
     onDuplicateConversation: vi.fn(),
     savedPrompts: [{ id: 10, name: "تلخيص", content: "لخص النص في 5 نقاط." }],
@@ -310,6 +311,26 @@ describe("Sidebar", () => {
     const { onCreateWorkspace } = renderSidebar();
     await user.click(screen.getByTitle("إنشاء مساحة عمل"));
     expect(onCreateWorkspace).toHaveBeenCalled();
+  });
+
+  it("تحريك المجلد لأعلى يستدعي المعالج", async () => {
+    const user = userEvent.setup();
+    const { onMoveFolder } = renderSidebar({
+      onMoveFolder: vi.fn(),
+      folders: [{ id: 20, name: "دراسة", workspace_id: null, created_at: "2026-07-02T10:00:00Z" }],
+    });
+    await user.click(screen.getAllByTitle("تحريك المجلد لأعلى")[0]);
+    expect(onMoveFolder).toHaveBeenCalledWith(20, "up");
+  });
+
+  it("تحريك المجلد لأسفل يستدعي المعالج", async () => {
+    const user = userEvent.setup();
+    const { onMoveFolder } = renderSidebar({
+      onMoveFolder: vi.fn(),
+      folders: [{ id: 20, name: "دراسة", workspace_id: null, created_at: "2026-07-02T10:00:00Z" }],
+    });
+    await user.click(screen.getAllByTitle("تحريك المجلد لأسفل")[0]);
+    expect(onMoveFolder).toHaveBeenCalledWith(20, "down");
   });
 
   it("زر إنشاء مجلد يستدعي المعالج", async () => {
