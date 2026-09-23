@@ -10,6 +10,9 @@ vi.mock("react-i18next", () => ({
       ({
         "account.title": "الحساب",
         "account.conversationTitlesSection": "عناوين المحادثات",
+        "account.notificationPreferencesSection": "إعدادات الإشعارات",
+        "account.notificationToasts": "إظهار التنبيهات الفورية",
+        "account.notificationToastsDescription": "وصف الإشعارات",
         "account.autoGenerateTitles": "توليد عنوان تلقائي",
         "account.autoGenerateTitlesDescription": "وصف",
         "account.conversationSummariesSection": "التلخيص التلقائي للمحادثات",
@@ -118,10 +121,11 @@ describe("AccountSettings", () => {
       />
     );
 
-    const checkboxes = screen.getAllByRole("checkbox");
-    expect(checkboxes).toHaveLength(2);
+    const summaryCheckbox = screen.getByRole("checkbox", {
+      name: "إنشاء ملخصات تلقائيًا للمحادثات الطويلة",
+    });
 
-    await user.click(checkboxes[1]);
+    await user.click(summaryCheckbox);
 
     expect(onAutoGenerateSummariesChanged).toHaveBeenCalledWith(true);
     expect(window.localStorage.getItem("ai-chat-auto-summary")).toBe("true");
