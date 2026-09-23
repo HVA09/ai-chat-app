@@ -1,6 +1,7 @@
 """
 اختبارات مسارات المصادقة: تسجيل، دخول، تدوير الجلسات وحماية المسارات الخاصة
 """
+from app.auth.security import create_access_token, decode_token
 from app.config import settings as app_settings
 from app.models.user import User
 
@@ -139,3 +140,11 @@ def test_login_normalizes_email_case(client):
     )
     assert response.status_code == 200
     assert client.cookies.get("access_token")
+
+
+def test_jwt_round_trip_uses_configured_algorithm():
+    token = create_access_token(123, token_version=7)
+    payload = decode_token(token, expected_type="access")
+    assert payload["sub"] == "123"
+    assert payload["type"] == "access"
+    assert payload["ver"] == 7
