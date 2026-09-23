@@ -30,6 +30,8 @@ vi.mock("react-i18next", () => ({
       "sidebar.folderRenamePrompt": "اسم المجلد الجديد:",
       "sidebar.renameFolderTitle": "إعادة تسمية المجلد",
       "sidebar.deleteFolderTitle": "حذف المجلد",
+       "sidebar.moveFolderUpTitle": "تحريك المجلد لأعلى",
+       "sidebar.moveFolderDownTitle": "تحريك المجلد لأسفل",
       "sidebar.folderDeleteConfirm": "حذف المجلد {{name}}؟",
       "sidebar.moveFolderTitle": "نقل إلى مجلد",
       "sidebar.noFolder": "بدون مجلد",
