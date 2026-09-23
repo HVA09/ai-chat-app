@@ -51,12 +51,13 @@ export default function ChatComposer({
     [lang]
   );
 
-  const commandQuery = value.startsWith("/") ? value.slice(1).split(/\s/)[0] : "";
+  const commandModeActive = value.startsWith("/") && !/\s/.test(value.slice(1));
+  const commandQuery = commandModeActive ? value.slice(1).split(/\s/)[0] : "";
   const filteredCommands = useMemo(() => {
-    if (!commandQuery || /\s/.test(value.slice(1)) || commandMenuDismissed) return [];
+    if (!commandModeActive || commandMenuDismissed) return [];
     const query = commandQuery.toLocaleLowerCase();
     return commands.filter((command) => command.name.startsWith(query));
-  }, [commandMenuDismissed, commandQuery, commands, value]);
+  }, [commandMenuDismissed, commandModeActive, commandQuery, commands]);
 
   useEffect(() => {
     setCommandIndex(0);
