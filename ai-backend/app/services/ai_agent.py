@@ -6,6 +6,7 @@ It never executes arbitrary Python/code supplied by the user.
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import Awaitable, Callable
 
@@ -273,7 +274,7 @@ async def run_agent(
         messages.append(_assistant_tool_message(reply))
 
         for call in calls:
-            started_at = __import__("time").perf_counter()
+            started_at = time.perf_counter()
             if on_tool_event is not None:
                 await on_tool_event({
                     "type": "start",
