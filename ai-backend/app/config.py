@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     ]
 
     UPLOAD_DIR: str = "/app/uploads"
+    # S3-compatible Object Storage is enabled only when bucket and endpoint are configured.
+    S3_BUCKET: str = ""
+    S3_ENDPOINT_URL: str = ""
+    S3_REGION: str = ""
+    S3_ACCESS_KEY_ID: str = ""
+    S3_SECRET_ACCESS_KEY: str = ""
     MAX_UPLOAD_SIZE_MB: int = 10
     MAX_FILES_PER_USER: int = 100
     MAX_STORAGE_PER_USER_MB: int = 500
