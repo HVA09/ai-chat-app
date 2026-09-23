@@ -38,7 +38,7 @@ services:
       - uploads:/app/uploads
 
   celery_beat:
-    image: ${BACKEND_IMAGE:-ghcr.io/hva09/ai-chat-app-backend:latest}
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE must be set to an immutable production image reference}
     restart: unless-stopped
     command: celery -A app.tasks.celery_app beat --loglevel=info
     env_file: .env.production
@@ -49,7 +49,7 @@ services:
         condition: service_healthy
 
   celery_worker:
-    image: ${BACKEND_IMAGE:-ghcr.io/hva09/ai-chat-app-backend:latest}
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE must be set to an immutable production image reference}
     restart: unless-stopped
     command: celery -A app.tasks.celery_app worker --loglevel=info
     env_file: .env.production
