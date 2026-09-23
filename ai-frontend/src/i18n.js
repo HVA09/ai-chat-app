@@ -6,6 +6,33 @@ const resources = {
     translation: {
       appName: "مساعد الذكاء الاصطناعي",
       newChat: "محادثة جديدة",
+      
+      onboarding: {
+        title: "مرحبًا بك في مساعد الذكاء الاصطناعي",
+        close: "إغلاق",
+        skip: "تخطي",
+        back: "السابق",
+        next: "التالي",
+        goToStep: "الخطوة {{step}}",
+        stepCounter: "الخطوة {{current}} من {{total}}",
+        steps: {
+          chat: {
+            title: "ابدأ محادثتك",
+            description: "اكتب سؤالك وأرسل الرسالة، وسيبدأ المساعد بالرد فورًا.",
+            action: "ابدأ الآن",
+          },
+          organize: {
+            title: "نظّم عملك",
+            description: "استخدم المجلدات والمشاريع والمحفوظات حتى تبقى محادثاتك مرتبة.",
+            action: "افتح الحساب",
+          },
+          knowledge: {
+            title: "حوّل ملفاتك إلى معرفة",
+            description: "ارفع ملفاتك واستخدم البحث والمصادر والـ RAG لإجابات مرتبطة بمحتواك.",
+            action: "افتح الملفات",
+          },
+        },
+      },
       language: "اللغة",
       arabic: "العربية",
       english: "English",
@@ -1079,6 +1106,33 @@ const resources = {
     translation: {
       appName: "AI Assistant",
       newChat: "New chat",
+
+      onboarding: {
+        title: "Welcome to AI Assistant",
+        close: "Close",
+        skip: "Skip",
+        back: "Back",
+        next: "Next",
+        goToStep: "Step {{step}}",
+        stepCounter: "Step {{current}} of {{total}}",
+        steps: {
+          chat: {
+            title: "Start a conversation",
+            description: "Ask a question and send it to get your first answer right away.",
+            action: "Start now",
+          },
+          organize: {
+            title: "Stay organized",
+            description: "Use folders, projects, and archive controls to keep your conversations tidy.",
+            action: "Open account",
+          },
+          knowledge: {
+            title: "Turn files into knowledge",
+            description: "Upload files and use search, sources, and RAG for answers grounded in your content.",
+            action: "Open files",
+          },
+        },
+      },
       language: "Language",
       arabic: "العربية",
       english: "English",
