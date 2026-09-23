@@ -5,13 +5,14 @@ import CommandPalette from "./components/CommandPalette";
 import ChatHeader from "./components/ChatHeader";
 import ChatMessage from "./components/ChatMessage";
 import ChatComposer from "./components/ChatComposer";
+import ModelCompareDialog from "./components/ModelCompareDialog";
 import WorkspaceConversationCommentsPanel from "./components/WorkspaceConversationCommentsPanel";
 import AssistantEditor from "./components/AssistantEditor";
 import ProjectEditor from "./components/ProjectEditor";
 import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
-import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, listAiModels } from "./lib/chatApi";
+import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, listAiModels, compareChatModels } from "./lib/chatApi";
 import { listBookmarkedMessages, toggleMessageBookmark } from "./lib/bookmarksApi";
 import { listMemories, createMemory, deleteMemory } from "./lib/memoriesApi";
 import api, { restoreSession } from "./lib/api";
@@ -182,6 +183,7 @@ export default function App() {
   const [toast, setToast] = useState(null); // { message, type }
   const [currentUser, setCurrentUser] = useState(null);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const [showModelCompare, setShowModelCompare] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showBilling, setShowBilling] = useState(false);
@@ -3051,6 +3053,7 @@ export default function App() {
           attachments={chatAttachments}
           onAttachFiles={handleAttachFiles}
           onRemoveAttachment={handleRemoveAttachment}
+          onCompareModels={() => setShowModelCompare(true)}
           attachmentUploading={chatAttachmentUploading}
           models={aiModels}
           selectedModel={selectedModel}
@@ -3133,6 +3136,18 @@ export default function App() {
             setEditingProjectId(null);
           }}
           onSave={handleSaveProject}
+        />
+      )}
+
+      {showModelCompare && (
+        <ModelCompareDialog
+          models={aiModels}
+          initialPrompt={input}
+          conversationId={conversationId}
+          workspaceId={selectedWorkspaceId}
+          projectId={selectedProjectId}
+          assistantId={selectedAssistantId}
+          onClose={() => setShowModelCompare(false)}
         />
       )}
 

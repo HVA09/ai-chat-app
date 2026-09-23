@@ -319,3 +319,9 @@ export async function listAiModels() {
   const { data } = await api.get("/chat/models");
   return data;
 }
+
+
+export async function compareChatModels(payload) {
+  const { data } = await api.post("/chat/compare", payload);
+  return data;
+}
