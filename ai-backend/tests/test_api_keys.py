@@ -68,6 +68,50 @@ def test_api_key_auth_and_chat(client, monkeypatch):
     assert body["model"]
 
 
+def test_api_key_rate_limit_headers_report_remaining_and_reset(client, monkeypatch):
+    monkeypatch.setattr(
+        api_keys_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد API", input_tokens=1, output_tokens=1)),
+    )
+    token = _register_and_login(client, "developer-rate-headers@example.com")
+    session_headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        "/api-keys",
+        json={"name": "Headers", "daily_request_limit": 3},
+        headers=session_headers,
+    )
+    assert created.status_code == 201
+    secret = created.json()["secret"]
+
+    first = client.post(
+        "/v1/chat",
+        json={"message": "الأولى"},
+        headers={"X-API-Key": secret},
+    )
+    assert first.status_code == 200
+    assert first.headers["X-RateLimit-Limit"] == "3"
+    assert first.headers["X-RateLimit-Remaining"] == "2"
+    assert int(first.headers["X-RateLimit-Reset"]) > 0
+
+    second = client.post(
+        "/v1/chat",
+        json={"message": "الثانية"},
+        headers={"X-API-Key": secret},
+    )
+    assert second.status_code == 200
+    assert second.headers["X-RateLimit-Remaining"] == "1"
+
+    third = client.post(
+        "/v1/chat",
+        json={"message": "الثالثة"},
+        headers={"X-API-Key": secret},
+    )
+    assert third.status_code == 200
+    assert third.headers["X-RateLimit-Remaining"] == "0"
+
+
 def test_invalid_and_revoked_api_key_rejected(client):
     token = _register_and_login(client, "developer-reject@example.com")
     session_headers = {"Authorization": f"Bearer {token}"}
@@ -143,6 +187,10 @@ def test_api_key_daily_limit_blocks_second_request(client, monkeypatch):
         headers={"X-API-Key": secret},
     )
     assert blocked.status_code == 429
+    assert blocked.headers["X-RateLimit-Limit"] == "1"
+    assert blocked.headers["X-RateLimit-Remaining"] == "0"
+    assert int(blocked.headers["X-RateLimit-Reset"]) > 0
+    assert int(blocked.headers["Retry-After"]) >= 1
 
 
 def test_expired_api_key_is_rejected(client, db_session):
