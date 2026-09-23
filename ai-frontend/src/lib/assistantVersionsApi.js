@@ -11,3 +11,10 @@ export async function restoreAssistantVersion(assistantId, version) {
   );
   return data;
 }
+
+export async function compareAssistantVersionWithCurrent(assistantId, version) {
+  const { data } = await api.get(
+    `/assistants/${assistantId}/versions/${version}/compare-current`
+  );
+  return data;
+}

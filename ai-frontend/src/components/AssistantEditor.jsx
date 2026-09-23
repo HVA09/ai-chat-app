@@ -9,6 +9,7 @@ import {
 import {
   listAssistantVersions,
   restoreAssistantVersion,
+  compareAssistantVersionWithCurrent,
 } from "../lib/assistantVersionsApi";
 
 export default function AssistantEditor({ assistant = null, onClose, onSave, onRestored }) {
@@ -26,6 +27,8 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
   const [versions, setVersions] = useState([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [restoringVersion, setRestoringVersion] = useState(null);
+  const [comparingVersion, setComparingVersion] = useState(null);
+  const [comparison, setComparison] = useState(null);
 
   useEffect(() => {
     setName(assistant?.name ?? "");
@@ -65,6 +68,19 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
       .catch(() => setVersions([]))
       .finally(() => setVersionsLoading(false));
   }, [assistant?.id]);
+
+  const compareVersion = async (version) => {
+    if (!assistant?.id || comparingVersion !== null) return;
+    setComparingVersion(version);
+    try {
+      const result = await compareAssistantVersionWithCurrent(assistant.id, version);
+      setComparison(result);
+    } catch {
+      setComparison({ error: true });
+    } finally {
+      setComparingVersion(null);
+    }
+  };
 
   const restoreVersion = async (version) => {
     if (!assistant?.id || restoringVersion !== null) return;
@@ -250,8 +266,50 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
                           ? t("assistantEditor.restoring")
                           : t("assistantEditor.restore")}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => compareVersion(item.version)}
+                        disabled={comparingVersion !== null}
+                        className="shrink-0 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
+                      >
+                        {comparingVersion === item.version
+                          ? t("assistantEditor.comparing")
+                          : t("assistantEditor.compare")}
+                      </button>
                     </div>
                   ))}
+                </div>
+              )}
+              {comparison && (
+                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-950 p-3 text-xs text-slate-100 dark:border-slate-700">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="font-semibold">
+                      {comparison.error
+                        ? t("assistantEditor.compareError")
+                        : t("assistantEditor.compareTitle", {
+                            version: comparison.from_version,
+                          })}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setComparison(null)}
+                      className="rounded-lg px-2 py-1 text-slate-300 hover:bg-slate-800"
+                    >
+                      {t("assistantEditor.closeCompare")}
+                    </button>
+                  </div>
+                  {!comparison.error && (
+                    <>
+                      <p className="mb-2 text-slate-400">
+                        {comparison.changed
+                          ? t("assistantEditor.compareChanged")
+                          : t("assistantEditor.compareUnchanged")}
+                      </p>
+                      <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words font-mono leading-5">
+                        {comparison.diff || t("assistantEditor.compareNoDiff")}
+                      </pre>
+                    </>
+                  )}
                 </div>
               )}
             </section>

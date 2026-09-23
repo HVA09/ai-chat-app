@@ -175,6 +175,49 @@ def test_assistant_version_history_and_restore(client):
     assert versions.json()[0]["instructions"] == "اشرح بالعربية."
 
 
+def test_assistant_version_compare_current(client):
+    token = _register_and_login(client, "assistant-version-compare@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    assistant = client.post(
+        "/assistants",
+        json={
+            "name": "Tutor",
+            "description": "Original",
+            "instructions": "اشرح بالعربية.",
+        },
+        headers=headers,
+    ).json()
+
+    client.patch(
+        f"/assistants/{assistant['id']}",
+        json={
+            "name": "Tutor Updated",
+            "description": "Updated",
+            "instructions": "اشرح بالإنجليزية وبأمثلة.",
+        },
+        headers=headers,
+    )
+
+    response = client.get(
+        f"/assistants/{assistant['id']}/versions/1/compare-current",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["from_version"] == 1
+    assert payload["changed"] is True
+    assert "-name: Tutor" in payload["diff"]
+    assert "+name: Tutor Updated" in payload["diff"]
+    assert "-اشرح بالعربية." in payload["diff"]
+    assert "+اشرح بالإنجليزية وبأمثلة." in payload["diff"]
+
+    assert client.get(
+        f"/assistants/{assistant['id']}/versions/999/compare-current",
+        headers=headers,
+    ).status_code == 404
+
+
 def test_assistant_versions_are_private_to_owner(client):
     token_a = _register_and_login(client, "assistant-version-owner@example.com")
     headers_a = {"Authorization": f"Bearer {token_a}"}
