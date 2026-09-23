@@ -2,6 +2,7 @@
 from unittest.mock import AsyncMock
 
 from app.models.file_attachment import FileAttachment
+from app.models.file_chunk import FileChunk
 from app.services.ai_providers.base import AIReply
 from app.routers import files as files_router
 from app.services import image_rag
@@ -50,7 +51,20 @@ def test_index_image_for_rag_is_explicit_and_persists_usage(client, monkeypatch,
             )
         ),
     )
-    monkeypatch.setattr(image_rag, "index_file_chunks", lambda db, file: 2)
+    def fake_index_file_chunks(db, file):
+        db.query(FileChunk).filter(FileChunk.file_id == file.id).delete(synchronize_session=False)
+        db.add(
+            FileChunk(
+                file_id=file.id,
+                chunk_index=0,
+                content=file.extracted_text or "",
+                embedding=[0.1, 0.2],
+            )
+        )
+        db.flush()
+        return 1
+
+    monkeypatch.setattr(image_rag, "index_file_chunks", fake_index_file_chunks)
 
     response = client.post(
         f"/files/{file_id}/index-image",
