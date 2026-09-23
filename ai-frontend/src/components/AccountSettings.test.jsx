@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import AccountSettings from "./AccountSettings";
+import { listSessions } from "../lib/sessionsApi";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -155,8 +156,7 @@ describe("AccountSettings", () => {
 
 
   it("renders active login sessions", async () => {
-    const { listSessions } = await import("../lib/sessionsApi");
-    listSessions.mockResolvedValue([
+    listSessions.mockResolvedValueOnce([
       {
         id: 7,
         user_agent: "Chrome on Android",
