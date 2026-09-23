@@ -1553,6 +1553,8 @@ const resources = {
         title: "Sources",
         chunkShort: "chunk {{chunk}}",
         chunkTooltip: "Chunk {{chunk}} from the file",
+        preview: "Preview source",
+        hidePreview: "Hide source preview",
       },
 
       feedback: {
