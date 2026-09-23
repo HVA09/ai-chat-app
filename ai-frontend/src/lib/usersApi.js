@@ -21,3 +21,18 @@ export async function changePassword(currentPassword, newPassword) {
 export async function deleteAccount(password) {
   await api.request({ method: "DELETE", url: "/users/me", data: { password } });
 }
+
+export async function exportAccountData() {
+  const response = await api.get("/users/me/export", { responseType: "blob" });
+  const disposition = response.headers["content-disposition"] || "";
+  const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  const filename = filenameMatch?.[1] || "ai-chat-account-export.json";
+  const url = window.URL.createObjectURL(response.data);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
