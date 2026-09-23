@@ -305,3 +305,52 @@ def test_assistant_usage_analytics_is_private_to_owner(client):
         headers={"Authorization": f"Bearer {token_b}"},
     )
     assert response.status_code == 404
+
+
+def test_assistant_daily_usage_analytics(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "assistant-daily-analytics@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    assistant = client.post(
+        "/assistants",
+        json={"name": "Trend Assistant", "instructions": "اشرح باختصار."},
+        headers=headers,
+    ).json()
+
+    response = client.post(
+        "/chat",
+        json={"message": "رسالة", "assistant_id": assistant["id"]},
+        headers=headers,
+    )
+    assert response.status_code == 200
+
+    trend = client.get(
+        f"/assistants/{assistant['id']}/analytics/daily",
+        params={"days": 7},
+        headers=headers,
+    )
+    assert trend.status_code == 200
+    payload = trend.json()
+    assert len(payload) == 7
+    assert payload[-1]["conversations"] == 1
+    assert payload[-1]["messages"] == 2
+    assert payload[-1]["active_users"] == 1
+
+
+def test_assistant_daily_usage_analytics_is_private_to_owner(client):
+    token_a = _register_and_login(client, "assistant-daily-owner@example.com")
+    assistant = client.post(
+        "/assistants",
+        json={"name": "Private Trend", "instructions": "خاص"},
+        headers={"Authorization": f"Bearer {token_a}"},
+    ).json()
+    token_b = _register_and_login(client, "assistant-daily-other@example.com")
+    response = client.get(
+        f"/assistants/{assistant['id']}/analytics/daily",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
