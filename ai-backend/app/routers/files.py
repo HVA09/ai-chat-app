@@ -185,6 +185,7 @@ def _file_response(
     db: Session,
     *,
     is_attached: bool = False,
+    is_ai_indexed: bool | None = None,
 ) -> FileOut:
     response = FileOut.model_validate(file)
     response.is_attached = is_attached
@@ -196,14 +197,16 @@ def _file_response(
         membership = _get_workspace_membership(file.workspace_id, current_user, db)
         can_delete = membership.role in {WorkspaceRole.owner, WorkspaceRole.admin}
     response.can_delete = can_delete
-    response.is_ai_indexed = bool(
-        db.query(FileChunk.id)
-        .filter(
-            FileChunk.file_id == file.id,
-            FileChunk.embedding.is_not(None),
+    if is_ai_indexed is None:
+        is_ai_indexed = bool(
+            db.query(FileChunk.id)
+            .filter(
+                FileChunk.file_id == file.id,
+                FileChunk.embedding.is_not(None),
+            )
+            .first()
         )
-        .first()
-    )
+    response.is_ai_indexed = is_ai_indexed
     return response
 
 
@@ -594,7 +597,12 @@ async def index_image_for_rag(
         f"فهرسة صورة للـ RAG: {attachment.original_filename} ({indexed_chunks} مقطع)",
         current_user.id,
     )
-    return _file_response(attachment, current_user, db)
+    return _file_response(
+        attachment,
+        current_user,
+        db,
+        is_ai_indexed=indexed_chunks > 0,
+    )
 
 
 @router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
