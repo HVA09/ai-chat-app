@@ -232,6 +232,10 @@ services:
         value: '["https://ai-chat-frontend-v8ma.onrender.com"]'
       - key: TOTP_ENCRYPTION_KEY
         generateValue: true
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
       - key: ENVIRONMENT
         value: production
       - key: DEBUG
