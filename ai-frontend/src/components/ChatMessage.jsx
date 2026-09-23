@@ -42,6 +42,7 @@ export default function ChatMessage({
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [expandedSourceIds, setExpandedSourceIds] = useState(() => new Set());
   const sourceAnchorPrefix = useId().replace(/:/g, "");
   const sourceIds = useMemo(
     () => new Set(sources.map((source) => String(source.id || "").trim()).filter(Boolean)),
@@ -99,6 +100,17 @@ export default function ChatMessage({
   const rememberLabel = isRemembered
     ? t("memory.remove")
     : t("memory.save");
+
+  const toggleSourcePreview = (sourceId) => {
+    const normalizedId = String(sourceId || "").trim();
+    if (!normalizedId) return;
+    setExpandedSourceIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(normalizedId)) next.delete(normalizedId);
+      else next.add(normalizedId);
+      return next;
+    });
+  };
 
   const toggleVoiceOutput = () => {
     if (!text) return;
@@ -374,13 +386,36 @@ export default function ChatMessage({
                     {text}
                   </span>
                 );
+                const normalizedSourceId = String(source.id || "").trim();
+                const isExpanded = expandedSourceIds.has(normalizedSourceId);
+                const previewButtonLabel = isExpanded
+                  ? t("sources.hidePreview")
+                  : t("sources.preview");
                 return (
                   <span
                     key={source.id}
                     id={`${sourceAnchorPrefix}-${safeSourceId}`}
                     className="scroll-mt-24"
                   >
-                    {content}
+                    <span className="inline-flex items-center gap-1">
+                      {content}
+                      {source.snippet ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleSourcePreview(source.id)}
+                          className="rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-500 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                          aria-label={previewButtonLabel}
+                          title={previewButtonLabel}
+                        >
+                          {isExpanded ? "⌃" : "⌄"}
+                        </button>
+                      ) : null}
+                    </span>
+                    {isExpanded && source.snippet ? (
+                      <span className="mt-1 block max-w-xl rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                        {source.snippet}
+                      </span>
+                    ) : null}
                   </span>
                 );
               })}
