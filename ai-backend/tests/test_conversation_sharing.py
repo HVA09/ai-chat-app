@@ -2,6 +2,7 @@
 from unittest.mock import AsyncMock
 
 from app.routers import chat as chat_router_module
+from app.routers import shared_conversations as shared_conversations_router_module
 from app.services.ai_providers.base import AIReply
 
 
@@ -320,3 +321,38 @@ def test_unprotected_access_endpoint_counts_view(client, monkeypatch):
         headers=headers,
     )
     assert listed.json()[0]["access_count"] == 1
+
+
+def test_password_protected_share_is_rate_limited(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد محمي")),
+    )
+    token = _register_and_login(client, "share-password-rate-limit@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "رسالة محمية"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    created = client.post(
+        f"/conversations/{conversation_id}/share",
+        json={"password": "SharePass123"},
+        headers=headers,
+    ).json()
+    public_token = created["url"].split("/share/", 1)[1]
+
+    monkeypatch.setattr(
+        shared_conversations_router_module,
+        "check_rate_limit",
+        lambda *args, **kwargs: (False, 5),
+    )
+
+    limited = client.post(
+        f"/shared-conversations/{public_token}/access",
+        json={"password": "WrongPass123"},
+    )
+    assert limited.status_code == 429
+    assert limited.headers["Retry-After"] == "60"
