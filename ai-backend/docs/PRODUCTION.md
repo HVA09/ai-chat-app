@@ -44,7 +44,7 @@ curl -sS http://127.0.0.1:8000/health
 المتوقع من `/health`:
 
 ```json
-{"status":"ok","database":"ok","environment":"production","app":"AI Backend"}
+{"status":"ok","database":"ok"}
 ```
 
 ## 4) HTTPS عبر Certbot (ملخص)
