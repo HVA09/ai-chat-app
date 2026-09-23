@@ -75,6 +75,10 @@ def test_agent_mode_streams_final_answer(client, monkeypatch):
     assert "event: chunk" in response.text
     assert "حسبت العملية: الناتج 60." in response.text
     assert "event: done" in response.text
+    assert "event: tool" in response.text
+    assert '"type": "start"' in response.text
+    assert '"type": "result"' in response.text
+    assert '"name": "calculator"' in response.text
 
 
 def test_agent_command_requires_a_task(client):
