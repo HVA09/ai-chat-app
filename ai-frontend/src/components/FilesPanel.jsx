@@ -240,6 +240,7 @@ export default function FilesPanel({
               ✕
             </button>
           </div>
+        </div>
 
         {(workspaceId !== null || projectId !== null) && (
           <div className={`mb-4 grid ${projectId !== null ? "grid-cols-3" : "grid-cols-2"} gap-2 rounded-xl border border-slate-200 p-1 dark:border-slate-700`}>
