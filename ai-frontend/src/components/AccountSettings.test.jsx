@@ -121,11 +121,10 @@ describe("AccountSettings", () => {
       />
     );
 
-    const summaryCheckbox = screen.getByRole("checkbox", {
-      name: "إنشاء ملخصات تلقائيًا للمحادثات الطويلة",
-    });
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(3);
 
-    await user.click(summaryCheckbox);
+    await user.click(checkboxes[2]);
 
     expect(onAutoGenerateSummariesChanged).toHaveBeenCalledWith(true);
     expect(window.localStorage.getItem("ai-chat-auto-summary")).toBe("true");
