@@ -1,7 +1,7 @@
 """تعليقات التعاون على المحادثات المشتركة داخل مساحة العمل."""
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -11,6 +11,7 @@ from app.models.conversation_workspace_share import ConversationWorkspaceShare
 from app.models.conversation_comment import ConversationComment
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
+from app.notifications import manager, notify
 from app.schemas.workspace_conversation_comments import (
     ConversationCommentCreate,
     ConversationCommentOut,
@@ -129,6 +130,7 @@ def create_conversation_comment(
     workspace_id: int,
     conversation_id: int,
     payload: ConversationCommentCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -157,6 +159,41 @@ def create_conversation_comment(
     db.add(comment)
     db.commit()
     db.refresh(comment)
+
+    preview = " ".join(payload.content.split())
+    if len(preview) > 160:
+        preview = preview[:157] + "..."
+
+    member_ids = [
+        row.user_id
+        for row in db.query(WorkspaceMember.user_id)
+        .filter(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id != current_user.id,
+        )
+        .all()
+    ]
+
+    for user_id in member_ids:
+        notification = notify(
+            db,
+            user_id,
+            "تعليق جديد على محادثة مشتركة",
+            f"{current_user.email}: {preview}",
+            "workspace_comment",
+        )
+        background_tasks.add_task(
+            manager.send_to_user,
+            user_id,
+            {
+                "id": notification.id,
+                "title": notification.title,
+                "body": notification.body,
+                "notification_type": notification.notification_type,
+                "created_at": notification.created_at.isoformat(),
+            },
+        )
+
     return _serialize(comment, db)
 
 
