@@ -150,6 +150,7 @@ def create_folder(
         user_id=current_user.id,
         workspace_id=payload.workspace_id,
         name=payload.name,
+        color=payload.color,
     )
     db.add(folder)
     db.commit()
@@ -174,6 +175,8 @@ def rename_folder(
         exclude_id=folder.id,
     )
     folder.name = payload.name
+    if payload.color is not None:
+        folder.color = payload.color
     db.commit()
     db.refresh(folder)
     return folder
