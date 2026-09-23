@@ -248,3 +248,53 @@ describe("ChatComposer attachments", () => {
     expect(onRemoveAttachment).toHaveBeenCalledWith(7);
   });
 });
+
+
+describe("ChatComposer command autocomplete", () => {
+  it("shows matching slash commands and selects one with Enter", async () => {
+    const user = userEvent.setup();
+    let currentValue = "";
+    const setValue = vi.fn((updater) => {
+      currentValue = typeof updater === "function" ? updater(currentValue) : updater;
+    });
+
+    render(
+      <ChatComposer
+        value={currentValue}
+        setValue={setValue}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+      />
+    );
+
+    const textarea = screen.getByPlaceholderText("اكتب رسالتك هنا...");
+    await user.type(textarea, "/cal");
+    expect(screen.getByRole("option", { name: /\/calc/ })).toBeInTheDocument();
+
+    await user.keyboard("{Enter}");
+    expect(currentValue).toBe("/calc ");
+  });
+
+  it("supports ArrowDown navigation before selecting a command", async () => {
+    const user = userEvent.setup();
+    let currentValue = "";
+    const setValue = vi.fn((updater) => {
+      currentValue = typeof updater === "function" ? updater(currentValue) : updater;
+    });
+
+    render(
+      <ChatComposer
+        value={currentValue}
+        setValue={setValue}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+      />
+    );
+
+    const textarea = screen.getByPlaceholderText("اكتب رسالتك هنا...");
+    await user.type(textarea, "/");
+    await user.keyboard("{ArrowDown}");
+    await user.keyboard("{Enter}");
+    expect(currentValue).toBe("/search ");
+  });
+});
