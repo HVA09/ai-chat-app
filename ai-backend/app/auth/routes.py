@@ -322,7 +322,8 @@ def logout(
             pass
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/auth")
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
 
 
 @router.post("/verify-email/request", status_code=status.HTTP_202_ACCEPTED)

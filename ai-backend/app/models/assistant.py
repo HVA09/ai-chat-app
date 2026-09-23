@@ -25,6 +25,8 @@ class Assistant(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    is_public: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
+    public_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
 
     owner = relationship("User", back_populates="assistants")
     conversations = relationship("Conversation", back_populates="assistant")

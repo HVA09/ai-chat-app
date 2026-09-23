@@ -12,6 +12,12 @@ import {
   compareAssistantVersionWithCurrent,
 } from "../lib/assistantVersionsApi";
 import { getAssistantAnalytics } from "../lib/assistantAnalyticsApi";
+import {
+  getAssistantPublicSettings,
+  enableAssistantPublicLink,
+  rotateAssistantPublicLink,
+  disableAssistantPublicLink,
+} from "../lib/assistantsApi";
 
 export default function AssistantEditor({ assistant = null, onClose, onSave, onRestored }) {
   const { t } = useTranslation();
@@ -32,12 +38,15 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
   const [comparison, setComparison] = useState(null);
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [publicSettings, setPublicSettings] = useState(null);
+  const [publicLoading, setPublicLoading] = useState(false);
 
   useEffect(() => {
     setName(assistant?.name ?? "");
     setDescription(assistant?.description ?? "");
     setInstructions(assistant?.instructions ?? "");
     setValidationError("");
+    setPublicSettings(null);
   }, [assistant]);
 
   const refreshKnowledge = async () => {
@@ -64,6 +73,7 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
     if (!assistant?.id) {
       setVersions([]);
       setAnalytics(null);
+      setPublicSettings(null);
       return;
     }
     setVersionsLoading(true);
@@ -77,6 +87,12 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
       .then(setAnalytics)
       .catch(() => setAnalytics(null))
       .finally(() => setAnalyticsLoading(false));
+
+    setPublicLoading(true);
+    getAssistantPublicSettings(assistant.id)
+      .then(setPublicSettings)
+      .catch(() => setPublicSettings(null))
+      .finally(() => setPublicLoading(false));
   }, [assistant?.id]);
 
   const compareVersion = async (version) => {
@@ -132,6 +148,57 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
       await refreshKnowledge();
     } finally {
       setKnowledgeUploading(false);
+    }
+  };
+
+  const enablePublicLink = async () => {
+    if (!assistant?.id || publicLoading) return;
+    setPublicLoading(true);
+    try {
+      setPublicSettings(await enableAssistantPublicLink(assistant.id));
+    } catch {
+      setPublicSettings(null);
+    } finally {
+      setPublicLoading(false);
+    }
+  };
+
+  const rotatePublicLink = async () => {
+    if (!assistant?.id || publicLoading) return;
+    if (!window.confirm(t("assistantEditor.rotatePublicConfirm"))) return;
+    setPublicLoading(true);
+    try {
+      setPublicSettings(await rotateAssistantPublicLink(assistant.id));
+    } catch {
+      setPublicSettings(null);
+    } finally {
+      setPublicLoading(false);
+    }
+  };
+
+  const disablePublicLink = async () => {
+    if (!assistant?.id || publicLoading) return;
+    if (!window.confirm(t("assistantEditor.disablePublicConfirm"))) return;
+    setPublicLoading(true);
+    try {
+      setPublicSettings(await disableAssistantPublicLink(assistant.id));
+    } catch {
+      setPublicSettings(null);
+    } finally {
+      setPublicLoading(false);
+    }
+  };
+
+  const copyPublicLink = async () => {
+    if (!publicSettings?.public_url) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(publicSettings.public_url);
+      } else {
+        window.prompt(t("assistantEditor.copyPublicPrompt"), publicSettings.public_url);
+      }
+    } catch {
+      window.prompt(t("assistantEditor.copyPublicPrompt"), publicSettings.public_url);
     }
   };
 
@@ -234,6 +301,66 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
               {instructions.length}/6000
             </span>
           </label>
+
+          {isEditing && (
+            <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  {t("assistantEditor.publicTitle")}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {t("assistantEditor.publicSubtitle")}
+                </p>
+              </div>
+
+              {publicLoading ? (
+                <p className="text-xs text-slate-400">...</p>
+              ) : publicSettings?.is_public ? (
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+                    {t("assistantEditor.publicEnabled")}
+                  </div>
+                  <input
+                    readOnly
+                    value={publicSettings.public_url || ""}
+                    onFocus={(event) => event.target.select()}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={copyPublicLink}
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      {t("assistantEditor.copyPublic")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={rotatePublicLink}
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      {t("assistantEditor.rotatePublic")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={disablePublicLink}
+                      className="rounded-xl border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
+                    >
+                      {t("assistantEditor.disablePublic")}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={enablePublicLink}
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  {t("assistantEditor.enablePublic")}
+                </button>
+              )}
+            </section>
+          )}
 
           {isEditing && (
             <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">

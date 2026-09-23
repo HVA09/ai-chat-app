@@ -38,6 +38,7 @@ const BillingCancelPage = lazy(() => import("./components/BillingCancelPage"));
 const TermsPage = lazy(() => import("./components/TermsPage"));
 const PrivacyPage = lazy(() => import("./components/PrivacyPage"));
 const PricingPage = lazy(() => import("./components/PricingPage"));
+const PublicAssistantPage = lazy(() => import("./components/PublicAssistantPage"));
 
 const AUTO_SUMMARY_MESSAGE_THRESHOLD = 12;
 const SharedConversationPage = lazy(() => import("./components/SharedConversationPage"));
@@ -2619,6 +2620,13 @@ export default function App() {
 
 
   const path = normalizedPath;
+  if (path.startsWith("/public-assistant/")) {
+    return (
+      <Suspense fallback={<PageLoadingFallback />}>
+        <PublicAssistantPage />
+      </Suspense>
+    );
+  }
   if (path === "/workspace-invite") {
     return (
       <Suspense fallback={<PageLoadingFallback />}>
