@@ -48,10 +48,11 @@ def test_health_check_reports_database_status(client):
     assert body["database"] == "ok"
 
 
-def test_health_includes_environment(client):
+def test_health_does_not_disclose_environment_or_app_metadata(client):
     response = client.get("/health")
     assert response.status_code == 200
     body = response.json()
-    assert "environment" in body
-    assert "app" in body
+    assert set(body) == {"status", "database"}
+    assert "environment" not in body
+    assert "app" not in body
     assert "X-Request-ID" in response.headers
