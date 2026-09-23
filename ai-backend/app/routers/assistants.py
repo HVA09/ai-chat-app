@@ -1,10 +1,12 @@
 """إدارة المساعدين المخصصين للمستخدم الحالي."""
 import difflib
+from secrets import token_urlsafe
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.assistant import Assistant
@@ -14,7 +16,14 @@ from app.models.file_attachment import FileAttachment
 from app.models.assistant_version import AssistantVersion
 from app.models.user import User
 from app.schemas.assistant_versions import AssistantVersionCompareOut, AssistantVersionOut
-from app.schemas.assistants import AssistantAnalyticsOut, AssistantCreate, AssistantOut, AssistantUpdate
+from app.schemas.assistants import (
+    AssistantAnalyticsOut,
+    AssistantCreate,
+    AssistantOut,
+    AssistantPublicSettingsOut,
+    AssistantPublicSettingsUpdate,
+    AssistantUpdate,
+)
 from app.schemas.file import FileOut
 
 router = APIRouter(prefix="/assistants", tags=["Assistants"])
@@ -129,6 +138,75 @@ def update_assistant(
     db.commit()
     db.refresh(assistant)
     return assistant
+
+
+def _public_assistant_url(token: str | None) -> str | None:
+    if not token:
+        return None
+    return f"{settings.FRONTEND_URL.rstrip('/')}/public-assistant/{token}"
+
+
+def _public_settings(assistant: Assistant) -> AssistantPublicSettingsOut:
+    return AssistantPublicSettingsOut(
+        is_public=assistant.is_public,
+        public_token=assistant.public_token if assistant.is_public else None,
+        public_url=_public_assistant_url(assistant.public_token if assistant.is_public else None),
+    )
+
+
+@router.get("/{assistant_id}/public", response_model=AssistantPublicSettingsOut)
+def get_assistant_public_settings(
+    assistant_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    assistant = _get_owned_assistant(assistant_id, current_user, db)
+    return _public_settings(assistant)
+
+
+@router.post("/{assistant_id}/public", response_model=AssistantPublicSettingsOut)
+def enable_assistant_public_link(
+    assistant_id: int,
+    payload: AssistantPublicSettingsUpdate | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    assistant = _get_owned_assistant(assistant_id, current_user, db)
+    rotate = bool(payload and payload.rotate)
+    if not assistant.public_token or rotate:
+        assistant.public_token = token_urlsafe(32)
+    assistant.is_public = True
+    db.commit()
+    db.refresh(assistant)
+    return _public_settings(assistant)
+
+
+@router.post("/{assistant_id}/public/rotate", response_model=AssistantPublicSettingsOut)
+def rotate_assistant_public_link(
+    assistant_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    assistant = _get_owned_assistant(assistant_id, current_user, db)
+    assistant.public_token = token_urlsafe(32)
+    assistant.is_public = True
+    db.commit()
+    db.refresh(assistant)
+    return _public_settings(assistant)
+
+
+@router.delete("/{assistant_id}/public", response_model=AssistantPublicSettingsOut)
+def disable_assistant_public_link(
+    assistant_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    assistant = _get_owned_assistant(assistant_id, current_user, db)
+    assistant.is_public = False
+    assistant.public_token = None
+    db.commit()
+    db.refresh(assistant)
+    return _public_settings(assistant)
 
 
 @router.get("/{assistant_id}/analytics", response_model=AssistantAnalyticsOut)
