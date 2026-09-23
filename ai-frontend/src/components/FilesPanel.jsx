@@ -49,6 +49,7 @@ export default function FilesPanel({
   const [indexingId, setIndexingId] = useState(null);
   const [showWorkspaceFiles, setShowWorkspaceFiles] = useState(false);
   const [showProjectFiles, setShowProjectFiles] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -85,6 +86,12 @@ export default function FilesPanel({
   useEffect(() => {
     refresh();
   }, [conversationId, showWorkspaceFiles, showProjectFiles, workspaceId, projectId]);
+
+  const filteredFiles = files.filter((file) =>
+    file.original_filename
+      .toLocaleLowerCase()
+      .includes(searchQuery.trim().toLocaleLowerCase())
+  );
 
   const handleUpload = async (fileList) => {
     const selectedFiles = Array.from(fileList || []).filter(Boolean);
@@ -210,21 +217,29 @@ export default function FilesPanel({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-2 sm:p-4">
-      <div className="my-0 flex max-h-[calc(100dvh-1rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900 sm:my-8 sm:max-h-[calc(100dvh-3rem)] sm:rounded-3xl sm:p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">
-            {showProjectFiles
-              ? t("files.projectTitle")
-              : showWorkspaceFiles
-                ? t("files.workspaceTitle")
-                : t("files.title")}
-          </h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
-          >
-            ✕
-          </button>
+      <div className="my-0 flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900 sm:my-8 sm:max-h-[calc(100dvh-3rem)] sm:rounded-3xl">
+        <div className="border-b border-slate-200 px-4 pb-3 pt-4 dark:border-slate-700 sm:px-6 sm:pt-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold text-slate-900 dark:text-slate-100">
+                {showProjectFiles
+                  ? t("files.projectTitle")
+                  : showWorkspaceFiles
+                    ? t("files.workspaceTitle")
+                    : t("files.title")}
+              </h2>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {t("files.libraryCount", { count: files.length })}
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              aria-label={t("files.close")}
+              className="rounded-xl border border-slate-200 px-2.5 py-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {(workspaceId !== null || projectId !== null) && (
@@ -266,12 +281,27 @@ export default function FilesPanel({
           </div>
         )}
 
+        <div className="px-4 pt-3 sm:px-6">
+          <label className="relative block">
+            <span className="sr-only">{t("files.searchPlaceholder")}</span>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={t("files.searchPlaceholder")}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-10 py-2.5 text-sm text-slate-700 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            />
+            <span className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-slate-400" aria-hidden="true">⌕</span>
+          </label>
+        </div>
+
         {showWorkspaceFiles && workspaceId === null ? (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             {t("files.workspaceUnavailable")}
           </div>
         ) : null}
 
+        <div className="px-4 pt-3 sm:px-6">
         {/* منطقة السحب والإفلات */}
         <div
           onDragOver={(e) => {
@@ -309,6 +339,7 @@ export default function FilesPanel({
           </p>
           <p className="mt-1 text-xs text-slate-400">{t("files.typesHint")}</p>
         </div>
+        </div>
 
         {uploadProgress !== null && (
           <div className="mb-4">
@@ -328,27 +359,40 @@ export default function FilesPanel({
           </div>
         )}
 
-        <div className="min-h-0 max-h-[45dvh] space-y-2 overflow-y-auto pe-1 sm:max-h-72">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pe-1 sm:px-6 sm:max-h-[52dvh]">
           {loading ? (
             <p className="text-sm text-slate-400">...</p>
-          ) : files.length === 0 ? (
-            <p className="text-sm text-slate-400">{t("files.noFiles")}</p>
+          ) : filteredFiles.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-10 text-center dark:border-slate-700">
+              <div className="text-3xl">📁</div>
+              <p className="mt-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+                {files.length ? t("files.noSearchResults") : t("files.noFiles")}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                {files.length ? t("files.tryDifferentSearch") : t("files.emptyHint")}
+              </p>
+            </div>
           ) : (
-            files.map((file) => (
+            <div className="space-y-2">
+            {filteredFiles.map((file) => (
               <div
                 key={file.id}
-                className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 px-3 py-2"
+                className="rounded-2xl border border-slate-200 bg-white p-3 transition hover:border-slate-300 hover:shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:hover:border-slate-600"
               >
                 <button
                   onClick={() => handlePreview(file)}
                   className="flex min-w-0 flex-1 items-center gap-2 text-start"
                 >
-                  <span className="text-lg">{ICONS[file.content_type] || "📎"}</span>
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-lg dark:bg-slate-800">
+                    {ICONS[file.content_type] || "📎"}
+                  </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-slate-900">
+                    <span className="block truncate text-sm font-medium text-slate-900 dark:text-slate-100">
                       {file.original_filename}
                     </span>
-                    <span className="text-xs text-slate-400">{formatSize(file.size_bytes)}</span>
+                    <span className="mt-0.5 block text-xs text-slate-400">
+                      {formatSize(file.size_bytes)} · {new Date(file.created_at).toLocaleDateString()}
+                    </span>
                   </span>
                 </button>
                 <div className="flex shrink-0 items-center gap-1">
@@ -398,9 +442,38 @@ export default function FilesPanel({
                   </button>
                   )}
                 </div>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 ps-[3.25rem] text-[11px] text-slate-400">
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
+                    {file.workspace_id !== null
+                      ? file.project_id !== null
+                        ? t("files.scopeProject")
+                        : t("files.scopeWorkspace")
+                      : t("files.scopePersonal")}
+                  </span>
+                  {file.is_attached ? (
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                      {t("files.attached")}
+                    </span>
+                  ) : null}
+                  {file.is_ai_indexed ? (
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                      {t("files.indexed")}
+                    </span>
+                  ) : null}
+                </div>
               </div>
-            ))
+            ))}
+            </div>
           )}
+        </div>
+        <div className="border-t border-slate-200 px-4 py-3 dark:border-slate-700 sm:px-6">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+          >
+            + {t("files.addMore")}
+          </button>
         </div>
       </div>
 
