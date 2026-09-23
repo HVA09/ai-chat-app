@@ -1,0 +1,267 @@
+# Render Blueprint for production.
+# Applying this Blueprint creates/updates billable resources where a paid plan
+# is specified. Review the Render plan and secrets before clicking Apply.
+#
+# Existing resources are named to match the current Render workspace so the
+# Blueprint can manage them rather than creating duplicate resources.
+
+services:
+  - type: web
+    name: ai-chat-backend
+    runtime: docker
+    plan: starter
+    region: ohio
+    dockerfilePath: ai-backend/Dockerfile
+    dockerContext: ai-backend
+    autoDeployTrigger: checksPass
+    healthCheckPath: /health
+    maxShutdownDelaySeconds: 60
+    disk:
+      name: uploads
+      mountPath: /app/uploads
+      sizeGB: 10
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-chat-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: ai-chat-redis
+          type: keyvalue
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: ai-chat-redis
+          type: keyvalue
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: ai-chat-redis
+          type: keyvalue
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: AI_API_KEY
+        sync: false
+      - key: INITIAL_ADMIN_EMAIL
+        sync: false
+      - key: TOTP_ENCRYPTION_KEY
+        generateValue: true
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: APP_NAME
+        value: AI Backend
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "30"
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: "7"
+      - key: AI_API_BASE_URL
+        value: https://api.openai.com/v1
+      - key: AI_MODEL
+        value: gpt-4o-mini
+      - key: AI_ALLOWED_MODELS
+        value: "[]"
+      - key: AI_PROVIDER
+        value: openai
+      - key: EMBEDDING_MODEL
+        value: gemini-embedding-001
+      - key: EMBEDDING_DIMENSIONS
+        value: "768"
+      - key: DAILY_AI_REQUEST_LIMIT
+        value: "20"
+      - key: MAX_AI_OUTPUT_TOKENS
+        value: "1200"
+      - key: AI_STREAM_IDLE_TIMEOUT_SECONDS
+        value: "60"
+      - key: AI_REQUEST_TIMEOUT_SECONDS
+        value: "30"
+      - key: AI_PRICING_JSON
+        value: "{}"
+      - key: AI_MONTHLY_BUDGET_USD
+        value: "0"
+      - key: WEB_SEARCH_TIMEOUT_SECONDS
+        value: "8"
+      - key: WEB_SEARCH_MAX_RESULTS
+        value: "5"
+      - key: FRONTEND_URL
+        value: https://ai-chat-frontend-v8ma.onrender.com
+      - key: CORS_ORIGINS
+        value: '["https://ai-chat-frontend-v8ma.onrender.com"]'
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USE_TLS
+        value: "true"
+      - key: MAX_FAILED_LOGIN_ATTEMPTS
+        value: "5"
+      - key: ACCOUNT_LOCKOUT_MINUTES
+        value: "15"
+      - key: TOTP_ISSUER_NAME
+        value: AI Backend
+      - key: UPLOAD_DIR
+        value: /app/uploads
+      - key: MAX_UPLOAD_SIZE_MB
+        value: "10"
+      - key: MAX_FILES_PER_USER
+        value: "100"
+      - key: MAX_STORAGE_PER_USER_MB
+        value: "500"
+      - key: PAYMENT_PROVIDER
+        value: stripe
+      - key: PAYPAL_API_BASE
+        value: https://api-m.paypal.com
+      - key: BILLING_SUCCESS_PATH
+        value: /billing/success
+      - key: BILLING_CANCEL_PATH
+        value: /billing/cancel
+      - key: CACHE_TTL_SECONDS
+        value: "60"
+
+  - type: worker
+    name: ai-chat-worker
+    runtime: docker
+    plan: starter
+    region: ohio
+    dockerfilePath: ai-backend/Dockerfile
+    dockerContext: ai-backend
+    dockerCommand: celery -A app.tasks.celery_app worker --loglevel=info
+    autoDeployTrigger: checksPass
+    maxShutdownDelaySeconds: 60
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-chat-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: ai-chat-redis
+          type: keyvalue
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: ai-chat-redis
+          type: keyvalue
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: ai-chat-redis
+          type: keyvalue
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: AI_API_KEY
+        sync: false
+      - key: INITIAL_ADMIN_EMAIL
+        sync: false
+      - key: CORS_ORIGINS
+        value: '["https://ai-chat-frontend-v8ma.onrender.com"]'
+      - key: TOTP_ENCRYPTION_KEY
+        generateValue: true
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+
+  - type: worker
+    name: ai-chat-beat
+    runtime: docker
+    plan: starter
+    region: ohio
+    dockerfilePath: ai-backend/Dockerfile
+    dockerContext: ai-backend
+    dockerCommand: celery -A app.tasks.celery_app beat --loglevel=info
+    autoDeployTrigger: checksPass
+    maxShutdownDelaySeconds: 60
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-chat-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: ai-chat-redis
+          type: keyvalue
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: ai-chat-redis
+          type: keyvalue
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: ai-chat-redis
+          type: keyvalue
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: AI_API_KEY
+        sync: false
+      - key: INITIAL_ADMIN_EMAIL
+        sync: false
+      - key: CORS_ORIGINS
+        value: '["https://ai-chat-frontend-v8ma.onrender.com"]'
+      - key: TOTP_ENCRYPTION_KEY
+        generateValue: true
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_FROM_EMAIL
+        sync: false
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+
+  - type: web
+    name: ai-chat-frontend
+    runtime: static
+    rootDir: ai-frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://ai-chat-backend-ltxa.onrender.com
+
+  - type: keyvalue
+    name: ai-chat-redis
+    region: ohio
+    plan: starter
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
+    persistenceMode: journal-snapshot
+
+databases:
+  - name: ai-chat-db
+    plan: basic_1gb
+    region: ohio
+    version: 18

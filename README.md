@@ -45,7 +45,8 @@ Use the dedicated production Compose file instead of the development configurati
 ```bash
 cd ai-backend
 cp .env.production.example .env.production
-# Fill every production secret, domain, SMTP/payment setting, CORS origin, and BACKEND_IMAGE
+# Fill every production secret, domain, SMTP/payment setting, CORS origin, and immutable BACKEND_IMAGE
+docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
@@ -55,13 +56,7 @@ Production publishes only Nginx on ports `80` and `443`; FastAPI is internal to 
 
 `.github/workflows/publish-backend-image.yml` publishes the backend Docker image to GitHub Container Registry (GHCR) after a push to `main`, for version tags such as `v1.0.0`, or when manually dispatched. It uses the repository's `GITHUB_TOKEN` with package-write permission; no long-lived registry password is stored in the repository.
 
-The production image name is:
-
-```text
-ghcr.io/HVA09/ai-chat-app-backend:latest
-```
-
-On the production server, set `BACKEND_IMAGE` in `.env.production` to the exact image/tag you intend to deploy. For reproducible deployments, prefer an immutable version tag or SHA tag instead of `latest`.
+The production backend image is published to GHCR with `latest`, version tags, and Git SHA tags. On the production server, set `BACKEND_IMAGE` in `.env.production` to an **immutable image digest** (`@sha256:...`). The production Compose file requires this value and applies it to the API, Celery worker, and Celery beat.
 
 ### HTTPS setup
 

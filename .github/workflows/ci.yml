@@ -75,3 +75,16 @@ jobs:
       - run: npm install
       - run: npm test
       - run: npm run build
+
+  production-compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Validate production Compose configuration
+        working-directory: ai-backend
+        env:
+          BACKEND_IMAGE: ghcr.io/hva09/ai-chat-app-backend@sha256:0000000000000000000000000000000000000000000000000000000000000000
+        run: |
+          : > .env.production
+          docker compose -f docker-compose.prod.yml config --quiet
+          rm -f .env.production

@@ -13,8 +13,8 @@
 
 ```bash
 cd /opt/ai-backend   # أو مسار المشروع
-cp .env.example .env
-chmod 600 .env
+cp .env.production.example .env.production
+chmod 600 .env.production
 ```
 
 املأ على الأقل:
@@ -36,9 +36,10 @@ chmod 600 .env
 ## 3) التشغيل
 
 ```bash
-docker compose up -d --build
-docker compose ps
-curl -sS http://127.0.0.1:8000/health
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml ps
+curl -sS https://your-api-domain.example/health
 ```
 
 المتوقع من `/health`:
@@ -76,11 +77,11 @@ docker compose restart nginx
 
 `docker-compose` يشغّل خدمة `backup` يوميًا (مجلد `./backups`).
 
-الاستعادة لازم تصير **داخل حاوية `db`** (فيها `psql` وتشوف `$DATABASE_URL` من `.env`)،
-مو بتشغيل السكربت مباشرة على السيرفر:
+الاستعادة لازم تصير **داخل حاوية `db`** (فيها `psql` وتقرأ `$DATABASE_URL` من `.env.production`). الاسترجاع يستبدل بيانات قاعدة البيانات الحالية بالكامل، لذلك يتطلب تأكيدًا صريحًا:
 
 ```bash
-docker compose exec -T db sh /scripts/restore.sh /backups/backup_XXXXXXXX_XXXXXX.sql.gz
+docker compose -f docker-compose.prod.yml exec -e CONFIRM_RESTORE=YES -T db \\
+  sh /scripts/restore.sh /backups/backup_XXXXXXXX_XXXXXX.sql.gz
 ```
 
 ## 7) المراقبة السريعة
@@ -108,4 +109,5 @@ docker compose exec -T db sh /scripts/restore.sh /backups/backup_XXXXXXXX_XXXXXX
 - [ ] Stripe/PayPal webhook مضبوط
 - [ ] HTTPS صالح
 - [ ] نسخة احتياطية واستعادة مجرّبة مرة واحدة
+- [ ] النسخ الاحتياطية محفوظة خارج نفس القرص/الخادم ومراقَب نجاحها
 - [ ] Privacy + Terms منشورتان على الفرونت
