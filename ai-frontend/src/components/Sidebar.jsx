@@ -9,6 +9,19 @@ const ROW_HEIGHT = 92;
 // الـ virtualization يفيد فعليًا لما تكبر القائمة (مستخدم عنده مئات المحادثات)
 const VIRTUALIZE_THRESHOLD = 30;
 
+const FOLDER_COLORS = {
+  slate: { dot: "bg-slate-400", label: "slate" },
+  blue: { dot: "bg-blue-500", label: "blue" },
+  emerald: { dot: "bg-emerald-500", label: "emerald" },
+  amber: { dot: "bg-amber-500", label: "amber" },
+  rose: { dot: "bg-rose-500", label: "rose" },
+  violet: { dot: "bg-violet-500", label: "violet" },
+  cyan: { dot: "bg-cyan-500", label: "cyan" },
+  orange: { dot: "bg-orange-500", label: "orange" },
+};
+
+const FOLDER_COLOR_ORDER = Object.keys(FOLDER_COLORS);
+
 function renderSearchSnippet(text, query) {
   const normalizedQuery = query.trim();
   if (!normalizedQuery || !text) return text;
@@ -198,8 +211,16 @@ export default function Sidebar({
     e.stopPropagation();
     const newName = window.prompt(t("sidebar.folderRenamePrompt"), folder.name);
     if (newName && newName.trim() && newName.trim() !== folder.name) {
-      onRenameFolder(folder.id, newName.trim());
+      onRenameFolder(folder.id, newName.trim(), folder.color ?? "slate");
     }
+  };
+
+  const handleCycleFolderColor = (e, folder) => {
+    e.stopPropagation();
+    const current = folder.color ?? "slate";
+    const index = Math.max(FOLDER_COLOR_ORDER.indexOf(current), 0);
+    const next = FOLDER_COLOR_ORDER[(index + 1) % FOLDER_COLOR_ORDER.length];
+    onRenameFolder(folder.id, folder.name, next);
   };
 
   const handleOpenBookmarkedMessage = async (e, item) => {
@@ -653,6 +674,17 @@ export default function Sidebar({
               </button>
               {folders.map((folder) => (
                 <div key={folder.id} className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={(e) => handleCycleFolderColor(e, folder)}
+                    title={t("sidebar.changeFolderColorTitle")}
+                    aria-label={t("sidebar.changeFolderColorTitle")}
+                    className="shrink-0 rounded-full p-1 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    <span
+                      className={`block h-3.5 w-3.5 rounded-full ring-1 ring-black/10 dark:ring-white/20 ${FOLDER_COLORS[folder.color ?? "slate"]?.dot ?? FOLDER_COLORS.slate.dot}`}
+                    />
+                  </button>
                   <button
                     type="button"
                     onClick={() => onSelectFolder(folder.id)}

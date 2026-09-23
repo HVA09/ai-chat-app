@@ -36,6 +36,9 @@ class ConversationFolder(Base):
         ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    color: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="slate", server_default="slate"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

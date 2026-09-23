@@ -655,9 +655,9 @@ export default function App() {
     }
   };
 
-  const handleRenameFolder = async (id, newName) => {
+  const handleRenameFolder = async (id, newName, color = null) => {
     try {
-      await renameFolder(id, newName);
+      await renameFolder(id, newName, color);
       await refreshFolders(selectedWorkspaceId);
       await refreshConversations(
         showArchivedConversations,
