@@ -6,7 +6,7 @@ import {
   enableTwoFactor,
   disableTwoFactor,
 } from "../lib/authApi";
-import { updateProfile, changePassword, deleteAccount } from "../lib/usersApi";
+import { updateProfile, changePassword, deleteAccount, exportAccountData } from "../lib/usersApi";
 import { listMemories, createMemory, updateMemory, deleteMemory } from "../lib/memoriesApi";
 import { listApiKeys, createApiKey, revokeApiKey, getApiKeyUsage } from "../lib/apiKeysApi";
 import { getErrorMessage } from "../lib/errors";
@@ -187,6 +187,12 @@ export default function AccountSettings({
       await deleteMemory(memory.id);
       await loadMemories();
       setMessage(t("account.memoryDeleted"));
+    });
+
+  const handleExportData = () =>
+    runAction(async () => {
+      await exportAccountData();
+      setMessage(t("account.dataExported"));
     });
 
   const handleSaveProfile = () =>
@@ -482,6 +488,17 @@ export default function AccountSettings({
               <p className="text-xs text-slate-400">{t("account.apiKeyEmpty")}</p>
             )}
           </div>
+        </Section>
+
+        <Section title={t("account.dataExportSection")}>
+          <p className="mb-2 text-xs text-slate-500">{t("account.dataExportDescription")}</p>
+          <button
+            onClick={handleExportData}
+            disabled={loading}
+            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50 disabled:opacity-50"
+          >
+            {t("account.exportData")}
+          </button>
         </Section>
 
         <Section title={t("account.changePasswordSection")}>
