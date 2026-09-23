@@ -56,29 +56,73 @@ def cache_delete(key: str) -> None:
         pass
 
 
-def check_rate_limit(key: str, max_hits: int, window_seconds: int) -> tuple[bool, int] | None:
-    """Atomically increment a fixed-window counter in Redis.
-
-    Returns (allowed, current_count). Returns None when Redis is unavailable so
-    callers can choose an explicit fail-open/fail-closed policy.
-    """
+def seed_rate_limit(key: str, current_hits: int, window_seconds: int) -> bool | None:
+    """Seed a Redis counter from durable usage exactly once."""
     if not _REDIS_AVAILABLE or _client is None:
         return None
-    key = f"ratelimit:{key}"
+    redis_key = f"ratelimit:{key}"
+    try:
+        return bool(
+            _client.set(
+                redis_key,
+                str(max(0, int(current_hits))),
+                ex=max(1, window_seconds),
+                nx=True,
+            )
+        )
+    except Exception:
+        logger.exception("Redis unavailable while seeding rate limit")
+        return None
+
+
+def check_rate_limit_with_reset(
+    key: str, max_hits: int, window_seconds: int
+) -> tuple[bool, int, int] | None:
+    """Atomically increment a fixed-window counter and return its reset time."""
+    if not _REDIS_AVAILABLE or _client is None:
+        return None
+    redis_key = f"ratelimit:{key}"
     script = """
     local count = redis.call('INCR', KEYS[1])
     if count == 1 then
         redis.call('EXPIRE', KEYS[1], ARGV[1])
     end
-    return count
+    local ttl = redis.call('TTL', KEYS[1])
+    return {count, ttl}
     """
     try:
-        count = int(_client.eval(script, 1, key, max(1, window_seconds)))
-        return count <= max_hits, count
+        count, ttl = _client.eval(script, 1, redis_key, max(1, window_seconds))
+        count = int(count)
+        ttl = max(1, int(ttl))
+        import time
+        reset_at = int(time.time() + ttl)
+        return count <= max_hits, count, reset_at
     except Exception:
         logger.exception("Redis unavailable while applying rate limit")
         return None
 
+
+def check_rate_limit(
+    key: str, max_hits: int, window_seconds: int
+) -> tuple[bool, int] | None:
+    """Atomically increment a fixed-window counter in Redis."""
+    result = check_rate_limit_with_reset(key, max_hits, window_seconds)
+    if result is None:
+        return None
+    allowed, current_count, _reset_at = result
+    return allowed, current_count
+
+
+def check_daily_rate_limit(
+    key: str,
+    max_hits: int,
+    current_hits: int,
+    window_seconds: int = 86400,
+) -> tuple[bool, int, int] | None:
+    """Seed from durable usage, then atomically reserve one request."""
+    if seed_rate_limit(key, current_hits, window_seconds) is None:
+        return None
+    return check_rate_limit_with_reset(key, max_hits, window_seconds)
 
 def _remember_once(prefix: str, jti: str, ttl_seconds: int) -> bool:
     if not _REDIS_AVAILABLE or _client is None:

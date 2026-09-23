@@ -89,6 +89,27 @@ def isolate_upload_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def reset_redis_rate_limits():
+    """Isolate atomic Redis quota counters between tests when Redis is available."""
+    try:
+        from app import cache
+        if cache._REDIS_AVAILABLE and cache._client is not None:
+            for key in cache._client.scan_iter("ratelimit:*"):
+                cache._client.delete(key)
+    except Exception:
+        # Tests still have the database fallback when Redis is unavailable.
+        pass
+    yield
+    try:
+        from app import cache
+        if cache._REDIS_AVAILABLE and cache._client is not None:
+            for key in cache._client.scan_iter("ratelimit:*"):
+                cache._client.delete(key)
+    except Exception:
+        pass
+
+
+@pytest.fixture(autouse=True)
 def reset_test_security_state(monkeypatch):
     """Keep security middleware deterministic in pytest without weakening production."""
     from app.config import settings as app_settings

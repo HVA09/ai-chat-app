@@ -278,3 +278,37 @@ def test_api_key_usage_endpoint_is_owner_scoped(client, db_session):
     token_b = _register_and_login(client, "usage-key-other@example.com")
     headers_b = {"Authorization": f"Bearer {token_b}"}
     assert client.get(f"/api-keys/{key['id']}/usage", headers=headers_b).status_code == 404
+
+
+def test_api_key_rate_limit_uses_atomic_redis_result(client, monkeypatch):
+    monkeypatch.setattr(
+        api_keys_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="لا يجب تشغيل AI", input_tokens=0, output_tokens=0)),
+    )
+    future_reset = int(datetime.now(timezone.utc).timestamp()) + 60
+    monkeypatch.setattr(
+        api_keys_router_module,
+        "check_daily_rate_limit",
+        lambda key, max_hits, current_hits: (False, max_hits + 1, future_reset),
+    )
+
+    token = _register_and_login(client, "developer-atomic-rate@example.com")
+    session_headers = {"Authorization": f"Bearer {token}"}
+    created = client.post(
+        "/api-keys",
+        json={"name": "Atomic", "daily_request_limit": 1},
+        headers=session_headers,
+    )
+    assert created.status_code == 201
+
+    response = client.post(
+        "/v1/chat",
+        json={"message": "must be blocked"},
+        headers={"X-API-Key": created.json()["secret"]},
+    )
+
+    assert response.status_code == 429
+    assert response.headers["X-RateLimit-Limit"] == "1"
+    assert response.headers["X-RateLimit-Remaining"] == "0"
+    assert int(response.headers["X-RateLimit-Reset"]) == future_reset
