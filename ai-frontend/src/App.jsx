@@ -12,7 +12,7 @@ import ProjectEditor from "./components/ProjectEditor";
 import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
-import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, listAiModels } from "./lib/chatApi";
+import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, listAiModels, compareChatModels } from "./lib/chatApi";
 import { listBookmarkedMessages, toggleMessageBookmark } from "./lib/bookmarksApi";
 import { listMemories, createMemory, deleteMemory } from "./lib/memoriesApi";
 import api, { restoreSession } from "./lib/api";
