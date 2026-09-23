@@ -58,7 +58,7 @@ def test_index_image_for_rag_is_explicit_and_persists_usage(client, monkeypatch,
                 file_id=file.id,
                 chunk_index=0,
                 content=file.extracted_text or "",
-                embedding=[0.1, 0.2],
+                embedding=[0.1] * 768,
             )
         )
         db.flush()
