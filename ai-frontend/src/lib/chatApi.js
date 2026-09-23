@@ -35,6 +35,7 @@ export async function streamChatMessage(
     onChunk,
     onConversationId,
     onSources,
+    onToolEvent,
     onDone,
     onError,
     signal,
@@ -108,6 +109,7 @@ export async function streamChatMessage(
 
         if (eventType === "conversation") onConversationId?.(Number(data));
         else if (eventType === "sources") onSources?.(JSON.parse(data));
+        else if (eventType === "tool") onToolEvent?.(JSON.parse(data));
         else if (eventType === "chunk") onChunk?.(data.replace(/\\n/g, "\n"));
         else if (eventType === "error") onError?.(data);
         else if (eventType === "done") onDone?.();
