@@ -11,6 +11,7 @@ import {
   restoreAssistantVersion,
   compareAssistantVersionWithCurrent,
 } from "../lib/assistantVersionsApi";
+import { getAssistantAnalytics } from "../lib/assistantAnalyticsApi";
 
 export default function AssistantEditor({ assistant = null, onClose, onSave, onRestored }) {
   const { t } = useTranslation();
@@ -29,6 +30,8 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
   const [restoringVersion, setRestoringVersion] = useState(null);
   const [comparingVersion, setComparingVersion] = useState(null);
   const [comparison, setComparison] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   useEffect(() => {
     setName(assistant?.name ?? "");
@@ -60,6 +63,7 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
     refreshKnowledge();
     if (!assistant?.id) {
       setVersions([]);
+      setAnalytics(null);
       return;
     }
     setVersionsLoading(true);
@@ -67,6 +71,12 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
       .then(setVersions)
       .catch(() => setVersions([]))
       .finally(() => setVersionsLoading(false));
+
+    setAnalyticsLoading(true);
+    getAssistantAnalytics(assistant.id, 30)
+      .then(setAnalytics)
+      .catch(() => setAnalytics(null))
+      .finally(() => setAnalyticsLoading(false));
   }, [assistant?.id]);
 
   const compareVersion = async (version) => {
@@ -311,6 +321,47 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
                     </>
                   )}
                 </div>
+              )}
+            </section>
+          )}
+
+          {isEditing && (
+            <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+              <div className="mb-3">
+                <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  {t("assistantEditor.analyticsTitle")}
+                </h3>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {t("assistantEditor.analyticsSubtitle")}
+                </p>
+              </div>
+              {analyticsLoading ? (
+                <p className="text-xs text-slate-400">...</p>
+              ) : analytics ? (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+                    <p className="text-xs text-slate-400">{t("assistantEditor.analyticsConversations")}</p>
+                    <p className="mt-1 text-lg font-semibold text-slate-800 dark:text-slate-100">{analytics.conversation_count}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+                    <p className="text-xs text-slate-400">{t("assistantEditor.analyticsMessages")}</p>
+                    <p className="mt-1 text-lg font-semibold text-slate-800 dark:text-slate-100">{analytics.message_count}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+                    <p className="text-xs text-slate-400">{t("assistantEditor.analyticsUsers")}</p>
+                    <p className="mt-1 text-lg font-semibold text-slate-800 dark:text-slate-100">{analytics.active_user_count}</p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+                    <p className="text-xs text-slate-400">{t("assistantEditor.analyticsLastUsed")}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                      {analytics.last_used_at
+                        ? new Date(analytics.last_used_at).toLocaleString()
+                        : t("assistantEditor.analyticsNever")}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">{t("assistantEditor.analyticsUnavailable")}</p>
               )}
             </section>
           )}
