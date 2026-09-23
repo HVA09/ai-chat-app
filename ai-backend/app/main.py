@@ -136,8 +136,6 @@ def health_check(db: Session = Depends(get_db)):
     return {
         "status": "ok" if db_status == "ok" else "degraded",
         "database": db_status,
-        "environment": settings.ENVIRONMENT,
-        "app": settings.APP_NAME,
     }
 
 
