@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
+import { useState } from "react";
 import ChatComposer from "./ChatComposer";
 
 vi.mock("react-i18next", () => ({
@@ -251,50 +252,40 @@ describe("ChatComposer attachments", () => {
 
 
 describe("ChatComposer command autocomplete", () => {
-  it("shows matching slash commands and selects one with Enter", async () => {
-    const user = userEvent.setup();
-    let currentValue = "";
-    const setValue = vi.fn((updater) => {
-      currentValue = typeof updater === "function" ? updater(currentValue) : updater;
-    });
-
-    render(
+  function StatefulComposer() {
+    const [value, setValue] = useState("");
+    return (
       <ChatComposer
-        value={currentValue}
+        value={value}
         setValue={setValue}
         onSend={vi.fn()}
         onStop={vi.fn()}
       />
     );
+  }
+
+  it("shows matching slash commands and selects one with Enter", async () => {
+    const user = userEvent.setup();
+
+    render(<StatefulComposer />);
 
     const textarea = screen.getByPlaceholderText("اكتب رسالتك هنا...");
     await user.type(textarea, "/cal");
     expect(screen.getByRole("option", { name: /\/calc/ })).toBeInTheDocument();
 
     await user.keyboard("{Enter}");
-    expect(currentValue).toBe("/calc ");
+    expect(textarea).toHaveValue("/calc ");
   });
 
   it("supports ArrowDown navigation before selecting a command", async () => {
     const user = userEvent.setup();
-    let currentValue = "";
-    const setValue = vi.fn((updater) => {
-      currentValue = typeof updater === "function" ? updater(currentValue) : updater;
-    });
 
-    render(
-      <ChatComposer
-        value={currentValue}
-        setValue={setValue}
-        onSend={vi.fn()}
-        onStop={vi.fn()}
-      />
-    );
+    render(<StatefulComposer />);
 
     const textarea = screen.getByPlaceholderText("اكتب رسالتك هنا...");
     await user.type(textarea, "/");
     await user.keyboard("{ArrowDown}");
     await user.keyboard("{Enter}");
-    expect(currentValue).toBe("/search ");
+    expect(textarea).toHaveValue("/search ");
   });
 });
