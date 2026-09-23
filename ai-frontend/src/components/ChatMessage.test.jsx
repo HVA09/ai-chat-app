@@ -14,6 +14,8 @@ vi.mock("react-i18next", () => ({
         "feedback.saved": "Feedback saved",
         "sources.title": "Sources",
         "sources.chunkShort": "chunk {{chunk}}",
+        "sources.preview": "Preview source",
+        "sources.hidePreview": "Hide source preview",
         "bookmarks.save": "Save message",
         "bookmarks.remove": "Remove from bookmarks",
         "memory.save": "Save to memory",
@@ -54,6 +56,37 @@ describe("ChatMessage voice output", () => {
     expect(speak.mock.calls[0][0].text).toBe("Hello from AI");
     expect(speak.mock.calls[0][0].lang).toBe("en-US");
     expect(screen.getByRole("button", { name: "Stop reading" })).toBeInTheDocument();
+  });
+});
+
+describe("ChatMessage source preview", () => {
+  it("expands and collapses a source snippet on demand", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatMessage
+        role="assistant"
+        text="Uses [S1]."
+        time="10:00"
+        sources={[
+          {
+            id: "S1",
+            filename: "linux.pdf",
+            chunk: 2,
+            snippet: "A useful Linux command line excerpt.",
+            file_id: 42,
+          },
+        ]}
+      />
+    );
+
+    expect(screen.queryByText("A useful Linux command line excerpt.")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Preview source" }));
+    expect(screen.getByText("A useful Linux command line excerpt.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Hide source preview" }));
+    expect(screen.queryByText("A useful Linux command line excerpt.")).not.toBeInTheDocument();
   });
 });
 
