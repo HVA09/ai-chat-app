@@ -57,3 +57,12 @@ class AssistantOut(BaseModel):
     description: str | None
     instructions: str
     created_at: datetime
+
+
+class AssistantAnalyticsOut(BaseModel):
+    assistant_id: int
+    days: int
+    conversation_count: int
+    message_count: int
+    active_user_count: int
+    last_used_at: datetime | None

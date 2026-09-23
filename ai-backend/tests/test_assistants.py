@@ -238,3 +238,70 @@ def test_assistant_versions_are_private_to_owner(client):
         f"/assistants/{assistant['id']}/versions/1/restore",
         headers=headers_b,
     ).status_code == 404
+
+
+def test_assistant_usage_analytics(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "assistant-analytics@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    assistant = client.post(
+        "/assistants",
+        json={
+            "name": "Analytics Tutor",
+            "instructions": "اشرح بإيجاز.",
+        },
+        headers=headers,
+    ).json()
+
+    first = client.post(
+        "/chat",
+        json={"message": "رسالة 1", "assistant_id": assistant["id"]},
+        headers=headers,
+    )
+    assert first.status_code == 200
+
+    second = client.post(
+        "/chat",
+        json={
+            "message": "رسالة 2",
+            "conversation_id": first.json()["conversation_id"],
+            "assistant_id": assistant["id"],
+        },
+        headers=headers,
+    )
+    assert second.status_code == 200
+
+    analytics = client.get(
+        f"/assistants/{assistant['id']}/analytics",
+        params={"days": 30},
+        headers=headers,
+    )
+    assert analytics.status_code == 200
+    payload = analytics.json()
+    assert payload["assistant_id"] == assistant["id"]
+    assert payload["days"] == 30
+    assert payload["conversation_count"] == 1
+    assert payload["message_count"] == 4
+    assert payload["active_user_count"] == 1
+    assert payload["last_used_at"] is not None
+
+
+def test_assistant_usage_analytics_is_private_to_owner(client):
+    token_a = _register_and_login(client, "assistant-analytics-owner@example.com")
+    assistant = client.post(
+        "/assistants",
+        json={"name": "Private Analytics", "instructions": "خاص"},
+        headers={"Authorization": f"Bearer {token_a}"},
+    ).json()
+
+    token_b = _register_and_login(client, "assistant-analytics-other@example.com")
+    response = client.get(
+        f"/assistants/{assistant['id']}/analytics",
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert response.status_code == 404
