@@ -34,9 +34,10 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=tag
-            type=sha,format=short
+            type=sha,format=long
 
       - name: Build and push backend image
+        id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: ./ai-backend
@@ -44,3 +45,14 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Report immutable image digest
+        if: steps.build.outputs.digest != ''
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### Backend image digest"
+            echo
+            echo "ghcr.io/${{ github.repository_owner }}/ai-chat-app-backend@${IMAGE_DIGEST}"
+          } >> "$GITHUB_STEP_SUMMARY"
