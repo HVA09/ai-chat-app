@@ -72,6 +72,9 @@ services:
         value: production
       - key: DEBUG
         value: "false"
+      # Keep false for the paid blueprint with dedicated worker/beat services.
+      - key: EMBEDDED_CELERY
+        value: "false"
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "30"
       - key: REFRESH_TOKEN_EXPIRE_DAYS
