@@ -93,6 +93,7 @@ vi.mock("../lib/errors", () => ({
 describe("AccountSettings", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    listSessions.mockResolvedValue([]);
   });
 
   it("toggles the automatic summary preference and persists it locally", async () => {
