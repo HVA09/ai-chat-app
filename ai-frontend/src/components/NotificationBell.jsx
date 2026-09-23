@@ -4,7 +4,10 @@ import { useTranslation } from "react-i18next";
 export default function NotificationBell({ notifications, onMarkRead, onMarkAllRead }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState("all");
   const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const visibleNotifications =
+    filter === "unread" ? notifications.filter((n) => !n.is_read) : notifications;
 
   return (
     <div className="relative">
@@ -24,8 +27,24 @@ export default function NotificationBell({ notifications, onMarkRead, onMarkAllR
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute end-0 z-50 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-lg">
-            <div className="flex items-center justify-between px-2 py-1">
+            <div className="flex items-center justify-between gap-2 px-2 py-1">
               <p className="text-sm font-medium text-slate-900">{t("notif.title")}</p>
+              <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setFilter("all")}
+                  className={`rounded-md px-2 py-1 text-[11px] ${filter === "all" ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500"}`}
+                >
+                  {t("notif.all")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilter("unread")}
+                  className={`rounded-md px-2 py-1 text-[11px] ${filter === "unread" ? "bg-white font-medium text-slate-900 shadow-sm" : "text-slate-500"}`}
+                >
+                  {t("notif.unread")}
+                </button>
+              </div>
               {unreadCount > 0 && (
                 <button
                   onClick={onMarkAllRead}
@@ -36,10 +55,12 @@ export default function NotificationBell({ notifications, onMarkRead, onMarkAllR
               )}
             </div>
             <div className="max-h-80 space-y-1 overflow-y-auto">
-              {notifications.length === 0 ? (
-                <p className="px-2 py-3 text-center text-sm text-slate-400">{t("notif.empty")}</p>
+              {visibleNotifications.length === 0 ? (
+                <p className="px-2 py-3 text-center text-sm text-slate-400">
+                  {filter === "unread" ? t("notif.noUnread") : t("notif.empty")}
+                </p>
               ) : (
-                notifications.map((n) => (
+                visibleNotifications.map((n) => (
                   <button
                     key={n.id}
                     onClick={() => !n.is_read && onMarkRead(n.id)}
