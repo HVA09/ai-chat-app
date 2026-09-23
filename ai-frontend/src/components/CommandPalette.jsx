@@ -53,20 +53,6 @@ export default function CommandPalette({ open, onClose, actions = [] }) {
     });
   }, [actions, query]);
 
-  useEffect(() => {
-    if (!open) return undefined;
-
-    const onGlobalShortcut = (event) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", onGlobalShortcut);
-    return () => window.removeEventListener("keydown", onGlobalShortcut);
-  }, [open, onClose]);
-
   if (!open) return null;
 
   return (
