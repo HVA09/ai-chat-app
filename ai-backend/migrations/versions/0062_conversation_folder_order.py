@@ -28,7 +28,12 @@ def upgrade() -> None:
                 SELECT
                     id,
                     ROW_NUMBER() OVER (
-                        PARTITION BY user_id, workspace_id
+                        PARTITION BY
+                            workspace_id,
+                            CASE
+                                WHEN workspace_id IS NULL THEN user_id
+                                ELSE 0
+                            END
                         ORDER BY created_at ASC, id ASC
                     ) - 1 AS new_order
                 FROM conversation_folders
