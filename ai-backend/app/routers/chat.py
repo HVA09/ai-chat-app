@@ -29,6 +29,9 @@ from app.models.user import User
 from app.models.user_memory import UserMemory
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.chat import (
+    ChatCompareRequest,
+    ChatCompareResponse,
+    ChatCompareResult,
     ChatEditRequest,
     ChatRequest,
     ChatModelOut,
@@ -60,6 +63,125 @@ MAX_SUMMARY_CONTEXT_CHARS = 8_000
 MAX_FILE_CONTEXT_CHARS = 24_000
 MAX_FILE_CONTEXT_PER_FILE_CHARS = 8_000
 MAX_MEMORY_CONTEXT_CHARS = 6_000
+
+
+@router.post("/compare", response_model=ChatCompareResponse)
+async def compare_ai_models(
+    payload: ChatCompareRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    model_a = payload.model_a.strip()
+    model_b = payload.model_b.strip()
+    if model_a == model_b:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="اختر نموذجين مختلفين للمقارنة",
+        )
+
+    allowed_models = get_allowed_ai_models(current_user, db)
+    if model_a not in allowed_models or model_b not in allowed_models:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="أحد النموذجين غير متاح لهذه الخطة أو الإعدادات الحالية",
+        )
+
+    conversation = None
+    if payload.conversation_id is not None:
+        conversation = (
+            db.query(Conversation)
+            .filter(
+                Conversation.id == payload.conversation_id,
+                Conversation.user_id == current_user.id,
+                Conversation.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if conversation is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المحادثة غير موجودة",
+            )
+        if payload.workspace_id is not None and conversation.workspace_id != payload.workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="مساحة العمل لا تطابق المحادثة",
+            )
+        if payload.project_id is not None and conversation.project_id != payload.project_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="المشروع لا يطابق المحادثة",
+            )
+        if payload.assistant_id is not None and conversation.assistant_id != payload.assistant_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="المساعد لا يطابق المحادثة",
+            )
+
+    workspace_id = payload.workspace_id or (conversation.workspace_id if conversation else None)
+    history = _build_history(conversation, db) if conversation is not None else []
+
+    context_parts: list[str] = []
+    if conversation is not None:
+        memory_context = _build_memory_context(
+            conversation.user_id,
+            conversation.project_id,
+            db,
+        )
+        project_context = _build_project_context(conversation, db)
+        assistant_context = _build_assistant_context(conversation, db)
+        for part in (memory_context, project_context, assistant_context):
+            if part:
+                context_parts.append(part)
+
+        try:
+            file_context, _sources = await _build_file_context(
+                conversation,
+                payload.message,
+                db,
+            )
+        except Exception:
+            file_context = ""
+        if file_context:
+            context_parts.append(file_context)
+
+    prompt = payload.message
+    if context_parts:
+        prompt = "\n\n".join(context_parts) + f"\n\nUSER REQUEST:\n{payload.message}"
+
+    results: list[ChatCompareResult] = []
+    for model in (model_a, model_b):
+        enforce_daily_ai_limit(current_user, db)
+        if workspace_id is not None:
+            enforce_workspace_daily_ai_limit(workspace_id, current_user, db)
+
+        reply = await get_ai_reply(prompt, history, model=model)
+        db.add(
+            UsageLog(
+                user_id=current_user.id,
+                workspace_id=workspace_id,
+                endpoint="/chat/compare",
+                model=model,
+                input_tokens=reply.input_tokens,
+                output_tokens=reply.output_tokens,
+                provider=reply.provider,
+                latency_ms=reply.latency_ms,
+            )
+        )
+        db.commit()
+
+        results.append(
+            ChatCompareResult(
+                model=model,
+                text=reply.text,
+                provider=reply.provider,
+                latency_ms=reply.latency_ms,
+                input_tokens=reply.input_tokens,
+                output_tokens=reply.output_tokens,
+            )
+        )
+
+    return ChatCompareResponse(results=results)
 
 
 @router.get("/models", response_model=list[ChatModelOut])
