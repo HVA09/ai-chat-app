@@ -1076,6 +1076,9 @@ async def chat_stream(
                     )
                 except AgentModeError as exc:
                     agent_error = str(exc)
+                except Exception:
+                    logger.exception("فشل وضع الوكيل في محادثة %s", conversation.id)
+                    agent_error = "حدث خطأ غير متوقع أثناء تشغيل وضع الوكيل"
                 finally:
                     await queue.put({"type": "finished"})
 
