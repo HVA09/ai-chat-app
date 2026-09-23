@@ -203,6 +203,7 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [retryableUserMessage, setRetryableUserMessage] = useState(null);
+  const [toolActivity, setToolActivity] = useState(null);
   const bottomRef = useRef(null);
   const streamAbortRef = useRef(null);
   const autoSummaryInFlightRef = useRef(false);
@@ -227,6 +228,17 @@ export default function App() {
     }
     return -1;
   }, [messages]);
+
+  const toolActivityLabel = (name) => {
+    const labels = {
+      calculator: t("tools.activity.calculator"),
+      web_search: t("tools.activity.webSearch"),
+      analyze_data: t("tools.activity.dataAnalysis"),
+      agent: t("tools.activity.agent"),
+      python: t("tools.activity.python"),
+    };
+    return labels[name] || name;
+  };
 
   const logout = useCallback(async () => {
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
@@ -1346,6 +1358,7 @@ export default function App() {
 
   const startNewChat = () => {
     messageCountRef.current = 1;
+    setToolActivity(null);
     setShowShareManager(false);
     setWorkspaceShare(null);
     setReadOnlyConversation(false);
@@ -2057,6 +2070,7 @@ export default function App() {
       streamAbortRef.current = null;
     }
     setLoading(false);
+    setToolActivity(null);
   };
 
   const cancelEditing = () => {
@@ -2209,6 +2223,17 @@ export default function App() {
           }
         }
       },
+      onToolEvent: (event) => {
+        if (event?.type === "start") {
+          setToolActivity({ name: event.name, phase: "running" });
+        } else if (event?.type === "result") {
+          setToolActivity({
+            name: event.name,
+            phase: event.ok ? "done" : "error",
+            duration_ms: event.duration_ms,
+          });
+        }
+      },
       onSources: (sources) => {
         setMessages((prev) => prev.map((message, index) =>
           index === messages.length + 1 ? { ...message, sources } : message
@@ -2224,6 +2249,7 @@ export default function App() {
       onDone: async () => {
         streamAbortRef.current = null;
         setLoading(false);
+        setToolActivity(null);
         setRetryableUserMessage(null);
         setChatAttachments([]);
         if (isNewConversation) {
@@ -2243,6 +2269,7 @@ export default function App() {
       onError: (message) => {
         streamAbortRef.current = null;
         setLoading(false);
+        setToolActivity(null);
         setError(message);
         setMessages((prev) => {
           const last = prev[prev.length - 1];
@@ -2895,7 +2922,28 @@ export default function App() {
             {loading && (
               <div className="flex justify-start">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
-                  {t("typing")}
+                  {toolActivity ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        aria-hidden="true"
+                        className={toolActivity.phase === "running" ? "animate-pulse" : ""}
+                      >
+                        {toolActivity.phase === "error" ? "⚠️" : toolActivity.phase === "done" ? "✓" : "⚙️"}
+                      </span>
+                      <span>
+                        {toolActivity.phase === "running"
+                          ? t("tools.activity.running", { tool: toolActivityLabel(toolActivity.name) })
+                          : toolActivity.phase === "done"
+                            ? t("tools.activity.done", {
+                                tool: toolActivityLabel(toolActivity.name),
+                                duration: toolActivity.duration_ms ?? 0,
+                              })
+                            : t("tools.activity.error", { tool: toolActivityLabel(toolActivity.name) })}
+                      </span>
+                    </span>
+                  ) : (
+                    t("typing")
+                  )}
                 </div>
               </div>
             )}
