@@ -103,7 +103,7 @@ import {
   updateSavedPrompt,
   deleteSavedPrompt,
 } from "./lib/savedPromptsApi";
-import { uploadFile } from "./lib/filesApi";
+import { uploadFile, deleteFile } from "./lib/filesApi";
 import { getErrorMessage } from "./lib/errors";
 import { clearChatDraft, loadChatDraft, saveChatDraft } from "./lib/chatDrafts";
 import { getCurrentUser } from "./lib/usersApi";
@@ -1514,7 +1514,7 @@ export default function App() {
       return;
     }
 
-    const selectedFiles = Array.from(files || []);
+    const selectedFiles = Array.from(files || []).filter(Boolean);
     if (!selectedFiles.length) return;
 
     const remainingSlots = 10 - chatAttachments.length;
@@ -1528,34 +1528,74 @@ export default function App() {
       setToast({ message: t("app.attachmentLimitReached"), type: "error" });
     }
 
-    setChatAttachmentUploading(true);
-    try {
-      const uploaded = [];
-      for (const file of filesToUpload) {
-        const result = await uploadFile(file, undefined, null, selectedWorkspaceId);
-        uploaded.push(result);
-      }
-      setChatAttachments((current) => [
-        ...current,
-        ...uploaded.map((file) => ({
-          id: file.id,
-          original_filename: file.original_filename,
-          content_type: file.content_type,
-          size_bytes: file.size_bytes,
-        })),
-      ]);
-    } catch (err) {
+    const maxBytes = 10 * 1024 * 1024;
+    const oversized = filesToUpload.filter((file) => file.size > maxBytes);
+    const validFiles = filesToUpload.filter((file) => file.size <= maxBytes);
+
+    if (oversized.length) {
       setToast({
-        message: getErrorMessage(err, t("app.attachmentUploadError")),
+        message: t("app.attachmentTooLarge", { count: oversized.length }),
         type: "error",
       });
+    }
+    if (!validFiles.length) return;
+
+    setChatAttachmentUploading(true);
+    let uploadedAny = false;
+    let failed = 0;
+    try {
+      for (const file of validFiles) {
+        try {
+          const result = await uploadFile(file, undefined, null, selectedWorkspaceId);
+          uploadedAny = true;
+          setChatAttachments((current) => [
+            ...current,
+            {
+              id: result.id,
+              original_filename: result.original_filename,
+              content_type: result.content_type,
+              size_bytes: result.size_bytes,
+            },
+          ]);
+        } catch (err) {
+          failed += 1;
+          setToast({
+            message: getErrorMessage(
+              err,
+              t("app.attachmentUploadErrorForFile", { name: file.name })
+            ),
+            type: "error",
+          });
+        }
+      }
     } finally {
       setChatAttachmentUploading(false);
     }
+
+    if (uploadedAny && failed === 0 && oversized.length === 0) {
+      setToast({ message: t("app.attachmentsReady"), type: "success" });
+    }
   };
 
-  const handleRemoveAttachment = (fileId) => {
+  const handleRemoveAttachment = async (fileId) => {
+    if (loading) return;
+    const attachment = chatAttachments.find((file) => file.id === fileId);
     setChatAttachments((current) => current.filter((file) => file.id !== fileId));
+    try {
+      await deleteFile(fileId);
+    } catch (err) {
+      if (attachment) {
+        setChatAttachments((current) =>
+          current.some((file) => file.id === fileId)
+            ? current
+            : [...current, attachment]
+        );
+      }
+      setToast({
+        message: getErrorMessage(err, t("app.attachmentRemoveError")),
+        type: "error",
+      });
+    }
   };
 
   const handleAnalyzeImage = async (file, prompt) => {

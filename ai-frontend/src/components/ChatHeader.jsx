@@ -39,6 +39,7 @@ export default function ChatHeader({
   const { t } = useTranslation();
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
     <header className="flex items-center justify-between border-b border-slate-200 bg-white py-3 pe-4 ps-16 dark:border-slate-700 dark:bg-slate-900 md:ps-4">
@@ -54,6 +55,7 @@ export default function ChatHeader({
           onMarkRead={onMarkNotificationRead}
           onMarkAllRead={onMarkAllNotificationsRead}
         />
+        <div className="hidden flex-wrap items-center justify-end gap-2 md:flex">
         <div className="flex items-center gap-1">
           <button
             onClick={onToggleWorkspaceShare}
@@ -210,6 +212,74 @@ export default function ChatHeader({
         >
           {t("logout")}
         </button>
+        </div>
+        <div className="relative md:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen((open) => !open)}
+            aria-expanded={mobileMenuOpen}
+            aria-label={t("header.more")}
+            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-900"
+          >
+            ⋯
+          </button>
+          {mobileMenuOpen ? (
+            <div className="absolute end-0 top-full z-40 mt-2 w-[min(92vw,22rem)] max-h-[70dvh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+              <div className="grid grid-cols-2 gap-1">
+                <button type="button" onClick={() => { onToggleWorkspaceShare?.(); setMobileMenuOpen(false); }} disabled={!canShareWithWorkspace} className="rounded-xl px-3 py-2 text-start text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">
+                  {workspaceShareActive ? t("workspaceSharing.unshareButton") : t("workspaceSharing.shareButton")}
+                </button>
+                <button type="button" onClick={() => { onShareConversation?.(); setMobileMenuOpen(false); }} disabled={!canShareConversation} className="rounded-xl px-3 py-2 text-start text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">
+                  {t("sharing.shareButton")}
+                </button>
+                <button type="button" onClick={() => setBranchMenuOpen((open) => !open)} disabled={conversationBranches.length === 0} className="rounded-xl px-3 py-2 text-start text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">
+                  {t("chat.branches")} {conversationBranches.length ? "(" + conversationBranches.length + ")" : ""}
+                </button>
+                <button type="button" onClick={() => setExportMenuOpen((open) => !open)} disabled={!canExportConversation} className="rounded-xl px-3 py-2 text-start text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">
+                  {t("exportConversation")}
+                </button>
+                <button type="button" onClick={() => { onGenerateConversationTitle?.(); setMobileMenuOpen(false); }} disabled={!canGenerateConversationTitle || titleLoading} className="rounded-xl px-3 py-2 text-start text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">
+                  {titleLoading ? t("conversationTitle.loading") : t("conversationTitle.generateButton")}
+                </button>
+                <button type="button" onClick={() => { onSummarizeConversation?.(); setMobileMenuOpen(false); }} disabled={!canSummarizeConversation || summaryLoading} className="rounded-xl px-3 py-2 text-start text-sm hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-slate-800">
+                  {summaryLoading ? t("summary.loading") : t("summary.button")}
+                </button>
+                {isAdmin ? (
+                  <button type="button" onClick={() => { onOpenAdmin?.(); setMobileMenuOpen(false); }} className="rounded-xl px-3 py-2 text-start text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
+                    {t("header.admin")}
+                  </button>
+                ) : null}
+                <button type="button" onClick={() => { onOpenBilling?.(); setMobileMenuOpen(false); }} className="rounded-xl px-3 py-2 text-start text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
+                  {t("header.billing")}
+                </button>
+                <button type="button" onClick={() => { onOpenFiles?.(); setMobileMenuOpen(false); }} className="rounded-xl px-3 py-2 text-start text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
+                  {t("header.files")}
+                </button>
+                <button type="button" onClick={() => { onOpenAccount?.(); setMobileMenuOpen(false); }} className="rounded-xl px-3 py-2 text-start text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
+                  {t("header.account")}
+                </button>
+                <button type="button" onClick={() => { onLogout?.(); setMobileMenuOpen(false); }} className="rounded-xl px-3 py-2 text-start text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30">
+                  {t("logout")}
+                </button>
+              </div>
+              {branchMenuOpen && conversationBranches.length > 0 ? (
+                <div className="mt-2 rounded-xl border border-slate-200 p-1 dark:border-slate-700">
+                  {conversationBranches.map((branch) => (
+                    <button key={branch.id} type="button" onClick={() => { setBranchMenuOpen(false); setMobileMenuOpen(false); onOpenConversationBranch(branch.id); }} className="w-full rounded-lg px-3 py-2 text-start text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
+                      <span className="block truncate font-medium">{branch.title}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {exportMenuOpen && canExportConversation ? (
+                <div className="mt-2 rounded-xl border border-slate-200 p-1 dark:border-slate-700">
+                  <button type="button" onClick={() => { setExportMenuOpen(false); setMobileMenuOpen(false); onExportConversation("markdown"); }} className="w-full rounded-lg px-3 py-2 text-start text-sm hover:bg-slate-100 dark:hover:bg-slate-800">{t("exportMarkdown")}</button>
+                  <button type="button" onClick={() => { setExportMenuOpen(false); setMobileMenuOpen(false); onExportConversation("json"); }} className="w-full rounded-lg px-3 py-2 text-start text-sm hover:bg-slate-100 dark:hover:bg-slate-800">{t("exportJson")}</button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
     </header>
   );

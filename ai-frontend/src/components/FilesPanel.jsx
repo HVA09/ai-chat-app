@@ -20,6 +20,7 @@ const ICONS = {
   "application/pdf": "📄",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "📝",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "📊",
+  "text/plain": "📄",
   "text/csv": "📊",
   "application/vnd.ms-excel": "📊",
 };
@@ -50,6 +51,19 @@ export default function FilesPanel({
   const [showProjectFiles, setShowProjectFiles] = useState(false);
   const fileInputRef = useRef(null);
 
+  useEffect(() => {
+    if (projectId !== null) {
+      setShowProjectFiles(true);
+      setShowWorkspaceFiles(false);
+    } else if (workspaceId !== null) {
+      setShowProjectFiles(false);
+      setShowWorkspaceFiles(true);
+    } else {
+      setShowProjectFiles(false);
+      setShowWorkspaceFiles(false);
+    }
+  }, [workspaceId, projectId]);
+
   const refresh = async () => {
     setLoading(true);
     try {
@@ -73,23 +87,48 @@ export default function FilesPanel({
   }, [conversationId, showWorkspaceFiles, showProjectFiles, workspaceId, projectId]);
 
   const handleUpload = async (fileList) => {
-    const file = fileList?.[0];
-    if (!file) return;
+    const selectedFiles = Array.from(fileList || []).filter(Boolean);
+    if (!selectedFiles.length) return;
+
     setError("");
-    setUploadProgress(0);
+    let completed = 0;
+    let failed = 0;
+
+    for (const file of selectedFiles) {
+      try {
+        setUploadProgress(Math.round((completed / selectedFiles.length) * 100));
+        await uploadFile(
+          file,
+          (progress) => {
+            const overall = ((completed + progress / 100) / selectedFiles.length) * 100;
+            setUploadProgress(Math.round(overall));
+          },
+          showProjectFiles || showWorkspaceFiles ? null : conversationId,
+          showProjectFiles || showWorkspaceFiles ? workspaceId : null,
+          showProjectFiles ? projectId : null
+        );
+      } catch (err) {
+        failed += 1;
+        setError(
+          getErrorMessage(
+            err,
+            t("files.uploadErrorForFile", { name: file.name })
+          )
+        );
+      } finally {
+        completed += 1;
+      }
+    }
+
+    setUploadProgress(100);
     try {
-      await uploadFile(
-        file,
-        setUploadProgress,
-        showProjectFiles || showWorkspaceFiles ? null : conversationId,
-        showProjectFiles || showWorkspaceFiles ? workspaceId : null,
-        showProjectFiles ? projectId : null
-      );
       await refresh();
-    } catch (err) {
-      setError(getErrorMessage(err, t("files.uploadError")));
     } finally {
-      setUploadProgress(null);
+      window.setTimeout(() => setUploadProgress(null), 250);
+    }
+
+    if (failed === 0 && selectedFiles.length > 1) {
+      setError("");
     }
   };
 
@@ -171,7 +210,7 @@ export default function FilesPanel({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 p-2 sm:p-4">
-      <div className="my-0 flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-lg dark:border-slate-700 dark:bg-slate-900 sm:my-8 sm:max-h-[calc(100dvh-3rem)] sm:max-w-lg sm:rounded-3xl sm:p-6">
+      <div className="my-0 flex max-h-[calc(100dvh-1rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900 sm:my-8 sm:max-h-[calc(100dvh-3rem)] sm:rounded-3xl sm:p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">
             {showProjectFiles
@@ -253,8 +292,13 @@ export default function FilesPanel({
           <input
             ref={fileInputRef}
             type="file"
+            multiple
+            accept=".txt,.csv,.pdf,.docx,.xlsx,.xls,image/jpeg,image/png,image/gif,image/webp"
             className="hidden"
-            onChange={(e) => handleUpload(e.target.files)}
+            onChange={(e) => {
+              handleUpload(e.target.files);
+              e.target.value = "";
+            }}
           />
           <p className="text-sm text-slate-500">
             {showProjectFiles
