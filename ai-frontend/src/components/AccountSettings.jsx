@@ -7,6 +7,7 @@ import {
   disableTwoFactor,
 } from "../lib/authApi";
 import { updateProfile, changePassword, deleteAccount, exportAccountData } from "../lib/usersApi";
+import { listSessions, revokeSession, revokeAllSessions } from "../lib/sessionsApi";
 import { listMemories, createMemory, updateMemory, deleteMemory } from "../lib/memoriesApi";
 import { listApiKeys, createApiKey, revokeApiKey, getApiKeyUsage } from "../lib/apiKeysApi";
 import { getErrorMessage } from "../lib/errors";
@@ -54,6 +55,7 @@ export default function AccountSettings({
   const [apiKeyExpiry, setApiKeyExpiry] = useState("");
   const [createdApiKeySecret, setCreatedApiKeySecret] = useState("");
   const [apiKeyUsage, setApiKeyUsage] = useState({});
+  const [sessions, setSessions] = useState([]);
 
   const [setupData, setSetupData] = useState(null);
   const [code, setCode] = useState("");
@@ -63,6 +65,14 @@ export default function AccountSettings({
       setMemories(await listMemories());
     } catch (err) {
       setError(getErrorMessage(err, t("account.memoryLoadError")));
+    }
+  };
+
+  const loadSessions = async () => {
+    try {
+      setSessions(await listSessions());
+    } catch (err) {
+      setError(getErrorMessage(err, t("account.sessionsLoadError")));
     }
   };
 
@@ -88,6 +98,7 @@ export default function AccountSettings({
   useEffect(() => {
     loadMemories();
     loadApiKeys();
+    loadSessions();
   }, []);
 
   useEffect(() => {
@@ -187,6 +198,23 @@ export default function AccountSettings({
       await deleteMemory(memory.id);
       await loadMemories();
       setMessage(t("account.memoryDeleted"));
+    });
+
+  const handleRevokeSession = (session) =>
+    runAction(async () => {
+      if (!window.confirm(t("account.sessionRevokeConfirm"))) return;
+      await revokeSession(session.id);
+      await loadSessions();
+      setMessage(t("account.sessionRevoked"));
+    });
+
+  const handleRevokeAllSessions = () =>
+    runAction(async () => {
+      if (!window.confirm(t("account.sessionRevokeAllConfirm"))) return;
+      await revokeAllSessions();
+      setSessions([]);
+      setMessage(t("account.sessionsRevoked"));
+      window.dispatchEvent(new Event("auth:unauthorized"));
     });
 
   const handleExportData = () =>
@@ -487,6 +515,53 @@ export default function AccountSettings({
             ) : (
               <p className="text-xs text-slate-400">{t("account.apiKeyEmpty")}</p>
             )}
+          </div>
+        </Section>
+
+        <Section title={t("account.sessionsSection")}>
+          <div className="space-y-2">
+            <p className="text-xs text-slate-500">{t("account.sessionsDescription")}</p>
+            {sessions.length === 0 ? (
+              <p className="text-xs text-slate-400">{t("account.noSessions")}</p>
+            ) : (
+              <div className="space-y-2">
+                {sessions.map((session) => (
+                  <div key={session.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-slate-800">
+                          {session.user_agent || t("account.unknownDevice")}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {session.ip_address || "—"} · {new Date(session.last_used_at).toLocaleString()}
+                        </p>
+                        {session.is_current && (
+                          <span className="mt-1 inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">
+                            {t("account.currentSession")}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRevokeSession(session)}
+                        disabled={loading}
+                        className="shrink-0 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {t("account.revokeSession")}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={handleRevokeAllSessions}
+              disabled={loading || sessions.length === 0}
+              className="w-full rounded-xl border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              {t("account.revokeAllSessions")}
+            </button>
           </div>
         </Section>
 

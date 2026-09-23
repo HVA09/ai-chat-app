@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import AccountSettings from "./AccountSettings";
+import { listSessions } from "../lib/sessionsApi";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -30,6 +31,18 @@ vi.mock("react-i18next", () => ({
         "account.dataExportDescription": "وصف",
         "account.exportData": "تصدير بياناتي",
         "account.dataExported": "تم",
+        "account.sessionsSection": "الجلسات",
+        "account.sessionsDescription": "وصف",
+        "account.noSessions": "لا توجد جلسات",
+        "account.unknownDevice": "جهاز",
+        "account.currentSession": "الحالية",
+        "account.revokeSession": "إلغاء",
+        "account.revokeAllSessions": "إلغاء الكل",
+        "account.sessionRevokeConfirm": "متأكد؟",
+        "account.sessionRevokeAllConfirm": "متأكد؟",
+        "account.sessionRevoked": "تم",
+        "account.sessionsRevoked": "تم",
+        "account.sessionsLoadError": "خطأ",
         "account.apiKeysSection": "API",
         "account.apiKeysDescription": "API",
         "account.genericError": "خطأ",
@@ -60,6 +73,12 @@ vi.mock("../lib/memoriesApi", () => ({
   deleteMemory: vi.fn().mockResolvedValue({}),
 }));
 
+vi.mock("../lib/sessionsApi", () => ({
+  listSessions: vi.fn().mockResolvedValue([]),
+  revokeSession: vi.fn().mockResolvedValue({}),
+  revokeAllSessions: vi.fn().mockResolvedValue({}),
+}));
+
 vi.mock("../lib/apiKeysApi", () => ({
   listApiKeys: vi.fn().mockResolvedValue([]),
   createApiKey: vi.fn().mockResolvedValue({}),
@@ -74,6 +93,7 @@ vi.mock("../lib/errors", () => ({
 describe("AccountSettings", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    listSessions.mockResolvedValue([]);
   });
 
   it("toggles the automatic summary preference and persists it locally", async () => {
@@ -134,3 +154,39 @@ describe("AccountSettings", () => {
     expect(exportAccountData).toHaveBeenCalledTimes(1);
   });
 });
+
+
+  it("renders active login sessions", async () => {
+    listSessions.mockResolvedValueOnce([
+      {
+        id: 7,
+        user_agent: "Chrome on Android",
+        ip_address: "10.0.0.1",
+        last_used_at: "2026-09-23T10:00:00Z",
+        expires_at: "2026-09-30T10:00:00Z",
+        created_at: "2026-09-23T09:00:00Z",
+        is_current: true,
+      },
+    ]);
+
+    render(
+      <AccountSettings
+        user={{
+          full_name: "",
+          avatar_url: "",
+          is_email_verified: true,
+          is_2fa_enabled: false,
+        }}
+        autoGenerateTitles={false}
+        onAutoGenerateTitlesChanged={vi.fn()}
+        autoGenerateSummaries={false}
+        onAutoGenerateSummariesChanged={vi.fn()}
+        onClose={vi.fn()}
+        onUserUpdated={vi.fn()}
+        onAccountDeleted={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText("Chrome on Android")).toBeInTheDocument();
+    expect(screen.getByText("الحالية")).toBeInTheDocument();
+  });
