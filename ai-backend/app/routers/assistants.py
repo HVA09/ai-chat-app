@@ -14,7 +14,13 @@ from app.models.file_attachment import FileAttachment
 from app.models.assistant_version import AssistantVersion
 from app.models.user import User
 from app.schemas.assistant_versions import AssistantVersionCompareOut, AssistantVersionOut
-from app.schemas.assistants import AssistantAnalyticsOut, AssistantCreate, AssistantOut, AssistantUpdate
+from app.schemas.assistants import (
+    AssistantAnalyticsOut,
+    AssistantAnalyticsPointOut,
+    AssistantCreate,
+    AssistantOut,
+    AssistantUpdate,
+)
 from app.schemas.file import FileOut
 
 router = APIRouter(prefix="/assistants", tags=["Assistants"])
@@ -189,6 +195,73 @@ def get_assistant_analytics(
         active_user_count=active_user_count,
         last_used_at=last_used_at,
     )
+
+
+@router.get("/{assistant_id}/analytics/daily", response_model=list[AssistantAnalyticsPointOut])
+def get_assistant_analytics_daily(
+    assistant_id: int,
+    days: int = 30,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    assistant = _get_owned_assistant(assistant_id, current_user, db)
+    days = min(max(days, 7), 90)
+    since = datetime.now(timezone.utc) - timedelta(days=days - 1)
+
+    day_expr = func.date_trunc("day", Conversation.created_at)
+    conversation_rows = (
+        db.query(day_expr, func.count(Conversation.id))
+        .filter(
+            Conversation.assistant_id == assistant.id,
+            Conversation.created_at >= since,
+            Conversation.deleted_at.is_(None),
+        )
+        .group_by(day_expr)
+        .all()
+    )
+
+    message_day_expr = func.date_trunc("day", Message.created_at)
+    message_rows = (
+        db.query(message_day_expr, func.count(Message.id))
+        .join(Conversation, Message.conversation_id == Conversation.id)
+        .filter(
+            Conversation.assistant_id == assistant.id,
+            Message.created_at >= since,
+            Conversation.deleted_at.is_(None),
+        )
+        .group_by(message_day_expr)
+        .all()
+    )
+
+    active_day_expr = func.date_trunc("day", Conversation.updated_at)
+    active_user_rows = (
+        db.query(active_day_expr, func.count(func.distinct(Conversation.user_id)))
+        .filter(
+            Conversation.assistant_id == assistant.id,
+            Conversation.updated_at >= since,
+            Conversation.deleted_at.is_(None),
+        )
+        .group_by(active_day_expr)
+        .all()
+    )
+
+    conversations_by_day = {row[0].date(): int(row[1]) for row in conversation_rows}
+    messages_by_day = {row[0].date(): int(row[1]) for row in message_rows}
+    users_by_day = {row[0].date(): int(row[1]) for row in active_user_rows}
+
+    today = datetime.now(timezone.utc).date()
+    points = []
+    for offset in range(days - 1, -1, -1):
+        day = today - timedelta(days=offset)
+        points.append(
+            AssistantAnalyticsPointOut(
+                date=day.isoformat(),
+                conversations=conversations_by_day.get(day, 0),
+                messages=messages_by_day.get(day, 0),
+                active_users=users_by_day.get(day, 0),
+            )
+        )
+    return points
 
 
 @router.get("/{assistant_id}/versions", response_model=list[AssistantVersionOut])
