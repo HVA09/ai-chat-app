@@ -144,6 +144,51 @@ def test_cannot_move_conversation_to_other_workspace_project(client, monkeypatch
     assert response.status_code == 404
 
 
+def test_project_crud_isolated_across_workspaces(client):
+    owner_token = _register_and_login(client, "project-isolation-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace_owner = _create_workspace(client, owner_headers, "Owner Workspace")
+
+    other_token = _register_and_login(client, "project-isolation-other@example.com")
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    workspace_other = _create_workspace(client, other_headers, "Other Workspace")
+
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace_other["id"], "name": "Private"},
+        headers=other_headers,
+    ).json()
+
+    assert client.get(
+        "/projects",
+        params={"workspace_id": workspace_other["id"]},
+        headers=owner_headers,
+    ).status_code == 404
+
+    assert client.patch(
+        f"/projects/{project['id']}",
+        json={
+            "name": "Hijacked",
+            "description": None,
+            "instructions": None,
+        },
+        headers=owner_headers,
+    ).status_code == 404
+
+    assert client.delete(
+        f"/projects/{project['id']}",
+        headers=owner_headers,
+    ).status_code == 404
+
+    own = client.get(
+        "/projects",
+        params={"workspace_id": workspace_owner["id"]},
+        headers=owner_headers,
+    )
+    assert own.status_code == 200
+    assert all(item["id"] != project["id"] for item in own.json())
+
+
 def test_project_instructions_are_applied_to_chat(client, monkeypatch):
     token = _register_and_login(client, "project-instructions@example.com")
     headers = {"Authorization": f"Bearer {token}"}
@@ -253,6 +298,7 @@ def test_project_instructions_are_scoped_to_project(client, monkeypatch):
     assert response_b.status_code == 200
     assert "Private project guidance B" in captured[-1]
     assert "Private project guidance A" not in captured[-1]
+
 
 def test_project_default_assistant_is_used_and_explicit_override_wins(client, monkeypatch):
     token = _register_and_login(client, "project-assistant@example.com")

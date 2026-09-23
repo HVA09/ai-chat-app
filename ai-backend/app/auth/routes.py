@@ -6,7 +6,7 @@ import hashlib
 
 import pyotp
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from jose import JWTError
+from jwt.exceptions import InvalidTokenError
 from sqlalchemy.orm import Session
 
 from app.auth.security import (
@@ -173,7 +173,7 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
             raise ValueError("wrong type")
         user_id = int(data.get("sub"))
         token_version = int(data.get("ver", -1))
-    except (JWTError, TypeError, ValueError):
+    except (InvalidTokenError, TypeError, ValueError):
         logger.debug("refresh_jwt_invalid=True")
         raise invalid
     jti = data.get("jti")
@@ -225,7 +225,7 @@ def list_sessions(
     if refresh_token:
         try:
             current_jti = decode_token(refresh_token, expected_type="refresh").get("jti")
-        except (JWTError, TypeError, ValueError):
+        except (InvalidTokenError, TypeError, ValueError):
             current_jti = None
 
     sessions = (
@@ -318,7 +318,7 @@ def logout(
                 if session is not None:
                     session.revoked_at = datetime.now(timezone.utc)
                     db.commit()
-        except (JWTError, TypeError, ValueError):
+        except (InvalidTokenError, TypeError, ValueError):
             pass
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/auth")
@@ -346,7 +346,7 @@ def confirm_email_verification(payload: EmailVerificationConfirm, db: Session = 
         jti = data.get("jti")
         if not jti or not consume_email_verification_token(jti):
             raise ValueError
-    except (JWTError, TypeError, ValueError):
+    except (InvalidTokenError, TypeError, ValueError):
         raise invalid
     user = db.get(User, user_id)
     if user is None:
@@ -378,7 +378,7 @@ def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(
         jti = data.get("jti")
         if not jti or not consume_password_reset_token(jti):
             raise ValueError
-    except (JWTError, TypeError, ValueError):
+    except (InvalidTokenError, TypeError, ValueError):
         raise invalid
     user = db.get(User, user_id)
     if user is None:

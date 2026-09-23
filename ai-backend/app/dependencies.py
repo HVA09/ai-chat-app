@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError
+from jwt.exceptions import InvalidTokenError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -43,7 +43,7 @@ def get_current_user(
             raise credentials_error
         user_id = int(payload.get("sub"))
         token_version = int(payload.get("ver", -1))
-    except (JWTError, TypeError, ValueError):
+    except (InvalidTokenError, TypeError, ValueError):
         raise credentials_error
 
     user = db.get(User, user_id)
