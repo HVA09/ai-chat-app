@@ -66,3 +66,10 @@ class AssistantAnalyticsOut(BaseModel):
     message_count: int
     active_user_count: int
     last_used_at: datetime | None
+
+
+class AssistantAnalyticsPointOut(BaseModel):
+    date: str
+    conversations: int
+    messages: int
+    active_users: int
