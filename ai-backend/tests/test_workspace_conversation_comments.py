@@ -87,6 +87,28 @@ def test_member_can_list_and_create_comment(client, db_session, monkeypatch):
     assert listed.status_code == 200
     assert len(listed.json()) == 1
 
+    owner_notifications = client.get(
+        "/notifications",
+        headers=owner_headers,
+    )
+    assert owner_notifications.status_code == 200
+    comment_notifications = [
+        item for item in owner_notifications.json()
+        if item["notification_type"] == "workspace_comment"
+    ]
+    assert len(comment_notifications) == 1
+    assert "comments-member@example.com" in comment_notifications[0]["body"]
+
+    member_notifications = client.get(
+        "/notifications",
+        headers=member_headers,
+    )
+    assert member_notifications.status_code == 200
+    assert all(
+        item["notification_type"] != "workspace_comment"
+        for item in member_notifications.json()
+    )
+
 
 def test_comment_can_target_message_and_validate_scope(client, db_session, monkeypatch):
     workspace_id, conversation_id, owner_headers, member_headers = _setup_shared_conversation(
