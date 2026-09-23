@@ -103,6 +103,8 @@ def test_public_assistant_clone_requires_authentication(client):
     assistant = _create_assistant(client, headers)
     public = client.post(f"/assistants/{assistant['id']}/public", headers=headers).json()
 
+    client.post("/auth/logout")
+
     assert client.post(
         f"/public/assistants/{public['public_token']}/duplicate",
     ).status_code == 401
