@@ -2,6 +2,7 @@
 مسارات المصادقة: تسجيل، دخول، تجديد التوكن، تأكيد البريد، وإعادة تعيين كلمة المرور.
 """
 from datetime import datetime, timedelta, timezone
+import hashlib
 
 import pyotp
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -22,10 +23,12 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.logging_config import get_logger
 from app.models.user import User, UserRole
+from app.models.user_session import UserSession
 from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
 from app.notifications import notify
 from app.schemas.auth import EmailVerificationConfirm, LoginRequest, PasswordResetConfirm, PasswordResetRequest, Token
 from app.schemas.user import UserCreate, UserOut
+from app.schemas.sessions import SessionOut
 from app.services.email_service import send_password_reset_email, send_verification_email, send_welcome_email
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -42,6 +45,36 @@ def _set_session_cookies(response: Response, access_token: str, refresh_token: s
 def _token_response(access_token: str, refresh_token: str) -> Token:
     """Never expose authentication tokens in the JSON response; use HttpOnly cookies."""
     return Token(token_type="bearer")
+
+
+
+def _hash_session_jti(jti: str) -> str:
+    return hashlib.sha256(jti.encode("utf-8")).hexdigest()
+
+
+def _create_session_record(
+    *,
+    db: Session,
+    user: User,
+    refresh_token: str,
+    request: Request,
+    now: datetime,
+) -> UserSession:
+    data = decode_token(refresh_token, expected_type="refresh")
+    jti = data.get("jti")
+    if not jti:
+        raise HTTPException(status_code=503, detail="تعذر إنشاء جلسة الدخول")
+    session = UserSession(
+        user_id=user.id,
+        jti_hash=_hash_session_jti(jti),
+        user_agent=(request.headers.get("user-agent") or "")[:500] or None,
+        ip_address=(request.client.host if request.client else None),
+        created_at=now,
+        last_used_at=now,
+        expires_at=now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+    )
+    db.add(session)
+    return session
 
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
@@ -114,6 +147,7 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_d
     jti = decode_token(refresh_token).get("jti")
     if not jti or not remember_refresh_token(jti, settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400):
         raise HTTPException(status_code=503, detail="خدمة الجلسات غير متاحة مؤقتًا")
+    _create_session_record(db=db, user=user, refresh_token=refresh_token, request=Request, now=now)
     access_token = create_access_token(user.id, user.token_version)
     _set_session_cookies(response, access_token, refresh_token)
     log_event(db, "login", f"تسجيل دخول ناجح: {user.email}", user.id)
