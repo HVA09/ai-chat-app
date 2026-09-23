@@ -290,8 +290,26 @@ export default function ChatMessage({
           ) : null}
         </div>
 
-        <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ code: CodeBlock }}>
-          {text}
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            code: CodeBlock,
+            a: ({ href, children, ...props }) => (
+              <a
+                {...props}
+                href={href}
+                className={
+                  href?.startsWith("#")
+                    ? "font-semibold text-blue-700 underline decoration-dotted underline-offset-2 dark:text-blue-300"
+                    : "text-blue-700 underline underline-offset-2 dark:text-blue-300"
+                }
+              >
+                {children}
+              </a>
+            ),
+          }}
+        >
+          {citationText}
         </ReactMarkdown>
 
         {!isUser && canFeedback ? (
