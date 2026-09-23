@@ -20,6 +20,7 @@ from app.audit import log_event
 from app.models.conversation import Conversation
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
+from app.models.file_chunk import FileChunk
 from app.models.project import WorkspaceProject
 from app.models.usage_log import UsageLog
 from app.models.user import User
@@ -195,7 +196,14 @@ def _file_response(
         membership = _get_workspace_membership(file.workspace_id, current_user, db)
         can_delete = membership.role in {WorkspaceRole.owner, WorkspaceRole.admin}
     response.can_delete = can_delete
-    response.is_ai_indexed = file.extracted_text is not None
+    response.is_ai_indexed = bool(
+        db.query(FileChunk.id)
+        .filter(
+            FileChunk.file_id == file.id,
+            FileChunk.embedding.is_not(None),
+        )
+        .first()
+    )
     return response
 
 
