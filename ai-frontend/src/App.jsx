@@ -9,6 +9,7 @@ import ModelCompareDialog from "./components/ModelCompareDialog";
 import WorkspaceConversationCommentsPanel from "./components/WorkspaceConversationCommentsPanel";
 import AssistantEditor from "./components/AssistantEditor";
 import ProjectEditor from "./components/ProjectEditor";
+import OnboardingModal from "./components/OnboardingModal";
 import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
@@ -183,6 +184,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null); // { message, type }
   const [currentUser, setCurrentUser] = useState(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showModelCompare, setShowModelCompare] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
@@ -298,6 +300,21 @@ export default function App() {
   useEffect(() => {
     restoreSession().then(() => setAuthed(true)).catch(() => setAuthed(false)).finally(() => setSessionChecking(false));
   }, []);
+
+  useEffect(() => {
+    if (!authed || !currentUser?.id || typeof window === "undefined") return;
+    const key = `ai-chat-onboarding:${currentUser.id}`;
+    if (window.localStorage.getItem(key) !== "done") {
+      setShowOnboarding(true);
+    }
+  }, [authed, currentUser?.id]);
+
+  const closeOnboarding = useCallback(() => {
+    if (currentUser?.id && typeof window !== "undefined") {
+      window.localStorage.setItem(`ai-chat-onboarding:${currentUser.id}`, "done");
+    }
+    setShowOnboarding(false);
+  }, [currentUser?.id]);
 
   useEffect(() => {
     if (!authed || !currentUser?.id) return;
@@ -3071,6 +3088,24 @@ export default function App() {
       </main>
 
       <Toast message={toast?.message} type={toast?.type} onDismiss={() => setToast(null)} />
+
+      {showOnboarding ? (
+        <OnboardingModal
+          onClose={closeOnboarding}
+          onNewChat={() => {
+            startNewChat();
+            closeOnboarding();
+          }}
+          onOpenFiles={() => {
+            setShowFiles(true);
+            closeOnboarding();
+          }}
+          onOpenAccount={() => {
+            setShowAccountSettings(true);
+            closeOnboarding();
+          }}
+        />
+      ) : null}
 
       {showShareManager && conversationId && (
         <Suspense fallback={<ModalLoadingFallback />}>
