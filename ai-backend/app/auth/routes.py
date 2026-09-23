@@ -196,6 +196,10 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
         )
         .first()
     )
+    if old_session is None or old_session.expires_at <= now:
+        raise invalid
+    old_session.last_used_at = now
+
     new_refresh_token = create_refresh_token(user.id, user.token_version)
     new_jti = decode_token(new_refresh_token).get("jti")
     if not new_jti or not remember_refresh_token(new_jti, settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400):
