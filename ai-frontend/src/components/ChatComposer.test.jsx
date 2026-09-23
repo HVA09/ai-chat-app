@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
+import { useState } from "react";
 import ChatComposer from "./ChatComposer";
 
 vi.mock("react-i18next", () => ({
@@ -246,5 +247,45 @@ describe("ChatComposer attachments", () => {
 
     await user.click(screen.getByLabelText("إزالة الملف"));
     expect(onRemoveAttachment).toHaveBeenCalledWith(7);
+  });
+});
+
+
+describe("ChatComposer command autocomplete", () => {
+  function StatefulComposer() {
+    const [value, setValue] = useState("");
+    return (
+      <ChatComposer
+        value={value}
+        setValue={setValue}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+      />
+    );
+  }
+
+  it("shows matching slash commands and selects one with Enter", async () => {
+    const user = userEvent.setup();
+
+    render(<StatefulComposer />);
+
+    const textarea = screen.getByPlaceholderText("اكتب رسالتك هنا...");
+    await user.type(textarea, "/cal");
+    expect(screen.getByRole("option", { name: /\/calc/ })).toBeInTheDocument();
+
+    await user.keyboard("{Enter}");
+    expect(textarea).toHaveValue("/calc ");
+  });
+
+  it("supports ArrowDown navigation before selecting a command", async () => {
+    const user = userEvent.setup();
+
+    render(<StatefulComposer />);
+
+    const textarea = screen.getByPlaceholderText("اكتب رسالتك هنا...");
+    await user.type(textarea, "/");
+    await user.keyboard("{ArrowDown}");
+    await user.keyboard("{Enter}");
+    expect(textarea).toHaveValue("/search ");
   });
 });

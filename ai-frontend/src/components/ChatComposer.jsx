@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 // لازم يطابق حد ChatRequest.message بالباكيند (Field max_length=4000) — بدونه المستخدم
@@ -29,6 +29,9 @@ export default function ChatComposer({
 }) {
   const { t } = useTranslation();
   const recognitionRef = useRef(null);
+  const textareaRef = useRef(null);
+  const [commandMenuDismissed, setCommandMenuDismissed] = useState(false);
+  const [commandIndex, setCommandIndex] = useState(0);
   const [isListening, setIsListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -36,6 +39,37 @@ export default function ChatComposer({
   const lang = document.documentElement.lang;
   const saveEditLabel = lang === "ar" ? "حفظ التعديل" : "Save edit";
   const cancelEditLabel = lang === "ar" ? "إلغاء" : "Cancel";
+
+  const commands = useMemo(
+    () => [
+      { name: "calc", icon: "🧮", label: lang === "ar" ? "آلة حاسبة" : "Calculator" },
+      { name: "search", icon: "🔎", label: lang === "ar" ? "بحث الويب" : "Web search" },
+      { name: "analyze", icon: "📊", label: lang === "ar" ? "تحليل البيانات" : "Data analysis" },
+      { name: "agent", icon: "🤖", label: lang === "ar" ? "وضع الوكيل" : "Agent mode" },
+      { name: "python", icon: "🐍", label: lang === "ar" ? "بايثون آمن" : "Safe Python" },
+    ],
+    [lang]
+  );
+
+  const commandModeActive = value.startsWith("/") && !/\s/.test(value.slice(1));
+  const commandQuery = commandModeActive ? value.slice(1).split(/\s/)[0] : "";
+  const filteredCommands = useMemo(() => {
+    if (!commandModeActive || commandMenuDismissed) return [];
+    const query = commandQuery.toLocaleLowerCase();
+    return commands.filter((command) => command.name.startsWith(query));
+  }, [commandMenuDismissed, commandModeActive, commandQuery, commands]);
+
+  useEffect(() => {
+    setCommandIndex(0);
+    setCommandMenuDismissed(false);
+  }, [commandQuery]);
+
+  const selectCommand = (command) => {
+    setValue(`/${command.name} `);
+    setCommandMenuDismissed(true);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
 
   useEffect(() => {
     const SpeechRecognition =
@@ -183,16 +217,68 @@ export default function ChatComposer({
 
       <div className="flex items-end gap-3">
         <div className="flex-1">
-          <textarea
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onPaste={handlePaste}
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={(e) => {
+                setValue(e.target.value);
+                setCommandMenuDismissed(false);
+              }}
+              onKeyDown={(event) => {
+                if (!filteredCommands.length || loading || isEditing) return;
+
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setCommandIndex((current) => (current + 1) % filteredCommands.length);
+                } else if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setCommandIndex((current) =>
+                    current === 0 ? filteredCommands.length - 1 : current - 1
+                  );
+                } else if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  selectCommand(filteredCommands[commandIndex]);
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  setCommandMenuDismissed(true);
+                }
+              }}
+              onPaste={handlePaste}
             placeholder={t("placeholder")}
             rows={2}
             maxLength={MAX_MESSAGE_LENGTH}
             disabled={loading}
-            className="min-h-[56px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-          />
+              className="min-h-[56px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+            />
+            {filteredCommands.length > 0 ? (
+              <div
+                role="listbox"
+                aria-label={lang === "ar" ? "أوامر الدردشة" : "Chat commands"}
+                className="absolute inset-x-0 bottom-full z-20 mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+              >
+                {filteredCommands.map((command, index) => (
+                  <button
+                    key={command.name}
+                    type="button"
+                    role="option"
+                    aria-selected={index === commandIndex}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => selectCommand(command)}
+                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-start text-sm ${
+                      index === commandIndex
+                        ? "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100"
+                        : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    <span aria-hidden="true">{command.icon}</span>
+                    <span className="font-medium">/{command.name}</span>
+                    <span className="text-xs text-slate-400">{command.label}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
           {nearLimit && (
             <p className="mt-1 text-end text-xs text-slate-400">
               {value.length}/{MAX_MESSAGE_LENGTH}
