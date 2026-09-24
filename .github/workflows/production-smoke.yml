@@ -1,0 +1,47 @@
+name: Production smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BACKEND_URL: https://ai-chat-backend-ltxa.onrender.com
+      FRONTEND_URL: https://ai-chat-frontend-v8ma.onrender.com
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286b4af5f5b2f8a4 # v5
+
+      - name: Run backend smoke test
+        run: |
+          chmod +x ai-backend/scripts/smoke.sh
+          ai-backend/scripts/smoke.sh "$BACKEND_URL"
+
+      - name: Check frontend is reachable
+        run: |
+          curl --fail --silent --show-error --location \
+            --max-time 30 \
+            --retry 3 \
+            --retry-delay 5 \
+            --retry-all-errors \
+            --output /dev/null \
+            --write-out 'Frontend HTTP %{http_code}\n' \
+            "$FRONTEND_URL/"
+
+      - name: Check backend root is reachable
+        run: |
+          curl --fail --silent --show-error --location \
+            --max-time 30 \
+            --retry 3 \
+            --retry-delay 5 \
+            --retry-all-errors \
+            --output /dev/null \
+            --write-out 'Backend root HTTP %{http_code}\n' \
+            "$BACKEND_URL/"
