@@ -26,6 +26,18 @@
 8. Domain + HTTPS
 9. Production smoke tests وE2E
 
+### الحالة التفصيلية الحالية
+
+- Health Check: **قيد التحقق**
+- Celery Worker: **مكتمل ومتحقق أثناء التشغيل**
+- Celery Beat: **مكتمل ومتحقق أثناء التشغيل**
+- PostgreSQL production setup: **غير مكتمل**
+- Redis production setup: **غير مكتمل**
+- Object Storage: **الأساس البرمجي مكتمل، التفعيل الإنتاجي غير مكتمل**
+- Off-site backups: **Workflow جاهز، التفعيل غير مكتمل**
+- Domain + HTTPS: **غير مكتمل**
+- Production smoke tests/E2E: **Workflow موجود؛ تشغيل إنتاجي ناجح لم يُثبت في بيئة GitHub Actions بعد**
+
 ## المرحلة B — Reliability & Observability
 
 الحالة: **لم تبدأ**
@@ -90,14 +102,16 @@
 
 ## الوضع الحالي المعروف
 
-بعد دمج PR #201:
+بعد دمج PR #212:
 
-- PRs #190–#201 تمت مراجعتها من ناحية التكرار.
-- #201 دمج بنجاح.
-- إصلاح image-RAG fallback أصبح في `main`.
-- #200 مغلق باعتباره نسخة أقدم من نفس الإصلاح.
-- CI وCodeQL نجحا لنسخة #201.
-- البنية الحالية على Render ما زالت تحتاج إكمال عناصر Production Foundation، خصوصًا Health Check وCelery Worker/Beat والتخزين والنسخ الاحتياطية والإعدادات الإنتاجية.
+- PRs #190–#212 تمت مراجعتها من ناحية التكرار ضمن مسار Production Foundation.
+- #201 دمج بنجاح، وإصلاح image-RAG fallback أصبح في `main`.
+- #212 أضاف Production smoke workflow يدويًا ويوميًا.
+- Render يعمل حاليًا بخيار Celery المضمّن المجاني، وتم التحقق سابقًا من Worker وBeat أثناء التشغيل.
+- Object Storage أصبح مدعومًا برمجيًا، لكن Bucket وcredentials الإنتاجية لم تُفعّل بعد.
+- Off-site PostgreSQL backup أصبح جاهزًا كـ Workflow، لكنه لا يُعتبر مفعّلًا حتى تتم إضافة Bucket وGitHub Secrets وتشغيل نسخة ناجحة.
+- Health Check داخل `render.yaml` مضبوط على `/health`، لكن الإعداد الفعلي لخدمة Render الحالية ما زال يحتاج تحققًا مباشرًا.
+- PostgreSQL وRedis الحاليان على Render ما زالا بإعدادات Free/مؤقتة، لذلك لا تزال المرحلة A غير مكتملة.
 
 ## قاعدة المتابعة
 
