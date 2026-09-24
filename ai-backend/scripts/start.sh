@@ -22,7 +22,7 @@ if [ "${EMBEDDED_CELERY:-false}" = "true" ]; then
   celery -A app.tasks.celery_app worker --loglevel=info --concurrency=1 &
   WORKER_PID=$!
 
-  celery -A app.tasks.celery_app beat --loglevel=info &
+  celery -A app.tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule &
   BEAT_PID=$!
 fi
 
