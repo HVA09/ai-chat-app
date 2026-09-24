@@ -102,7 +102,7 @@
 
 ## الوضع الحالي المعروف
 
-بعد دمج PR #215:
+بعد دمج PR #215 ومسار Object Storage smoke:
 
 - PRs #190–#215 تمت مراجعتها من ناحية التكرار ضمن مسار Production Foundation.
 - #201 دمج بنجاح، وإصلاح image-RAG fallback أصبح في `main`.
@@ -110,7 +110,7 @@
 - #213 أضاف Workflow للنسخ الاحتياطي الخارجي PostgreSQL، مع تفعيل محمي بمتغير Repository حتى تتم إضافة التخزين والأسرار.
 - #215 شدّد تكامل Object Storage: لا يُفعّل remote storage إلا عند اكتمال الإعداد، أُضيف توقيع SigV4 وفحص bucket واختبارات تغطية.
 - Render يعمل حاليًا بخيار Celery المضمّن المجاني، وتم التحقق سابقًا من Worker وBeat أثناء التشغيل.
-- Object Storage أصبح مدعومًا برمجيًا، لكن Bucket وcredentials الإنتاجية لم تُفعّل بعد.
+- Object Storage أصبح مدعومًا برمجيًا، وأُضيف workflow للتحقق من الرفع/القراءة/الحذف؛ لكن Bucket وcredentials الإنتاجية لم تُفعّل بعد.
 - Off-site PostgreSQL backup أصبح جاهزًا كـ Workflow، لكنه لا يُعتبر مفعّلًا حتى تتم إضافة Bucket وGitHub Secrets وتشغيل نسخة ناجحة.
 - Health Check داخل `render.yaml` مضبوط على `/health`، لكن الإعداد الفعلي لخدمة Render الحالية ما زال يحتاج تحققًا مباشرًا.
 - PostgreSQL وRedis الحاليان على Render ما زالا بإعدادات Free/مؤقتة، لذلك لا تزال المرحلة A غير مكتملة.

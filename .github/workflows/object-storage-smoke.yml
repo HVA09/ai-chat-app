@@ -1,0 +1,53 @@
+name: Object storage smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 4 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: vars.OBJECT_STORAGE_SMOKE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
+      S3_REGION: ${{ secrets.S3_REGION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+      AWS_EC2_METADATA_DISABLED: "true"
+    steps:
+      - name: Validate configuration
+        run: |
+          test -n "$S3_BUCKET"
+          test -n "$S3_ENDPOINT_URL"
+          test -n "$S3_REGION"
+          test -n "$AWS_ACCESS_KEY_ID"
+          test -n "$AWS_SECRET_ACCESS_KEY"
+
+      - name: Write test object
+        run: |
+          printf 'ai-chat-app object storage smoke test\n' > "$RUNNER_TEMP/object-storage-smoke.txt"
+          key="ops/smoke/github-actions-$(date -u +%Y%m%dT%H%M%SZ).txt"
+          aws s3 cp "$RUNNER_TEMP/object-storage-smoke.txt" "s3://$S3_BUCKET/$key" --endpoint-url "$S3_ENDPOINT_URL" --region "$S3_REGION" --only-show-errors
+          echo "OBJECT_KEY=$key" >> "$GITHUB_ENV"
+
+      - name: Verify object
+        run: |
+          aws s3api head-object --bucket "$S3_BUCKET" --key "$OBJECT_KEY" --endpoint-url "$S3_ENDPOINT_URL" --region "$S3_REGION" --query '{size:ContentLength,contentType:ContentType}' --output json
+
+      - name: Read object back
+        run: |
+          aws s3 cp "s3://$S3_BUCKET/$OBJECT_KEY" "$RUNNER_TEMP/object-storage-roundtrip.txt" --endpoint-url "$S3_ENDPOINT_URL" --region "$S3_REGION" --only-show-errors
+          cmp "$RUNNER_TEMP/object-storage-smoke.txt" "$RUNNER_TEMP/object-storage-roundtrip.txt"
+
+      - name: Delete test object
+        if: always()
+        run: |
+          if [ -n "${OBJECT_KEY:-}" ]; then
+            aws s3api delete-object --bucket "$S3_BUCKET" --key "$OBJECT_KEY" --endpoint-url "$S3_ENDPOINT_URL" --region "$S3_REGION"
+          fi
