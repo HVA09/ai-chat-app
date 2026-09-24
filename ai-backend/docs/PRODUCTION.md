@@ -111,3 +111,32 @@ docker compose -f docker-compose.prod.yml exec -e CONFIRM_RESTORE=YES -T db \\
 - [ ] نسخة احتياطية واستعادة مجرّبة مرة واحدة
 - [ ] النسخ الاحتياطية محفوظة خارج نفس القرص/الخادم ومراقَب نجاحها
 - [ ] Privacy + Terms منشورتان على الفرونت
+
+
+## 10) Object Storage للملفات
+
+التطبيق يدعم S3-compatible Object Storage مع fallback محلي أثناء مرحلة الانتقال.
+
+اضبط هذه المتغيرات **كلها** عند تفعيل التخزين الخارجي:
+
+- `S3_BUCKET`
+- `S3_ENDPOINT_URL`
+- `S3_REGION`
+- `S3_ACCESS_KEY_ID`
+- `S3_SECRET_ACCESS_KEY`
+
+يستخدم العميل AWS Signature Version 4 ويتحقق من الوصول إلى الـ bucket عبر `head_bucket`.
+
+### Backblaze B2
+
+B2 يوفر S3-Compatible API. شكل Endpoint هو:
+
+`https://s3.<region>.backblazeb2.com`
+
+مثال:
+
+`S3_ENDPOINT_URL=https://s3.us-west-004.backblazeb2.com`
+
+استخدم Application Key مخصصًا للـ S3 API، وليس Master Application Key.
+
+> التفعيل الفعلي يحتاج إنشاء Bucket وحساب/مفاتيح المزود وإدخال الأسرار في Render/GitHub. لا تُحفظ المفاتيح في Git.

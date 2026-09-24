@@ -1,11 +1,11 @@
 """Unified file storage with S3-compatible object storage and local fallback."""
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import BinaryIO
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import settings
@@ -16,17 +16,37 @@ class StorageError(RuntimeError):
 
 
 def _s3_enabled() -> bool:
-    return bool(settings.S3_BUCKET and settings.S3_ENDPOINT_URL)
+    """Enable remote storage only when all required connection settings exist."""
+    return all(
+        (
+            settings.S3_BUCKET,
+            settings.S3_ENDPOINT_URL,
+            settings.S3_REGION,
+            settings.S3_ACCESS_KEY_ID,
+            settings.S3_SECRET_ACCESS_KEY,
+        )
+    )
 
 
 def _client():
     return boto3.client(
         "s3",
-        endpoint_url=settings.S3_ENDPOINT_URL or None,
-        region_name=settings.S3_REGION or None,
-        aws_access_key_id=settings.S3_ACCESS_KEY_ID or None,
-        aws_secret_access_key=settings.S3_SECRET_ACCESS_KEY or None,
+        endpoint_url=settings.S3_ENDPOINT_URL,
+        region_name=settings.S3_REGION,
+        aws_access_key_id=settings.S3_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.S3_SECRET_ACCESS_KEY,
+        config=Config(signature_version="s3v4"),
     )
+
+
+def check_connection() -> None:
+    """Verify the configured remote bucket is reachable."""
+    if not _s3_enabled():
+        return
+    try:
+        _client().head_bucket(Bucket=settings.S3_BUCKET)
+    except (BotoCoreError, ClientError) as exc:
+        raise StorageError("تعذر الاتصال بـ Object Storage") from exc
 
 
 def put_file(path: Path, object_key: str, content_type: str) -> None:
