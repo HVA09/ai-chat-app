@@ -61,7 +61,7 @@ def test_s3_client_uses_sigv4(monkeypatch):
     assert seen["kwargs"]["config"].signature_version == "s3v4"
 
 
-def test_check_connection_calls_head_bucket(monkeypatch):
+def test_check_connection_lists_bucket_with_file_listing_permission(monkeypatch):
     for name, value in (
         ("S3_BUCKET", "bucket"),
         ("S3_ENDPOINT_URL", "https://s3.example.test"),
@@ -72,8 +72,8 @@ def test_check_connection_calls_head_bucket(monkeypatch):
         monkeypatch.setattr(storage.settings, name, value)
 
     class FakeClient:
-        def head_bucket(self, **kwargs):
-            assert kwargs == {"Bucket": "bucket"}
+        def list_objects_v2(self, **kwargs):
+            assert kwargs == {"Bucket": "bucket", "MaxKeys": 1}
 
     monkeypatch.setattr(storage, "_client", lambda: FakeClient())
     storage.check_connection()
