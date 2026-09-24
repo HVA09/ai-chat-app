@@ -102,11 +102,12 @@
 
 ## الوضع الحالي المعروف
 
-بعد دمج PR #212:
+بعد دمج PR #213:
 
-- PRs #190–#212 تمت مراجعتها من ناحية التكرار ضمن مسار Production Foundation.
+- PRs #190–#213 تمت مراجعتها من ناحية التكرار ضمن مسار Production Foundation.
 - #201 دمج بنجاح، وإصلاح image-RAG fallback أصبح في `main`.
 - #212 أضاف Production smoke workflow يدويًا ويوميًا.
+- #213 أضاف Workflow للنسخ الاحتياطي الخارجي PostgreSQL، مع تفعيل محمي بمتغير Repository حتى تتم إضافة التخزين والأسرار.
 - Render يعمل حاليًا بخيار Celery المضمّن المجاني، وتم التحقق سابقًا من Worker وBeat أثناء التشغيل.
 - Object Storage أصبح مدعومًا برمجيًا، لكن Bucket وcredentials الإنتاجية لم تُفعّل بعد.
 - Off-site PostgreSQL backup أصبح جاهزًا كـ Workflow، لكنه لا يُعتبر مفعّلًا حتى تتم إضافة Bucket وGitHub Secrets وتشغيل نسخة ناجحة.
