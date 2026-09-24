@@ -44,7 +44,7 @@ def check_connection() -> None:
     if not _s3_enabled():
         return
     try:
-        _client().head_bucket(Bucket=settings.S3_BUCKET)
+        _client().list_objects_v2(Bucket=settings.S3_BUCKET, MaxKeys=1)
     except (BotoCoreError, ClientError) as exc:
         raise StorageError("تعذر الاتصال بـ Object Storage") from exc
 
