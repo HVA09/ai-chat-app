@@ -19,11 +19,16 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 if [ "${EMBEDDED_CELERY:-false}" = "true" ]; then
-  celery -A app.tasks.celery_app worker --loglevel=info --concurrency=1 &
+  echo "Embedded Celery enabled"
+  echo "Celery binary: $(command -v celery)"
+
+  python -m celery -A app.tasks.celery_app worker --loglevel=info --concurrency=1 &
   WORKER_PID=$!
 
-  celery -A app.tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule &
+  python -m celery -A app.tasks.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule &
   BEAT_PID=$!
+else
+  echo "Embedded Celery disabled"
 fi
 
 uvicorn app.main:app --host 0.0.0.0 --port 8000 &
