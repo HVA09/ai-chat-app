@@ -234,17 +234,50 @@ async def get_ai_vision_reply(
         reply.latency_ms = max(0, round((time.perf_counter() - started_at) * 1000))
         return reply
     except Exception as primary_exc:
-        if not _is_retryable_provider_error(primary_exc):
+        primary_provider_name = settings.AI_PROVIDER.strip().lower()
+        retryable = _is_retryable_provider_error(primary_exc)
+        logger.warning(
+            "AI vision primary provider failed provider=%s retryable=%s status_code=%s latency_ms=%s",
+            primary_provider_name,
+            retryable,
+            _provider_error_status(primary_exc),
+            max(0, round((time.perf_counter() - started_at) * 1000)),
+        )
+        if not retryable:
             _raise_ai_http_error(primary_exc)
 
         fallback = _get_fallback_provider(model)
         if not isinstance(fallback, OpenAICompatibleProvider):
+            logger.warning(
+                "AI vision failover unavailable primary_provider=%s",
+                primary_provider_name,
+            )
             _raise_ai_http_error(primary_exc)
 
+        fallback_provider_name = settings.AI_FALLBACK_PROVIDER.strip().lower()
+        fallback_started_at = time.perf_counter()
+        logger.info(
+            "AI vision failover starting primary_provider=%s fallback_provider=%s",
+            primary_provider_name,
+            fallback_provider_name,
+        )
         try:
             reply = await fallback.get_vision_reply(message, image_data_url, history)
-            reply.provider = settings.AI_FALLBACK_PROVIDER.strip().lower()
+            reply.provider = fallback_provider_name
             reply.latency_ms = max(0, round((time.perf_counter() - started_at) * 1000))
+            logger.info(
+                "AI vision fallback provider succeeded fallback_provider=%s fallback_latency_ms=%s total_latency_ms=%s",
+                fallback_provider_name,
+                max(0, round((time.perf_counter() - fallback_started_at) * 1000)),
+                reply.latency_ms,
+            )
             return reply
         except Exception as fallback_exc:
+            logger.warning(
+                "AI vision fallback provider failed fallback_provider=%s retryable=%s status_code=%s latency_ms=%s",
+                fallback_provider_name,
+                _is_retryable_provider_error(fallback_exc),
+                _provider_error_status(fallback_exc),
+                max(0, round((time.perf_counter() - fallback_started_at) * 1000)),
+            )
             _raise_ai_http_error(fallback_exc)
