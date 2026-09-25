@@ -68,37 +68,34 @@ jobs:
         run: |
           test -n "$DATABASE_URL"
           filename="ai-chat-postgres-$(date -u +%Y%m%dT%H%M%SZ).dump"
-          python3 - <<'PY'
+          BACKUP_DATABASE_URL="$(python3 - <<'PY'
           import os
-          from urllib.parse import unquote, urlsplit
+          from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
           url = urlsplit(os.environ["DATABASE_URL"])
           host = url.hostname
           if not host:
               raise SystemExit("DATABASE_URL has no hostname")
           external_host = f"{host}.{os.environ['RENDER_POSTGRES_REGION']}-postgres.render.com"
-          values = {
-              "PGHOST": external_host,
-              "PGPORT": str(url.port or 5432),
-              "PGUSER": unquote(url.username or ""),
-              "PGPASSWORD": unquote(url.password or ""),
-              "PGDATABASE": url.path.lstrip("/"),
-              "PGSSLMODE": "require",
-          }
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
-              for key, value in values.items():
-                  env_file.write(f"{key}={value}\n")
+          query = dict(parse_qsl(url.query, keep_blank_values=True))
+          query["sslmode"] = "require"
+          netloc = host
+          if url.username is not None:
+              netloc = url.username
+              if url.password is not None:
+                  netloc += ":" + url.password
+              netloc += "@"
+          netloc += external_host
+          if url.port:
+              netloc += ":" + str(url.port)
+          print(urlunsplit((url.scheme, netloc, url.path, url.query if "sslmode" in query else urlencode(query), url.fragment)))
           PY
-          test -n "$PGHOST"
+          )"
+          test -n "$BACKUP_DATABASE_URL"
           docker run --rm \
-            -e PGHOST \
-            -e PGPORT \
-            -e PGUSER \
-            -e PGPASSWORD \
-            -e PGDATABASE \
-            -e PGSSLMODE \
+            -e DATABASE_URL="$BACKUP_DATABASE_URL" \
             -v "$RUNNER_TEMP/db-backup:/backup" \
             postgres:18-alpine \
-            sh -c 'pg_dump --format=custom --file="/backup/$1"' sh "$filename"
+            sh -c 'pg_dump "$DATABASE_URL" --format=custom --file="/backup/$1"' sh "$filename"
           test -s "$RUNNER_TEMP/db-backup/$filename"
           echo "BACKUP_FILE=$filename" >> "$GITHUB_ENV"
 
