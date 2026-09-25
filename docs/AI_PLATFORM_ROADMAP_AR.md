@@ -29,8 +29,8 @@
 ### الحالة التفصيلية الحالية
 
 - Health Check: **غير متحقق على خدمة Render الحالية** — الكود يحتوي على `/health` و`render.yaml` يحدد `healthCheckPath: /health`، لكن فحص Render للخدمة الحالية `ai-chat-backend` أظهر أن إعداد Health Check الفعلي فارغ.
-- Celery Worker: **موجود في `render.yaml` فقط؛ غير ظاهر كخدمة حالية في Render**.
-- Celery Beat: **موجود في `render.yaml` فقط؛ غير ظاهر كخدمة حالية في Render**.
+- Celery Worker: **غير موجود كخدمة Render مستقلة حاليًا، لكن التشغيل المضمّن داخل `ai-chat-backend` مُثبت من السجلات** — ظهرت مهام Celery مستلمة ومنفذة بنجاح كل دقيقة.
+- Celery Beat: **غير موجود كخدمة Render مستقلة حاليًا، لكن التشغيل المضمّن داخل `ai-chat-backend` مُثبت من السجلات** — ظهرت رسائل Scheduler وإرسال المهام المجدولة بصورة متكررة.
 - PostgreSQL production setup: **غير مكتمل** — خدمة قاعدة البيانات الإنتاجية المعرفة في `render.yaml` ليست ضمن الخدمات الحالية المتحققة في Render.
 - Redis production setup: **غير مكتمل** — خدمة Redis المعرفة في `render.yaml` ليست ضمن الخدمات الحالية المتحققة في Render.
 - Object Storage: **مكتمل ومتحقق إنتاجيًا** — Render أثبت الاتصال، ثم نجح اختبار upload → read → delete على Backblaze B2.
@@ -125,11 +125,17 @@
 - #212 أضاف Production smoke workflow يدويًا ويوميًا.
 - #213 أضاف Workflow للنسخ الاحتياطي الخارجي PostgreSQL، مع تفعيل محمي بمتغير Repository حتى تتم إضافة التخزين والأسرار.
 - #215 شدّد تكامل Object Storage: لا يُفعّل remote storage إلا عند اكتمال الإعداد، أُضيف توقيع SigV4 وفحص bucket واختبارات تغطية.
-- Render يعمل حاليًا بخيار Celery المضمّن المجاني، وتم التحقق سابقًا من Worker وBeat أثناء التشغيل.
+- Render يعمل حاليًا بخيار Celery المضمّن المجاني، وتم التحقق مباشرةً في السجلات الحالية من Worker وBeat أثناء التشغيل.
 - Object Storage أصبح مفعّلًا على Render ومتحققًا باختبار فعلي upload/read/delete على B2.
 - Off-site PostgreSQL backup أصبح جاهزًا كـ Workflow، وتمت محاكاة التشغيل الفعلي حتى نقطة التحقق من الأسرار؛ النتيجة أثبتت أن `PRODUCTION_DATABASE_URL` ما زال مفقودًا من GitHub Actions. بعد إضافته وتفعيل `PRODUCTION_BACKUP_ENABLED=true` يجب تشغيل نسخة ناجحة قبل الإغلاق.
-- Health Check داخل `render.yaml` مضبوط على `/health`، لكن تحقق Render الحالي أظهر أن الخدمة الفعلية لا تحتوي Health Check Path بعد.
+- Health Check داخل `render.yaml` مضبوط على `/health`، لكن تحقق Render الحالي أظهر أن الخدمة الفعلية لا تحتوي Health Check Path بعد، ولم تظهر سجلات HTTP لـ`/health` أثناء الفحص.
 - PostgreSQL وRedis الحاليان المستهدفان في `render.yaml` ما زالا بحاجة إلى تطبيق/تحقق فعلي على Render؛ الخدمات الحالية المتحققة لا تتضمنهما.
+
+### آخر تحقق تشغيلي — 2026-09-25
+
+- آخر Deploy حي للـBackend كان بحالة `live` على Render.
+- سجلات التطبيق أظهرت `run_due_scheduled_tasks` مستلمة ومنفذة بنجاح، مع Scheduler يرسل المهمة بصورة دورية.
+- لم تظهر سجلات من نوع `request` لمسار `/health` أثناء نافذة التحقق؛ لذلك لم يتم إغلاق بند Health Check.
 
 ## قاعدة المتابعة
 
