@@ -14,6 +14,40 @@ PY
   else
     echo "Object Storage connectivity: FAILED"
   fi
+
+  if [ "${STORAGE_SMOKE_ON_START:-false}" = "true" ]; then
+    if python - <<'PY'
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from uuid import uuid4
+
+from app.services.storage import delete_file, open_file, put_file
+
+payload = b"ai-chat-app Render object storage smoke test"
+object_key = f"smoke/render-startup-{uuid4().hex}.txt"
+
+with TemporaryDirectory() as tmp:
+    source = Path(tmp) / "storage-smoke.txt"
+    fallback = Path(tmp) / "storage-smoke-fallback.txt"
+    source.write_bytes(payload)
+    put_file(source, object_key, "text/plain")
+    remote = open_file(object_key, fallback)
+    try:
+        received = remote.read()
+    finally:
+        remote.close()
+    if received != payload:
+        raise RuntimeError("Object Storage read-back payload mismatch")
+    delete_file(object_key, fallback)
+
+print("Object Storage E2E smoke: PASSED (upload -> read -> delete)")
+PY
+    then
+      :
+    else
+      echo "Object Storage E2E smoke: FAILED"
+    fi
+  fi
 else
   echo "Object Storage remote storage is not configured"
 fi
