@@ -34,3 +34,46 @@ def test_request_id_context_can_be_scoped():
         reset_request_id(token)
 
     assert get_request_id() == "-"
+
+
+def test_request_metrics_logger_uses_request_id(monkeypatch, client):
+    records = []
+
+    def fake_log(level, message, *args):
+        records.append((level, message, args))
+
+    monkeypatch.setattr("app.middleware.http_logger.log", fake_log)
+
+    response = client.get(
+        "/health",
+        headers={"X-Request-ID": "metrics-test-1"},
+    )
+
+    assert response.status_code == 200
+    assert any(
+        level == 20
+        and "HTTP GET /health 200" in message
+        and "latency_ms=%s" in message
+        and args[0] >= 0
+        and args[1] == "metrics-test-1"
+        for level, message, args in records
+    )
+
+
+def test_request_metrics_log_never_includes_query_string(monkeypatch, client):
+    records = []
+
+    def fake_log(level, message, *args):
+        records.append((level, message, args))
+
+    monkeypatch.setattr("app.middleware.http_logger.log", fake_log)
+
+    response = client.get(
+        "/health?token=secret-value",
+        headers={"X-Request-ID": "query-safe"},
+    )
+
+    assert response.status_code == 200
+    rendered = " ".join([message % args if args else message for _, message, args in records])
+    assert "secret-value" not in rendered
+    assert "HTTP GET /health 200" in rendered
