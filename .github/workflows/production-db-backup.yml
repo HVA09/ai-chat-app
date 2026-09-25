@@ -32,6 +32,10 @@ jobs:
             echo "PRODUCTION_BACKUP_ENABLED is not true; the real backup job will remain skipped."
             exit 0
           fi
+          if [[ "${{ vars.PRODUCTION_DB_CREDENTIAL_ROTATED }}" != "true" ]]; then
+            echo "PRODUCTION_DB_CREDENTIAL_ROTATED is not true; backup remains locked until DB credential rotation is completed."
+            exit 0
+          fi
           missing=0
           for name in PRODUCTION_DATABASE_URL S3_BUCKET S3_ENDPOINT_URL S3_REGION S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY; do
             if [[ -z "${!name:-}" ]]; then
@@ -47,7 +51,7 @@ jobs:
           echo "Backup configuration is present."
 
   backup:
-    if: vars.PRODUCTION_BACKUP_ENABLED == 'true'
+    if: vars.PRODUCTION_BACKUP_ENABLED == 'true' && vars.PRODUCTION_DB_CREDENTIAL_ROTATED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
