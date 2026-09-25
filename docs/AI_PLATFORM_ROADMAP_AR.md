@@ -140,13 +140,12 @@
 
 ### آخر تحقق تشغيلي — 2026-09-25
 
-- آخر Deploy حي للـBackend كان بحالة `live` على Render.
+- آخر Deploy حي للـBackend كان بحالة `live` على Render في `edf32e14...`.
 - سجلات التطبيق أظهرت `run_due_scheduled_tasks` مستلمة ومنفذة بنجاح، مع Scheduler يرسل المهمة بصورة دورية.
-- لم تظهر سجلات من نوع `request` لمسار `/health` أثناء نافذة التحقق؛ لذلك لم يتم إغلاق بند Health Check.
-- النتيجة النهائية لدورة CI رقم `36164812684`: **success**.
-- CodeQL رقم `36164812643`: **success**.
-- Publish backend image رقم `36164812677`: **success**.
-
+- تحقق الواجهة الإنتاجية على Deploy `092a0525...`: `/`, `/pricing/`, `/terms/`, `/privacy/` أعادت HTTP 200؛ و`/pricing/` عرض خطتي Free وPro فعليًا.
+- إصلاح deep-link للواجهة أضيف عبر entry points ثابتة أثناء build، مع إضافة `react-is` كاعتماد مباشر وإزالة lazy-loading للصفحات العامة لتقليل نقاط الفشل.
+- دورة CI للـcommit `092a0525...` أغلقت Frontend وProduction Compose بنجاح، وCodeQL وPublish backend image نجحا؛ Backend `pytest` ما زال قيد التنفيذ عند آخر تحقق.
+- لم يتم إغلاق بند Render Health Check الداخلي بعد؛ endpoint نفسه متحقق خارجيًا عبر `/health` ويعيد `status=ok` و`database=ok`، لكن إعداد Health Check الفعلي للخدمة ما زال يحتاج ضبطًا داخل Render.
 ## قاعدة المتابعة
 
 عند بدء أي جلسة عمل جديدة، نبدأ من آخر حالة مؤكدة في هذه الوثيقة وGitHub `main`، ثم نكمل أول بند غير مكتمل في المرحلة الحالية قبل الانتقال إلى ميزات جديدة.
