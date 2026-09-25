@@ -25,7 +25,6 @@ if [ "${EMBEDDED_CELERY:-false}" = "true" ]; then
 
   python -m celery -A app.tasks.celery_app worker \
     --loglevel=info \
-    --logfile=- \
     --concurrency=1 \
     --hostname=free-worker@%h &
   WORKER_PID=$!
