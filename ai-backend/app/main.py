@@ -16,7 +16,7 @@ from app.auth.routes import router as auth_router
 from app.auth.two_factor import router as two_factor_router
 from app.config import settings
 from app.database import get_db
-from app.middleware import AuthRateLimitMiddleware, RequestIdMiddleware
+from app.middleware import AuthRateLimitMiddleware, RequestIdMiddleware, RequestMetricsMiddleware
 from app.logging_config import configure_logging, get_logger
 from app.routers.admin import router as admin_router
 from app.routers.assistant_workspace_shares import router as assistant_workspace_shares_router
@@ -64,6 +64,8 @@ app = FastAPI(
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+# Keep request metrics inside Request-ID middleware so every log has the correlation ID.
+app.add_middleware(RequestMetricsMiddleware)
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(AuthRateLimitMiddleware)
 
