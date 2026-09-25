@@ -33,8 +33,8 @@
 - Celery Beat: **مكتمل ومتحقق أثناء التشغيل**
 - PostgreSQL production setup: **غير مكتمل**
 - Redis production setup: **غير مكتمل**
-- Object Storage: **الأساس البرمجي مكتمل، التفعيل الإنتاجي غير مكتمل**
-- Off-site backups: **Workflow جاهز، التفعيل غير مكتمل**
+- Object Storage: **مكتمل ومتحقق إنتاجيًا** — Render أثبت الاتصال، ثم نجح اختبار upload → read → delete على Backblaze B2.
+- Off-site backups: **قيد الإكمال** — تم تصحيح Workflow ليستخدم أسرار `B2_*` الموجودة، لكن `PRODUCTION_DATABASE_URL` غير موجود حاليًا في GitHub Actions، ولم تُثبت نسخة احتياطية ناجحة بعد.
 - Domain + HTTPS: **غير مكتمل**
 - Production smoke tests/E2E: **Workflow موجود؛ تشغيل إنتاجي ناجح لم يُثبت في بيئة GitHub Actions بعد**
 
@@ -102,16 +102,16 @@
 
 ## الوضع الحالي المعروف
 
-بعد دمج PR #215 ومسار Object Storage smoke:
+بعد دمج PR #230 ومسار Object Storage/Backup verification:
 
-- PRs #190–#215 تمت مراجعتها من ناحية التكرار ضمن مسار Production Foundation.
+- PRs #190–#230 تمت مراجعتها من ناحية التكرار ضمن مسار Production Foundation.
 - #201 دمج بنجاح، وإصلاح image-RAG fallback أصبح في `main`.
 - #212 أضاف Production smoke workflow يدويًا ويوميًا.
 - #213 أضاف Workflow للنسخ الاحتياطي الخارجي PostgreSQL، مع تفعيل محمي بمتغير Repository حتى تتم إضافة التخزين والأسرار.
 - #215 شدّد تكامل Object Storage: لا يُفعّل remote storage إلا عند اكتمال الإعداد، أُضيف توقيع SigV4 وفحص bucket واختبارات تغطية.
 - Render يعمل حاليًا بخيار Celery المضمّن المجاني، وتم التحقق سابقًا من Worker وBeat أثناء التشغيل.
-- Object Storage أصبح مدعومًا برمجيًا، وأُضيف workflow للتحقق من الرفع/القراءة/الحذف؛ لكن Bucket وcredentials الإنتاجية لم تُفعّل بعد.
-- Off-site PostgreSQL backup أصبح جاهزًا كـ Workflow، لكنه لا يُعتبر مفعّلًا حتى تتم إضافة Bucket وGitHub Secrets وتشغيل نسخة ناجحة.
+- Object Storage أصبح مفعّلًا على Render ومتحققًا باختبار فعلي upload/read/delete على B2.
+- Off-site PostgreSQL backup أصبح جاهزًا كـ Workflow، وتمت محاكاة التشغيل الفعلي حتى نقطة التحقق من الأسرار؛ النتيجة أثبتت أن `PRODUCTION_DATABASE_URL` ما زال مفقودًا من GitHub Actions. بعد إضافته وتفعيل `PRODUCTION_BACKUP_ENABLED=true` يجب تشغيل نسخة ناجحة قبل الإغلاق.
 - Health Check داخل `render.yaml` مضبوط على `/health`، لكن الإعداد الفعلي لخدمة Render الحالية ما زال يحتاج تحققًا مباشرًا.
 - PostgreSQL وRedis الحاليان على Render ما زالا بإعدادات Free/مؤقتة، لذلك لا تزال المرحلة A غير مكتملة.
 
