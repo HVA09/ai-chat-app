@@ -31,7 +31,6 @@ if [ "${EMBEDDED_CELERY:-false}" = "true" ]; then
 
   python -m celery -A app.tasks.celery_app beat \
     --loglevel=info \
-    --logfile=- \
     --schedule=/tmp/celerybeat-schedule &
   BEAT_PID=$!
 
