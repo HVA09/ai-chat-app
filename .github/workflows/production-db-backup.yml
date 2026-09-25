@@ -1,6 +1,9 @@
 name: Production database backup
 
 on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/production-db-backup.yml"]
   workflow_dispatch:
   schedule:
     - cron: "45 2 * * *"
@@ -9,6 +12,39 @@ permissions:
   contents: read
 
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    env:
+      BACKUP_ENABLED: ${{ vars.PRODUCTION_BACKUP_ENABLED }}
+      PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+      B2_BUCKET: ${{ secrets.B2_BUCKET }}
+      B2_ENDPOINT_URL: ${{ secrets.B2_ENDPOINT_URL }}
+      B2_REGION: ${{ secrets.B2_REGION }}
+      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+      B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+    steps:
+      - name: Validate backup configuration presence
+        shell: bash
+        run: |
+          if [[ "$BACKUP_ENABLED" != "true" ]]; then
+            echo "PRODUCTION_BACKUP_ENABLED is not true; the real backup job will remain skipped."
+            exit 0
+          fi
+          missing=0
+          for name in PRODUCTION_DATABASE_URL B2_BUCKET B2_ENDPOINT_URL B2_REGION B2_KEY_ID B2_APPLICATION_KEY; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "MISSING $name"
+              missing=1
+            else
+              echo "PRESENT $name"
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            exit 1
+          fi
+          echo "Backup configuration is present."
+
   backup:
     if: vars.PRODUCTION_BACKUP_ENABLED == 'true'
     runs-on: ubuntu-latest
