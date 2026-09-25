@@ -118,7 +118,7 @@
 
 ## الوضع الحالي المعروف
 
-بعد دمج PR #230 ومسار Object Storage/Backup verification:
+بعد مسار Production Foundation الحالي:
 
 - PRs #190–#230 تمت مراجعتها من ناحية التكرار ضمن مسار Production Foundation.
 - #201 دمج بنجاح، وإصلاح image-RAG fallback أصبح في `main`.
@@ -130,12 +130,19 @@
 - Off-site PostgreSQL backup أصبح جاهزًا كـ Workflow، وتمت محاكاة التشغيل الفعلي حتى نقطة التحقق من الأسرار؛ النتيجة أثبتت أن `PRODUCTION_DATABASE_URL` ما زال مفقودًا من GitHub Actions. بعد إضافته وتفعيل `PRODUCTION_BACKUP_ENABLED=true` يجب تشغيل نسخة ناجحة قبل الإغلاق.
 - Health Check داخل `render.yaml` مضبوط على `/health`، لكن تحقق Render الحالي أظهر أن الخدمة الفعلية لا تحتوي Health Check Path بعد، ولم تظهر سجلات HTTP لـ`/health` أثناء الفحص.
 - PostgreSQL وRedis الحاليان المستهدفان في `render.yaml` ما زالا بحاجة إلى تطبيق/تحقق فعلي على Render؛ الخدمات الحالية المتحققة لا تتضمنهما.
+- إصلاح SQLAlchemy/PostgreSQL الخاص بـAnalytics تم دمجه في commit `edf32e14cb76413a3ec7abc0831cdf2c468af716`.
+- دورة CI على `edf32e14...` نجحت بالكامل: CI، Backend pytest، Frontend، وProduction Compose.
+- CodeQL وPublish backend image على نفس الـcommit نجحا أيضًا.
+- أحدث Deploy للـBackend على Render أصبح `live` على `edf32e14...`.
 
 ### آخر تحقق تشغيلي — 2026-09-25
 
 - آخر Deploy حي للـBackend كان بحالة `live` على Render.
 - سجلات التطبيق أظهرت `run_due_scheduled_tasks` مستلمة ومنفذة بنجاح، مع Scheduler يرسل المهمة بصورة دورية.
 - لم تظهر سجلات من نوع `request` لمسار `/health` أثناء نافذة التحقق؛ لذلك لم يتم إغلاق بند Health Check.
+- النتيجة النهائية لدورة CI رقم `36164812684`: **success**.
+- CodeQL رقم `36164812643`: **success**.
+- Publish backend image رقم `36164812677`: **success**.
 
 ## قاعدة المتابعة
 
