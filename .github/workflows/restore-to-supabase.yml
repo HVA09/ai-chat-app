@@ -1,0 +1,76 @@
+name: Restore production backup to Supabase
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BACKUP_BUCKET: ${{ secrets.S3_BUCKET }}
+      BACKUP_ENDPOINT: ${{ secrets.S3_ENDPOINT_URL }}
+      BACKUP_REGION: ${{ secrets.S3_REGION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+      AWS_EC2_METADATA_DISABLED: "true"
+      SUPABASE_HOST: db.wfhijmawoojcmfdgibxg.supabase.co
+      SUPABASE_DB: postgres
+      SUPABASE_USER: postgres
+      PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+    steps:
+      - name: Verify required secrets are present
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in BACKUP_BUCKET BACKUP_ENDPOINT BACKUP_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY PGPASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required secret/config: $name"
+              exit 1
+            fi
+          done
+
+      - name: Find latest production backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="$(
+            aws s3 ls "s3://$BACKUP_BUCKET/database/"               --endpoint-url "$BACKUP_ENDPOINT"               --region "$BACKUP_REGION"               | awk '{print $4}'               | grep -E '\.dump$'               | sort               | tail -n 1
+          )"
+          test -n "$key"
+          echo "BACKUP_KEY=$key" >> "$GITHUB_ENV"
+          echo "Selected latest backup: $key"
+
+      - name: Download backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/db-backup"
+          aws s3 cp             "s3://$BACKUP_BUCKET/$BACKUP_KEY"             "$RUNNER_TEMP/db-backup/production.dump"             --endpoint-url "$BACKUP_ENDPOINT"             --region "$BACKUP_REGION"             --only-show-errors
+          test -s "$RUNNER_TEMP/db-backup/production.dump"
+
+      - name: Validate backup archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm             -v "$RUNNER_TEMP/db-backup:/backup"             postgres:18-alpine             sh -c 'pg_restore --list /backup/production.dump >/dev/null'
+
+      - name: Restore public schema to Supabase
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm             -e PGPASSWORD="$PGPASSWORD"             -v "$RUNNER_TEMP/db-backup:/backup"             postgres:18-alpine             sh -c '
+              pg_restore                 --exit-on-error                 --no-owner                 --no-privileges                 --schema=public                 --host="$SUPABASE_HOST"                 --port=5432                 --username="$SUPABASE_USER"                 --dbname="$SUPABASE_DB"                 /backup/production.dump
+            '
+
+      - name: Verify Supabase connectivity
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm             -e PGPASSWORD="$PGPASSWORD"             postgres:18-alpine             sh -c '
+              psql                 "host=$SUPABASE_HOST port=5432 dbname=$SUPABASE_DB user=$SUPABASE_USER sslmode=require"                 -Atc "select version()"
+            '
