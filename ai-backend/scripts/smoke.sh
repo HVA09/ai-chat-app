@@ -48,11 +48,12 @@ else
   fi
 fi
 
-rid="$(curl -sS -m 10 -D - -o /dev/null "$BASE_URL/health" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="x-request-id"{print $2}')"
-if [[ -n "${rid:-}" ]]; then
-  green "OK   X-Request-ID present"
+rid="$(curl -sS -m 10 -H 'X-Request-ID: smoke-check' -D - -o /dev/null "$BASE_URL/health" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="x-request-id"{print $2}')"
+if [[ "$rid" == "smoke-check" ]]; then
+  green "OK   X-Request-ID propagation"
 else
-  info "…    X-Request-ID not found (optional)"
+  red "FAIL X-Request-ID propagation"
+  fail=1
 fi
 
 if [[ "$fail" -ne 0 ]]; then
