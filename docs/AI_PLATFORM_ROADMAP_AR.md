@@ -140,12 +140,15 @@
 
 ### آخر تحقق تشغيلي — 2026-09-25
 
-- آخر Deploy حي للـBackend كان بحالة `live` على Render في `edf32e14...`.
-- سجلات التطبيق أظهرت `run_due_scheduled_tasks` مستلمة ومنفذة بنجاح، مع Scheduler يرسل المهمة بصورة دورية.
-- تحقق الواجهة الإنتاجية على Deploy `092a0525...`: `/`, `/pricing/`, `/terms/`, `/privacy/` أعادت HTTP 200؛ و`/pricing/` عرض خطتي Free وPro فعليًا.
-- إصلاح deep-link للواجهة أضيف عبر entry points ثابتة أثناء build، مع إضافة `react-is` كاعتماد مباشر وإزالة lazy-loading للصفحات العامة لتقليل نقاط الفشل.
-- دورة CI للـcommit `092a0525...` أغلقت Frontend وProduction Compose بنجاح، وCodeQL وPublish backend image نجحا؛ Backend `pytest` ما زال قيد التنفيذ عند آخر تحقق.
-- لم يتم إغلاق بند Render Health Check الداخلي بعد؛ endpoint نفسه متحقق خارجيًا عبر `/health` ويعيد `status=ok` و`database=ok`، لكن إعداد Health Check الفعلي للخدمة ما زال يحتاج ضبطًا داخل Render.
+- آخر Deploy حي للـBackend قبل دورة التوثيق كان على `edf32e14...`، والـFrontend الحي على `092a0525...`.
+- تحقق الواجهة الإنتاجية: `/`, `/pricing/`, `/terms/`, `/privacy/` أعادت HTTP 200، و`/pricing/` عرض خطتي Free وPro.
+- إصلاح deep-link للواجهة تم عبر entry points ثابتة أثناء build، مع إضافة `react-is` وإزالة lazy-loading للصفحات العامة.
+- دورة CI للـ`092a0525...` اكتملت بنجاح، وكذلك CodeQL وPublish backend image وProduction Compose.
+- `/health` متحقق خارجيًا بـHTTP 200 ويعيد `status=ok` و`database=ok`؛ لكن إعداد Health Check داخل Render للخدمة ما زال فارغًا، ولا توجد أداة تعديل مباشرة في الاتصال الحالي.
+- PostgreSQL فعلي موجود على Render باسم `ai-chat-db` بخطة Free، الإصدار 18، وحالة `available`؛ migration الحالية `0065_object_storage`. المورد المجاني منتهي الصلاحية المجدولة في **2026-10-10**، لذلك هو مناسب للتحقق المرحلي وليس هدف الإنتاج طويل الأمد.
+- Redis فعلي موجود باسم `ai-chat-redis` بخطة Free وحالة `available`، مع `persistenceMode=off` حاليًا. سجلات الـBackend تؤكد أن Celery/Beat يعملان بنجاح دوريًا عبر broker.
+- تم إصلاح Production Smoke في `fcbe7abe...`: بدل فحص `/` للـBackend (الذي يعيد 404 بصورة مقصودة)، أصبح الفحص يستخدم `/health`.
+- لم يتم بعد إثبات تشغيل Workflow الخاص بـProduction Smoke أو نجاح Backup Workflow. بنية الـBackup موجودة، لكنها تعتمد على أسرار GitHub الخاصة بـ`PRODUCTION_DATABASE_URL` وB2 وتحتاج تشغيلًا فعليًا للتحقق.
 ## قاعدة المتابعة
 
 عند بدء أي جلسة عمل جديدة، نبدأ من آخر حالة مؤكدة في هذه الوثيقة وGitHub `main`، ثم نكمل أول بند غير مكتمل في المرحلة الحالية قبل الانتقال إلى ميزات جديدة.
