@@ -36,7 +36,9 @@
 - Object Storage: **مكتمل ومتحقق** — upload/read/delete ناجحة، وObject Storage Smoke في GitHub Actions نجح.
 - Off-site backups: **مكتمل ومتحقق تشغيليًا** — أحدث Backup workflow `36167688637` نجح في `pg_dump`، التحقق من الأرشيف، الرفع إلى S3، و`head-object`.
 - Domain + HTTPS: **غير مكتمل** — لا يوجد Custom Domain متحقق حاليًا.
-- Production smoke tests/E2E: **Smoke مكتمل تشغيليًا** — workflow يعمل تلقائيًا على push إلى `main` بالإضافة إلى الجدولة والتشغيل اليدوي، وآخر تشغيلات Smoke ناجحة.
+- Production smoke tests/E2E: **Smoke مكتمل تشغيليًا** — workflow يعمل تلقائيًا على push إلى `main` بالإضافة إلى الجدولة والتشغيل اليدوي. آخر Smoke ناجح على commit `5ea72a2...` سبق وصوله إلى Render، لذلك نحتاج تشغيل تحقق مستقل بعد نشر نسخة `5ea72a2...` قبل اعتبار smoke الخاص بهذه النسخة مغلقًا.
+- Observability: **بدأت المرحلة التالية** — `X-Request-ID` أصبح مرتبطًا بسياق logging، وتوجد اختبارات له، وProduction Smoke يتحقق من propagation. نسخة Render المبنية من `5ea72a2...` أصبحت `live` في deploy `dep-darb5inbv8ds73e422t0` بتاريخ 2026-09-25.
+
 - Credential rotation: **مطلوب قبل الإغلاق الأمني** — إحدى محاولات Backup السابقة كشفت كلمة مرور DB في log بسبب اشتقاق `PGPASSWORD`. الـworkflow الحالي لم يعد يفعل ذلك، لكن يجب تدوير credential في Render وتحديث `PRODUCTION_DATABASE_URL`.
 
 ### تحقق Render الفعلي — 2026-09-25
