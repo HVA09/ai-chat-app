@@ -87,7 +87,7 @@ jobs:
           netloc += external_host
           if url.port:
               netloc += ":" + str(url.port)
-          print(urlunsplit((url.scheme, netloc, url.path, url.query if "sslmode" in query else urlencode(query), url.fragment)))
+          print(urlunsplit((url.scheme, netloc, url.path, urlencode(query), url.fragment)))
           PY
           )"
           test -n "$BACKUP_DATABASE_URL"
