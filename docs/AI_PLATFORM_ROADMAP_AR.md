@@ -28,15 +28,31 @@
 
 ### الحالة التفصيلية الحالية
 
-- Health Check: **قيد التحقق**
-- Celery Worker: **مكتمل ومتحقق أثناء التشغيل**
-- Celery Beat: **مكتمل ومتحقق أثناء التشغيل**
-- PostgreSQL production setup: **غير مكتمل**
-- Redis production setup: **غير مكتمل**
+- Health Check: **غير متحقق على خدمة Render الحالية** — الكود يحتوي على `/health` و`render.yaml` يحدد `healthCheckPath: /health`، لكن فحص Render للخدمة الحالية `ai-chat-backend` أظهر أن إعداد Health Check الفعلي فارغ.
+- Celery Worker: **موجود في `render.yaml` فقط؛ غير ظاهر كخدمة حالية في Render**.
+- Celery Beat: **موجود في `render.yaml` فقط؛ غير ظاهر كخدمة حالية في Render**.
+- PostgreSQL production setup: **غير مكتمل** — خدمة قاعدة البيانات الإنتاجية المعرفة في `render.yaml` ليست ضمن الخدمات الحالية المتحققة في Render.
+- Redis production setup: **غير مكتمل** — خدمة Redis المعرفة في `render.yaml` ليست ضمن الخدمات الحالية المتحققة في Render.
 - Object Storage: **مكتمل ومتحقق إنتاجيًا** — Render أثبت الاتصال، ثم نجح اختبار upload → read → delete على Backblaze B2.
-- Off-site backups: **قيد الإكمال** — تم تصحيح Workflow ليستخدم أسرار `B2_*` الموجودة، لكن `PRODUCTION_DATABASE_URL` غير موجود حاليًا في GitHub Actions، ولم تُثبت نسخة احتياطية ناجحة بعد.
-- Domain + HTTPS: **غير مكتمل**
-- Production smoke tests/E2E: **Workflow موجود؛ تشغيل إنتاجي ناجح لم يُثبت في بيئة GitHub Actions بعد**
+- Off-site backups: **قيد الإكمال** — Workflow يستخدم أسرار `B2_*` الصحيحة، لكن `PRODUCTION_DATABASE_URL` غير موجود حاليًا في GitHub Actions، ولم تُثبت نسخة احتياطية ناجحة بعد.
+- Domain + HTTPS: **غير مكتمل**.
+- Production smoke tests/E2E: **Workflow موجود؛ تشغيل إنتاجي ناجح لم يُثبت في بيئة GitHub Actions بعد**.
+
+### تحقق Render الفعلي — 2026-09-25
+
+تم اختيار مساحة Render الصحيحة: `My Workspace` (`tea-dagsi5ou01pc73f2g470`).
+
+الخدمات الفعلية التي ظهرت في Render:
+- `ai-chat-backend` — Web Service، الخطة الحالية **Free**، والرابط `https://ai-chat-backend-ltxa.onrender.com`، وHealth Check Path الفعلي **فارغ**.
+- `ai-chat-frontend` — Static Site، والرابط `https://ai-chat-frontend-v8ma.onrender.com`.
+
+الخدمات المعرفة في `render.yaml` ولكنها لم تظهر ضمن قائمة الخدمات الحالية التي تم التحقق منها:
+- `ai-chat-worker`
+- `ai-chat-beat`
+- `ai-chat-redis`
+- `ai-chat-db`
+
+هذا الفرق يعني أن ملف `render.yaml` يمثل البنية الإنتاجية المستهدفة، لكنه لم يُطبَّق بالكامل على Workspace الحالي.
 
 ## المرحلة B — Reliability & Observability
 
@@ -112,8 +128,8 @@
 - Render يعمل حاليًا بخيار Celery المضمّن المجاني، وتم التحقق سابقًا من Worker وBeat أثناء التشغيل.
 - Object Storage أصبح مفعّلًا على Render ومتحققًا باختبار فعلي upload/read/delete على B2.
 - Off-site PostgreSQL backup أصبح جاهزًا كـ Workflow، وتمت محاكاة التشغيل الفعلي حتى نقطة التحقق من الأسرار؛ النتيجة أثبتت أن `PRODUCTION_DATABASE_URL` ما زال مفقودًا من GitHub Actions. بعد إضافته وتفعيل `PRODUCTION_BACKUP_ENABLED=true` يجب تشغيل نسخة ناجحة قبل الإغلاق.
-- Health Check داخل `render.yaml` مضبوط على `/health`، لكن الإعداد الفعلي لخدمة Render الحالية ما زال يحتاج تحققًا مباشرًا.
-- PostgreSQL وRedis الحاليان على Render ما زالا بإعدادات Free/مؤقتة، لذلك لا تزال المرحلة A غير مكتملة.
+- Health Check داخل `render.yaml` مضبوط على `/health`، لكن تحقق Render الحالي أظهر أن الخدمة الفعلية لا تحتوي Health Check Path بعد.
+- PostgreSQL وRedis الحاليان المستهدفان في `render.yaml` ما زالا بحاجة إلى تطبيق/تحقق فعلي على Render؛ الخدمات الحالية المتحققة لا تتضمنهما.
 
 ## قاعدة المتابعة
 
