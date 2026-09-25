@@ -17,17 +17,14 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
       AWS_EC2_METADATA_DISABLED: "true"
-      SUPABASE_HOST: db.wfhijmawoojcmfdgibxg.supabase.co
-      SUPABASE_DB: postgres
-      SUPABASE_USER: postgres
-      PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
 
     steps:
       - name: Verify required secrets are present
         shell: bash
         run: |
           set -euo pipefail
-          for name in BACKUP_BUCKET BACKUP_ENDPOINT BACKUP_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY PGPASSWORD; do
+          for name in BACKUP_BUCKET BACKUP_ENDPOINT BACKUP_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SUPABASE_DB_URL; do
             if [[ -z "${!name:-}" ]]; then
               echo "Missing required secret/config: $name"
               exit 1
@@ -63,14 +60,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm             -e PGPASSWORD="$PGPASSWORD"             -e SUPABASE_HOST="$SUPABASE_HOST"             -e SUPABASE_DB="$SUPABASE_DB"             -e SUPABASE_USER="$SUPABASE_USER"             -v "$RUNNER_TEMP/db-backup:/backup"             postgres:18-alpine             sh -c '
-              pg_restore                 --exit-on-error                 --no-owner                 --no-privileges                 --schema=public                 --host="$SUPABASE_HOST"                 --port=5432                 --username="$SUPABASE_USER"                 --dbname="$SUPABASE_DB"                 /backup/production.dump
+          docker run --rm             -e SUPABASE_DB_URL="$SUPABASE_DB_URL"             -v "$RUNNER_TEMP/db-backup:/backup"             postgres:18-alpine             sh -c '
+              pg_restore                 --exit-on-error                 --no-owner                 --no-privileges                 --schema=public                 --dbname="$SUPABASE_DB_URL"                 /backup/production.dump
             '
 
       - name: Verify Supabase connectivity
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm             -e PGPASSWORD="$PGPASSWORD"             -e SUPABASE_HOST="$SUPABASE_HOST"             -e SUPABASE_DB="$SUPABASE_DB"             -e SUPABASE_USER="$SUPABASE_USER"             postgres:18-alpine             sh -c '
-              psql                 "host=$SUPABASE_HOST port=5432 dbname=$SUPABASE_DB user=$SUPABASE_USER sslmode=require"                 -Atc "select version()"
+          docker run --rm             -e SUPABASE_DB_URL="$SUPABASE_DB_URL"             postgres:18-alpine             sh -c '
+              psql                 "$SUPABASE_DB_URL"                 -Atc "select version()"
             '
