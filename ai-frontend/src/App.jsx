@@ -36,9 +36,9 @@ const BillingPanel = lazy(() => import("./components/BillingPanel"));
 const ScheduledTasksPanel = lazy(() => import("./components/ScheduledTasksPanel"));
 const BillingSuccessPage = lazy(() => import("./components/BillingSuccessPage"));
 const BillingCancelPage = lazy(() => import("./components/BillingCancelPage"));
-const TermsPage = lazy(() => import("./components/TermsPage"));
-const PrivacyPage = lazy(() => import("./components/PrivacyPage"));
-const PricingPage = lazy(() => import("./components/PricingPage"));
+import TermsPage from "./components/TermsPage";
+import PrivacyPage from "./components/PrivacyPage";
+import PricingPage from "./components/PricingPage";
 const PublicAssistantPage = lazy(() => import("./components/PublicAssistantPage"));
 
 const AUTO_SUMMARY_MESSAGE_THRESHOLD = 12;
@@ -130,8 +130,6 @@ function getWelcomeMessage(t) {
 }
 
 function PageLoadingFallback() {
-  if (sessionChecking) return <PageLoadingFallback />;
-
   return (
     <div className="flex h-full items-center justify-center bg-slate-50">
       <p className="text-sm text-slate-400">...</p>
@@ -2697,25 +2695,13 @@ export default function App() {
     );
   }
   if (path === "/terms") {
-    return (
-      <Suspense fallback={<PageLoadingFallback />}>
-        <TermsPage />
-      </Suspense>
-    );
+    return <TermsPage />;
   }
   if (path === "/privacy") {
-    return (
-      <Suspense fallback={<PageLoadingFallback />}>
-        <PrivacyPage />
-      </Suspense>
-    );
+    return <PrivacyPage />;
   }
   if (path === "/pricing") {
-    return (
-      <Suspense fallback={<PageLoadingFallback />}>
-        <PricingPage />
-      </Suspense>
-    );
+    return <PricingPage />;
   }
   if (path === "/verify-email") {
     return (
