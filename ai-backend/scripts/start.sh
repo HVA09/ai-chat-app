@@ -3,6 +3,21 @@ set -eu
 
 alembic upgrade head
 
+if [ -n "${S3_BUCKET:-}" ] && [ -n "${S3_ENDPOINT_URL:-}" ] && [ -n "${S3_REGION:-}" ] && [ -n "${S3_ACCESS_KEY_ID:-}" ] && [ -n "${S3_SECRET_ACCESS_KEY:-}" ]; then
+  if python - <<'PY'
+from app.services.storage import check_connection
+check_connection()
+print("Object Storage connectivity: OK")
+PY
+  then
+    :
+  else
+    echo "Object Storage connectivity: FAILED"
+  fi
+else
+  echo "Object Storage remote storage is not configured"
+fi
+
 WORKER_PID=""
 BEAT_PID=""
 WATCHDOG_PID=""
