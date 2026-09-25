@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func
+from sqlalchemy import func, literal_column
 from sqlalchemy.orm import Session
 
 from app.audit import log_event
@@ -71,27 +71,28 @@ def _compute_daily_stats(db: Session, days: int) -> list[DailyStatsPoint]:
     def _by_day(rows) -> dict:
         return {row[0].date(): row[1:] for row in rows}
 
+    day = literal_column("'day'")
     users_rows = (
-        db.query(func.date_trunc("day", User.created_at), func.count(User.id))
+        db.query(func.date_trunc(day, User.created_at), func.count(User.id))
         .filter(User.created_at >= since)
-        .group_by(func.date_trunc("day", User.created_at))
+        .group_by(func.date_trunc(day, User.created_at))
         .all()
     )
     conversations_rows = (
-        db.query(func.date_trunc("day", Conversation.created_at), func.count(Conversation.id))
+        db.query(func.date_trunc(day, Conversation.created_at), func.count(Conversation.id))
         .filter(Conversation.created_at >= since)
-        .group_by(func.date_trunc("day", Conversation.created_at))
+        .group_by(func.date_trunc(day, Conversation.created_at))
         .all()
     )
     usage_rows = (
         db.query(
-            func.date_trunc("day", UsageLog.created_at),
+            func.date_trunc(day, UsageLog.created_at),
             func.count(UsageLog.id),
             func.coalesce(func.sum(UsageLog.input_tokens), 0),
             func.coalesce(func.sum(UsageLog.output_tokens), 0),
         )
         .filter(UsageLog.created_at >= since)
-        .group_by(func.date_trunc("day", UsageLog.created_at))
+        .group_by(func.date_trunc(day, UsageLog.created_at))
         .all()
     )
 
