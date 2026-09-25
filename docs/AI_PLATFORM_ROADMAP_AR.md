@@ -54,7 +54,7 @@
 - Production Smoke على `0db359...` وما بعده: **نجح**، وأصبح جزءًا من push إلى `main` إضافة إلى الجدولة والتشغيل اليدوي.
 - Production DB Backup النهائي: `36167688637` **نجح** بالكامل.
 - Backup النهائي يستخدم S3 secrets الحالية، ويصل إلى PostgreSQL عبر External URL مع TLS؛ لم يعد يضع كلمة المرور المشتقة في `GITHUB_ENV` أو في بيئة job.
-- تنبيه أمني مستمر: سجل محاولة Backup قديمة يحتوي credential مكشوفًا؛ يلزم تدوير credential من Render. Render يوصي بتدوير zero-downtime عبر إنشاء PostgreSQL credential جديد، تحديث الخدمات، إعادة النشر، ثم إزالة credential القديم. citeturn323554search0
+- تنبيه أمني مستمر: سجل محاولة Backup قديمة يحتوي credential مكشوفًا؛ يلزم تدوير credential من Render. تم وضع **قفل أمني** على Workflow في commit `39995b8...` بحيث لا ينفذ النسخ الاحتياطي المجدول/اليدوي حتى يتم تعيين `PRODUCTION_DB_CREDENTIAL_ROTATED=true` بعد تدوير credential فعليًا. Render يوصي بتدوير zero-downtime عبر إنشاء PostgreSQL credential جديد، تحديث الخدمات، إعادة النشر، ثم إزالة credential القديم. citeturn323554search0
 - لم يتم إنشاء أو ترقية موارد Render مدفوعة.
 
 ## قاعدة المتابعة
