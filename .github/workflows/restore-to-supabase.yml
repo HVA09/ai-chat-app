@@ -31,16 +31,54 @@ jobs:
             fi
           done
 
-      - name: Find latest production backup
+      - name: Find newest existing production backup
         shell: bash
         run: |
           set -euo pipefail
-          key="$(
-            aws s3 ls "s3://$BACKUP_BUCKET/database/"               --endpoint-url "$BACKUP_ENDPOINT"               --region "$BACKUP_REGION"               | awk '{print $4}'               | grep -E '\.dump$'               | sort               | tail -n 1
-          )"
-          test -n "$key"
-          echo "BACKUP_KEY=$key" >> "$GITHUB_ENV"
-          echo "Selected latest backup: $key"
+
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+
+          cmd = [
+              "aws", "s3api", "list-objects-v2",
+              "--bucket", os.environ["BACKUP_BUCKET"],
+              "--prefix", "database/",
+              "--endpoint-url", os.environ["BACKUP_ENDPOINT"],
+              "--region", os.environ["BACKUP_REGION"],
+              "--output", "json",
+          ]
+          result = subprocess.run(cmd, check=True, text=True, capture_output=True)
+          payload = json.loads(result.stdout or "{}")
+          objects = [
+              item for item in payload.get("Contents", [])
+              if item.get("Key", "").endswith(".dump")
+          ]
+          objects.sort(key=lambda x: x.get("LastModified", ""), reverse=True)
+
+          for item in objects:
+              key = item["Key"]
+              check = subprocess.run(
+                  [
+                      "aws", "s3api", "head-object",
+                      "--bucket", os.environ["BACKUP_BUCKET"],
+                      "--key", key,
+                      "--endpoint-url", os.environ["BACKUP_ENDPOINT"],
+                      "--region", os.environ["BACKUP_REGION"],
+                  ],
+                  stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL,
+              )
+              if check.returncode == 0:
+                  with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+                      f.write(f"BACKUP_KEY={key}\n")
+                  print(f"Selected newest existing backup: {key}")
+                  sys.exit(0)
+
+          raise SystemExit("No existing .dump backup was found in object storage.")
+          PY
 
       - name: Download backup
         shell: bash
