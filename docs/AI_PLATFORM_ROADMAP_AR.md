@@ -129,7 +129,10 @@
 - Object Storage أصبح مفعّلًا على Render ومتحققًا باختبار فعلي upload/read/delete على B2.
 - Off-site PostgreSQL backup أصبح جاهزًا كـ Workflow، وتمت محاكاة التشغيل الفعلي حتى نقطة التحقق من الأسرار؛ النتيجة أثبتت أن `PRODUCTION_DATABASE_URL` ما زال مفقودًا من GitHub Actions. بعد إضافته وتفعيل `PRODUCTION_BACKUP_ENABLED=true` يجب تشغيل نسخة ناجحة قبل الإغلاق.
 - Health Check داخل `render.yaml` مضبوط على `/health`، لكن تحقق Render الحالي أظهر أن الخدمة الفعلية لا تحتوي Health Check Path بعد، ولم تظهر سجلات HTTP لـ`/health` أثناء الفحص.
+- التحقق الخارجي الحالي لـ`https://ai-chat-backend-ltxa.onrender.com/health` أعاد HTTP 200 مع `status=ok` و`database=ok`، و`/billing/plans` أعاد HTTP 200 مع خطتين. هذا يثبت صحة endpoint لكنه لا يغلق إعداد Health Check الداخلي في Render.
 - PostgreSQL وRedis الحاليان المستهدفان في `render.yaml` ما زالا بحاجة إلى تطبيق/تحقق فعلي على Render؛ الخدمات الحالية المتحققة لا تتضمنهما.
+- Smoke/واجهة الإنتاج: الصفحة الرئيسية للواجهة أعادت HTTP 200، لكن `/pricing` أعاد HTTP 404. السبب أن الواجهة SPA تعتمد على `window.location.pathname` بينما Static Site الحالي لا يملك rewrite fallback.
+- تم إصلاح مصدر الحقيقة في `render.yaml` بإضافة rewrite من `/*` إلى `/index.html` في خدمة `ai-chat-frontend` (commit `8776af23d7a900a66b1e5a043c7f15db0846c5f3`). لكن هذا الملف خارج `ai-frontend`، والخدمة الحالية لم تُحدّث بهذه القاعدة؛ لذلك بقي الاختبار الحي لـ`/pricing` على 404 حتى تتم مزامنة Blueprint أو تعديل Routes من إعدادات Render.
 - إصلاح SQLAlchemy/PostgreSQL الخاص بـAnalytics تم دمجه في commit `edf32e14cb76413a3ec7abc0831cdf2c468af716`.
 - دورة CI على `edf32e14...` نجحت بالكامل: CI، Backend pytest، Frontend، وProduction Compose.
 - CodeQL وPublish backend image على نفس الـcommit نجحا أيضًا.
