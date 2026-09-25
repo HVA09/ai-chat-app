@@ -1,15 +1,17 @@
 """
 Middleware خفيف:
-- X-Request-ID لتتبع الطلبات
+- X-Request-ID لتتبع الطلبات وربط الطلب بسجلات الخادم
 - Rate limit لمسارات المصادقة الحساسة باستخدام Redis في التشغيل الحقيقي
 """
 from __future__ import annotations
 
 import ipaddress
+import re
 import time
 import uuid
 from collections import defaultdict, deque
 
+from app.logging_config import reset_request_id, set_request_id
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -25,6 +27,8 @@ _AUTH_LIMITS: dict[str, tuple[int, int]] = {
     "/auth/2fa/disable": (10, 60),
 }
 
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+
 # Fallback only for non-production environments when Redis is unavailable.
 _hits: dict[str, dict[str, deque[float]]] = defaultdict(lambda: defaultdict(deque))
 
@@ -34,10 +38,15 @@ def _client_ip(request: Request) -> str:
     peer = request.client.host if request.client else None
     try:
         from app.config import settings
-        trusted = any(
-            ipaddress.ip_address(peer) in ipaddress.ip_network(net)
-            for net in settings.TRUSTED_PROXY_NETWORKS
-        ) if peer else False
+
+        trusted = (
+            any(
+                ipaddress.ip_address(peer) in ipaddress.ip_network(net)
+                for net in settings.TRUSTED_PROXY_NETWORKS
+            )
+            if peer
+            else False
+        )
     except (ValueError, TypeError):
         trusted = False
     if trusted:
@@ -54,11 +63,21 @@ def _client_ip(request: Request) -> str:
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
-        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
+        incoming_request_id = request.headers.get("x-request-id")
+        request_id = (
+            incoming_request_id
+            if incoming_request_id and _REQUEST_ID_RE.fullmatch(incoming_request_id)
+            else uuid.uuid4().hex[:16]
+        )
+
         request.state.request_id = request_id
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request_id
-        return response
+        context_token = set_request_id(request_id)
+        try:
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            reset_request_id(context_token)
 
 
 def _in_memory_rate_limit(ip: str, path: str, max_hits: int, window: int) -> tuple[bool, int]:
@@ -73,7 +92,8 @@ def _in_memory_rate_limit(ip: str, path: str, max_hits: int, window: int) -> tup
     # منع نمو الذاكرة بلا حدود في حالة آلاف عناوين IP مختلفة.
     if len(_hits) > 10000:
         stale_ips = [
-            key for key, paths in _hits.items()
+            key
+            for key, paths in _hits.items()
             if all(not values or now - values[-1] > 300 for values in paths.values())
         ]
         for key in stale_ips[:5000]:
@@ -86,6 +106,7 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
         # عطّل أثناء الاختبارات عشان ما تنهار مجموعة pytest من نفس الـ IP
         try:
             from app.config import settings
+
             if settings.ENVIRONMENT in ("test", "testing"):
                 return await call_next(request)
         except Exception:
@@ -98,6 +119,7 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
             ip = _client_ip(request)
 
             from app.cache import check_rate_limit
+
             redis_result = check_rate_limit(f"auth:{ip}:{path}", max_hits, window)
             if redis_result is None:
                 if settings is not None and settings.ENVIRONMENT == "production":
