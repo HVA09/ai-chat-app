@@ -3,15 +3,43 @@
 """
 import logging
 import sys
+from contextvars import ContextVar
 
 from app.config import settings
+
+_request_id_context: ContextVar[str] = ContextVar("request_id", default="-")
+
+
+def set_request_id(request_id: str):
+    """Set the request ID for the current async execution context."""
+    return _request_id_context.set(request_id)
+
+
+def reset_request_id(token) -> None:
+    """Restore the previous request ID after a request finishes."""
+    _request_id_context.reset(token)
+
+
+def get_request_id() -> str:
+    """Return the request ID for the current async execution context."""
+    return _request_id_context.get()
+
+
+class RequestIdLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = get_request_id()
+        return True
 
 
 def configure_logging() -> None:
     level = logging.DEBUG if settings.DEBUG else logging.INFO
     handler = logging.StreamHandler(sys.stdout)
+    handler.addFilter(RequestIdLogFilter())
     handler.setFormatter(
-        logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+        logging.Formatter(
+            "%(asctime)s | %(levelname)s | %(name)s | "
+            "[request_id=%(request_id)s] | %(message)s"
+        )
     )
 
     root_logger = logging.getLogger("app")
