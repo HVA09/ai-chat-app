@@ -1,7 +1,5 @@
-from fastapi import FastAPI
-
 from app.logging_config import get_request_id, reset_request_id, set_request_id
-from app.middleware import RequestIdMiddleware, _REQUEST_ID_RE
+from app.middleware import _REQUEST_ID_RE
 
 
 def test_request_id_is_preserved_in_response(client):
