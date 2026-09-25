@@ -18,11 +18,12 @@ jobs:
     env:
       BACKUP_ENABLED: ${{ vars.PRODUCTION_BACKUP_ENABLED }}
       PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
-      B2_BUCKET: ${{ secrets.B2_BUCKET }}
-      B2_ENDPOINT_URL: ${{ secrets.B2_ENDPOINT_URL }}
-      B2_REGION: ${{ secrets.B2_REGION }}
-      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
-      B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
+      S3_REGION: ${{ secrets.S3_REGION }}
+      S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+      RENDER_POSTGRES_REGION: ohio
     steps:
       - name: Validate backup configuration presence
         shell: bash
@@ -32,7 +33,7 @@ jobs:
             exit 0
           fi
           missing=0
-          for name in PRODUCTION_DATABASE_URL B2_BUCKET B2_ENDPOINT_URL B2_REGION B2_KEY_ID B2_APPLICATION_KEY; do
+          for name in PRODUCTION_DATABASE_URL S3_BUCKET S3_ENDPOINT_URL S3_REGION S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY; do
             if [[ -z "${!name:-}" ]]; then
               echo "MISSING $name"
               missing=1
@@ -66,7 +67,37 @@ jobs:
         run: |
           test -n "$DATABASE_URL"
           filename="ai-chat-postgres-$(date -u +%Y%m%dT%H%M%SZ).dump"
-          docker run --rm -e DATABASE_URL="$DATABASE_URL" -v "$RUNNER_TEMP/db-backup:/backup" postgres:18-alpine sh -c 'pg_dump "$DATABASE_URL" --format=custom --file="/backup/$1"' sh "$filename"
+          python3 - <<'PY'
+          import os
+          from urllib.parse import unquote, urlsplit
+          url = urlsplit(os.environ["DATABASE_URL"])
+          host = url.hostname
+          if not host:
+              raise SystemExit("DATABASE_URL has no hostname")
+          external_host = f"{host}.{os.environ['RENDER_POSTGRES_REGION']}-postgres.render.com"
+          values = {
+              "PGHOST": external_host,
+              "PGPORT": str(url.port or 5432),
+              "PGUSER": unquote(url.username or ""),
+              "PGPASSWORD": unquote(url.password or ""),
+              "PGDATABASE": url.path.lstrip("/"),
+              "PGSSLMODE": "require",
+          }
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              for key, value in values.items():
+                  env_file.write(f"{key}={value}\n")
+          PY
+          test -n "$PGHOST"
+          docker run --rm \
+            -e PGHOST \
+            -e PGPORT \
+            -e PGUSER \
+            -e PGPASSWORD \
+            -e PGDATABASE \
+            -e PGSSLMODE \
+            -v "$RUNNER_TEMP/db-backup:/backup" \
+            postgres:18-alpine \
+            sh -c 'pg_dump --format=custom --file="/backup/$1"' sh "$filename"
           test -s "$RUNNER_TEMP/db-backup/$filename"
           echo "BACKUP_FILE=$filename" >> "$GITHUB_ENV"
 
