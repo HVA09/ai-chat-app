@@ -1,0 +1,90 @@
+name: One-shot off-site backup verification
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BACKUP_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+      BACKUP_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT_URL }}
+      BACKUP_REGION: ${{ secrets.BACKUP_S3_REGION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+      AWS_EC2_METADATA_DISABLED: "true"
+    steps:
+      - name: Run production PostgreSQL backup and upload
+        id: backup
+        continue-on-error: true
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: |
+          set -eu
+          test -n "$DATABASE_URL"
+          test -n "$BACKUP_BUCKET"
+          test -n "$BACKUP_ENDPOINT"
+          test -n "$BACKUP_REGION"
+          test -n "$AWS_ACCESS_KEY_ID"
+          test -n "$AWS_SECRET_ACCESS_KEY"
+
+          work="$RUNNER_TEMP/db-backup"
+          mkdir -p "$work"
+          filename="ai-chat-postgres-$(date -u +%Y%m%dT%H%M%SZ).dump"
+
+          docker run --rm \
+            -e DATABASE_URL="$DATABASE_URL" \
+            -v "$work:/backup" \
+            postgres:18-alpine \
+            sh -c 'pg_dump "$DATABASE_URL" --format=custom --file="/backup/$1"' sh "$filename"
+
+          test -s "$work/$filename"
+
+          docker run --rm \
+            -v "$work:/backup" \
+            postgres:18-alpine \
+            sh -c 'pg_restore --list "/backup/$1" >/dev/null' sh "$filename"
+
+          aws s3 cp \
+            "$work/$filename" \
+            "s3://$BACKUP_BUCKET/database/$filename" \
+            --endpoint-url "$BACKUP_ENDPOINT" \
+            --region "$BACKUP_REGION" \
+            --only-show-errors
+
+          aws s3api head-object \
+            --bucket "$BACKUP_BUCKET" \
+            --key "database/$filename" \
+            --endpoint-url "$BACKUP_ENDPOINT" \
+            --region "$BACKUP_REGION" \
+            --query '{size:ContentLength,etag:ETag}' \
+            --output json
+
+          rm -rf "$work"
+
+      - name: Record verification result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ steps.backup.outcome }}
+        run: |
+          if [ "$OUTCOME" = "success" ]; then
+            message="✅ One-shot off-site PostgreSQL backup verification PASSED."
+          else
+            message="❌ One-shot off-site PostgreSQL backup verification FAILED."
+          fi
+
+          gh issue comment 227 \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "$message Commit: $GITHUB_SHA Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+      - name: Fail when backup verification failed
+        if: steps.backup.outcome != 'success'
+        run: exit 1
