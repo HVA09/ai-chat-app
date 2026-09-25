@@ -35,7 +35,7 @@ jobs:
             --write-out 'Frontend HTTP %{http_code}\n' \
             "$FRONTEND_URL/"
 
-      - name: Check backend root is reachable
+      - name: Check backend health is reachable
         run: |
           curl --fail --silent --show-error --location \
             --max-time 30 \
@@ -43,5 +43,5 @@ jobs:
             --retry-delay 5 \
             --retry-all-errors \
             --output /dev/null \
-            --write-out 'Backend root HTTP %{http_code}\n' \
-            "$BACKEND_URL/"
+            --write-out 'Backend health HTTP %{http_code}\n' \
+            "$BACKEND_URL/health"
