@@ -180,7 +180,7 @@ def test_get_ai_reply_logs_non_retryable_failure_without_fallback(monkeypatch):
     def fake_warning(message, *args):
         records.append((message, args))
 
-    monkeypatch.setattr(ai_service, "get_provider", lambda **kwargs: primary)
+    monkeypatch.setattr(ai_service, "get_provider", lambda model=None, **kwargs: primary)
     monkeypatch.setattr(ai_service.logger, "warning", fake_warning)
     monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
     monkeypatch.setattr(app_settings, "AI_API_KEY", "secret-not-logged")
@@ -198,3 +198,37 @@ def test_get_ai_reply_logs_non_retryable_failure_without_fallback(monkeypatch):
     assert "status_code=401" in rendered
     assert "secret-not-logged" not in rendered
     assert "another-secret" not in rendered
+
+
+def test_stream_ai_reply_logs_failover_diagnostics(monkeypatch):
+    primary = FakeProvider(error=_http_error(503))
+    fallback = FakeProvider(chunks=["A", "B"])
+    records = []
+
+    def fake_warning(message, *args):
+        records.append(("warning", message, args))
+
+    def fake_info(message, *args):
+        records.append(("info", message, args))
+
+    def fake_get_provider(model=None, provider_name=None, api_key=None, base_url=None, **kwargs):
+        return fallback if provider_name == "anthropic" else primary
+
+    monkeypatch.setattr(ai_service, "get_provider", fake_get_provider)
+    monkeypatch.setattr(ai_service.logger, "warning", fake_warning)
+    monkeypatch.setattr(ai_service.logger, "info", fake_info)
+    monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_PROVIDER", "anthropic")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_API_KEY", "fallback")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_MODEL", "claude-test")
+
+    async def collect():
+        return [chunk async for chunk in ai_service.stream_ai_reply("hello")]
+
+    assert asyncio.run(collect()) == ["A", "B"]
+    rendered = " ".join(
+        [message % args if args else message for _, message, args in records]
+    )
+    assert "AI streaming primary provider failed" in rendered
+    assert "AI streaming failover starting" in rendered
+    assert "AI streaming fallback provider succeeded" in rendered
