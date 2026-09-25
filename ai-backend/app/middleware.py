@@ -11,7 +11,7 @@ import time
 import uuid
 from collections import defaultdict, deque
 
-from app.logging_config import reset_request_id, set_request_id
+from app.logging_config import get_logger, get_request_id, reset_request_id, set_request_id
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -31,6 +31,8 @@ _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
 
 # Fallback only for non-production environments when Redis is unavailable.
 _hits: dict[str, dict[str, deque[float]]] = defaultdict(lambda: defaultdict(deque))
+
+http_logger = get_logger("http")
 
 
 def _client_ip(request: Request) -> str:
@@ -78,6 +80,39 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
             return response
         finally:
             reset_request_id(context_token)
+
+
+class RequestMetricsMiddleware(BaseHTTPMiddleware):
+    """Log request outcome and latency without recording query strings or secrets."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        started_at = time.perf_counter()
+        response: Response | None = None
+        try:
+            response = await call_next(request)
+            return response
+        except Exception:
+            http_logger.exception(
+                "HTTP %s %s unhandled_exception latency_ms=%s request_id=%s",
+                request.method,
+                request.url.path,
+                round((time.perf_counter() - started_at) * 1000),
+                get_request_id(),
+            )
+            raise
+        finally:
+            if response is not None:
+                latency_ms = round((time.perf_counter() - started_at) * 1000)
+                log_level = 30 if response.status_code >= 400 else 20
+                http_logger.log(
+                    log_level,
+                    "HTTP %s %s %s latency_ms=%s request_id=%s",
+                    request.method,
+                    request.url.path,
+                    response.status_code,
+                    latency_ms,
+                    get_request_id(),
+                )
 
 
 def _in_memory_rate_limit(ip: str, path: str, max_hits: int, window: int) -> tuple[bool, int]:
