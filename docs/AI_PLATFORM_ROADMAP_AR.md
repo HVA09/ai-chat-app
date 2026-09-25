@@ -28,130 +28,35 @@
 
 ### الحالة التفصيلية الحالية
 
-- Health Check: **غير متحقق على خدمة Render الحالية** — الكود يحتوي على `/health` و`render.yaml` يحدد `healthCheckPath: /health`، لكن فحص Render للخدمة الحالية `ai-chat-backend` أظهر أن إعداد Health Check الفعلي فارغ.
-- Celery Worker: **غير موجود كخدمة Render مستقلة حاليًا، لكن التشغيل المضمّن داخل `ai-chat-backend` مُثبت من السجلات** — ظهرت مهام Celery مستلمة ومنفذة بنجاح كل دقيقة.
-- Celery Beat: **غير موجود كخدمة Render مستقلة حاليًا، لكن التشغيل المضمّن داخل `ai-chat-backend` مُثبت من السجلات** — ظهرت رسائل Scheduler وإرسال المهام المجدولة بصورة متكررة.
-- PostgreSQL production setup: **غير مكتمل** — خدمة قاعدة البيانات الإنتاجية المعرفة في `render.yaml` ليست ضمن الخدمات الحالية المتحققة في Render.
-- Redis production setup: **غير مكتمل** — خدمة Redis المعرفة في `render.yaml` ليست ضمن الخدمات الحالية المتحققة في Render.
-- Object Storage: **مكتمل ومتحقق إنتاجيًا** — Render أثبت الاتصال، ثم نجح اختبار upload → read → delete على Backblaze B2.
-- Off-site backups: **قيد الإكمال** — Workflow يستخدم أسرار `B2_*` الصحيحة، لكن `PRODUCTION_DATABASE_URL` غير موجود حاليًا في GitHub Actions، ولم تُثبت نسخة احتياطية ناجحة بعد.
-- Domain + HTTPS: **غير مكتمل**.
-- Production smoke tests/E2E: **Workflow موجود؛ تشغيل إنتاجي ناجح لم يُثبت في بيئة GitHub Actions بعد**.
+- Health Check: **endpoint متحقق، إعداد Render الداخلي غير مكتمل** — `/health` يعيد HTTP 200 مع `status=ok` و`database=ok`، لكن `healthCheckPath` الفعلي للخدمة ما زال فارغًا، ولا يوفّر اتصال Render الحالي أداة تعديل مباشرة لهذه الخاصية.
+- Celery Worker: **يعمل مضمّنًا حاليًا** — سجلات Render تثبت استقبال وتنفيذ `run_due_scheduled_tasks` بنجاح دوريًا. توجد خدمة Worker مستقلة في `render.yaml` كهدف لاحق فقط.
+- Celery Beat: **يعمل مضمّنًا حاليًا** — سجلات Render تثبت إرسال المهام المجدولة كل دقيقة تقريبًا. توجد خدمة Beat مستقلة في `render.yaml` كهدف لاحق فقط.
+- PostgreSQL: **موجود فعليًا على Render بخطة Free** — `ai-chat-db`، PostgreSQL 18، الحالة `available`، وآخر migration `0065_object_storage`. المورد الحالي مؤقت وله انتهاء مجدول في **2026-10-10**.
+- Redis: **موجود فعليًا على Render بخطة Free** — `ai-chat-redis`، الحالة `available`، و`persistenceMode=off`. التطبيق يستخدمه فعليًا، كما تثبت سجلات Celery.
+- Object Storage: **مكتمل ومتحقق** — upload/read/delete ناجحة، وObject Storage Smoke في GitHub Actions نجح.
+- Off-site backups: **مكتمل ومتحقق تشغيليًا** — أحدث Backup workflow `36167688637` نجح في `pg_dump`، التحقق من الأرشيف، الرفع إلى S3، و`head-object`.
+- Domain + HTTPS: **غير مكتمل** — لا يوجد Custom Domain متحقق حاليًا.
+- Production smoke tests/E2E: **Smoke مكتمل تشغيليًا** — workflow يعمل تلقائيًا على push إلى `main` بالإضافة إلى الجدولة والتشغيل اليدوي، وآخر تشغيلات Smoke ناجحة.
+- Credential rotation: **مطلوب قبل الإغلاق الأمني** — إحدى محاولات Backup السابقة كشفت كلمة مرور DB في log بسبب اشتقاق `PGPASSWORD`. الـworkflow الحالي لم يعد يفعل ذلك، لكن يجب تدوير credential في Render وتحديث `PRODUCTION_DATABASE_URL`.
 
 ### تحقق Render الفعلي — 2026-09-25
 
-تم اختيار مساحة Render الصحيحة: `My Workspace` (`tea-dagsi5ou01pc73f2g470`).
-
-الخدمات الفعلية التي ظهرت في Render:
-- `ai-chat-backend` — Web Service، الخطة الحالية **Free**، والرابط `https://ai-chat-backend-ltxa.onrender.com`، وHealth Check Path الفعلي **فارغ**.
-- `ai-chat-frontend` — Static Site، والرابط `https://ai-chat-frontend-v8ma.onrender.com`.
-
-الخدمات المعرفة في `render.yaml` ولكنها لم تظهر ضمن قائمة الخدمات الحالية التي تم التحقق منها:
-- `ai-chat-worker`
-- `ai-chat-beat`
-- `ai-chat-redis`
-- `ai-chat-db`
-
-هذا الفرق يعني أن ملف `render.yaml` يمثل البنية الإنتاجية المستهدفة، لكنه لم يُطبَّق بالكامل على Workspace الحالي.
-
-## المرحلة B — Reliability & Observability
-
-الحالة: **لم تبدأ**
-
-1. OpenTelemetry / distributed tracing
-2. Alerts
-3. Retry / timeout / circuit breaker
-4. Job system موحد
-5. فصل Database migrations عن تشغيل replicas
-6. Database optimization
-7. Restore drills
-8. SLO/error-budget monitoring
-
-## المرحلة C — Advanced AI
-
-الحالة: **لم تبدأ**
-
-1. Model Router
-2. Hybrid RAG
-3. Reranking
-4. Citations
-5. Advanced memory
-6. Evaluation framework
-7. AI cost controls
-
-## المرحلة D — Agent Platform
-
-الحالة: **لم تبدأ**
-
-1. Tool Registry
-2. MCP integration
-3. Agent runtime
-4. Tool permissions
-5. Sandboxed code execution
-6. Long-running agent jobs
-7. Scheduled agents
-8. Prompt-injection / tool-abuse defenses
-
-## المرحلة E — Platform & Developer Ecosystem
-
-الحالة: **لم تبدأ**
-
-1. API Keys
-2. API versioning
-3. Webhooks
-4. OAuth / connectors
-5. Python + JavaScript SDKs
-6. Enterprise RBAC
-7. Usage / billing / cost controls
-8. Versioning for assistants, prompts, knowledge bases and agents
-
-## متطلبات إغلاق كل مرحلة
-
-لا تُعلن المرحلة مكتملة إلا بعد:
-
-- نجاح الاختبارات الآلية ذات الصلة.
-- مراجعة التغييرات وعدم وجود تكرار معروف.
-- التحقق من المسار الإنتاجي المتأثر.
-- تحديث الوثائق.
-- تسجيل النتيجة في هذه الخارطة.
-- التأكد أن التغييرات لا تكسر المراحل السابقة.
-
-## الوضع الحالي المعروف
-
-بعد مسار Production Foundation الحالي:
-
-- PRs #190–#230 تمت مراجعتها من ناحية التكرار ضمن مسار Production Foundation.
-- #201 دمج بنجاح، وإصلاح image-RAG fallback أصبح في `main`.
-- #212 أضاف Production smoke workflow يدويًا ويوميًا.
-- #213 أضاف Workflow للنسخ الاحتياطي الخارجي PostgreSQL، مع تفعيل محمي بمتغير Repository حتى تتم إضافة التخزين والأسرار.
-- #215 شدّد تكامل Object Storage: لا يُفعّل remote storage إلا عند اكتمال الإعداد، أُضيف توقيع SigV4 وفحص bucket واختبارات تغطية.
-- Render يعمل حاليًا بخيار Celery المضمّن المجاني، وتم التحقق مباشرةً في السجلات الحالية من Worker وBeat أثناء التشغيل.
-- Object Storage أصبح مفعّلًا على Render ومتحققًا باختبار فعلي upload/read/delete على B2.
-- Off-site PostgreSQL backup أصبح جاهزًا كـ Workflow، وتمت محاكاة التشغيل الفعلي حتى نقطة التحقق من الأسرار؛ النتيجة أثبتت أن `PRODUCTION_DATABASE_URL` ما زال مفقودًا من GitHub Actions. بعد إضافته وتفعيل `PRODUCTION_BACKUP_ENABLED=true` يجب تشغيل نسخة ناجحة قبل الإغلاق.
-- Health Check داخل `render.yaml` مضبوط على `/health`، لكن تحقق Render الحالي أظهر أن الخدمة الفعلية لا تحتوي Health Check Path بعد، ولم تظهر سجلات HTTP لـ`/health` أثناء الفحص.
-- التحقق الخارجي الحالي لـ`https://ai-chat-backend-ltxa.onrender.com/health` أعاد HTTP 200 مع `status=ok` و`database=ok`، و`/billing/plans` أعاد HTTP 200 مع خطتين. هذا يثبت صحة endpoint لكنه لا يغلق إعداد Health Check الداخلي في Render.
-- PostgreSQL وRedis الحاليان المستهدفان في `render.yaml` ما زالا بحاجة إلى تطبيق/تحقق فعلي على Render؛ الخدمات الحالية المتحققة لا تتضمنهما.
-- Smoke/واجهة الإنتاج: الصفحة الرئيسية للواجهة أعادت HTTP 200، لكن `/pricing` أعاد HTTP 404. السبب أن الواجهة SPA تعتمد على `window.location.pathname` بينما Static Site الحالي لا يملك rewrite fallback.
-- تم إصلاح مصدر الحقيقة في `render.yaml` بإضافة rewrite من `/*` إلى `/index.html` في خدمة `ai-chat-frontend` (commit `8776af23d7a900a66b1e5a043c7f15db0846c5f3`). لكن هذا الملف خارج `ai-frontend`، والخدمة الحالية لم تُحدّث بهذه القاعدة؛ لذلك بقي الاختبار الحي لـ`/pricing` على 404 حتى تتم مزامنة Blueprint أو تعديل Routes من إعدادات Render.
-- إصلاح SQLAlchemy/PostgreSQL الخاص بـAnalytics تم دمجه في commit `edf32e14cb76413a3ec7abc0831cdf2c468af716`.
-- دورة CI على `edf32e14...` نجحت بالكامل: CI، Backend pytest، Frontend، وProduction Compose.
-- CodeQL وPublish backend image على نفس الـcommit نجحا أيضًا.
-- أحدث Deploy للـBackend على Render أصبح `live` على `edf32e14...`.
+- Workspace: `My Workspace` (`tea-dagsi5ou01pc73f2g470`).
+- `ai-chat-backend`: Web Service، الخطة الحالية Free، `https://ai-chat-backend-ltxa.onrender.com`، وHealth Check Path الفعلي فارغ.
+- `ai-chat-frontend`: Static Site، `https://ai-chat-frontend-v8ma.onrender.com`، والـpublic routes متحققة.
+- `ai-chat-db`: PostgreSQL 18، Free، `available`، انتهاء مجدول 2026-10-10.
+- `ai-chat-redis`: Redis 8.1.4، Free، `available`، persistence off.
 
 ### آخر تحقق تشغيلي — 2026-09-25
 
-- آخر Deploy حي للـBackend: `edf32e14...`، والـFrontend الحي: `092a0525...`.
-- الواجهة الإنتاجية متحققة: `/`, `/pricing/`, `/terms/`, `/privacy/` أعادت HTTP 200، و`/pricing/` عرض خطتي Free وPro.
-- إصلاح deep-link للواجهة تم عبر entry points ثابتة أثناء build، مع إضافة `react-is` وإزالة lazy-loading للصفحات العامة.
-- دورة CI للـ`092a0525...` اكتملت بنجاح، وكذلك CodeQL وPublish backend image وProduction Compose.
-- Production Smoke أصبح يعمل تلقائيًا على push إلى `main` مع الجدولة والتشغيل اليدوي. أحدث تشغيل موثق على `0db359...` نجح بكل خطواته.
-- `/health` متحقق خارجيًا بـHTTP 200 ويعيد `status=ok` و`database=ok`. إعداد Health Check داخل Render ما زال فارغًا لأن الاتصال الحالي لا يوفّر أداة تعديل هذه الخاصية.
-- PostgreSQL فعلي موجود باسم `ai-chat-db` بخطة Free، الإصدار 18، وحالة `available`، والـmigration `0065_object_storage`. انتهاء المورد المجاني المجدول: **2026-10-10**.
-- Redis فعلي موجود باسم `ai-chat-redis` بخطة Free وحالة `available`، مع `persistenceMode=off`. سجلات Render تؤكد أن Celery/Beat يعملان بنجاح دوريًا عبر Redis.
-- Production DB Backup أصبح مثبتًا فعليًا: `pg_dump` نجح، الأرشيف تم التحقق منه، رُفع إلى S3، و`head-object` نجح. أحدث تشغيل ناجح: `36167688637` على commit `80cd3647...`.
-- Backup يستخدم اتصال Postgres الخارجي مع TLS ويستعمل نفس أسرار S3 المثبتة في Object Storage Smoke الناجح.
-- تنبيه أمني: محاولة Backup سابقة اشتقت كلمة مرور قاعدة البيانات إلى متغير job وظهرت القيمة في سجل GitHub. تم إصلاح الـworkflow بحيث لا يكتب كلمة المرور إلى `GITHUB_ENV` أو بيئة الـjob، لكن السجل التاريخي لا يمكن حذفه عبر الأدوات الحالية؛ يجب تدوير كلمة مرور اعتماد قاعدة البيانات في Render وتحديث `PRODUCTION_DATABASE_URL` بعد ذلك.
-- لم يتم إنشاء أو ترقية موارد Render مدفوعة. فصل Worker/Beat عن الـBackend، وPostgreSQL/Redis المستدامان طويل الأمد، وCustom Domain/HTTPS ما زالت بنودًا لاحقة.
+- Frontend live: `092a0525...`. `/`, `/pricing/`, `/terms/`, `/privacy/` أعادت HTTP 200، و`/pricing/` عرض Free وPro.
+- CI على `092a0525...`: **نجح**، مع نجاح Backend pytest وFrontend وProduction Compose؛ CodeQL وPublish backend image نجحا أيضًا.
+- Production Smoke على `0db359...` وما بعده: **نجح**، وأصبح جزءًا من push إلى `main` إضافة إلى الجدولة والتشغيل اليدوي.
+- Production DB Backup النهائي: `36167688637` **نجح** بالكامل.
+- Backup النهائي يستخدم S3 secrets الحالية، ويصل إلى PostgreSQL عبر External URL مع TLS؛ لم يعد يضع كلمة المرور المشتقة في `GITHUB_ENV` أو في بيئة job.
+- تنبيه أمني مستمر: سجل محاولة Backup قديمة يحتوي credential مكشوفًا؛ يلزم تدوير credential من Render. Render يوصي بتدوير zero-downtime عبر إنشاء PostgreSQL credential جديد، تحديث الخدمات، إعادة النشر، ثم إزالة credential القديم. citeturn323554search0
+- لم يتم إنشاء أو ترقية موارد Render مدفوعة.
+
 ## قاعدة المتابعة
 
 عند بدء أي جلسة عمل جديدة، نبدأ من آخر حالة مؤكدة في هذه الوثيقة وGitHub `main`، ثم نكمل أول بند غير مكتمل في المرحلة الحالية قبل الانتقال إلى ميزات جديدة.
