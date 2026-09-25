@@ -152,6 +152,8 @@ async def stream_ai_reply(
     """رد يُبَث تدريجيًا — تُستخدم في /chat/stream. الأخطاء تُترك للمستدعي يمسكها
     لأنها تصير أثناء البث نفسه (بعد ما الاستجابة بدأت)، مو قبل إرسالها."""
     provider = get_provider(model)
+    primary_provider_name = settings.AI_PROVIDER.strip().lower()
+    stream_started_at = time.perf_counter()
     emitted = False
     primary_error: Exception | None = None
 
@@ -159,26 +161,57 @@ async def stream_ai_reply(
         async for chunk in provider.stream_reply(message, history):
             emitted = True
             if on_provider_selected is not None:
-                on_provider_selected(settings.AI_PROVIDER.strip().lower())
+                on_provider_selected(primary_provider_name)
                 on_provider_selected = None
             yield chunk
+        logger.info(
+            "AI streaming provider succeeded provider=%s latency_ms=%s",
+            primary_provider_name,
+            max(0, round((time.perf_counter() - stream_started_at) * 1000)),
+        )
         return
     except Exception as exc:
         # بعد إرسال أول chunk لا ننتقل لمزوّد ثانٍ، حتى لا نكرر جزءًا من الرد.
-        if emitted or not _is_retryable_provider_error(exc):
+        retryable = _is_retryable_provider_error(exc)
+        logger.warning(
+            "AI streaming primary provider failed provider=%s emitted=%s retryable=%s status_code=%s latency_ms=%s",
+            primary_provider_name,
+            emitted,
+            retryable,
+            _provider_error_status(exc),
+            max(0, round((time.perf_counter() - stream_started_at) * 1000)),
+        )
+        if emitted or not retryable:
             raise
         primary_error = exc
 
     fallback = _get_fallback_provider(model)
     if fallback is None:
         assert primary_error is not None
+        logger.warning(
+            "AI streaming failover unavailable primary_provider=%s latency_ms=%s",
+            primary_provider_name,
+            max(0, round((time.perf_counter() - stream_started_at) * 1000)),
+        )
         raise primary_error
 
-    async for chunk in fallback.stream_reply(message, history):
-        if on_provider_selected is not None:
-            on_provider_selected(settings.AI_FALLBACK_PROVIDER.strip().lower())
-            on_provider_selected = None
-        yield chunk
+    fallback_provider_name = settings.AI_FALLBACK_PROVIDER.strip().lower()
+    logger.info(
+        "AI streaming failover starting primary_provider=%s fallback_provider=%s",
+        primary_provider_name,
+        fallback_provider_name,
+    )
+    try:
+        async for chunk in fallback.stream_reply(message, history):
+            if on_provider_selected is not None:
+                on_provider_selected(fallback_provider_name)
+                on_provider_selected = None
+            yield chunk
+        logger.info(
+            "AI streaming fallback provider succeeded fallback_provider=%s latency_ms=%s",
+            fallback_provider_name,
+            max(0, round((time.perf_counter() - stream_started_at) * 1000)),
+        )
 
 
 async def get_ai_vision_reply(
