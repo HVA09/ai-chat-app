@@ -132,3 +132,69 @@ def test_stream_ai_reply_does_not_switch_after_partial_output(monkeypatch):
     chunks = asyncio.run(collect())
 
     assert chunks == ["A"]
+
+
+def test_get_ai_reply_logs_failover_diagnostics(monkeypatch):
+    primary = FakeProvider(error=_http_error(429))
+    fallback = FakeProvider(reply=AIReply(text="fallback"))
+
+    records = []
+
+    def fake_warning(message, *args):
+        records.append(("warning", message, args))
+
+    def fake_info(message, *args):
+        records.append(("info", message, args))
+
+    def fake_get_provider(model=None, provider_name=None, api_key=None, base_url=None, **kwargs):
+        return fallback if provider_name == "anthropic" else primary
+
+    monkeypatch.setattr(ai_service, "get_provider", fake_get_provider)
+    monkeypatch.setattr(ai_service.logger, "warning", fake_warning)
+    monkeypatch.setattr(ai_service.logger, "info", fake_info)
+    monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
+    monkeypatch.setattr(app_settings, "AI_API_KEY", "primary")
+    monkeypatch.setattr(app_settings, "AI_MODEL", "gemini-2.5-flash")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_PROVIDER", "anthropic")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_API_KEY", "fallback")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_MODEL", "claude-test")
+    monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["gemini-2.5-flash"])
+
+    result = asyncio.run(ai_service.get_ai_reply("hello"))
+
+    assert result.text == "fallback"
+    rendered = " ".join(
+        [message % args if args else message for _, message, args in records]
+    )
+    assert "AI primary provider failed" in rendered
+    assert "AI failover starting" in rendered
+    assert "AI fallback provider succeeded" in rendered
+    assert "primary" not in rendered
+    assert "fallback" in rendered
+
+
+def test_get_ai_reply_logs_non_retryable_failure_without_fallback(monkeypatch):
+    primary = FakeProvider(error=_http_error(401))
+    records = []
+
+    def fake_warning(message, *args):
+        records.append((message, args))
+
+    monkeypatch.setattr(ai_service, "get_provider", lambda **kwargs: primary)
+    monkeypatch.setattr(ai_service.logger, "warning", fake_warning)
+    monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
+    monkeypatch.setattr(app_settings, "AI_API_KEY", "secret-not-logged")
+    monkeypatch.setattr(app_settings, "AI_MODEL", "gemini-2.5-flash")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_PROVIDER", "anthropic")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_API_KEY", "another-secret")
+
+    with pytest.raises(Exception) as exc:
+        asyncio.run(ai_service.get_ai_reply("hello"))
+
+    assert getattr(exc.value, "status_code", None) == 502
+    rendered = " ".join(
+        [message % args if args else message for message, args in records]
+    )
+    assert "status_code=401" in rendered
+    assert "secret-not-logged" not in rendered
+    assert "another-secret" not in rendered
