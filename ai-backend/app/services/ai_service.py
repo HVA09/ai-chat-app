@@ -212,6 +212,17 @@ async def stream_ai_reply(
             fallback_provider_name,
             max(0, round((time.perf_counter() - stream_started_at) * 1000)),
         )
+    except Exception as fallback_exc:
+        fallback_latency_ms = max(
+            0, round((time.perf_counter() - stream_started_at) * 1000)
+        )
+        logger.warning(
+            "AI streaming fallback provider failed fallback_provider=%s status_code=%s latency_ms=%s",
+            fallback_provider_name,
+            _provider_error_status(fallback_exc),
+            fallback_latency_ms,
+        )
+        raise
 
 
 async def get_ai_vision_reply(
