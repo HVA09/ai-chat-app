@@ -9,6 +9,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from app.config import settings
+from app.logging_config import get_logger
 
 from app.services.ai_providers.base import AIReply
 from app.services.ai_providers.openai_provider import OpenAICompatibleProvider
@@ -16,6 +17,7 @@ from app.services.ai_providers.factory import get_provider
 
 
 _RETRYABLE_STATUS_CODES = {408, 409, 429, 500, 502, 503, 504}
+logger = get_logger("ai_service")
 
 
 def _is_retryable_provider_error(exc: Exception) -> bool:
@@ -26,6 +28,12 @@ def _is_retryable_provider_error(exc: Exception) -> bool:
         and exc.response.status_code in _RETRYABLE_STATUS_CODES
     )
 
+
+
+def _provider_error_status(exc: Exception) -> int | None:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code
+    return None
 
 def _get_fallback_provider(model: str | None = None):
     provider_name = settings.AI_FALLBACK_PROVIDER.strip().lower()
@@ -84,19 +92,54 @@ async def get_ai_reply(
         reply.latency_ms = max(0, round((time.perf_counter() - started_at) * 1000))
         return reply
     except Exception as primary_exc:
-        if not _is_retryable_provider_error(primary_exc):
+        primary_latency_ms = max(0, round((time.perf_counter() - started_at) * 1000))
+        retryable = _is_retryable_provider_error(primary_exc)
+        logger.warning(
+            "AI primary provider failed provider=%s retryable=%s status_code=%s latency_ms=%s",
+            primary_provider_name,
+            retryable,
+            _provider_error_status(primary_exc),
+            primary_latency_ms,
+        )
+        if not retryable:
             _raise_ai_http_error(primary_exc)
 
         fallback = _get_fallback_provider(model)
         if fallback is None:
+            logger.warning(
+                "AI failover unavailable primary_provider=%s latency_ms=%s",
+                primary_provider_name,
+                primary_latency_ms,
+            )
             _raise_ai_http_error(primary_exc)
 
+        fallback_provider_name = settings.AI_FALLBACK_PROVIDER.strip().lower()
+        fallback_started_at = time.perf_counter()
+        logger.info(
+            "AI failover starting primary_provider=%s fallback_provider=%s",
+            primary_provider_name,
+            fallback_provider_name,
+        )
         try:
             reply = await fallback.get_reply(message, history)
-            reply.provider = settings.AI_FALLBACK_PROVIDER.strip().lower()
+            reply.provider = fallback_provider_name
             reply.latency_ms = max(0, round((time.perf_counter() - started_at) * 1000))
+            logger.info(
+                "AI fallback provider succeeded fallback_provider=%s fallback_latency_ms=%s total_latency_ms=%s",
+                fallback_provider_name,
+                max(0, round((time.perf_counter() - fallback_started_at) * 1000)),
+                reply.latency_ms,
+            )
             return reply
         except Exception as fallback_exc:
+            fallback_latency_ms = max(0, round((time.perf_counter() - fallback_started_at) * 1000))
+            logger.warning(
+                "AI fallback provider failed fallback_provider=%s retryable=%s status_code=%s latency_ms=%s",
+                fallback_provider_name,
+                _is_retryable_provider_error(fallback_exc),
+                _provider_error_status(fallback_exc),
+                fallback_latency_ms,
+            )
             _raise_ai_http_error(fallback_exc)
 
 
