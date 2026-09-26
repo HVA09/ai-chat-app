@@ -106,6 +106,7 @@ class RequestMetricsMiddleware(BaseHTTPMiddleware):
             if response is not None:
                 latency_ms = round((time.perf_counter() - started_at) * 1000)
                 log_level = 30 if response.status_code >= 400 else 20
+                request_id = getattr(request.state, "request_id", get_request_id())
                 http_logger.log(
                     log_level,
                     "HTTP %s %s %s latency_ms=%s request_id=%s",
@@ -113,7 +114,7 @@ class RequestMetricsMiddleware(BaseHTTPMiddleware):
                     request.url.path,
                     response.status_code,
                     latency_ms,
-                    get_request_id(),
+                    request_id,
                 )
 
 
