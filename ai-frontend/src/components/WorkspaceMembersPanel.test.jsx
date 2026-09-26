@@ -60,16 +60,12 @@ vi.mock("react-i18next", () => ({
 }));
 
 vi.mock("../lib/workspaceMembersApi", () => mocks);
-vi.mock("../lib/workspacesApi", () => ({
+const workspaceApiMocks = vi.hoisted(() => ({
   updateWorkspaceDefaultModel: vi.fn(),
-  updateWorkspaceDailyLimit: vi.fn().mockResolvedValue({
-    id: 7,
-    name: "Demo",
-    role: "owner",
-    default_ai_model: null,
-    daily_ai_request_limit: 40,
-  }),
+  updateWorkspaceDailyLimit: vi.fn(),
 }));
+
+vi.mock("../lib/workspacesApi", () => workspaceApiMocks);
 
 describe("WorkspaceMembersPanel", () => {
   beforeEach(() => {
@@ -85,6 +81,22 @@ describe("WorkspaceMembersPanel", () => {
     mocks.listWorkspaceInvitations.mockResolvedValue([]);
     mocks.listWorkspaceAuditLogs.mockResolvedValue([]);
     mocks.downloadWorkspaceUsageCsv.mockResolvedValue(undefined);
+    workspaceApiMocks.updateWorkspaceDefaultModel.mockReset();
+    workspaceApiMocks.updateWorkspaceDailyLimit.mockReset();
+    workspaceApiMocks.updateWorkspaceDailyLimit.mockResolvedValue({
+      id: 7,
+      name: "Demo",
+      role: "owner",
+      default_ai_model: null,
+      daily_ai_request_limit: 40,
+    });
+    workspaceApiMocks.updateWorkspaceDefaultModel.mockResolvedValue({
+      id: 7,
+      name: "Demo",
+      role: "owner",
+      default_ai_model: "gpt-test",
+      daily_ai_request_limit: 25,
+    });
     mocks.getWorkspaceUsage.mockResolvedValue({
       workspace_id: 7,
       window_hours: 24,
@@ -162,3 +174,32 @@ describe("WorkspaceMembersPanel", () => {
     await user.click(screen.getByRole("button", { name: "Save limit" }));
     expect(screen.getByDisplayValue("40")).toBeInTheDocument();
   });
+
+it("uses the global toast event for quota update errors", async () => {
+  const user = userEvent.setup();
+  const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+  workspaceApiMocks.updateWorkspaceDailyLimit.mockRejectedValueOnce({
+    response: { data: { detail: "Quota failed" } },
+  });
+
+  render(
+    <WorkspaceMembersPanel
+      workspaceId={7}
+      workspaceName="Demo"
+      workspaceRole="owner"
+      dailyAiRequestLimit={25}
+      onClose={vi.fn()}
+    />
+  );
+
+  const input = await screen.findByDisplayValue("25");
+  await user.click(screen.getByRole("button", { name: "Save limit" }));
+
+  expect(dispatchSpy).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: "app:toast",
+      detail: { message: "Quota failed", type: "error" },
+    })
+  );
+  dispatchSpy.mockRestore();
+});
