@@ -89,7 +89,10 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
     setVersionsLoading(true);
     listAssistantVersions(assistant.id)
       .then(setVersions)
-      .catch(() => setVersions([]))
+      .catch((error) => {
+        setVersions([]);
+        showErrorToast(error, "assistantEditor.versionLoadError");
+      })
       .finally(() => setVersionsLoading(false));
 
     setAnalyticsLoading(true);
