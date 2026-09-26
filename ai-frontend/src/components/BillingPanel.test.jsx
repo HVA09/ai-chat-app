@@ -26,6 +26,7 @@ vi.mock("../lib/billingApi", () => ({
 }));
 
 vi.mock("react-i18next", () => ({
+  initReactI18next: { type: "3rdParty" },
   useTranslation: () => ({
     t: (key) =>
       ({
