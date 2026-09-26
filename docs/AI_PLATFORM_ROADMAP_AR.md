@@ -192,5 +192,14 @@
 - CI مكتمل بنجاح، وCodeQL وPublish backend image وProduction Smoke نجحت.
 - Render Frontend للـcommit أصبح **live**.
 
+#### C3 — Workspace conversation comments error feedback: **مكتمل ومتحقق**
+- فشل تحميل التعليقات، إنشاء التعليق، تعديل التعليق، وحذف التعليق لم يعد يظهر داخل لوحة التعليقات كرسائل خطأ محلية؛ أصبح يستخدم Global Toast برسائل API أو رسائل fallback.
+- تمت إضافة اختبار UI لحالة فشل تحميل التعليقات.
+- commit الدمج `f272e471df2f707be747ec61b3d30774dc287657`.
+- CI النهائي نجح.
+- CodeQL نجح.
+- Production Smoke نجح.
+- Render Frontend للـcommit أصبح **live**.
+
 #### C3 — الخطوة التالية
 مراجعة مسار UX آخر خارج Workspace، مع أولوية للشاشات التي تخفي فشل API أو تعرض حالة خطأ محلية بدل Global Toast عندما يكون Toast هو النمط المناسب.
