@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# فحص سريع بعد النشر: /health و /billing/plans
+# فحص سريع بعد النشر: /health و /ready و /billing/plans
 set -euo pipefail
 
 BASE_URL="${1:-http://127.0.0.1:8000}"
@@ -38,8 +38,9 @@ request_with_retry() {
 }
 
 tmp_health="$(mktemp)"
+tmp_ready="$(mktemp)"
 tmp_plans="$(mktemp)"
-trap 'rm -f "$tmp_health" "$tmp_plans"' EXIT
+trap 'rm -f "$tmp_health" "$tmp_ready" "$tmp_plans"' EXIT
 
 info "→ Smoke against $BASE_URL"
 
@@ -58,6 +59,26 @@ else
     green "OK   /health status=$status database=$db latency=${health_time:-unknown}s"
   else
     red "FAIL /health body=$health_json"
+    fail=1
+  fi
+fi
+
+ready_meta="$(request_with_retry "$BASE_URL/ready" "$tmp_ready" || true)"
+ready_code="$(echo "$ready_meta" | awk '{print $1}')"
+ready_time="$(echo "$ready_meta" | awk '{print $2}')"
+ready_json="$(cat "$tmp_ready")"
+
+if [[ "$ready_code" != "200" ]]; then
+  red "FAIL /ready HTTP $ready_code"
+  fail=1
+else
+  ready_status="$(echo "$ready_json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")"
+  ready_db="$(echo "$ready_json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('database',''))" 2>/dev/null || echo "")"
+  ready_redis="$(echo "$ready_json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('redis',''))" 2>/dev/null || echo "")"
+  if [[ "$ready_status" == "ready" && "$ready_db" == "ok" && "$ready_redis" == "ok" ]]; then
+    green "OK   /ready status=$ready_status database=$ready_db redis=$ready_redis latency=${ready_time:-unknown}s"
+  else
+    red "FAIL /ready body=$ready_json"
     fail=1
   fi
 fi
