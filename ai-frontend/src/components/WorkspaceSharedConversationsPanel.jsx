@@ -14,6 +14,15 @@ export default function WorkspaceSharedConversationsPanel({
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  const showErrorToast = (error) => {
+    const message = error?.response?.data?.detail || t("workspaceSharing.loadError");
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
+
   useEffect(() => {
     let active = true;
     if (!workspaceId) {
@@ -25,8 +34,9 @@ export default function WorkspaceSharedConversationsPanel({
       .then((data) => {
         if (active) setItems(data);
       })
-      .catch(() => {
+      .catch((error) => {
         if (active) setItems([]);
+        if (active) showErrorToast(error);
       })
       .finally(() => {
         if (active) setLoading(false);

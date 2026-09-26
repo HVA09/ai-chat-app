@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import WorkspaceSharedConversationsPanel from "./WorkspaceSharedConversationsPanel";
@@ -62,5 +62,29 @@ describe("WorkspaceSharedConversationsPanel", () => {
 
     expect(duplicateWorkspaceSharedConversation).toHaveBeenCalledWith(7, 42);
     expect(onDuplicatedConversation).toHaveBeenCalledWith(99);
+  });
+  it("يستخدم Global Toast عند فشل تحميل المحادثات المشتركة", async () => {
+    listWorkspaceSharedConversations.mockRejectedValue({
+      response: { data: { detail: "فشل التحميل" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <WorkspaceSharedConversationsPanel
+        workspaceId={7}
+        onOpenConversation={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "app:toast",
+        detail: { message: "فشل التحميل", type: "error" },
+      })
+      );
+    });
+
+    dispatchSpy.mockRestore();
   });
 });
