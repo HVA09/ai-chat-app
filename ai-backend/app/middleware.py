@@ -2,6 +2,7 @@
 Middleware خفيف:
 - X-Request-ID لتتبع الطلبات وربط الطلب بسجلات الخادم
 - Rate limit لمسارات المصادقة الحساسة باستخدام Redis في التشغيل الحقيقي
+- حد عام للطلبات عبر Redis ليبقى فعالًا حتى مع أكثر من replica
 """
 from __future__ import annotations
 
@@ -28,6 +29,7 @@ _AUTH_LIMITS: dict[str, tuple[int, int]] = {
 }
 
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,64}$")
+_GENERAL_RATE_LIMIT = (60, 60)
 
 # Fallback only for non-production environments when Redis is unavailable.
 _hits: dict[str, dict[str, deque[float]]] = defaultdict(lambda: defaultdict(deque))
@@ -177,3 +179,53 @@ class AuthRateLimitMiddleware(BaseHTTPMiddleware):
                 )
 
         return await call_next(request)
+
+
+class GeneralRateLimitMiddleware(BaseHTTPMiddleware):
+    """Apply a shared IP-based request limit in production via Redis."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        try:
+            from app.config import settings
+
+            if settings.ENVIRONMENT in ("test", "testing"):
+                return await call_next(request)
+        except Exception:
+            settings = None
+
+        # Health checks and CORS preflight must remain available even during bursts.
+        if request.method.upper() == "OPTIONS" or request.url.path.rstrip("/") == "/health":
+            return await call_next(request)
+
+        max_hits, window = _GENERAL_RATE_LIMIT
+        ip = _client_ip(request)
+
+        from app.cache import check_rate_limit_with_reset
+
+        redis_result = check_rate_limit_with_reset(f"global:{ip}", max_hits, window)
+        if redis_result is None:
+            # Auth endpoints fail closed above. For the broad limiter, preserve
+            # application availability if Redis is temporarily unavailable.
+            http_logger.warning("Redis unavailable for global rate limit; request allowed")
+            return await call_next(request)
+
+        allowed, current_count, reset_at = redis_result
+        remaining = max(0, max_hits - current_count)
+        headers = {
+            "X-RateLimit-Limit": str(max_hits),
+            "X-RateLimit-Remaining": str(remaining),
+            "X-RateLimit-Reset": str(reset_at),
+        }
+
+        if not allowed:
+            headers["Retry-After"] = str(max(1, reset_at - int(time.time())))
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "طلبات كثيرة. حاول مرة أخرى بعد قليل."},
+                headers=headers,
+            )
+
+        response = await call_next(request)
+        for key, value in headers.items():
+            response.headers[key] = value
+        return response
