@@ -184,5 +184,13 @@
 - Production Smoke نجح.
 - Render Frontend للـcommit أصبح **live**.
 
+#### C3 — Assistant knowledge load error feedback: **مكتمل ومتحقق**
+- فشل تحميل ملفات معرفة المساعد في `AssistantEditor` لم يعد يتحول إلى قوائم فارغة صامتة؛ أصبح يرسل Global Toast برسالة مترجمة.
+- تمت إضافة ترجمة للرسالة بالعربية والإنجليزية.
+- تمت إضافة اختبار UI يتأكد من إرسال `app:toast` عند فشل تحميل ملفات معرفة المساعد.
+- commit الدمج `2914e8df4939adc55da6aa09bb87bf89bb2c255e`.
+- CI مكتمل بنجاح، وCodeQL وPublish backend image وProduction Smoke نجحت.
+- Render Frontend للـcommit أصبح **live**.
+
 #### C3 — الخطوة التالية
 مراجعة مسار UX آخر خارج Workspace، مع أولوية للشاشات التي تخفي فشل API أو تعرض حالة خطأ محلية بدل Global Toast عندما يكون Toast هو النمط المناسب.
