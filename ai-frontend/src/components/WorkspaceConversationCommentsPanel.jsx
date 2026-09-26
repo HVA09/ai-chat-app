@@ -18,16 +18,23 @@ export default function WorkspaceConversationCommentsPanel({
   const [submitting, setSubmitting] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editingContent, setEditingContent] = useState("");
-  const [error, setError] = useState("");
+
+  const showErrorToast = (error, fallbackKey) => {
+    const message = error?.response?.data?.detail || t(fallbackKey);
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
 
   const load = async () => {
     if (!workspaceId || !conversationId) return;
     setLoading(true);
-    setError("");
     try {
       setComments(await listConversationComments(workspaceId, conversationId));
-    } catch {
-      setError(t("workspaceComments.loadError"));
+    } catch (error) {
+      showErrorToast(error, "workspaceComments.loadError");
     } finally {
       setLoading(false);
     }
@@ -42,7 +49,6 @@ export default function WorkspaceConversationCommentsPanel({
     if (!trimmed || submitting) return;
 
     setSubmitting(true);
-    setError("");
     try {
       const comment = await createConversationComment(
         workspaceId,
@@ -51,8 +57,8 @@ export default function WorkspaceConversationCommentsPanel({
       );
       setComments((current) => [...current, comment]);
       setContent("");
-    } catch {
-      setError(t("workspaceComments.saveError"));
+    } catch (error) {
+      showErrorToast(error, "workspaceComments.saveError");
     } finally {
       setSubmitting(false);
     }
@@ -63,7 +69,6 @@ export default function WorkspaceConversationCommentsPanel({
     if (!trimmed || submitting) return;
 
     setSubmitting(true);
-    setError("");
     try {
       const updated = await updateConversationComment(
         workspaceId,
@@ -76,8 +81,8 @@ export default function WorkspaceConversationCommentsPanel({
       );
       setEditingId(null);
       setEditingContent("");
-    } catch {
-      setError(t("workspaceComments.updateError"));
+    } catch (error) {
+      showErrorToast(error, "workspaceComments.updateError");
     } finally {
       setSubmitting(false);
     }
@@ -86,12 +91,11 @@ export default function WorkspaceConversationCommentsPanel({
   const handleDelete = async (commentId) => {
     if (submitting) return;
     setSubmitting(true);
-    setError("");
     try {
       await deleteConversationComment(workspaceId, conversationId, commentId);
       setComments((current) => current.filter((item) => item.id !== commentId));
-    } catch {
-      setError(t("workspaceComments.deleteError"));
+    } catch (error) {
+      showErrorToast(error, "workspaceComments.deleteError");
     } finally {
       setSubmitting(false);
     }
@@ -117,12 +121,6 @@ export default function WorkspaceConversationCommentsPanel({
           {t("workspaceComments.refresh")}
         </button>
       </div>
-
-      {error ? (
-        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-          {error}
-        </div>
-      ) : null}
 
       <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
         {loading && comments.length === 0 ? (

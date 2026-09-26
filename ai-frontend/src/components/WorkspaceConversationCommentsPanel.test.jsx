@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import WorkspaceConversationCommentsPanel from "./WorkspaceConversationCommentsPanel";
@@ -30,6 +30,10 @@ vi.mock("react-i18next", () => ({
         "workspaceComments.delete": "حذف",
         "workspaceComments.save": "حفظ",
         "workspaceComments.cancel": "إلغاء",
+        "workspaceComments.loadError": "تعذر تحميل التعليقات",
+        "workspaceComments.saveError": "تعذر حفظ التعليق",
+        "workspaceComments.updateError": "تعذر تعديل التعليق",
+        "workspaceComments.deleteError": "تعذر حذف التعليق",
       })[key] ?? key,
   }),
 }));
@@ -40,6 +44,31 @@ describe("WorkspaceConversationCommentsPanel", () => {
     createConversationComment.mockReset();
     updateConversationComment.mockReset();
     deleteConversationComment.mockReset();
+  });
+
+  it("يستخدم Global Toast عند فشل تحميل التعليقات", async () => {
+    listConversationComments.mockRejectedValue({
+      response: { data: { detail: "رفض الوصول" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <WorkspaceConversationCommentsPanel
+        workspaceId={7}
+        conversationId={10}
+      />
+    );
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "رفض الوصول", type: "error" },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
   });
 
   it("يعرض التعليقات ويضيف تعليقًا جديدًا", async () => {
