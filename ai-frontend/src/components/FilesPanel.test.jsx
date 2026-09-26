@@ -58,7 +58,7 @@ describe("FilesPanel project knowledge", () => {
         dispatchSpy.mock.calls.some(
           ([event]) =>
             event.type === "app:toast" &&
-            event.detail?.message === "Access denied" &&
+            event.detail?.message === "Could not load files" &&
             event.detail?.type === "error"
         )
       ).toBe(true);
@@ -95,7 +95,7 @@ describe("FilesPanel project knowledge", () => {
         dispatchSpy.mock.calls.some(
           ([event]) =>
             event.type === "app:toast" &&
-            event.detail?.message === "Delete denied" &&
+            event.detail?.message === "Could not delete file" &&
             event.detail?.type === "error"
         )
       ).toBe(true);
