@@ -82,6 +82,8 @@ vi.mock("react-i18next", () => ({
         "assistantEditor.knowledgeTitle": "ملفات المعرفة",
         "assistantEditor.knowledgeSubtitle": "المعرفة الدائمة",
         "assistantEditor.knowledgeLoadError": "تعذر تحميل ملفات المعرفة.",
+        "assistantEditor.versionsLoadError": "تعذر تحميل سجل إصدارات المساعد.",
+        "assistantEditor.publicLoadError": "تعذر تحميل إعدادات الرابط العام للمساعد.",
         "assistantEditor.uploadFile": "رفع ملف",
         "assistantEditor.uploading": "جارٍ الرفع",
         "assistantEditor.noKnowledgeFiles": "لا توجد ملفات معرفة بعد.",
@@ -378,6 +380,68 @@ describe("AssistantEditor", () => {
             message: "تعذر تحميل ملفات المعرفة.",
             type: "error",
           },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when version history fails to load", async () => {
+    listAssistantVersions.mockRejectedValueOnce({
+      response: { data: { detail: "تعذر تحميل الإصدارات" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "تعذر تحميل الإصدارات", type: "error" },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when public-link settings fail to load", async () => {
+    getAssistantPublicSettings.mockRejectedValueOnce({
+      response: { data: { detail: "تعذر تحميل الرابط العام" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "تعذر تحميل الرابط العام", type: "error" },
         })
       );
     });
