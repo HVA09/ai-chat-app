@@ -184,13 +184,20 @@
 - Production Smoke نجح.
 - Render Frontend للـcommit أصبح **live**.
 
-#### C3 — Assistant knowledge load error feedback: **مكتمل ومتحقق**
+#### C3 — Assistant knowledge error feedback: **مكتمل ومتحقق**
 - فشل تحميل ملفات معرفة المساعد في `AssistantEditor` لم يعد يتحول إلى قوائم فارغة صامتة؛ أصبح يرسل Global Toast برسالة مترجمة.
 - تمت إضافة ترجمة للرسالة بالعربية والإنجليزية.
-- تمت إضافة اختبار UI يتأكد من إرسال `app:toast` عند فشل تحميل ملفات معرفة المساعد.
-- commit الدمج `2914e8df4939adc55da6aa09bb87bf89bb2c255e`.
-- CI مكتمل بنجاح، وCodeQL وPublish backend image وProduction Smoke نجحت.
-- Render Frontend للـcommit أصبح **live**.
+- تمت إضافة اختبار UI لتحميل ملفات المعرفة.
+- أضيفت أيضًا معالجة أخطاء الرفع والإرفاق والإزالة مع Global Toast.
+- تمت إضافة اختبارات UI للحالات الثلاث.
+- commits `2914e8df4939adc55da6aa09bb87bf89bb2c255e` و`199c411fead36f9efd38343f2028e7be6a50e395`.
+- آخر نشر ناجح لهذا المسار موجود ضمن سلسلة `main`، مع نجاح CI وCodeQL وPublish وProduction Smoke.
+
+#### C3 — Workspace conversation comments error feedback: **مكتمل ومتحقق**
+- أخطاء تحميل/إنشاء/تعديل/حذف تعليقات المحادثة داخل Workspace أصبحت تستخدم Global Toast بدل رسالة خطأ محلية داخل اللوحة.
+- تمت إضافة اختبار UI لفشل تحميل التعليقات والتحقق من `app:toast`.
+- commit `f272e471df2f707be747ec61b3d30774dc287657`.
+- CI وCodeQL وPublish وProduction Smoke نجحت، وRender Frontend للـcommit أصبح **live**.
 
 #### C3 — الخطوة التالية
-مراجعة مسار UX آخر خارج Workspace، مع أولوية للشاشات التي تخفي فشل API أو تعرض حالة خطأ محلية بدل Global Toast عندما يكون Toast هو النمط المناسب.
+مراجعة مسار UX آخر خارج Workspace، مع أولوية للشاشات التي تخفي فشل API أو تستخدم حالات خطأ محلية عندما يكون Global Toast هو النمط المناسب.
