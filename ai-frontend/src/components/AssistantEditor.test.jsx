@@ -82,6 +82,9 @@ vi.mock("react-i18next", () => ({
         "assistantEditor.knowledgeTitle": "ملفات المعرفة",
         "assistantEditor.knowledgeSubtitle": "المعرفة الدائمة",
         "assistantEditor.knowledgeLoadError": "تعذر تحميل ملفات المعرفة.",
+        "assistantEditor.knowledgeAttachError": "تعذر إرفاق ملف المعرفة.",
+        "assistantEditor.knowledgeDetachError": "تعذر إزالة ملف المعرفة.",
+        "assistantEditor.knowledgeUploadError": "تعذر رفع ملف المعرفة.",
         "assistantEditor.uploadFile": "رفع ملف",
         "assistantEditor.uploading": "جارٍ الرفع",
         "assistantEditor.noKnowledgeFiles": "لا توجد ملفات معرفة بعد.",
@@ -382,6 +385,101 @@ describe("AssistantEditor", () => {
       );
     });
 
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a toast when attaching a knowledge file fails", async () => {
+    listAssistantKnowledgeFiles.mockResolvedValue([]);
+    listFiles.mockResolvedValue([{ id: 10, original_filename: "linux.pdf" }]);
+    attachFileToAssistant.mockRejectedValue({
+      response: { data: { detail: "تعذر الإرفاق" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{ id: 7, name: "مساعد", instructions: "تعليمات" }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: /linux\.pdf/ }));
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "تعذر الإرفاق", type: "error" },
+        })
+      );
+    });
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a toast when removing a knowledge file fails", async () => {
+    listAssistantKnowledgeFiles.mockResolvedValue([
+      { id: 10, original_filename: "linux.pdf" },
+    ]);
+    listFiles.mockResolvedValue([]);
+    detachFileFromAssistant.mockRejectedValue({
+      response: { data: { detail: "تعذر الإزالة" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{ id: 7, name: "مساعد", instructions: "تعليمات" }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "إزالة" }));
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "تعذر الإزالة", type: "error" },
+        })
+      );
+    });
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a toast when knowledge upload fails", async () => {
+    listAssistantKnowledgeFiles.mockResolvedValue([]);
+    listFiles.mockResolvedValue([]);
+    uploadFile.mockRejectedValue({
+      response: { data: { detail: "تعذر الرفع" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{ id: 7, name: "مساعد", instructions: "تعليمات" }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    const input = screen
+      .getByText("رفع ملف")
+      .closest("label")
+      .querySelector('input[type="file"]');
+    const file = new File(["content"], "linux.pdf", { type: "application/pdf" });
+    await user.upload(input, file);
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "تعذر الرفع", type: "error" },
+        })
+      );
+    });
     dispatchSpy.mockRestore();
   });
 
