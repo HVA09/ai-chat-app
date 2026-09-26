@@ -81,6 +81,7 @@ vi.mock("react-i18next", () => ({
         "assistantEditor.save": "حفظ",
         "assistantEditor.knowledgeTitle": "ملفات المعرفة",
         "assistantEditor.knowledgeSubtitle": "المعرفة الدائمة",
+        "assistantEditor.knowledgeLoadError": "تعذر تحميل ملفات المعرفة.",
         "assistantEditor.uploadFile": "رفع ملف",
         "assistantEditor.uploading": "جارٍ الرفع",
         "assistantEditor.noKnowledgeFiles": "لا توجد ملفات معرفة بعد.",
@@ -351,6 +352,37 @@ describe("AssistantEditor", () => {
     expect(screen.getByText("12")).toBeInTheDocument();
     expect(screen.getByText("48")).toBeInTheDocument();
     expect(screen.getByText("4")).toBeInTheDocument();
+  });
+
+  it("shows a global toast when knowledge files fail to load", async () => {
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: {
+            message: "تعذر تحميل ملفات المعرفة.",
+            type: "error",
+          },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
   });
 
   it("does not show knowledge management while creating", () => {
