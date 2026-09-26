@@ -192,5 +192,15 @@
 - CI مكتمل بنجاح، وCodeQL وPublish backend image وProduction Smoke نجحت.
 - Render Frontend للـcommit أصبح **live**.
 
+#### C3 — Assistant knowledge action error feedback: **مكتمل ومتحقق**
+- أخطاء رفع ملفات معرفة المساعد، وإرفاقها، وإزالتها لم تعد تفشل بصمت؛ أصبح كل مسار يرسل Global Toast برسالة API أو رسالة fallback.
+- تمت إضافة اختبارات UI مستقلة للحالات الثلاث.
+- commit `199c411fead36f9efd38343f2028e7be6a50e395`.
+- CI: **نجح بالكامل**.
+- CodeQL: **نجح**.
+- Publish backend image: **نجح**.
+- Production Smoke: **نجح**.
+- Render Frontend: **live**.
+
 #### C3 — الخطوة التالية
 مراجعة مسار UX آخر خارج Workspace، مع أولوية للشاشات التي تخفي فشل API أو تعرض حالة خطأ محلية بدل Global Toast عندما يكون Toast هو النمط المناسب.
