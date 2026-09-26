@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import FilesPanel from "./FilesPanel";
-import { listFiles, uploadFile } from "../lib/filesApi";
+import { deleteFile, listFiles, uploadFile } from "../lib/filesApi";
 
 vi.mock("../lib/filesApi", () => ({
   attachFileToConversation: vi.fn(),
@@ -32,6 +32,10 @@ vi.mock("react-i18next", () => ({
       "files.projectDropHint": "Upload a file to project knowledge",
       "files.typesHint": "Files",
       "files.noFiles": "No files",
+      "files.listError": "Could not load files",
+      "files.deleteError": "Could not delete file",
+      "files.confirmDelete": "Delete this file?",
+      "files.delete": "Delete",
     })[key] ?? key,
   }),
 }));
@@ -39,6 +43,61 @@ vi.mock("react-i18next", () => ({
 describe("FilesPanel project knowledge", () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("shows a global toast when loading files fails", async () => {
+    listFiles.mockRejectedValue({
+      response: { data: { detail: "Access denied" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(<FilesPanel onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "Access denied", type: "error" },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when deleting a file fails", async () => {
+    listFiles.mockResolvedValue([
+      {
+        id: 11,
+        original_filename: "notes.txt",
+        content_type: "text/plain",
+        size: 100,
+        is_attached: false,
+        is_ai_indexed: false,
+      },
+    ]);
+    deleteFile.mockRejectedValue({
+      response: { data: { detail: "Delete denied" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+
+    render(<FilesPanel onClose={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "Delete denied", type: "error" },
+        })
+      );
+    });
+
+    confirmSpy.mockRestore();
+    dispatchSpy.mockRestore();
   });
 
   it("loads project knowledge files with the selected project id", async () => {
