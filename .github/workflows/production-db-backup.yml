@@ -79,7 +79,12 @@ jobs:
           host = url.hostname
           if not host:
               raise SystemExit("DATABASE_URL has no hostname")
-          external_host = f"{host}.{os.environ['RENDER_POSTGRES_REGION']}-postgres.render.com"
+          if host.endswith(".render.com"):
+              external_host = host
+          elif host.startswith("dpg-"):
+              external_host = f"{host}.{os.environ['RENDER_POSTGRES_REGION']}-postgres.render.com"
+          else:
+              external_host = host
           query = dict(parse_qsl(url.query, keep_blank_values=True))
           query["sslmode"] = "require"
           netloc = host
