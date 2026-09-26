@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import WorkspaceMembersPanel from "./WorkspaceMembersPanel";
@@ -152,8 +152,6 @@ describe("WorkspaceMembersPanel", () => {
     expect(mocks.downloadWorkspaceUsageCsv).toHaveBeenCalledWith(7, 24);
   });
 
-});
-
 
   it("updates the workspace daily AI request limit", async () => {
     const user = userEvent.setup();
@@ -175,7 +173,7 @@ describe("WorkspaceMembersPanel", () => {
     expect(screen.getByDisplayValue("40")).toBeInTheDocument();
   });
 
-it("uses the global toast event for quota update errors", async () => {
+  it("uses the global toast event for quota update errors", async () => {
   const user = userEvent.setup();
   const dispatchSpy = vi.spyOn(window, "dispatchEvent");
   workspaceApiMocks.updateWorkspaceDailyLimit.mockRejectedValueOnce({
@@ -203,3 +201,61 @@ it("uses the global toast event for quota update errors", async () => {
   );
   dispatchSpy.mockRestore();
 });
+
+
+  it("shows a toast when loading workspace data fails", async () => {
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    mocks.listWorkspaceMembers.mockRejectedValueOnce({
+      response: { data: { detail: "Members failed" } },
+    });
+
+    render(
+      <WorkspaceMembersPanel
+        workspaceId={7}
+        workspaceName="Demo"
+        workspaceRole="owner"
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "Members failed", type: "error" },
+        })
+      );
+    });
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a toast when inviting a member fails", async () => {
+    const user = userEvent.setup();
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    mocks.inviteWorkspaceMember.mockRejectedValueOnce({
+      response: { data: { detail: "Invite failed" } },
+    });
+
+    render(
+      <WorkspaceMembersPanel
+        workspaceId={7}
+        workspaceName="Demo"
+        workspaceRole="owner"
+        onClose={vi.fn()}
+      />
+    );
+
+    const email = await screen.findByPlaceholderText("Email");
+    await user.type(email, "member@example.com");
+    await user.click(screen.getByRole("button", { name: "Invite" }));
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "Invite failed", type: "error" },
+        })
+      );
+    });
+    dispatchSpy.mockRestore();
+  });
