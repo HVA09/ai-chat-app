@@ -54,12 +54,14 @@ describe("FilesPanel project knowledge", () => {
     render(<FilesPanel onClose={vi.fn()} />);
 
     await waitFor(() => {
-      expect(dispatchSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "app:toast",
-          detail: { message: "Access denied", type: "error" },
-        })
-      );
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Access denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
     });
 
     dispatchSpy.mockRestore();
@@ -74,6 +76,7 @@ describe("FilesPanel project knowledge", () => {
         size: 100,
         is_attached: false,
         is_ai_indexed: false,
+        can_delete: true,
       },
     ]);
     deleteFile.mockRejectedValue({
@@ -85,15 +88,17 @@ describe("FilesPanel project knowledge", () => {
 
     render(<FilesPanel onClose={vi.fn()} />);
 
-    await user.click(await screen.findByRole("button", { name: "Delete" }));
+    await user.click(await screen.findByTitle("Delete"));
 
     await waitFor(() => {
-      expect(dispatchSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "app:toast",
-          detail: { message: "Delete denied", type: "error" },
-        })
-      );
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Delete denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
     });
 
     confirmSpy.mockRestore();
