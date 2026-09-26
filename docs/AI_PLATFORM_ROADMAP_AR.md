@@ -179,10 +179,15 @@
 - فشل تحميل المحادثات المشتركة في `WorkspaceSharedConversationsPanel` لم يعد يتحول إلى قائمة فارغة بصمت؛ أصبح يرسل Global Toast برسالة API أو رسالة fallback.
 - تمت إضافة اختبار UI يتأكد من إرسال `app:toast` عند فشل التحميل.
 - commit الدمج `129054c476b85159560474abdd6fd0ba47151f1a`.
-- CI النهائي نجح بالكامل: Backend `pytest`، Frontend tests/build، Production Compose.
-- CodeQL نجح.
-- Production Smoke نجح.
+- CI النهائي نجح بالكامل، وCodeQL وProduction Smoke وRender تحققت بنجاح.
+
+#### C3 — Assistant knowledge/editor load errors: **مكتمل ومتحقق**
+- فشل تحميل ملفات معرفة المساعد، سجل الإصدارات، وإعدادات الرابط العام لم يعد يتحول إلى حالات فارغة بصمت.
+- يتم الآن إرسال Global Toast مع رسالة مترجمة.
+- تمت إضافة اختبارات UI للحالات الثلاث.
+- commit الدمج `2914e8df4939adc55da6aa09bb87bf89bb2c255e`.
+- CI النهائي نجح بالكامل، وCodeQL وPublish وProduction Smoke نجحت.
 - Render Frontend للـcommit أصبح **live**.
 
 #### C3 — الخطوة التالية
-مراجعة مسار UX آخر خارج Workspace، مع أولوية للشاشات التي تخفي فشل API أو تعرض حالة خطأ محلية بدل Global Toast عندما يكون Toast هو النمط المناسب.
+مراجعة مسار UX آخر خارج Workspace وAssistantEditor، مع أولوية للحالات التي تخفي فشل API بدل عرضه للمستخدم بوضوح.

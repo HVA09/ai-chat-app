@@ -91,6 +91,7 @@ vi.mock("react-i18next", () => ({
         "assistantEditor.detach": "إزالة",
         "assistantEditor.versionHistoryTitle": "سجل نسخ المساعد",
         "assistantEditor.versionHistorySubtitle": "استرجاع النسخ",
+        "assistantEditor.versionsLoadError": "تعذر تحميل سجل نسخ المساعد.",
         "assistantEditor.noVersions": "لا توجد نسخ محفوظة بعد.",
         "assistantEditor.versionLabel": "الإصدار {{version}}",
         "assistantEditor.restore": "استرجاع",
@@ -113,6 +114,7 @@ vi.mock("react-i18next", () => ({
       "assistantEditor.analyticsUnavailable": "تعذر تحميل إحصائيات الاستخدام",
       "assistantEditor.publicTitle": "الرابط العام",
       "assistantEditor.publicSubtitle": "شارك رابطًا آمنًا للمساعد.",
+      "assistantEditor.publicLoadError": "تعذر تحميل إعدادات الرابط العام.",
       "assistantEditor.publicEnabled": "الرابط العام مفعّل.",
       "assistantEditor.enablePublic": "تفعيل الرابط العام",
       "assistantEditor.copyPublic": "نسخ الرابط",
@@ -380,6 +382,72 @@ describe("AssistantEditor", () => {
           },
         })
       );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when version history fails to load", async () => {
+    listAssistantKnowledgeFiles.mockResolvedValue([]);
+    listFiles.mockResolvedValue([]);
+    listAssistantVersions.mockRejectedValue(new Error("versions unavailable"));
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "تعذر تحميل سجل نسخ المساعد." &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when public settings fail to load", async () => {
+    listAssistantKnowledgeFiles.mockResolvedValue([]);
+    listFiles.mockResolvedValue([]);
+    getAssistantPublicSettings.mockRejectedValue(new Error("public unavailable"));
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "تعذر تحميل إعدادات الرابط العام." &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
     });
 
     dispatchSpy.mockRestore();
