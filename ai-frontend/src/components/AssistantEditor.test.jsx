@@ -91,6 +91,7 @@ vi.mock("react-i18next", () => ({
         "assistantEditor.detach": "إزالة",
         "assistantEditor.versionHistoryTitle": "سجل نسخ المساعد",
         "assistantEditor.versionHistorySubtitle": "استرجاع النسخ",
+        "assistantEditor.versionsLoadError": "تعذر تحميل سجل نسخ المساعد.",
         "assistantEditor.noVersions": "لا توجد نسخ محفوظة بعد.",
         "assistantEditor.versionLabel": "الإصدار {{version}}",
         "assistantEditor.restore": "استرجاع",
@@ -376,6 +377,70 @@ describe("AssistantEditor", () => {
           type: "app:toast",
           detail: {
             message: "تعذر تحميل ملفات المعرفة.",
+            type: "error",
+          },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when version history fails to load", async () => {
+    listAssistantVersions.mockRejectedValue(new Error("versions unavailable"));
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: {
+            message: "تعذر تحميل سجل نسخ المساعد.",
+            type: "error",
+          },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when public settings fail to load", async () => {
+    getAssistantPublicSettings.mockRejectedValue(new Error("public unavailable"));
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: {
+            message: "تعذر تحميل إعدادات الرابط العام.",
             type: "error",
           },
         })
