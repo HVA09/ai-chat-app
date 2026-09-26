@@ -6,6 +6,10 @@ import WorkspaceMembersPanel from "./WorkspaceMembersPanel";
 const mocks = vi.hoisted(() => ({
   listWorkspaceMembers: vi.fn(),
   listWorkspaceInvitations: vi.fn(),
+  inviteWorkspaceMember: vi.fn(),
+  removeWorkspaceMember: vi.fn(),
+  revokeWorkspaceInvitation: vi.fn(),
+  updateWorkspaceMemberRole: vi.fn(),
   listWorkspaceAuditLogs: vi.fn(),
   getWorkspaceUsage: vi.fn(),
   downloadWorkspaceUsageCsv: vi.fn(),
@@ -79,6 +83,10 @@ describe("WorkspaceMembersPanel", () => {
       },
     ]);
     mocks.listWorkspaceInvitations.mockResolvedValue([]);
+    mocks.inviteWorkspaceMember.mockResolvedValue({});
+    mocks.removeWorkspaceMember.mockResolvedValue({});
+    mocks.revokeWorkspaceInvitation.mockResolvedValue({});
+    mocks.updateWorkspaceMemberRole.mockResolvedValue({});
     mocks.listWorkspaceAuditLogs.mockResolvedValue([]);
     mocks.downloadWorkspaceUsageCsv.mockResolvedValue(undefined);
     workspaceApiMocks.updateWorkspaceDefaultModel.mockReset();
@@ -259,3 +267,5 @@ describe("WorkspaceMembersPanel", () => {
     });
     dispatchSpy.mockRestore();
   });
+
+});
