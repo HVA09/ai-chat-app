@@ -114,3 +114,29 @@ def test_general_rate_limit_allows_with_rate_headers(monkeypatch, client):
     assert response.status_code != 429
     assert response.headers["X-RateLimit-Limit"] == "60"
     assert response.headers["X-RateLimit-Remaining"] == "58"
+
+
+def test_readiness_reports_database_and_redis(monkeypatch, client):
+    monkeypatch.setattr("app.main.redis_ping", lambda: True)
+
+    response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ready",
+        "database": "ok",
+        "redis": "ok",
+    }
+
+
+def test_readiness_fails_when_redis_is_unavailable(monkeypatch, client):
+    monkeypatch.setattr("app.main.redis_ping", lambda: False)
+
+    response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "database": "ok",
+        "redis": "error",
+    }
