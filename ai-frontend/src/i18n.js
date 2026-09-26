@@ -867,7 +867,6 @@ const resources = {
         publicTitle: "الرابط العام",
         publicSubtitle: "شارك صفحة آمنة للمساعد ليتمكن الآخرون من رؤيته ونسخه إلى حساباتهم.",
         publicLoadError: "تعذر تحميل إعدادات الرابط العام.",
-        publicLoadError: "تعذر تحميل إعدادات الرابط العام.",
         publicEnabled: "المساعد متاح عبر رابط عام.",
         enablePublic: "تفعيل الرابط العام",
         copyPublic: "نسخ الرابط",
