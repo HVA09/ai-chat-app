@@ -50,15 +50,17 @@ def test_request_metrics_logger_uses_request_id(monkeypatch, client):
     )
 
     assert response.status_code == 200
+    rendered = [
+        message % args if args else message
+        for _, message, args in records
+    ]
     assert any(
         level == 20
-        and "HTTP GET /health 200" in message
-        and "latency_ms=%s" in message
-        and len(args) >= 5
-        and args[3] >= 0
-        and args[4] == "metrics-test-1"
-        for level, message, args in records
-    ), f"records={records!r}"
+        and "HTTP GET /health 200" in rendered_message
+        and "latency_ms=" in rendered_message
+        and "request_id=metrics-test-1" in rendered_message
+        for (level, _, _), rendered_message in zip(records, rendered)
+    )
 
 
 def test_request_metrics_log_never_includes_query_string(monkeypatch, client):
