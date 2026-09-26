@@ -106,8 +106,12 @@ class RequestMetricsMiddleware(BaseHTTPMiddleware):
             if response is not None:
                 latency_ms = round((time.perf_counter() - started_at) * 1000)
                 log_level = 30 if response.status_code >= 400 else 20
-                request_id = request.scope.get(
-                    "request_id", getattr(request.state, "request_id", get_request_id())
+                request_id = (
+                    request.headers.get("x-request-id")
+                    if request.headers.get("x-request-id") and _REQUEST_ID_RE.fullmatch(request.headers["x-request-id"])
+                    else request.scope.get(
+                        "request_id", getattr(request.state, "request_id", get_request_id())
+                    )
                 )
                 http_logger.log(
                     log_level,
