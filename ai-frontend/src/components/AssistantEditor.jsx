@@ -40,6 +40,7 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [publicSettings, setPublicSettings] = useState(null);
   const [publicLoading, setPublicLoading] = useState(false);
+  const [publicLoadError, setPublicLoadError] = useState(false);
 
   const showErrorToast = (error, fallbackKey) => {
     const message = error?.response?.data?.detail || t(fallbackKey);
@@ -56,6 +57,7 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
     setInstructions(assistant?.instructions ?? "");
     setValidationError("");
     setPublicSettings(null);
+    setPublicLoadError(false);
   }, [assistant]);
 
   const refreshKnowledge = async () => {
@@ -99,9 +101,17 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
       .finally(() => setAnalyticsLoading(false));
 
     setPublicLoading(true);
+    setPublicLoadError(false);
     getAssistantPublicSettings(assistant.id)
-      .then(setPublicSettings)
-      .catch(() => setPublicSettings(null))
+      .then((settings) => {
+        setPublicSettings(settings);
+        setPublicLoadError(false);
+      })
+      .catch((error) => {
+        setPublicSettings(null);
+        setPublicLoadError(true);
+        showErrorToast(error, "assistantEditor.publicLoadError");
+      })
       .finally(() => setPublicLoading(false));
   }, [assistant?.id]);
 
@@ -162,7 +172,7 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
   };
 
   const enablePublicLink = async () => {
-    if (!assistant?.id || publicLoading) return;
+    if (!assistant?.id || publicLoading || publicLoadError) return;
     setPublicLoading(true);
     try {
       setPublicSettings(await enableAssistantPublicLink(assistant.id));
@@ -325,6 +335,10 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
 
               {publicLoading ? (
                 <p className="text-xs text-slate-400">...</p>
+              ) : publicLoadError ? (
+                <p role="alert" className="text-xs text-red-600 dark:text-red-300">
+                  {t("assistantEditor.publicLoadError")}
+                </p>
               ) : publicSettings?.is_public ? (
                 <div className="space-y-3">
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
