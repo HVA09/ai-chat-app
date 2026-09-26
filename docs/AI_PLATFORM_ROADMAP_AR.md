@@ -194,3 +194,8 @@
 
 #### C3 — الخطوة التالية
 مراجعة مسار UX آخر خارج Workspace، مع أولوية للشاشات التي تخفي فشل API أو تعرض حالة خطأ محلية بدل Global Toast عندما يكون Toast هو النمط المناسب.
+
+
+#### C3 - Assistant knowledge actions
+- commit `199c411fead36f9efd38343f2028e7be6a50e395` adds Global Toast handling for knowledge upload, attach, and detach failures with UI tests.
+- CI, CodeQL, Publish backend image, Production Smoke, and Render deployment for this commit succeeded.
