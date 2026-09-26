@@ -63,4 +63,29 @@ describe("WorkspaceSharedConversationsPanel", () => {
     expect(duplicateWorkspaceSharedConversation).toHaveBeenCalledWith(7, 42);
     expect(onDuplicatedConversation).toHaveBeenCalledWith(99);
   });
+  it("يستخدم Global Toast عند فشل تحميل المحادثات المشتركة", async () => {
+    listWorkspaceSharedConversations.mockRejectedValue({
+      response: { data: { detail: "فشل التحميل" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <WorkspaceSharedConversationsPanel
+        workspaceId={7}
+        onOpenConversation={vi.fn()}
+      />
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "app:toast",
+        detail: { message: "فشل التحميل", type: "error" },
+      })
+    );
+
+    dispatchSpy.mockRestore();
+  });
+
 });
