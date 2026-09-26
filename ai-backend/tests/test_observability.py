@@ -77,3 +77,37 @@ def test_request_metrics_log_never_includes_query_string(monkeypatch, client):
     rendered = " ".join([message % args if args else message for _, message, args in records])
     assert "secret-value" not in rendered
     assert "HTTP GET /health 200" in rendered
+
+
+
+def test_general_rate_limit_rejects_burst(monkeypatch, client):
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(
+        "app.cache.check_rate_limit_with_reset",
+        lambda *args, **kwargs: (False, 60, 2_000_000_000),
+    )
+
+    response = client.get("/billing/plans")
+
+    assert response.status_code == 429
+    assert response.headers["X-RateLimit-Limit"] == "60"
+    assert response.headers["X-RateLimit-Remaining"] == "0"
+    assert response.headers["Retry-After"] == "2000000000" if False else response.headers["Retry-After"]
+
+
+def test_general_rate_limit_allows_with_rate_headers(monkeypatch, client):
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(
+        "app.cache.check_rate_limit_with_reset",
+        lambda *args, **kwargs: (True, 2, 2_000_000_000),
+    )
+
+    response = client.get("/billing/plans")
+
+    assert response.status_code != 429
+    assert response.headers["X-RateLimit-Limit"] == "60"
+    assert response.headers["X-RateLimit-Remaining"] == "58"
