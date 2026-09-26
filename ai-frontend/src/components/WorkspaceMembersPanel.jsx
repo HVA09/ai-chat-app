@@ -150,7 +150,7 @@ export default function WorkspaceMembersPanel({
                     onWorkspaceUpdated?.(updated);
                   } catch (err) {
                     const message = err?.response?.data?.detail || t("app.workspaceModelUpdateError");
-                    window.alert(message);
+                    window.dispatchEvent(new CustomEvent("app:toast", { detail: { message, type: "error" } }));
                   } finally {
                     setBusy(false);
                   }
@@ -196,7 +196,7 @@ export default function WorkspaceMembersPanel({
                     onQuotaUpdated?.(updated);
                   } catch (err) {
                     const message = err?.response?.data?.detail || t("app.workspaceQuotaUpdateError");
-                    window.alert(message);
+                    window.dispatchEvent(new CustomEvent("app:toast", { detail: { message, type: "error" } }));
                   } finally {
                     setBusy(false);
                   }
@@ -326,7 +326,7 @@ export default function WorkspaceMembersPanel({
                     try {
                       await downloadWorkspaceUsageCsv(workspaceId, usage.window_hours);
                     } catch {
-                      window.alert(t("workspaceUsage.exportError"));
+                      window.dispatchEvent(new CustomEvent("app:toast", { detail: { message: t("workspaceUsage.exportError"), type: "error" } }));
                     } finally {
                       setBusy(false);
                     }
