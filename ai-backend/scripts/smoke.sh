@@ -44,25 +44,6 @@ trap 'rm -f "$tmp_health" "$tmp_ready" "$tmp_plans"' EXIT
 
 info "→ Smoke against $BASE_URL"
 
-health_meta="$(request_with_retry "$BASE_URL/health" "$tmp_health" || true)"
-health_code="$(echo "$health_meta" | awk '{print $1}')"
-health_time="$(echo "$health_meta" | awk '{print $2}')"
-health_json="$(cat "$tmp_health")"
-
-if [[ "$health_code" != "200" ]]; then
-  red "FAIL /health HTTP $health_code"
-  fail=1
-else
-  status="$(echo "$health_json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")"
-  db="$(echo "$health_json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('database',''))" 2>/dev/null || echo "")"
-  if [[ "$status" == "ok" && "$db" == "ok" ]]; then
-    green "OK   /health status=$status database=$db latency=${health_time:-unknown}s"
-  else
-    red "FAIL /health body=$health_json"
-    fail=1
-  fi
-fi
-
 ready_meta="$(request_with_retry "$BASE_URL/ready" "$tmp_ready" || true)"
 ready_code="$(echo "$ready_meta" | awk '{print $1}')"
 ready_time="$(echo "$ready_meta" | awk '{print $2}')"
@@ -79,6 +60,26 @@ else
     green "OK   /ready status=$ready_status database=$ready_db redis=$ready_redis latency=${ready_time:-unknown}s"
   else
     red "FAIL /ready body=$ready_json"
+    fail=1
+  fi
+fi
+
+
+health_meta="$(request_with_retry "$BASE_URL/health" "$tmp_health" || true)"
+health_code="$(echo "$health_meta" | awk '{print $1}')"
+health_time="$(echo "$health_meta" | awk '{print $2}')"
+health_json="$(cat "$tmp_health")"
+
+if [[ "$health_code" != "200" ]]; then
+  red "FAIL /health HTTP $health_code"
+  fail=1
+else
+  status="$(echo "$health_json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")"
+  db="$(echo "$health_json" | python3 -c "import sys,json; print(json.load(sys.stdin).get('database',''))" 2>/dev/null || echo "")"
+  if [[ "$status" == "ok" && "$db" == "ok" ]]; then
+    green "OK   /health status=$status database=$db latency=${health_time:-unknown}s"
+  else
+    red "FAIL /health body=$health_json"
     fail=1
   fi
 fi
