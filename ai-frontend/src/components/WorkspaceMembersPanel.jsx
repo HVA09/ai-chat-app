@@ -41,6 +41,15 @@ export default function WorkspaceMembersPanel({
   const manager = workspaceRole === "owner" || workspaceRole === "admin";
   const owner = workspaceRole === "owner";
 
+  const showErrorToast = (error, fallbackKey = "app.genericError") => {
+    const message = error?.response?.data?.detail || t(fallbackKey);
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
+
   const load = async () => {
     setLoading(true);
     try {
@@ -54,6 +63,8 @@ export default function WorkspaceMembersPanel({
       setInvitations(inviteList);
       setAuditLogs(auditList);
       setUsage(usageData);
+    } catch (error) {
+      showErrorToast(error);
     } finally {
       setLoading(false);
     }
@@ -72,8 +83,8 @@ export default function WorkspaceMembersPanel({
       await inviteWorkspaceMember(workspaceId, email.trim(), role);
       setEmail("");
       await load();
-    } catch {
-      // App-level auth/API errors are handled globally; local failure leaves the form intact.
+    } catch (error) {
+      showErrorToast(error);
     } finally {
       setBusy(false);
     }
@@ -149,8 +160,7 @@ export default function WorkspaceMembersPanel({
                     setDefaultModel(updated.default_ai_model || "");
                     onWorkspaceUpdated?.(updated);
                   } catch (err) {
-                    const message = err?.response?.data?.detail || t("app.workspaceModelUpdateError");
-                    window.dispatchEvent(new CustomEvent("app:toast", { detail: { message, type: "error" } }));
+                    showErrorToast(err, "app.workspaceModelUpdateError");
                   } finally {
                     setBusy(false);
                   }
@@ -195,8 +205,7 @@ export default function WorkspaceMembersPanel({
                     );
                     onQuotaUpdated?.(updated);
                   } catch (err) {
-                    const message = err?.response?.data?.detail || t("app.workspaceQuotaUpdateError");
-                    window.dispatchEvent(new CustomEvent("app:toast", { detail: { message, type: "error" } }));
+                    showErrorToast(err, "app.workspaceQuotaUpdateError");
                   } finally {
                     setBusy(false);
                   }
@@ -325,8 +334,8 @@ export default function WorkspaceMembersPanel({
                     setBusy(true);
                     try {
                       await downloadWorkspaceUsageCsv(workspaceId, usage.window_hours);
-                    } catch {
-                      window.dispatchEvent(new CustomEvent("app:toast", { detail: { message: t("workspaceUsage.exportError"), type: "error" } }));
+                    } catch (error) {
+                      showErrorToast(error, "workspaceUsage.exportError");
                     } finally {
                       setBusy(false);
                     }
