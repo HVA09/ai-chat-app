@@ -19,6 +19,14 @@ export default function BillingPanel({ onClose }) {
   const [busyPlanId, setBusyPlanId] = useState(null);
   const [error, setError] = useState("");
 
+  const showErrorToast = (message) => {
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
+
   const refresh = async () => {
     setLoading(true);
     try {
@@ -31,7 +39,9 @@ export default function BillingPanel({ onClose }) {
       setSubscription(subData);
       setUsage(usageData);
     } catch {
-      setError(t("billing.loadError"));
+      const message = t("billing.loadError");
+      setError(message);
+      showErrorToast(message);
     } finally {
       setLoading(false);
     }
@@ -48,7 +58,9 @@ export default function BillingPanel({ onClose }) {
       const { checkout_url } = await createCheckout(planId);
       window.location.href = checkout_url;
     } catch (err) {
-      setError(getErrorMessage(err, t("billing.checkoutError")));
+      const message = getErrorMessage(err, t("billing.checkoutError"));
+      setError(message);
+      showErrorToast(message);
       setBusyPlanId(null);
     }
   };
@@ -60,7 +72,9 @@ export default function BillingPanel({ onClose }) {
       await cancelSubscription();
       await refresh();
     } catch {
-      setError(t("billing.cancelError"));
+      const message = t("billing.cancelError");
+      setError(message);
+      showErrorToast(message);
     }
   };
 
