@@ -113,6 +113,7 @@ vi.mock("react-i18next", () => ({
       "assistantEditor.analyticsUnavailable": "تعذر تحميل إحصائيات الاستخدام",
       "assistantEditor.publicTitle": "الرابط العام",
       "assistantEditor.publicSubtitle": "شارك رابطًا آمنًا للمساعد.",
+      "assistantEditor.publicLoadError": "تعذر تحميل إعدادات الرابط العام.",
       "assistantEditor.publicEnabled": "الرابط العام مفعّل.",
       "assistantEditor.enablePublic": "تفعيل الرابط العام",
       "assistantEditor.copyPublic": "نسخ الرابط",
@@ -332,6 +333,44 @@ describe("AssistantEditor", () => {
       expect(enableAssistantPublicLink).toHaveBeenCalledWith(7)
     );
     expect(await screen.findByDisplayValue("https://example.com/public-assistant/token")).toBeInTheDocument();
+  });
+
+  it("shows a global toast and blocks public-link actions when settings fail to load", async () => {
+    getAssistantPublicSettings.mockRejectedValueOnce({
+      response: { data: { detail: "تعذر قراءة الإعدادات" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "تعذر تحميل إعدادات الرابط العام."
+    );
+    expect(
+      screen.queryByRole("button", { name: "تفعيل الرابط العام" })
+    ).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "تعذر قراءة الإعدادات", type: "error" },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
   });
 
   it("shows assistant usage analytics while editing", async () => {
