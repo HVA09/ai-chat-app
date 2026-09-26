@@ -10,13 +10,40 @@ green() { printf '\033[32m%s\033[0m\n' "$*"; }
 info() { printf '\033[36m%s\033[0m\n' "$*"; }
 
 fail=0
+
+request_with_retry() {
+  local url="$1"
+  local output_file="$2"
+  local attempts=0
+  local max_attempts=4
+  local meta=""
+  local code=""
+
+  while (( attempts < max_attempts )); do
+    meta="$(curl -sS -m 15 -o "$output_file" -w '%{http_code} %{time_total}' "$url" || true)"
+    code="$(echo "$meta" | awk '{print $1}')"
+    if [[ "$code" == "200" ]]; then
+      echo "$meta"
+      return 0
+    fi
+    attempts=$((attempts + 1))
+    if (( attempts < max_attempts )); then
+      info "Retry $attempts/$((max_attempts - 1)) after transient failure on $url"
+      sleep 5
+    fi
+  done
+
+  echo "$meta"
+  return 1
+}
+
 tmp_health="$(mktemp)"
 tmp_plans="$(mktemp)"
 trap 'rm -f "$tmp_health" "$tmp_plans"' EXIT
 
 info "→ Smoke against $BASE_URL"
 
-health_meta="$(curl -sS -m 15 -o "$tmp_health" -w '%{http_code} %{time_total}' "$BASE_URL/health" || true)"
+health_meta="$(request_with_retry "$BASE_URL/health" "$tmp_health" || true)"
 health_code="$(echo "$health_meta" | awk '{print $1}')"
 health_time="$(echo "$health_meta" | awk '{print $2}')"
 health_json="$(cat "$tmp_health")"
@@ -35,7 +62,7 @@ else
   fi
 fi
 
-plans_meta="$(curl -sS -m 15 -o "$tmp_plans" -w '%{http_code} %{time_total}' "$BASE_URL/billing/plans" || true)"
+plans_meta="$(request_with_retry "$BASE_URL/billing/plans" "$tmp_plans" || true)"
 plans_code="$(echo "$plans_meta" | awk '{print $1}')"
 plans_time="$(echo "$plans_meta" | awk '{print $2}')"
 plans_json="$(cat "$tmp_plans")"
