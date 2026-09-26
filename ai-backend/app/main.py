@@ -23,6 +23,7 @@ from app.middleware import (
     RequestMetricsMiddleware,
 )
 from app.logging_config import configure_logging, get_logger
+from app.cache import redis_ping
 from app.routers.admin import router as admin_router
 from app.routers.assistant_workspace_shares import router as assistant_workspace_shares_router
 from app.routers.assistants import router as assistants_router
@@ -130,6 +131,30 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "حدث خطأ غير متوقع في الخادم"},
+    )
+
+
+
+
+@app.get("/ready", tags=["Health"])
+def readiness_check(db: Session = Depends(get_db)):
+    """Deep readiness check for dependencies required by the application."""
+    try:
+        db.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception:
+        logger.exception("فحص الجاهزية: قاعدة البيانات غير متاحة")
+        db_status = "error"
+
+    redis_status = "ok" if redis_ping() else "error"
+    ready = db_status == "ok" and redis_status == "ok"
+    return JSONResponse(
+        status_code=200 if ready else status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "status": "ready" if ready else "not_ready",
+            "database": db_status,
+            "redis": redis_status,
+        },
     )
 
 
