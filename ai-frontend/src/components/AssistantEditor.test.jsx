@@ -82,6 +82,9 @@ vi.mock("react-i18next", () => ({
         "assistantEditor.knowledgeTitle": "ملفات المعرفة",
         "assistantEditor.knowledgeSubtitle": "المعرفة الدائمة",
         "assistantEditor.knowledgeLoadError": "تعذر تحميل ملفات المعرفة.",
+        "assistantEditor.knowledgeAttachError": "تعذر إرفاق ملف المعرفة.",
+        "assistantEditor.knowledgeDetachError": "تعذر إزالة ملف المعرفة.",
+        "assistantEditor.knowledgeUploadError": "تعذر رفع ملف المعرفة.",
         "assistantEditor.uploadFile": "رفع ملف",
         "assistantEditor.uploading": "جارٍ الرفع",
         "assistantEditor.noKnowledgeFiles": "لا توجد ملفات معرفة بعد.",
@@ -376,6 +379,124 @@ describe("AssistantEditor", () => {
           type: "app:toast",
           detail: {
             message: "تعذر تحميل ملفات المعرفة.",
+            type: "error",
+          },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+
+  it("shows a global toast when attaching a knowledge file fails", async () => {
+    listAssistantKnowledgeFiles.mockResolvedValue([]);
+    listFiles.mockResolvedValue([
+      { id: 11, original_filename: "manual.pdf" },
+    ]);
+    attachFileToAssistant.mockRejectedValue(new Error("attach failed"));
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: /إرفاق/ }));
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: {
+            message: "تعذر إرفاق ملف المعرفة.",
+            type: "error",
+          },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when removing a knowledge file fails", async () => {
+    listAssistantKnowledgeFiles.mockResolvedValue([
+      { id: 11, original_filename: "manual.pdf" },
+    ]);
+    listFiles.mockResolvedValue([]);
+    detachFileFromAssistant.mockRejectedValue(new Error("detach failed"));
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: /إزالة/ }));
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: {
+            message: "تعذر إزالة ملف المعرفة.",
+            type: "error",
+          },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when knowledge file upload fails", async () => {
+    listAssistantKnowledgeFiles.mockResolvedValue([]);
+    listFiles.mockResolvedValue([]);
+    uploadFile.mockRejectedValue(new Error("upload failed"));
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    const input = document.querySelector('input[type="file"]');
+    const file = new File(["data"], "manual.pdf", { type: "application/pdf" });
+    await user.upload(input, file);
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: {
+            message: "تعذر رفع ملف المعرفة.",
             type: "error",
           },
         })
