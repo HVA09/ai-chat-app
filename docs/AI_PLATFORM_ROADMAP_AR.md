@@ -73,6 +73,27 @@ PostgreSQL أصبح محفوظًا على Supabase، والنسخ الاحتيا
 - Celery Worker وBeat: تشغيل فعلي مؤكد، مع نجاح متكرر للمهمة `run_due_scheduled_tasks` دون أخطاء في السجلات.
 - قرار التكلفة: لا نرفع Redis إلى خطة مدفوعة ولا ننشئ Background Worker مستقلًا في هذه المرحلة، لأن الهدف الحالي هو البقاء بدون دفع.
 
+### مراجعة الأمن والأداء وCI — مكتملة ومتحققة — 2026-09-26
+
+- Supabase Security Advisor: لا توجد ملاحظات `RLS Disabled` حرجة؛ RLS مفعّل على 34/34 جدولًا. الملاحظة الحالية `RLS Enabled No Policy` مقصودة لأن التطبيق يستخدم اتصال PostgreSQL مباشرًا ولا يعتمد على Supabase Data API، لذلك لم نضف سياسات تخمينية.
+- Supabase Performance Advisor: تم إصلاح جميع علاقات Foreign Key التي ظهرت بلا فهرس مباشر بإضافة 4 فهارس تغطية مناسبة. بقيت ملاحظات `unused_index` فقط، وهي معلوماتية وقد تتغير مع نمو الاستخدام.
+- GitHub CI: يتحقق من اختبارات backend/frontend، `pip-audit`، migrations، build، وCompose configuration.
+- CodeQL: مفعّل لـPython وJavaScript/TypeScript مع `security-extended` على pushes وPRs وجدولة أسبوعية.
+- Production Smoke وProduction DB Backup: كلاهما موجودان بجدولة/تشغيل يدوي ومتحققان تشغيليًا.
+
+### المرحلة B — Production Hardening
+
+الحالة: **جاهزة للبدء**
+
+الهدف: تحويل الأساس الإنتاجي الحالي إلى منصة أكثر صلابة قبل إضافة ميزات كبيرة جديدة.
+
+أولويات B:
+1. تثبيت حدود ومراقبة API والـrate limiting واستهلاك الموارد.
+2. تحسين Observability: metrics مفيدة، أخطاء مهيكلة، وhealth/readiness أعمق عند الحاجة.
+3. مراجعة صلاحيات التطبيق ومسارات المستخدم/الـworkspace وIDOR/BOLA عبر اختبارات تكاملية.
+4. تحسين دورة CI/CD والتحقق من نتائج CodeQL وSmoke وBackup بعد التغييرات الإنتاجية.
+5. مراجعة التكلفة والاعتماد على الموارد المجانية قبل أي توسع.
+
 ### ترحيل PostgreSQL — مكتمل ومتحقق — 2026-09-26
 
 - تم إنشاء Supabase مجانًا بدون مورد مدفوع.
