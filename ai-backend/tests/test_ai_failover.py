@@ -169,8 +169,9 @@ def test_get_ai_reply_logs_failover_diagnostics(monkeypatch):
     assert "AI primary provider failed" in rendered
     assert "AI failover starting" in rendered
     assert "AI fallback provider succeeded" in rendered
-    assert "primary" not in rendered
-    assert "fallback" in rendered
+    assert "provider=gemini" in rendered
+    assert "fallback_provider=anthropic" in rendered
+    assert "primary" in rendered
 
 
 def test_get_ai_reply_logs_non_retryable_failure_without_fallback(monkeypatch):
