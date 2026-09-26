@@ -14,7 +14,7 @@
 
 ## المرحلة A — Production Foundation
 
-الحالة: **قيد التنفيذ**
+الحالة: **قيد التنفيذ — PostgreSQL migrated; remaining foundation items are deferred/ongoing**
 
 1. Render Health Check
 2. Celery Worker
@@ -31,10 +31,10 @@
 - Health Check: **مكتمل** — خدمة `ai-chat-backend` تستخدم الآن Health Check Path = `/health`، وآخر deploy بعد التغيير أصبح `live`. فحص الإنتاج يؤكد أن `/health` يعيد حالة سليمة وأن قاعدة البيانات متاحة.
 - Celery Worker: **يعمل مضمّنًا حاليًا** — سجلات Render تثبت استقبال وتنفيذ `run_due_scheduled_tasks` بنجاح دوريًا. الخدمة المستقلة ما زالت هدفًا لاحقًا عند الحاجة إلى فصل الموارد.
 - Celery Beat: **يعمل مضمّنًا حاليًا** — سجلات Render تثبت تشغيل الجدولة وإرسال المهام المجدولة دوريًا. الخدمة المستقلة ما زالت هدفًا لاحقًا.
-- PostgreSQL: **يعمل فعليًا على Render بخطة Free** — `ai-chat-db`، PostgreSQL 18، الحالة `available`. المستخدم الحالي للتطبيق هو `production_db_2026`. المورد الحالي مؤقت وتنتهي صلاحيته في **2026-10-10**؛ يلزم تنفيذ خطة حفظ/ترحيل قبل هذا التاريخ إذا أردنا الاستمرار بدون خطة مدفوعة.
+- PostgreSQL: **تم ترحيله إلى Supabase بنجاح** — مشروع `ai-chat-prod-db` في `us-east-2` (Ohio)، PostgreSQL 17.6، وحالة المشروع `ACTIVE_HEALTHY`. تم استعادة النسخة من Render، ثم التحقق من تطابق جميع جداول `public` وعدد صفوفها (34 جدولًا). تم تحويل `DATABASE_URL` في Render إلى Supabase Session Pooler، وأكد Production Smoke نجاح التطبيق بعد التحويل. Render PostgreSQL القديم بقي موجودًا مؤقتًا كخطة رجوع حتى انتهاء المورد في **2026-10-10**؛ لا يُحذف الآن.
 - Redis: **يعمل فعليًا على Render بخطة Free** — الحالة `available`، و`persistenceMode=off`. يستخدمه التطبيق وCelery فعليًا. ما زال الضبط الحالي مناسبًا للتشغيل المجاني وليس استمرارية بيانات قوية.
 - Object Storage: **مكتمل ومتحقق** — اختبارات upload/read/delete نجحت.
-- Off-site backups: **مكتمل ومتحقق تشغيليًا** — workflow النهائي للنسخ الاحتياطي نجح في dump، التحقق من الأرشيف، الرفع إلى Object Storage، والتحقق من النسخة البعيدة.
+- Off-site backups: **مكتمل ومتحقق تشغيليًا** — النسخ الاحتياطي الخارجي نجح قبل الترحيل، ثم تم تحديث Workflow ليدعم PostgreSQL الإنتاجي في Supabase، وتحديث `PRODUCTION_DATABASE_URL` إلى Supabase، وتشغيل النسخ الاحتياطي الجديد بنجاح.
 - Credential rotation: **مكتمل** — تم إنشاء `production_db_2026`، تحديث خدمة الـbackend و`PRODUCTION_DATABASE_URL` في GitHub، حذف `ai_chat_db_6nnl_user`، وتحقق PostgreSQL من أن الحساب القديم لم يعد قابلًا لتسجيل الدخول. تم تعيين `PRODUCTION_DB_CREDENTIAL_ROTATED=true`.
 - Domain + HTTPS: **HTTPS على نطاقات Render مكتمل** — خدمات Render تعمل عبر `onrender.com` مع HTTPS. **Custom Domain مؤجل** حاليًا لأن المستخدم لا يريد دفع تكلفة الآن ولا يوجد نطاق مخصص متحقق.
 - Production smoke tests/E2E: **مكتمل تشغيليًا** — تشغيل يدوي نهائي نجح بعد آخر تغييرات. الاختبار يغطي `/health`، `/billing/plans`، تمرير `X-Request-ID`، الوصول إلى الواجهة الأمامية، والوصول إلى backend health.
@@ -58,10 +58,22 @@
 
 ### الأولوية التالية
 
-**حفظ استمرارية PostgreSQL قبل 2026-10-10 بدون إنشاء مورد مدفوع.**
+**استقرار ما بعد الترحيل ثم إكمال عناصر Stage A المتبقية بدون إنشاء مورد مدفوع.**
 
-الهدف هو تجهيز مسار ترحيل مجاني/منخفض التكلفة باستخدام النسخة الاحتياطية المتحقق منها، مع الحفاظ على عدم فقد البيانات. بعد ذلك يمكن إغلاق بقية عناصر Stage A أو تأجيل Custom Domain إلى حين توفر نطاق مخصص.
+PostgreSQL أصبح محفوظًا على Supabase، والنسخ الاحتياطي الخارجي يعمل. يبقى Render PostgreSQL القديم كخطة رجوع مؤقتة حتى 2026-10-10. بعد التأكد من الاستقرار، نتابع العناصر المؤجلة مثل تحسين Redis persistence، فصل Celery عند الحاجة، وCustom Domain عند توفر نطاق وميزانية.
 
 ## قاعدة المتابعة
 
 عند بدء أي جلسة عمل جديدة، نبدأ من آخر حالة مؤكدة في هذه الوثيقة وGitHub `main)، ثم نكمل أول بند غير مكتمل في المرحلة الحالية قبل الانتقال إلى ميزات جديدة.
+
+
+### ترحيل PostgreSQL — مكتمل ومتحقق — 2026-09-26
+
+- تم إنشاء Supabase مجانًا بدون مورد مدفوع.
+- تم استعادة نسخة PostgreSQL إلى Supabase والتحقق من تطابق **34/34 جدولًا** في `public` مع قاعدة Render.
+- تم تحويل `DATABASE_URL` للإنتاج إلى Supabase Session Pooler.
+- Production Smoke بعد التحويل: **نجح**.
+- Production DB Backup بعد التحويل إلى Supabase: **نجح**.
+- تم تفعيل RLS على **34/34 جدولًا** في `public` كحماية لطبقة Supabase Data API، بدون إضافة سياسات تخمينية قد تتعارض مع نموذج صلاحيات التطبيق. التطبيق يستخدم اتصال PostgreSQL مباشرًا من الـbackend.
+- بقي تحذير غير حرج: امتداد `vector` موجود في schema `public` بسبب متطلبات استعادة النسخة الحالية؛ لا يتم نقله الآن حتى لا نخاطر بوظائف embeddings. يُراجع لاحقًا عند توفر نافذة آمنة للتعديل.
+- Render PostgreSQL القديم لا يزال احتياطي رجوع مؤقتًا حتى 2026-10-10.
