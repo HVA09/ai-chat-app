@@ -82,6 +82,7 @@ vi.mock("react-i18next", () => ({
         "assistantEditor.knowledgeTitle": "ملفات المعرفة",
         "assistantEditor.knowledgeSubtitle": "المعرفة الدائمة",
         "assistantEditor.knowledgeLoadError": "تعذر تحميل ملفات المعرفة.",
+        "assistantEditor.versionLoadError": "تعذر تحميل سجل نسخ المساعد.",
         "assistantEditor.uploadFile": "رفع ملف",
         "assistantEditor.uploading": "جارٍ الرفع",
         "assistantEditor.noKnowledgeFiles": "لا توجد ملفات معرفة بعد.",
@@ -378,6 +379,39 @@ describe("AssistantEditor", () => {
             message: "تعذر تحميل ملفات المعرفة.",
             type: "error",
           },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when version history fails to load", async () => {
+    listAssistantKnowledgeFiles.mockResolvedValue([]);
+    listFiles.mockResolvedValue([]);
+    listAssistantVersions.mockRejectedValue({
+      response: { data: { detail: "تعذر تحميل السجل" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "تعذر تحميل السجل", type: "error" },
         })
       );
     });
