@@ -16,7 +16,12 @@ from app.auth.routes import router as auth_router
 from app.auth.two_factor import router as two_factor_router
 from app.config import settings
 from app.database import get_db
-from app.middleware import AuthRateLimitMiddleware, RequestIdMiddleware, RequestMetricsMiddleware
+from app.middleware import (
+    AuthRateLimitMiddleware,
+    GeneralRateLimitMiddleware,
+    RequestIdMiddleware,
+    RequestMetricsMiddleware,
+)
 from app.logging_config import configure_logging, get_logger
 from app.routers.admin import router as admin_router
 from app.routers.assistant_workspace_shares import router as assistant_workspace_shares_router
@@ -68,6 +73,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(RequestMetricsMiddleware)
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(AuthRateLimitMiddleware)
+app.add_middleware(GeneralRateLimitMiddleware)
 
 try:
     from prometheus_fastapi_instrumentator import Instrumentator
