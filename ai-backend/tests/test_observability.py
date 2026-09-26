@@ -58,7 +58,7 @@ def test_request_metrics_logger_uses_request_id(monkeypatch, client):
         and args[3] >= 0
         and args[4] == "metrics-test-1"
         for level, message, args in records
-    )
+    ), f"records={records!r}"
 
 
 def test_request_metrics_log_never_includes_query_string(monkeypatch, client):
