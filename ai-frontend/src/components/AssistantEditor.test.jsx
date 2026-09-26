@@ -411,7 +411,7 @@ describe("AssistantEditor", () => {
       />
     );
 
-    await user.click(await screen.findByRole("button", { name: "إرفاق" }));
+    await user.click(await screen.findByRole("button", { name: /إرفاق/ }));
 
     await waitFor(() => {
       expect(dispatchSpy).toHaveBeenCalledWith(
@@ -450,7 +450,7 @@ describe("AssistantEditor", () => {
       />
     );
 
-    await user.click(await screen.findByRole("button", { name: "إزالة" }));
+    await user.click(await screen.findByRole("button", { name: /إزالة/ }));
 
     await waitFor(() => {
       expect(dispatchSpy).toHaveBeenCalledWith(
