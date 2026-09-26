@@ -41,6 +41,15 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
   const [publicSettings, setPublicSettings] = useState(null);
   const [publicLoading, setPublicLoading] = useState(false);
 
+  const showErrorToast = (error, fallbackKey) => {
+    const message = error?.response?.data?.detail || t(fallbackKey);
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
+
   useEffect(() => {
     setName(assistant?.name ?? "");
     setDescription(assistant?.description ?? "");
@@ -60,9 +69,10 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
       const attachedIds = new Set(attached.map((file) => file.id));
       setKnowledgeFiles(attached);
       setAvailableFiles(personalFiles.filter((file) => !attachedIds.has(file.id)));
-    } catch {
+    } catch (error) {
       setKnowledgeFiles([]);
       setAvailableFiles([]);
+      showErrorToast(error, "assistantEditor.knowledgeLoadError");
     } finally {
       setKnowledgeLoading(false);
     }
