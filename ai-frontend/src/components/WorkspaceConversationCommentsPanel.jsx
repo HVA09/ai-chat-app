@@ -20,6 +20,14 @@ export default function WorkspaceConversationCommentsPanel({
   const [editingContent, setEditingContent] = useState("");
   const [error, setError] = useState("");
 
+  const showErrorToast = (message) => {
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
+
   const load = async () => {
     if (!workspaceId || !conversationId) return;
     setLoading(true);
@@ -27,7 +35,9 @@ export default function WorkspaceConversationCommentsPanel({
     try {
       setComments(await listConversationComments(workspaceId, conversationId));
     } catch {
-      setError(t("workspaceComments.loadError"));
+      const message = t("workspaceComments.loadError");
+      setError(message);
+      showErrorToast(message);
     } finally {
       setLoading(false);
     }
@@ -52,7 +62,9 @@ export default function WorkspaceConversationCommentsPanel({
       setComments((current) => [...current, comment]);
       setContent("");
     } catch {
-      setError(t("workspaceComments.saveError"));
+      const message = t("workspaceComments.saveError");
+      setError(message);
+      showErrorToast(message);
     } finally {
       setSubmitting(false);
     }
@@ -77,7 +89,9 @@ export default function WorkspaceConversationCommentsPanel({
       setEditingId(null);
       setEditingContent("");
     } catch {
-      setError(t("workspaceComments.updateError"));
+      const message = t("workspaceComments.updateError");
+      setError(message);
+      showErrorToast(message);
     } finally {
       setSubmitting(false);
     }
@@ -91,7 +105,9 @@ export default function WorkspaceConversationCommentsPanel({
       await deleteConversationComment(workspaceId, conversationId, commentId);
       setComments((current) => current.filter((item) => item.id !== commentId));
     } catch {
-      setError(t("workspaceComments.deleteError"));
+      const message = t("workspaceComments.deleteError");
+      setError(message);
+      showErrorToast(message);
     } finally {
       setSubmitting(false);
     }
