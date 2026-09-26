@@ -99,7 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm             -e SUPABASE_DB_URL="$SUPABASE_DB_URL"             -v "$RUNNER_TEMP/db-backup:/backup"             postgres:18-alpine             sh -c '
-              pg_restore                 --exit-on-error                 --no-owner                 --no-privileges                 --schema=public                 --dbname="$SUPABASE_DB_URL"                 /backup/production.dump
+              pg_restore                 --exit-on-error                 --clean                 --if-exists                 --no-owner                 --no-privileges                 --schema=public                 --dbname="$SUPABASE_DB_URL"                 /backup/production.dump
             '
 
       - name: Verify Supabase connectivity
