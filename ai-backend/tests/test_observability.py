@@ -54,8 +54,9 @@ def test_request_metrics_logger_uses_request_id(monkeypatch, client):
         level == 20
         and "HTTP GET /health 200" in message
         and "latency_ms=%s" in message
-        and args[0] >= 0
-        and args[1] == "metrics-test-1"
+        and len(args) >= 5
+        and args[3] >= 0
+        and args[4] == "metrics-test-1"
         for level, message, args in records
     )
 
