@@ -154,7 +154,7 @@
 
 ### المرحلة C — Product UX
 
-الحالة: **قيد التنفيذ — C1 وC2 مكتملان، وC3 جارٍ**
+الحالة: **قيد التنفيذ — C1 وC2 مكتملان، وC3 يتقدم ومتحقق حتى commit `f272e471…`**
 
 الهدف: تحسين تجربة الاستخدام اليومية مع الحفاظ على المعمارية الحالية، نظام Toast العالمي، اختبارات الواجهة، وعدم إضافة موارد مدفوعة.
 
@@ -192,5 +192,18 @@
 - CI مكتمل بنجاح، وCodeQL وPublish backend image وProduction Smoke نجحت.
 - Render Frontend للـcommit أصبح **live**.
 
+#### C3 — Assistant knowledge action error feedback: **مكتمل ومتحقق**
+- فشل رفع ملف المعرفة، إرفاقه، أو إزالته لم يعد يفشل بصمت؛ يظهر Global Toast برسالة مترجمة.
+- تمت إضافة اختبارات UI للحالات الثلاث.
+- commit الدمج: `199c411fead36f9efd38343f2028e7be6a50e395`.
+- CI وCodeQL وProduction Smoke نجحت، وRender أصبح Live.
+
+#### C3 — Workspace conversation comments error feedback: **مكتمل ومتحقق**
+- أخطاء تحميل التعليقات، حفظها، تعديلها، وحذفها أصبحت تظهر عبر Global Toast بدل رسالة محلية مخفية داخل اللوحة.
+- تمت إضافة اختبار UI لفشل تحميل التعليقات.
+- commit الدمج: `f272e471df2f707be747ec61b3d30774dc287657`.
+- CI وCodeQL وPublish backend image وProduction Smoke نجحت.
+- Render الحالي للـcommit أصبح **live**.
+
 #### C3 — الخطوة التالية
-مراجعة مسار UX آخر خارج Workspace، مع أولوية للشاشات التي تخفي فشل API أو تعرض حالة خطأ محلية بدل Global Toast عندما يكون Toast هو النمط المناسب.
+مراجعة مسار UX آخر خارج Workspace، مع أولوية للعمليات التي تفشل بصمت أو تمسح الحالة محليًا عند فشل API، قبل الانتقال إلى ميزات جديدة كبيرة.\n
