@@ -114,6 +114,7 @@ vi.mock("react-i18next", () => ({
       "assistantEditor.analyticsUnavailable": "تعذر تحميل إحصائيات الاستخدام",
       "assistantEditor.publicTitle": "الرابط العام",
       "assistantEditor.publicSubtitle": "شارك رابطًا آمنًا للمساعد.",
+      "assistantEditor.publicLoadError": "تعذر تحميل إعدادات الرابط العام.",
       "assistantEditor.publicEnabled": "الرابط العام مفعّل.",
       "assistantEditor.enablePublic": "تفعيل الرابط العام",
       "assistantEditor.copyPublic": "نسخ الرابط",
