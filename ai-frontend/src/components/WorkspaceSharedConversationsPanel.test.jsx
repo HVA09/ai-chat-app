@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import WorkspaceSharedConversationsPanel from "./WorkspaceSharedConversationsPanel";
@@ -76,16 +76,15 @@ describe("WorkspaceSharedConversationsPanel", () => {
       />
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(dispatchSpy).toHaveBeenCalledWith(
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "app:toast",
         detail: { message: "فشل التحميل", type: "error" },
       })
-    );
+      );
+    });
 
     dispatchSpy.mockRestore();
   });
-
 });
