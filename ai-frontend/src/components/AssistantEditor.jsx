@@ -166,8 +166,9 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
     setPublicLoading(true);
     try {
       setPublicSettings(await enableAssistantPublicLink(assistant.id));
-    } catch {
+    } catch (error) {
       setPublicSettings(null);
+      showErrorToast(error, "app.assistantUpdateError");
     } finally {
       setPublicLoading(false);
     }
@@ -179,8 +180,9 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
     setPublicLoading(true);
     try {
       setPublicSettings(await rotateAssistantPublicLink(assistant.id));
-    } catch {
+    } catch (error) {
       setPublicSettings(null);
+      showErrorToast(error, "app.assistantUpdateError");
     } finally {
       setPublicLoading(false);
     }
@@ -192,8 +194,9 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
     setPublicLoading(true);
     try {
       setPublicSettings(await disableAssistantPublicLink(assistant.id));
-    } catch {
+    } catch (error) {
       setPublicSettings(null);
+      showErrorToast(error, "app.assistantUpdateError");
     } finally {
       setPublicLoading(false);
     }
