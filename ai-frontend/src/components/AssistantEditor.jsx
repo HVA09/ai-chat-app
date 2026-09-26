@@ -136,14 +136,22 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
 
   const attachKnowledge = async (fileId) => {
     if (!assistant?.id) return;
-    await attachFileToAssistant(assistant.id, fileId);
-    await refreshKnowledge();
+    try {
+      await attachFileToAssistant(assistant.id, fileId);
+      await refreshKnowledge();
+    } catch (error) {
+      showErrorToast(error, "assistantEditor.knowledgeAttachError");
+    }
   };
 
   const detachKnowledge = async (fileId) => {
     if (!assistant?.id) return;
-    await detachFileFromAssistant(assistant.id, fileId);
-    await refreshKnowledge();
+    try {
+      await detachFileFromAssistant(assistant.id, fileId);
+      await refreshKnowledge();
+    } catch (error) {
+      showErrorToast(error, "assistantEditor.knowledgeDetachError");
+    }
   };
 
   const uploadAndAttachKnowledge = async (event) => {
@@ -156,6 +164,8 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
       const uploaded = await uploadFile(file, null, null, null, null);
       await attachFileToAssistant(assistant.id, uploaded.id);
       await refreshKnowledge();
+    } catch (error) {
+      showErrorToast(error, "assistantEditor.knowledgeUploadError");
     } finally {
       setKnowledgeUploading(false);
     }
