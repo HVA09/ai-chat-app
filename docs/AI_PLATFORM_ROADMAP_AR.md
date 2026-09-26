@@ -37,35 +37,31 @@
 - Off-site backups: **مكتمل ومتحقق تشغيليًا** — النسخ الاحتياطي الخارجي نجح قبل الترحيل، ثم تم تحديث Workflow ليدعم PostgreSQL الإنتاجي في Supabase، وتحديث `PRODUCTION_DATABASE_URL` إلى Supabase، وتشغيل النسخ الاحتياطي الجديد بنجاح.
 - Credential rotation: **مكتمل** — تم إنشاء `production_db_2026`، تحديث خدمة الـbackend و`PRODUCTION_DATABASE_URL` في GitHub، حذف `ai_chat_db_6nnl_user`، وتحقق PostgreSQL من أن الحساب القديم لم يعد قابلًا لتسجيل الدخول. تم تعيين `PRODUCTION_DB_CREDENTIAL_ROTATED=true`.
 - Domain + HTTPS: **HTTPS على نطاقات Render مكتمل** — خدمات Render تعمل عبر `onrender.com` مع HTTPS. **Custom Domain مؤجل** حاليًا لأن المستخدم لا يريد دفع تكلفة الآن ولا يوجد نطاق مخصص متحقق.
-- Production smoke tests/E2E: **مكتمل تشغيليًا** — تشغيل يدوي نهائي نجح بعد آخر تغييرات. الاختبار يغطي `/health`، `/billing/plans`، تمرير `X-Request-ID`، الوصول إلى الواجهة الأمامية، والوصول إلى backend health.
-- Observability: **مستمر** — `X-Request-ID` مرتبط بسياق logging، وProduction Smoke يتحقق من propagation.
+- Production smoke tests/E2E: **مكتمل تشغيليًا وموسع** — التشغيل يغطي `/health`، `/ready`، `/billing/plans`، تمرير `X-Request-ID`، والوصول إلى الواجهة الأمامية. تم إضافة retries لمعالجة cold starts على Render Free.
+- Observability: **قيد الاستكمال** — `X-Request-ID` مرتبط بسياق logging، وProduction Smoke يتحقق من propagation، وتمت إضافة readiness عميقة تعتمد على DB + Redis.
 
-### تحقق Render الفعلي — 2026-09-25
+### تحقق Render الفعلي — 2026-09-26
 
-- `ai-chat-backend`: Web Service، الخطة Free، Health Check Path = `/health`، الحالة التشغيلية `live`.
-- `ai-chat-frontend`: Static Site، الخطة Free، والواجهة العامة متاحة.
-- `ai-chat-db`: PostgreSQL 18، Free، `available`، انتهاء مجدول 2026-10-10.
-- `ai-chat-redis`: Free، `available`، persistence off.
+- `ai-chat-backend`: Web Service، الخطة Free، Health Check Path = `/health`.
+- آخر deploy للcommit `e14cf2e4b517282c69ae70f8eefb221e764ba831` أصبح **live**.
+- Production Smoke للcommit الجديد: **نجح**.
 - لم يتم إنشاء أو ترقية موارد Render مدفوعة.
 
-### آخر تحقق تشغيلي — 2026-09-25
+### آخر تحقق تشغيلي — 2026-09-26
 
-- Production DB Backup بعد تدوير credential: **نجح** بالكامل، بما في ذلك `pg_dump`، `pg_restore --list`، الرفع، و`head-object`.
-- Production Smoke النهائي بعد آخر نشر: **نجح**.
-- PostgreSQL connections بعد التدوير كانت باسم `production_db_2026`، ولم توجد اتصالات فعالة باسم الحساب القديم.
-- الحساب القديم `ai_chat_db_6nnl_user` لم يعد قابلًا لتسجيل الدخول.
-- Health Check الجديد على Render أصبح فعالًا وأحدث deploy أصبح `live`.
+- Production DB Backup بعد تدوير credential: **نجح** بالكامل.
+- Production Smoke السابق بعد التغييرات الأساسية: **نجح**.
+- Health Check الجديد على Render أصبح فعالًا.
+- readiness endpoint موجود ومربوط بفحص قاعدة البيانات وRedis.
+- التحقق المباشر من endpoint من بيئة التنفيذ المحلية تعذر بسبب فشل DNS، لذلك لا نسجل نتيجة HTTP مباشرة من هذه البيئة كدليل مستقل.
 
 ### الأولوية التالية
 
-**استقرار ما بعد الترحيل ثم إكمال عناصر Stage A المتبقية بدون إنشاء مورد مدفوع.**
-
-PostgreSQL أصبح محفوظًا على Supabase، والنسخ الاحتياطي الخارجي يعمل. يبقى Render PostgreSQL القديم كخطة رجوع مؤقتة حتى 2026-10-10. بعد التأكد من الاستقرار، نتابع العناصر المؤجلة مثل تحسين Redis persistence، فصل Celery عند الحاجة، وCustom Domain عند توفر نطاق وميزانية.
+**إكمال Production Hardening (Stage B) بدون إنشاء مورد مدفوع، ثم الانتقال إلى ميزات المنتج بعد إغلاق بنود B الحرجة.**
 
 ## قاعدة المتابعة
 
-عند بدء أي جلسة عمل جديدة، نبدأ من آخر حالة مؤكدة في هذه الوثيقة وGitHub `main)، ثم نكمل أول بند غير مكتمل في المرحلة الحالية قبل الانتقال إلى ميزات جديدة.
-
+عند بدء أي جلسة عمل جديدة، نبدأ من آخر حالة مؤكدة في هذه الوثيقة وGitHub `main`، ثم نكمل أول بند غير مكتمل في المرحلة الحالية قبل الانتقال إلى ميزات جديدة.
 
 ### تحقق Redis وCelery — مكتمل ومتحقق — 2026-09-26
 
@@ -83,16 +79,66 @@ PostgreSQL أصبح محفوظًا على Supabase، والنسخ الاحتيا
 
 ### المرحلة B — Production Hardening
 
-الحالة: **جاهزة للبدء**
+الحالة: **قيد التنفيذ**
 
 الهدف: تحويل الأساس الإنتاجي الحالي إلى منصة أكثر صلابة قبل إضافة ميزات كبيرة جديدة.
 
-أولويات B:
-1. تثبيت حدود ومراقبة API والـrate limiting واستهلاك الموارد.
-2. تحسين Observability: metrics مفيدة، أخطاء مهيكلة، وhealth/readiness أعمق عند الحاجة.
-3. مراجعة صلاحيات التطبيق ومسارات المستخدم/الـworkspace وIDOR/BOLA عبر اختبارات تكاملية.
-4. تحسين دورة CI/CD والتحقق من نتائج CodeQL وSmoke وBackup بعد التغييرات الإنتاجية.
-5. مراجعة التكلفة والاعتماد على الموارد المجانية قبل أي توسع.
+#### B1 — Rate Limiting واستهلاك الموارد: **مكتمل ومتحقق**
+
+- Global rate limit عبر Redis.
+- حدود منفصلة لمسارات المصادقة الحساسة.
+- حدود يومية لـAPI keys مع عملية Redis ذرية.
+- سياسة fail-open للحد العام عند تعطل Redis، وfail-closed للمسارات الحساسة في الإنتاج.
+- التحقق من ownership لمسارات API keys.
+- اختبارات CI ناجحة على هذه الأجزاء.
+
+#### B2 — Observability / Readiness: **مكتمل تنفيذيًا، والتحقق الآلي الجاري استكماله**
+
+- `X-Request-ID` validation/generation/propagation موجود.
+- Request metrics logging يربط request ID بسياق الطلب.
+- `/health` بقي Liveness check مستقلًا.
+- أضيف `/ready` كـDeep Readiness check لقاعدة البيانات وRedis.
+- اختبارات الوحدة تغطي حالتي readiness الناجحة والفاشلة.
+- Production Smoke أصبح يفحص `/ready` مع retries مناسبة لـRender Free.
+- commit `e14cf2e4b517282c69ae70f8eefb221e764ba831` أصبح **live** على Render.
+- CodeQL وPublish backend image للcommit الجديد نجحا.
+- CI الكامل للcommit الجديد كان لا يزال يعمل عند آخر نقطة متابعة؛ لا نسجل B2 كمكتمل نهائيًا قبل إغلاق هذه الدورة.
+
+#### B3 — IDOR/BOLA: **مراجعة أولية واختبارات تكاملية واسعة موجودة**
+
+تمت مراجعة واختبارات cross-user على الموارد والمسارات الحساسة، بما في ذلك:
+
+- Conversations: القراءة، pin، branch، duplicate، bookmarks وغيرها.
+- Workspaces: منع استخدام workspace لمستخدم آخر.
+- Projects: ownership والمشاركة والربط مع workspace.
+- Assistants: CRUD، versions، analytics، وعدم كشف المساعد الخاص لمستخدم آخر.
+- Files: القراءة/التنزيل/الحذف، وقيود workspace/project membership.
+- Conversation sharing: إنشاء/عرض/إلغاء روابط المشاركة من المالك فقط.
+- API keys: منع الإدارة من مستخدم آخر.
+- Sessions: منع التحكم في جلسات مستخدم آخر.
+- Tags, folders, notifications, scheduled-task history وغيرها من موارد المستخدم.
+
+لا يوجد في المراجعة الحالية مسار IDOR/BOLA واضح غير مغطى؛ يبقى توسيع الاختبارات ممكنًا عند إضافة موارد أو مسارات جديدة.
+
+#### B4 — CI/CD والتحقق التشغيلي: **مكتمل إلى حد كبير ومتحقق**
+
+- Backend/frontend tests.
+- `pip-audit`.
+- Alembic migrations.
+- Production Compose validation.
+- CodeQL.
+- Production Smoke.
+- Production DB Backup.
+- retries في Smoke للتعامل مع cold starts على Render Free.
+
+#### B5 — التكلفة والموارد: **مستمر**
+
+- Render Backend: Free.
+- Render Frontend: Free.
+- Render Redis: Free.
+- Supabase production DB: إعداد مجاني حاليًا.
+- لا توجد ترقية أو مورد مدفوع ضمن هذه المرحلة.
+- Custom Domain وفصل worker المستقل مؤجلان حتى توجد حاجة وميزانية.
 
 ### ترحيل PostgreSQL — مكتمل ومتحقق — 2026-09-26
 
