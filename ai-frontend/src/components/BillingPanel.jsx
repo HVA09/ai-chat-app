@@ -17,7 +17,15 @@ export default function BillingPanel({ onClose }) {
   const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busyPlanId, setBusyPlanId] = useState(null);
-  const [error, setError] = useState("");
+
+  const showErrorToast = (error, fallbackKey) => {
+    const message = getErrorMessage(error, t(fallbackKey));
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
 
   const refresh = async () => {
     setLoading(true);
@@ -30,8 +38,8 @@ export default function BillingPanel({ onClose }) {
       setPlans(plansData);
       setSubscription(subData);
       setUsage(usageData);
-    } catch {
-      setError(t("billing.loadError"));
+    } catch (error) {
+      showErrorToast(error, "billing.loadError");
     } finally {
       setLoading(false);
     }
@@ -42,25 +50,23 @@ export default function BillingPanel({ onClose }) {
   }, []);
 
   const handleSubscribe = async (planId) => {
-    setError("");
     setBusyPlanId(planId);
     try {
       const { checkout_url } = await createCheckout(planId);
       window.location.href = checkout_url;
     } catch (err) {
-      setError(getErrorMessage(err, t("billing.checkoutError")));
+      showErrorToast(err, "billing.checkoutError");
       setBusyPlanId(null);
     }
   };
 
   const handleCancel = async () => {
     if (!window.confirm(t("billing.confirmCancel"))) return;
-    setError("");
     try {
       await cancelSubscription();
       await refresh();
-    } catch {
-      setError(t("billing.cancelError"));
+    } catch (error) {
+      showErrorToast(error, "billing.cancelError");
     }
   };
 
@@ -143,13 +149,7 @@ export default function BillingPanel({ onClose }) {
                 </button>
               </div>
             )}
-
-            {error && (
-              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {error}
-              </div>
-            )}
-
+undefined
             <div className="space-y-3">
               {plans.map((plan) => {
                 const isCurrentPlan =
