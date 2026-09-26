@@ -19,6 +19,16 @@ except ImportError:
     logger.info("مكتبة redis غير مثبّتة")
 
 
+def redis_ping() -> bool:
+    """Return whether the configured Redis service is reachable."""
+    if not _REDIS_AVAILABLE or _client is None:
+        return False
+    try:
+        return bool(_client.ping())
+    except Exception:
+        return False
+
+
 def _safe(fn, default=None):
     if not _REDIS_AVAILABLE or _client is None:
         return default
