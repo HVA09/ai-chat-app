@@ -387,6 +387,8 @@ describe("AssistantEditor", () => {
   });
 
   it("shows a global toast when version history fails to load", async () => {
+    listAssistantKnowledgeFiles.mockResolvedValue([]);
+    listFiles.mockResolvedValue([]);
     listAssistantVersions.mockRejectedValue(new Error("versions unavailable"));
     const dispatchSpy = vi.spyOn(window, "dispatchEvent");
 
@@ -404,21 +406,22 @@ describe("AssistantEditor", () => {
     );
 
     await waitFor(() => {
-      expect(dispatchSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "app:toast",
-          detail: {
-            message: "تعذر تحميل سجل نسخ المساعد.",
-            type: "error",
-          },
-        })
-      );
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "تعذر تحميل سجل نسخ المساعد." &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
     });
 
     dispatchSpy.mockRestore();
   });
 
   it("shows a global toast when public settings fail to load", async () => {
+    listAssistantKnowledgeFiles.mockResolvedValue([]);
+    listFiles.mockResolvedValue([]);
     getAssistantPublicSettings.mockRejectedValue(new Error("public unavailable"));
     const dispatchSpy = vi.spyOn(window, "dispatchEvent");
 
@@ -436,15 +439,14 @@ describe("AssistantEditor", () => {
     );
 
     await waitFor(() => {
-      expect(dispatchSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "app:toast",
-          detail: {
-            message: "تعذر تحميل إعدادات الرابط العام.",
-            type: "error",
-          },
-        })
-      );
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "تعذر تحميل إعدادات الرابط العام." &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
     });
 
     dispatchSpy.mockRestore();
