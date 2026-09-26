@@ -92,7 +92,7 @@
 - التحقق من ownership لمسارات API keys.
 - اختبارات CI ناجحة على هذه الأجزاء.
 
-#### B2 — Observability / Readiness: **مكتمل تنفيذيًا، والتحقق الآلي الجاري استكماله**
+#### B2 — Observability / Readiness: **مكتمل ومتحقق**
 
 - `X-Request-ID` validation/generation/propagation موجود.
 - Request metrics logging يربط request ID بسياق الطلب.
@@ -102,7 +102,7 @@
 - Production Smoke أصبح يفحص `/ready` مع retries مناسبة لـRender Free.
 - commit `e14cf2e4b517282c69ae70f8eefb221e764ba831` أصبح **live** على Render.
 - CodeQL وPublish backend image للcommit الجديد نجحا.
-- CI الكامل للcommit الجديد كان لا يزال يعمل عند آخر نقطة متابعة؛ لا نسجل B2 كمكتمل نهائيًا قبل إغلاق هذه الدورة.
+- CI الكامل للcommit `ae5e4dede12dc03ff0179d618f6b8424601fc6c3` أُغلق بنجاح: Backend `pytest`، Frontend tests/build، Production Compose، Production Smoke، CodeQL، وPublish backend image كلها ناجحة.
 
 #### B3 — IDOR/BOLA: **مراجعة أولية واختبارات تكاملية واسعة موجودة**
 
@@ -150,3 +150,30 @@
 - تم تفعيل RLS على **34/34 جدولًا** في `public` كحماية لطبقة Supabase Data API، بدون إضافة سياسات تخمينية قد تتعارض مع نموذج صلاحيات التطبيق. التطبيق يستخدم اتصال PostgreSQL مباشرًا من الـbackend.
 - بقي تحذير غير حرج: امتداد `vector` موجود في schema `public` بسبب متطلبات استعادة النسخة الحالية؛ لا يتم نقله الآن حتى لا نخاطر بوظائف embeddings. يُراجع لاحقًا عند توفر نافذة آمنة للتعديل.
 - Render PostgreSQL القديم لا يزال احتياطي رجوع مؤقتًا حتى 2026-10-10.
+
+
+### المرحلة C — Product UX
+
+الحالة: **قيد التنفيذ — C1 وC2 مكتملان ومتحققان**
+
+الهدف: تحسين تجربة الاستخدام اليومية مع الحفاظ على المعمارية الحالية، نظام Toast العالمي، اختبارات الواجهة، وعدم إضافة موارد مدفوعة.
+
+#### C1 — Global error feedback: **مكتمل ومتحقق**
+- تم استبدال رسائل الخطأ المعروضة عبر `window.alert` في إجراءات Workspace الأساسية باستخدام Global Toast.
+- تم نشر التغيير على Render Frontend والتحقق من Production Smoke.
+
+#### C2 — Workspace member action errors: **مكتمل ومتحقق**
+- أخطاء تحميل بيانات Workspace.
+- دعوات الأعضاء.
+- تحديث الأدوار.
+- إزالة الأعضاء.
+- إلغاء الدعوات.
+- تحديث النموذج الافتراضي والحصة اليومية.
+- تصدير CSV للاستخدام.
+- تمت إضافة اختبارات UI لأحداث `app:toast` للحالات الجديدة.
+- الإصلاح النهائي في commit `ae5e4dede12dc03ff0179d618f6b8424601fc6c3`.
+- Render Frontend للـcommit النهائي أصبح **live**.
+- CI النهائي للـcommit نجح بالكامل.
+
+#### C3 — التالي
+مراجعة تجربة الأخطاء والنجاح في شاشات المنتج التالية بعد Workspace، مع أولوية للواجهات التي تستخدم عمليات API متعددة أو تعرض حالات تحميل/فشل للمستخدم. لن نبدأ C3 قبل اختيار مسار واضح من الكود واختباراته الحالية.
