@@ -174,7 +174,7 @@
 
 ## المرحلة D — Agent Platform
 
-الحالة: **قيد التنفيذ — D1 إلى D6 مكتملة ومتحققة**
+الحالة: **قيد التنفيذ — D1 إلى D7 مكتملة ومتحققة**
 
 ### D2 — MCP Integration: **مكتمل ومتحقق**
 - تمت إضافة MCP Python SDK `2.2.0`.
@@ -235,6 +235,18 @@
 - CodeQL run `367`: **نجح** بالكامل.
 - commit الدمج بعد squash: `a12e5b08af51746042b78ff2acf2c7def8a4c3d4`.
 - تحقق Render التشغيلي بعد الدمج: خدمة الـbackend بدأت نشر commit `a12e5b08…`، وlogs تؤكد تنفيذ migration `0065_object_storage → 0066_agent_jobs`، وبدء Embedded Celery Worker وBeat، ونجاح `/health` عدة مرات بحالة `200` على instance الجديد. حالة Render deploy API بقيت `update_in_progress` في آخر استعلام رغم أن instance الجديد كان يخدم الطلبات بنجاح.
+
+### D7 — Scheduled Agents: **مكتمل ومتحقق**
+- أضيف `execution_mode=standard|agent` إلى المهام المجدولة، مع بقاء `standard` هو الافتراضي للمهمات الحالية.
+- عند حلول موعد مهمة بوضع `agent` يتم إنشاء `AgentJob` persisted وربطه بـ`ScheduledTaskRun` ثم وضعه في Celery/Redis الموجودين أصلًا.
+- أضيفت migration `0067_scheduled_agents` لإضافة وضع التنفيذ وربط سجل الجدولة بالـAgent Job.
+- يتم تحديث `ScheduledTaskRun` عند اكتمال Agent أو فشله/إلغائه، مع إبقاء سجل المحادثة والـrun_id والنتيجة ضمن مسار Agent نفسه.
+- واجهات إنشاء وتعديل المهام المجدولة تعرض وتقبل وضع Agent، مع اختبار للعزل وربط سجل الجدولة بالـjob.
+- PR #312 تم دمجه بنجاح.
+- CI run `3170`: **نجح** بالكامل.
+- CodeQL run `370`: **نجح** بالكامل.
+- commit الدمج بعد squash: `08a5c0ff7ac5e0eb5e4918dfc1d05c7751a6c84d`.
+- لا توجد موارد مدفوعة جديدة؛ D7 يعيد استخدام Celery وRedis الموجودين.
 
 ### D5 — Sandboxed Code Execution: **مكتمل ومتحقق**
 - أداة Python تعمل داخل process منفصل باستخدام Python isolated mode (`-I`) مع `-S` و`-B` وبيئة تشغيل دنيا.
