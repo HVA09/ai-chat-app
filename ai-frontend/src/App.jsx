@@ -217,6 +217,8 @@ export default function App() {
   const [toolActivity, setToolActivity] = useState(null);
   const bottomRef = useRef(null);
   const streamAbortRef = useRef(null);
+  const conversationLoadRequestRef = useRef(0);
+  const conversationOpenRequestRef = useRef(0);
   const autoSummaryInFlightRef = useRef(false);
   const autoSummaryLastMessageCountRef = useRef({});
   const messageCountRef = useRef(messages.length);
@@ -448,6 +450,7 @@ export default function App() {
     if (reset) setConversationsLoading(true);
     else setConversationsLoadingMore(true);
 
+    const requestId = ++conversationLoadRequestRef.current;
     try {
       const list = await listConversations(
         includeArchived,
@@ -462,6 +465,7 @@ export default function App() {
       );
       const page = list.slice(0, pageSize);
 
+      if (requestId !== conversationLoadRequestRef.current) return;
       if (reset) {
         setConversations(page);
       } else {
@@ -1469,6 +1473,8 @@ export default function App() {
   };
 
   const openConversation = async (id) => {
+    const requestId = ++conversationOpenRequestRef.current;
+    setConversationId(Number(id));
     setShowShareManager(false);
     setReadOnlyConversation(false);
     setShowWorkspaceComments(false);
@@ -1481,6 +1487,7 @@ export default function App() {
     setRetryableUserMessage(null);
     try {
       const data = await getConversation(id);
+      if (requestId !== conversationOpenRequestRef.current) return;
       setConversationId(data.id);
       setParentConversationId(data.parent_conversation_id ?? null);
       messageCountRef.current = data.messages.length;
@@ -1520,6 +1527,7 @@ export default function App() {
         }))
       );
     } catch (err) {
+      if (requestId !== conversationOpenRequestRef.current) return;
       setError("");
       setToast({
         message: getErrorMessage(err, t("app.conversationLoadError")),
