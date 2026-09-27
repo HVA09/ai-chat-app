@@ -63,8 +63,11 @@ class TwoStepProvider:
         return AIToolReply(text="done")
 
 
-@pytest.mark.asyncio
-async def test_runtime_completes_with_tool_and_lifecycle_events():
+async def _empty_discovery():
+    return []
+
+
+def test_runtime_completes_with_tool_and_lifecycle_events():
     provider = TwoStepProvider()
     events = []
 
@@ -74,20 +77,19 @@ async def test_runtime_completes_with_tool_and_lifecycle_events():
     runtime = AgentRuntime(
         provider=provider,
         registry_factory=lambda: _registry(_demo_tool),
-        mcp_discoverer=lambda: _empty_discovery(),
+        mcp_discoverer=_empty_discovery,
         event_sink=emit,
     )
 
-    async def run():
-        return await runtime.run(
+    result = asyncio.run(
+        runtime.run(
             task="run demo",
             history=[{"role": "user", "content": str(i)} for i in range(25)],
             conversation=object(),
             current_user=object(),
             db=object(),
         )
-
-    result = await run()
+    )
 
     assert result.status == "completed"
     assert result.text == "done"
@@ -108,12 +110,7 @@ async def test_runtime_completes_with_tool_and_lifecycle_events():
     assert len(first_messages) == 21
 
 
-async def _empty_discovery():
-    return []
-
-
-@pytest.mark.asyncio
-async def test_runtime_times_out_tool_without_aborting_the_run():
+def test_runtime_times_out_tool_without_aborting_the_run():
     provider = TwoStepProvider()
     runtime = AgentRuntime(
         provider=provider,
@@ -122,12 +119,14 @@ async def test_runtime_times_out_tool_without_aborting_the_run():
         mcp_discoverer=_empty_discovery,
     )
 
-    result = await runtime.run(
-        task="run slow tool",
-        history=[],
-        conversation=object(),
-        current_user=object(),
-        db=object(),
+    result = asyncio.run(
+        runtime.run(
+            task="run slow tool",
+            history=[],
+            conversation=object(),
+            current_user=object(),
+            db=object(),
+        )
     )
 
     assert result.status == "completed"
