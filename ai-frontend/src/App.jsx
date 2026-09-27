@@ -1136,8 +1136,11 @@ export default function App() {
       ) {
         setSelectedAssistantId(null);
       }
-    } catch {
-      // فشل تحميل المساعدين لا يوقف الشات.
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.assistantLoadError")),
+        type: "error",
+      });
     }
   };
 
