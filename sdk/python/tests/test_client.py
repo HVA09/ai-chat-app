@@ -1,3 +1,5 @@
+import json
+
 import httpx
 
 from ai_chat_saas import AIChatClient, AuthenticationError, RateLimitError
@@ -8,7 +10,7 @@ def test_chat_maps_success_response():
         assert request.url.path == "/v1/chat"
         assert request.headers["x-api-key"] == "ak_live_test"
         assert request.headers["accept"] == "application/json"
-        assert request.json() == {"message": "hello", "model": "gpt-4o-mini"}
+        assert json.loads(request.content.decode("utf-8")) == {"message": "hello", "model": "gpt-4o-mini"}
         return httpx.Response(
             200,
             json={"conversation_id": 7, "reply": "Hi!", "model": "gpt-4o-mini"},
