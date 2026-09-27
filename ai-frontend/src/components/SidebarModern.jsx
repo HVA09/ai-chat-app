@@ -97,6 +97,7 @@ export default function SidebarModern({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [openSection, setOpenSection] = useState("projects");
+  const [contextOpenId, setContextOpenId] = useState(null);
   const importRef = useRef(null);
 
   const recent = conversations || [];
@@ -104,6 +105,7 @@ export default function SidebarModern({
 
   const selectConversation = async (id) => {
     setMobileOpen(false);
+    setContextOpenId(null);
     await onSelectConversation(id);
   };
 
