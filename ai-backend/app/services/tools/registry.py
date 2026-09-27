@@ -22,6 +22,11 @@ from app.models.user import User
 from app.services.tools.calculator import CalculatorError, calculate_expression
 from app.services.tools.code_execution import CodeExecutionError, execute_python_code
 from app.services.tools.data_analysis import DataAnalysisError, DataFile, analyze_file
+from app.services.tool_security import (
+    ToolArgumentSecurityError,
+    inspect_untrusted_output,
+    validate_tool_arguments,
+)
 from app.services.tools.web_search import (
     WebSearchError,
     format_web_search_response,
@@ -41,6 +46,8 @@ class ToolResult:
     content: str
     sources: list[dict]
     succeeded: bool
+    untrusted: bool = False
+    injection_suspected: bool = False
 
 
 ToolHandler = Callable[[dict[str, Any], ToolContext], Awaitable[ToolResult]]
@@ -52,6 +59,7 @@ class ToolSpec:
     description: str
     parameters: dict[str, Any]
     handler: ToolHandler
+    output_trust: str = "trusted"
 
     def as_provider_definition(self) -> dict:
         return {
@@ -127,7 +135,31 @@ class ToolRegistry:
                 succeeded=False,
             )
 
-        return await spec.handler(arguments, context)
+        try:
+            validate_tool_arguments(
+                spec.parameters,
+                arguments,
+                max_chars=settings.AGENT_MAX_TOOL_ARGUMENT_CHARS,
+                max_depth=settings.AGENT_MAX_TOOL_ARGUMENT_DEPTH,
+            )
+        except ToolArgumentSecurityError as exc:
+            return ToolResult(
+                content=f"تم رفض مدخلات الأداة '{name}' لأسباب أمنية: {exc}",
+                sources=[],
+                succeeded=False,
+            )
+
+        result = await spec.handler(arguments, context)
+        if spec.output_trust == "untrusted":
+            security = inspect_untrusted_output(result.content)
+            return ToolResult(
+                content=result.content,
+                sources=result.sources,
+                succeeded=result.succeeded,
+                untrusted=True,
+                injection_suspected=security.injection_suspected,
+            )
+        return result
 
 
 def _get_attached_data_file(
@@ -299,6 +331,7 @@ tool_registry.register(
             "required": ["query"],
         },
         handler=_web_search,
+        output_trust="untrusted",
     )
 )
 tool_registry.register(
@@ -316,5 +349,6 @@ tool_registry.register(
             "required": ["filename"],
         },
         handler=_analyze_data,
+        output_trust="untrusted",
     )
 )
