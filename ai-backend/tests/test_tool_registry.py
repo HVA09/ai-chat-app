@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from app.services.tools.registry import ToolContext, ToolRegistry, ToolResult, ToolSpec, tool_registry
@@ -23,8 +25,7 @@ def test_builtin_tool_registry_has_expected_tools():
     ]
 
 
-@pytest.mark.asyncio
-async def test_registry_executes_registered_tool_and_rejects_unknown():
+def test_registry_executes_registered_tool_and_rejects_unknown():
     registry = ToolRegistry()
     registry.register(
         ToolSpec(
@@ -38,19 +39,19 @@ async def test_registry_executes_registered_tool_and_rejects_unknown():
         )
     )
 
-    result = await registry.execute(
+    result = asyncio.run(registry.execute(
         "demo",
         {},
         ToolContext(conversation=None, current_user=None, db=None),
-    )
+    ))
     assert result.content == "ok"
     assert result.succeeded is True
 
-    unknown = await registry.execute(
+    unknown = asyncio.run(registry.execute(
         "missing",
         {},
         ToolContext(conversation=None, current_user=None, db=None),
-    )
+    ))
     assert unknown.succeeded is False
     assert "غير متاحة" in unknown.content
 
