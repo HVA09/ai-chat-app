@@ -224,6 +224,16 @@
 - commit الدمج بعد squash: `d6c8a743d257b035b79814edb019b8fe47aaad15`.
 
 ### D4 — Tool Permissions: **مكتمل ومتحقق**
+- تمت إضافة Allowlist عالمية لأدوات Agent عبر `AGENT_ALLOWED_TOOLS_JSON`.
+- الـTool Registry يرفض تسجيل الأدوات غير المسموح بها، وRuntime لا يعرض للـmodel إلا الأدوات المسموح بها.
+- خوادم MCP لا تعرض أي أداة remote تلقائيًا؛ كل خادم يحتاج `allowed_tools` صريحة بأسماء الأدوات البعيدة المسموح بها.
+- أضيفت اختبارات مستقلة لـRegistry permissions وAgent runtime filtering وMCP server allowlists.
+- PR #308 تم دمجه بنجاح.
+- CI run `3126`: **نجح**.
+- CodeQL run `356`: **نجح**.
+- commit الدمج بعد squash: `82f4e295c1c8fe064fef91131adaee17d87a19bf`.
+
+### D4 — Tool Permissions: **مكتمل ومتحقق**
 - تمت إضافة Allowlist صريحة لأدوات Agent عبر `AGENT_ALLOWED_TOOLS_JSON`.
 - الـTool Registry يفرض الـallowlist عند التسجيل والعرض، فلا تصل الأداة غير المسموح بها إلى تعريفات النموذج.
 - خوادم MCP أصبحت تتطلب `allowed_tools` صريحة لكل أداة بعيدة؛ أدوات MCP غير المدرجة لا تُكتشف ولا تُعرض للـAgent.
