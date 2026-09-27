@@ -928,3 +928,41 @@ html.dark .chat-message-user {
   top: calc(100% + 3px);
   inset-inline-end: 8px;
 }
+
+/* Conversation canvas and composer refinements */
+.chat-surface {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none;
+  padding-inline: clamp(4px, 2vw, 22px) !important;
+}
+.chat-message-assistant {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.chat-message-user {
+  max-width: min(78%, 760px);
+  border: 1px solid rgba(255,255,255,.07);
+}
+.chat-composer {
+  border-top: 0 !important;
+  background: transparent !important;
+  padding: 8px 0 14px !important;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+.chat-composer > div:first-child {
+  width: 100%;
+}
+.chat-composer form,
+.chat-composer > .flex {
+  max-width: 100%;
+}
+.chat-composer .chat-textarea {
+  box-shadow: 0 12px 36px rgba(15,23,42,.08);
+}
+.dark .chat-composer .chat-textarea {
+  box-shadow: 0 12px 36px rgba(0,0,0,.25);
+}
