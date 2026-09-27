@@ -3,6 +3,7 @@ import hmac
 
 import pytest
 
+from app.models.user import User
 from app.models.webhook_delivery import WebhookDelivery
 from app.routers import webhooks as webhooks_router
 from app.services import webhook_service
@@ -197,8 +198,12 @@ def test_delivery_sends_signed_request_and_marks_delivered(db_session, monkeypat
     from app.models.webhook_endpoint import WebhookEndpoint
     from app.services.webhook_service import deliver_webhook_delivery
 
+    user = User(email="webhook-delivery@example.com", hashed_password="x")
+    db_session.add(user)
+    db_session.flush()
+
     endpoint = WebhookEndpoint(
-        user_id=1,
+        user_id=user.id,
         name="Delivery",
         url="https://example.test/hook",
         secret_encrypted=encrypt_webhook_secret("whsec_delivery"),
