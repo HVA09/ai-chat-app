@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.saved_prompt import SavedPrompt
+from app.models.saved_prompt_version import SavedPromptVersion
 from app.models.user import User
-from app.schemas.saved_prompts import SavedPromptCreate, SavedPromptOut, SavedPromptUpdate
+from app.schemas.saved_prompts import SavedPromptCreate, SavedPromptOut, SavedPromptUpdate, SavedPromptVersionOut
 
 router = APIRouter(prefix="/saved-prompts", tags=["Saved Prompts"])
 
@@ -48,6 +49,20 @@ def _ensure_unique_name(
         )
 
 
+def _create_prompt_version(prompt: SavedPrompt, db: Session) -> SavedPromptVersion:
+    current_version = db.query(func.max(SavedPromptVersion.version)).filter(
+        SavedPromptVersion.saved_prompt_id == prompt.id
+    ).scalar() or 0
+    version = SavedPromptVersion(
+        saved_prompt_id=prompt.id,
+        version=current_version + 1,
+        name=prompt.name,
+        content=prompt.content,
+    )
+    db.add(version)
+    return version
+
+
 @router.get("", response_model=list[SavedPromptOut])
 def list_saved_prompts(
     current_user: User = Depends(get_current_user),
@@ -74,6 +89,8 @@ def create_saved_prompt(
         content=payload.content,
     )
     db.add(prompt)
+    db.flush()
+    _create_prompt_version(prompt, db)
     db.commit()
     db.refresh(prompt)
     return prompt
@@ -91,6 +108,8 @@ def update_saved_prompt(
     prompt.name = payload.name
     prompt.content = payload.content
     prompt.updated_at = func.now()
+    db.flush()
+    _create_prompt_version(prompt, db)
     db.commit()
     db.refresh(prompt)
     return prompt
@@ -105,3 +124,47 @@ def delete_saved_prompt(
     prompt = _get_owned_prompt(prompt_id, current_user, db)
     db.delete(prompt)
     db.commit()
+
+
+@router.get("/{prompt_id}/versions", response_model=list[SavedPromptVersionOut])
+def list_saved_prompt_versions(
+    prompt_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    prompt = _get_owned_prompt(prompt_id, current_user, db)
+    return (
+        db.query(SavedPromptVersion)
+        .filter(SavedPromptVersion.saved_prompt_id == prompt.id)
+        .order_by(SavedPromptVersion.version.desc())
+        .all()
+    )
+
+
+@router.post("/{prompt_id}/versions/{version}/restore", response_model=SavedPromptOut)
+def restore_saved_prompt_version(
+    prompt_id: int,
+    version: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    prompt = _get_owned_prompt(prompt_id, current_user, db)
+    snapshot = (
+        db.query(SavedPromptVersion)
+        .filter(
+            SavedPromptVersion.saved_prompt_id == prompt.id,
+            SavedPromptVersion.version == version,
+        )
+        .first()
+    )
+    if not snapshot:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="نسخة الموجه المحفوظ غير موجودة")
+    _ensure_unique_name(snapshot.name, current_user, db, exclude_id=prompt.id)
+    prompt.name = snapshot.name
+    prompt.content = snapshot.content
+    prompt.updated_at = func.now()
+    db.flush()
+    _create_prompt_version(prompt, db)
+    db.commit()
+    db.refresh(prompt)
+    return prompt
