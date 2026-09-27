@@ -174,7 +174,7 @@
 
 ## المرحلة D — Agent Platform
 
-الحالة: **قيد التنفيذ — D1 وD2 وD3 مكتملة ومتحققة**
+الحالة: **قيد التنفيذ — D1 وD2 وD3 وD4 مكتملة ومتحققة**
 
 ### D2 — MCP Integration: **مكتمل ومتحقق**
 - تمت إضافة MCP Python SDK `2.2.0`.
@@ -197,6 +197,17 @@
 - CI run `3080`: **نجح**.
 - CodeQL run `341`: **نجح**.
 - commit الدمج بعد squash: `5330b0ff6064072aa434cd200a7fecda89e19624`.
+
+### D4 — Tool Permissions: **مكتمل ومتحقق**
+- أضيفت قائمة سماح صريحة لأدوات Agent عبر `AGENT_ALLOWED_TOOLS_JSON`.
+- الـTool Registry أصبح يرفض تسجيل أي أداة خارج القائمة المسموح بها، ولا يعرض الأدوات غير المسموحة للنموذج.
+- طبقة MCP أصبحت تتطلب `allowed_tools` صريحة لكل خادم؛ اكتشاف أداة MCP غير المدرجة في القائمة يُرفض ولا تُضاف إلى الـRegistry.
+- بقي MCP مغلقًا افتراضيًا، ومع production يبقى HTTPS إلزاميًا لخوادم MCP.
+- أضيفت اختبارات للـregistry والـruntime وMCP للتأكد من تطبيق الصلاحيات قبل التنفيذ والاكتشاف.
+- PR #308 تم دمجه بنجاح.
+- CI run `3126`: **نجح**.
+- CodeQL run `356`: **نجح**.
+- commit الدمج بعد squash: `82f4e295c1c8fe064fef91131adaee17d87a19bf`.
 
 ### D3 — Agent Runtime: **مكتمل ومتحقق**
 - تم فصل دورة تشغيل Agent عن طبقة النقل HTTP داخل `ai-backend/app/services/agent_runtime.py`.
