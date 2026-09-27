@@ -284,7 +284,7 @@
 
 ## المرحلة E — Platform & Developer Ecosystem
 
-الحالة: **قيد التنفيذ — E1 وE2 مكتملان ومتحققان**
+الحالة: **قيد التنفيذ — E1 إلى E3 مكتملة ومتحققة**
 
 ### E1 — API Keys: **مكتمل ومتحقق**
 - إدارة مفاتيح Developer API موجودة عبر `GET /api-keys` و`POST /api-keys` و`DELETE /api-keys/{key_id}`.
@@ -307,6 +307,21 @@
 - CI run `3211`: **نجح**.
 - CodeQL run `380`: **نجح**.
 - commit الدمج بعد squash: `ba948ae101a5feee94c29738a040939952a430c2`.
+
+### E3 — Developer Webhooks: **مكتمل ومتحقق**
+- تمت إضافة إدارة Webhook endpoints للمطورين تحت `/webhooks` مع عزل كامل حسب المستخدم.
+- secret الخاص بالـWebhook يُعاد عند الإنشاء أو تدويره فقط، ويُخزن مشفرًا في قاعدة البيانات.
+- كل delivery يستخدم HMAC-SHA256 مع `X-Webhook-Id` و`X-Webhook-Event` و`X-Webhook-Timestamp` و`X-Webhook-Signature`.
+- تم تطبيق تحقق SSRF على وجهة الـWebhook: رفض localhost والشبكات الداخلية والعناوين غير العامة، مع إلزام HTTPS في production ومنع redirects.
+- تمت إضافة سجل persisted للـdeliveries مع حالات المحاولة والنتيجة والـHTTP status والـretry schedule.
+- retry محدود إلى 5 محاولات مع backoff، ويستخدم Celery/Redis الموجودين أصلًا دون إنشاء مورد مدفوع جديد.
+- أحداث Developer API الحالية: `api_key.created` و`api_key.revoked`، إضافة إلى `webhook.test` للتحقق اليدوي من endpoint.
+- أضيفت واجهة اختبار endpoint وقائمة deliveries، مع تدوير secret.
+- تمت إضافة migration `0068_developer_webhooks` واختبارات E3 للأمان والعزل والتوقيع والتسليم.
+- PR #318 تم دمجه بنجاح.
+- CI run `3232`: **نجح** بالكامل.
+- CodeQL run `384`: **نجح**.
+- commit الدمج بعد squash: `e684a55585a90404d72a64c1ee64d88ec1404ae3`.
 
 1. API Keys
 2. API versioning
