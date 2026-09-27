@@ -104,7 +104,7 @@
 - CodeQL وPublish backend image للcommit الجديد نجحا.
 - CI الكامل للcommit `ae5e4dede12dc03ff0179d618f6b8424601fc6c3` أُغلق بنجاح: Backend `pytest`، Frontend tests/build، Production Compose، Production Smoke، CodeQL، وPublish backend image كلها ناجحة.
 
-#### B3 — IDOR/BOLA: **مراجعة أولية واختبارات تكاملية واسعة موجودة**
+#### B3 — IDOR/BOLA: **مكتمل ومتحقق**
 
 تمت مراجعة واختبارات cross-user على الموارد والمسارات الحساسة، بما في ذلك:
 
@@ -119,6 +119,15 @@
 - Tags, folders, notifications, scheduled-task history وغيرها من موارد المستخدم.
 
 لا يوجد في المراجعة الحالية مسار IDOR/BOLA واضح غير مغطى؛ يبقى توسيع الاختبارات ممكنًا عند إضافة موارد أو مسارات جديدة.
+
+### تحقق B3 النهائي — 2026-09-27
+- تمت إضافة اختبارات cross-user مخصصة لـ **Project Memories** و**Assistant Workspace Sharing** في PR #299.
+- تم تصحيح اختبار دعوة عضو المشروع ليستخدم مسار قبول الدعوة الفعلي ويلتقط token عبر mock لإرسال البريد.
+- PR #299 تم دمجه بنجاح بعد نجاح الفحوصات.
+- CI run `3059` (GitHub Actions run `36334506819`): **نجح**.
+- CodeQL run `333` (GitHub Actions run `36334506818`): **نجح**.
+- commit الدمج بعد squash: `ac88c1cc6f79744bab99f733692caa496ed3b9e4`.
+- النتيجة: **B3 مغلق ومتحقق**؛ لا توجد حاليًا مسارات IDOR/BOLA معروفة غير مغطاة ضمن نطاق المراجعة الحالي.
 
 #### B4 — CI/CD والتحقق التشغيلي: **مكتمل إلى حد كبير ومتحقق**
 
