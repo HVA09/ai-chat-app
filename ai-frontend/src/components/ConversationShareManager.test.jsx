@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ConversationShareManager from "./ConversationShareManager";
@@ -9,6 +9,10 @@ const revokeConversationShare = vi.fn();
 vi.mock("../lib/sharedConversationsApi", () => ({
   listConversationShares: (...args) => listConversationShares(...args),
   revokeConversationShare: (...args) => revokeConversationShare(...args),
+}));
+
+vi.mock("../lib/errors", () => ({
+  getErrorMessage: vi.fn((error, fallback) => error?.response?.data?.detail || fallback),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -39,6 +43,7 @@ vi.mock("react-i18next", () => ({
 describe("ConversationShareManager", () => {
   afterEach(() => {
     vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
   it("يعرض الروابط الموجودة ويسمح بإلغائها", async () => {
@@ -88,5 +93,74 @@ describe("ConversationShareManager", () => {
     );
 
     expect(await screen.findByText("رابط منتهي")).toBeInTheDocument();
+  });
+
+  it("يستخدم Global Toast عند فشل تحميل روابط المشاركة", async () => {
+    listConversationShares.mockRejectedValueOnce({
+      response: { data: { detail: "Access denied" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <ConversationShareManager
+        conversationId={7}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Access denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+
+    expect(screen.queryByText("Access denied")).not.toBeInTheDocument();
+  });
+
+  it("يستخدم Global Toast عند فشل إلغاء رابط المشاركة", async () => {
+    listConversationShares.mockResolvedValueOnce([
+      {
+        id: 10,
+        created_at: "2026-09-20T10:00:00Z",
+        expires_at: null,
+        is_expired: false,
+        password_protected: false,
+        access_count: 0,
+        last_accessed_at: null,
+      },
+    ]);
+    revokeConversationShare.mockRejectedValueOnce({
+      response: { data: { detail: "Revoke denied" } },
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <ConversationShareManager
+        conversationId={7}
+        onClose={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "إلغاء الرابط" }));
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Revoke denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+
+    expect(screen.queryByText("Revoke denied")).not.toBeInTheDocument();
   });
 });
