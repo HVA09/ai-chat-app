@@ -75,7 +75,10 @@ __all__ = [
     "WebhookEvent",
     "WebhookEndpoint",
     "WebhookDelivery",
+    "WorkspaceRBACRole",
+    "WorkspaceRBACPermission",
 ]
 
 from app.models.oauth_connection import OAuthConnection
 from app.models.oauth_state import OAuthState
+from app.models.workspace_rbac import WorkspaceRBACRole, WorkspaceRBACPermission
