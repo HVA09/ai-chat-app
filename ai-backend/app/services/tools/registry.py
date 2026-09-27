@@ -98,14 +98,7 @@ class ToolRegistry:
                 succeeded=False,
             )
 
-        try:
-            return await spec.handler(arguments, context)
-        except Exception:
-            return ToolResult(
-                content=f"تعذر تنفيذ الأداة '{name}'.",
-                sources=[],
-                succeeded=False,
-            )
+        return await spec.handler(arguments, context)
 
 
 def _get_attached_data_file(
