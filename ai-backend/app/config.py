@@ -51,6 +51,15 @@ class Settings(BaseSettings):
     MCP_MAX_TOOLS_PER_SERVER: int = 20
     # Explicit allowlist for Agent tools. MCP tools must also be allowed per server.
     AGENT_ALLOWED_TOOLS_JSON: str = "[\"calculator\",\"python\",\"web_search\",\"analyze_data\"]"
+
+    # OAuth / connector foundation. Providers stay disabled until credentials are configured.
+    OAUTH_CALLBACK_BASE_URL: str = ""
+    OAUTH_STATE_TTL_SECONDS: int = 600
+    OAUTH_GOOGLE_CLIENT_ID: str = ""
+    OAUTH_GOOGLE_CLIENT_SECRET: str = ""
+    OAUTH_MICROSOFT_CLIENT_ID: str = ""
+    OAUTH_MICROSOFT_CLIENT_SECRET: str = ""
+    OAUTH_MICROSOFT_TENANT: str = "common"
     AGENT_MAX_TOOL_ARGUMENT_CHARS: int = 12_000
     AGENT_MAX_TOOL_ARGUMENT_DEPTH: int = 8
 
@@ -220,6 +229,16 @@ class Settings(BaseSettings):
                 raise ValueError("SMTP must be configured in production")
             if not self.TOTP_ENCRYPTION_KEY:
                 raise ValueError("TOTP_ENCRYPTION_KEY is required in production")
+            if (
+                (self.OAUTH_GOOGLE_CLIENT_ID or self.OAUTH_MICROSOFT_CLIENT_ID)
+                and (
+                    not self.OAUTH_CALLBACK_BASE_URL
+                    or not self.OAUTH_CALLBACK_BASE_URL.startswith("https://")
+                )
+            ):
+                raise ValueError(
+                    "OAUTH_CALLBACK_BASE_URL must be HTTPS when OAuth connectors are configured in production"
+                )
             if any("localhost" in origin or "127.0.0.1" in origin for origin in self.CORS_ORIGINS):
                 raise ValueError("Production CORS_ORIGINS cannot contain localhost")
         return self

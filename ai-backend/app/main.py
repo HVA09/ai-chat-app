@@ -30,6 +30,7 @@ from app.routers.assistants import router as assistants_router
 from app.routers.billing import router as billing_router
 from app.routers.webhooks import router as webhooks_router
 from app.routers.api_keys import router as api_keys_router
+from app.routers.oauth import router as oauth_router
 from app.routers.chat import router as chat_router
 from app.routers.conversations import router as conversations_router
 from app.routers.files import router as files_router
@@ -190,6 +191,7 @@ app.include_router(folders_router)
 app.include_router(billing_router)
 app.include_router(webhooks_router)
 app.include_router(api_keys_router)
+app.include_router(oauth_router)
 app.include_router(notifications_router)
 app.include_router(scheduled_tasks_router)
 app.include_router(agent_jobs_router)
