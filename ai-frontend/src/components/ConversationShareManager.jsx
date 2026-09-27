@@ -1,10 +1,20 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listConversationShares, revokeConversationShare } from "../lib/sharedConversationsApi";
+import { getErrorMessage } from "../lib/errors";
 
 function formatDate(value) {
   if (!value) return "—";
   return new Date(value).toLocaleString();
+}
+
+function showErrorToast(error, fallback) {
+  const message = getErrorMessage(error, fallback);
+  window.dispatchEvent(
+    new CustomEvent("app:toast", {
+      detail: { message, type: "error" },
+    })
+  );
 }
 
 export default function ConversationShareManager({ conversationId, onClose, onChanged }) {
@@ -12,16 +22,14 @@ export default function ConversationShareManager({ conversationId, onClose, onCh
   const [shares, setShares] = useState([]);
   const [loading, setLoading] = useState(true);
   const [revokingId, setRevokingId] = useState(null);
-  const [error, setError] = useState("");
 
   const refresh = async () => {
     if (!conversationId) return;
     setLoading(true);
-    setError("");
     try {
       setShares(await listConversationShares(conversationId));
     } catch (err) {
-      setError(err?.response?.data?.detail || t("sharing.managementLoadError"));
+      showErrorToast(err, t("sharing.managementLoadError"));
     } finally {
       setLoading(false);
     }
@@ -39,7 +47,7 @@ export default function ConversationShareManager({ conversationId, onClose, onCh
       await refresh();
       onChanged?.();
     } catch (err) {
-      setError(err?.response?.data?.detail || t("sharing.revokeError"));
+      showErrorToast(err, t("sharing.revokeError"));
     } finally {
       setRevokingId(null);
     }
@@ -74,10 +82,6 @@ export default function ConversationShareManager({ conversationId, onClose, onCh
         <div className="mt-4">
           {loading ? (
             <p className="text-sm text-slate-400">{t("sharing.managementLoading")}</p>
-          ) : error ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {error}
-            </div>
           ) : shares.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
               {t("sharing.noActiveLinks")}
