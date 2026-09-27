@@ -11,6 +11,7 @@ class AssistantVersionOut(BaseModel):
     name: str
     description: str | None
     instructions: str
+    knowledge_file_ids: list[int] | None
     created_at: datetime
 
 
