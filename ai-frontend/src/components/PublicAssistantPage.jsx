@@ -4,10 +4,20 @@ import {
   duplicatePublicAssistant,
   getPublicAssistant,
 } from "../lib/publicAssistantsApi";
+import { getErrorMessage } from "../lib/errors";
 
 function tokenFromPath() {
   const match = window.location.pathname.match(/^\/public-assistant\/([^/]+)\/?$/);
   return match ? decodeURIComponent(match[1]) : "";
+}
+
+function showErrorToast(error, fallback) {
+  const message = getErrorMessage(error, fallback);
+  window.dispatchEvent(
+    new CustomEvent("app:toast", {
+      detail: { message, type: "error" },
+    })
+  );
 }
 
 export default function PublicAssistantPage() {
@@ -15,14 +25,12 @@ export default function PublicAssistantPage() {
   const [assistant, setAssistant] = useState(null);
   const [loading, setLoading] = useState(true);
   const [duplicating, setDuplicating] = useState(false);
-  const [error, setError] = useState("");
 
   const token = tokenFromPath();
 
   useEffect(() => {
     let active = true;
     setLoading(true);
-    setError("");
 
     getPublicAssistant(token)
       .then((data) => {
@@ -31,7 +39,7 @@ export default function PublicAssistantPage() {
       .catch((err) => {
         if (active) {
           setAssistant(null);
-          setError(err?.response?.data?.detail || t("publicAssistant.loadError"));
+          showErrorToast(err, t("publicAssistant.loadError"));
         }
       })
       .finally(() => {
@@ -45,16 +53,15 @@ export default function PublicAssistantPage() {
 
   const handleDuplicate = async () => {
     setDuplicating(true);
-    setError("");
     try {
       await duplicatePublicAssistant(token);
       window.location.assign("/");
     } catch (err) {
-      if (err?.response?.status === 401) {
-        setError(t("publicAssistant.loginRequired"));
-      } else {
-        setError(err?.response?.data?.detail || t("publicAssistant.duplicateError"));
-      }
+      const fallback =
+        err?.response?.status === 401
+          ? t("publicAssistant.loginRequired")
+          : t("publicAssistant.duplicateError");
+      showErrorToast(err, fallback);
     } finally {
       setDuplicating(false);
     }
@@ -105,17 +112,10 @@ export default function PublicAssistantPage() {
                   {t("publicAssistant.backToApp")}
                 </a>
               </div>
-
-              {error ? (
-                <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-                  {error}
-                </p>
-              ) : null}
             </>
           ) : (
             <div>
               <h1 className="text-xl font-semibold">{t("publicAssistant.notFoundTitle")}</h1>
-              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{error}</p>
             </div>
           )}
         </div>
