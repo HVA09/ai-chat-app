@@ -54,6 +54,41 @@ Webhook destinations are validated against SSRF-sensitive private, loopback, loc
 
 Delivery is asynchronous through the existing Celery/Redis infrastructure, with persisted attempt history and bounded retries.
 
+## SDKs
+
+Official SDK packages are provided for the stable Developer API v1:
+
+- Python: `sdk/python`, package name `ai-chat-saas`.
+- JavaScript: `sdk/javascript`, package name `ai-chat-saas`, Node.js 18+.
+
+Both SDKs expose the same `POST /v1/chat` contract and send the API key with `X-API-Key`.
+
+Python quick start:
+
+```python
+from ai_chat_saas import AIChatClient
+
+with AIChatClient(
+    "ak_live_...",
+    base_url="https://your-api.example.com/v1",
+) as client:
+    result = client.chat("Hello")
+```
+
+JavaScript quick start:
+
+```js
+import { AIChatClient } from "ai-chat-saas";
+
+const client = new AIChatClient("ak_live_...", {
+  baseUrl: "https://your-api.example.com/v1",
+});
+
+const result = await client.chat("Hello");
+```
+
+SDK errors preserve HTTP status information and relevant `X-Request-ID` / `Retry-After` metadata when present.
+
 ## OAuth connectors
 
 OAuth connectors link an already-authenticated application user to an external provider without exposing provider passwords to the application.
