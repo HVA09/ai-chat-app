@@ -547,8 +547,11 @@ export default function App() {
   const refreshTags = async () => {
     try {
       setTags(await listTags());
-    } catch {
-      // فشل تحميل الوسوم لا يوقف الشات.
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.tagsLoadError")),
+        type: "error",
+      });
     }
   };
 
@@ -651,30 +654,36 @@ export default function App() {
   };
 
   const refreshWorkspaces = async () => {
+    let list;
     try {
-      const list = await listWorkspaces();
-      setWorkspaces(list);
-      const nextId =
-        selectedWorkspaceId && list.some((workspace) => workspace.id === selectedWorkspaceId)
-          ? selectedWorkspaceId
-          : list[0]?.id ?? null;
-      setSelectedWorkspaceId(nextId);
-      const selectedWorkspace = list.find((workspace) => workspace.id === nextId);
-      setSelectedModel(
-        selectedWorkspace?.default_ai_model ||
-          aiModels.find((model) => model.is_default)?.id ||
-          aiModels[0]?.id ||
-          ""
-      );
-      setSelectedFolderId(null);
-      setSelectedProjectId(null);
-      await refreshFolders(nextId);
-      await refreshProjects(nextId);
-      await refreshAssistants(nextId);
-      await refreshConversations(showArchivedConversations, null, nextId, null);
-    } catch {
-      // فشل تحميل مساحات العمل لا يوقف الشات.
+      list = await listWorkspaces();
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.workspacesLoadError")),
+        type: "error",
+      });
+      return;
     }
+
+    setWorkspaces(list);
+    const nextId =
+      selectedWorkspaceId && list.some((workspace) => workspace.id === selectedWorkspaceId)
+        ? selectedWorkspaceId
+        : list[0]?.id ?? null;
+    setSelectedWorkspaceId(nextId);
+    const selectedWorkspace = list.find((workspace) => workspace.id === nextId);
+    setSelectedModel(
+      selectedWorkspace?.default_ai_model ||
+        aiModels.find((model) => model.is_default)?.id ||
+        aiModels[0]?.id ||
+        ""
+    );
+    setSelectedFolderId(null);
+    setSelectedProjectId(null);
+    await refreshFolders(nextId);
+    await refreshProjects(nextId);
+    await refreshAssistants(nextId);
+    await refreshConversations(showArchivedConversations, null, nextId, null);
   };
 
   const handleCreateWorkspace = async () => {
@@ -763,8 +772,11 @@ export default function App() {
   const refreshFolders = async (workspaceId = selectedWorkspaceId) => {
     try {
       setFolders(await listFolders(workspaceId));
-    } catch {
-      // فشل تحميل المجلدات لا يوقف الشات.
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.foldersLoadError")),
+        type: "error",
+      });
     }
   };
 
