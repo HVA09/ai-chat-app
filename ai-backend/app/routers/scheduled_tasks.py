@@ -222,6 +222,7 @@ def run_scheduled_task_now(
                 ScheduledTaskRun.started_at,
                 ScheduledTaskRun.finished_at,
                 ScheduledTaskRun.conversation_id,
+                ScheduledTaskRun.agent_job_id,
                 ScheduledTaskRun.error,
                 ScheduledTaskRun.created_at,
             ).where(ScheduledTaskRun.id == run_id)
