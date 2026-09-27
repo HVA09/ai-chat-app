@@ -236,7 +236,6 @@ def test_enterprise_rbac_custom_role_controls_member_operations(client, monkeypa
     fourth_token = _register_and_login(client, "rbac-fourth@example.com")
     assert fourth_token
 
-    token_value["value"] = next(token_values)
     invitation = client.post(
         f"/workspaces/{workspace['id']}/invitations",
         json={"email": "rbac-fourth@example.com", "role": "member"},
