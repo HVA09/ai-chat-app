@@ -29,6 +29,7 @@ class WorkspaceOut(BaseModel):
     role: WorkspaceRole
     default_ai_model: str | None
     daily_ai_request_limit: int | None
+    monthly_ai_budget_usd: float | None
     created_at: datetime
 
 
@@ -46,3 +47,7 @@ class WorkspaceDefaultModelUpdate(BaseModel):
 
 class WorkspaceDailyLimitUpdate(BaseModel):
     daily_ai_request_limit: int | None = Field(default=None, ge=1, le=100000)
+
+
+class WorkspaceMonthlyBudgetUpdate(BaseModel):
+    monthly_ai_budget_usd: float | None = Field(default=None, ge=0, le=1_000_000)
