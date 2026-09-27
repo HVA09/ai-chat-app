@@ -640,6 +640,12 @@ try:
     def execute_agent_job(job_id: int) -> None:
         _execute_agent_job(job_id)
 
+    @celery_app.task(name="deliver_webhook_task")
+    def deliver_webhook_task(delivery_id: int) -> None:
+        from app.services.webhook_service import deliver_webhook_delivery
+
+        deliver_webhook_delivery(delivery_id)
+
 
     @celery_app.task(name="run_due_scheduled_tasks")
     def run_due_scheduled_tasks() -> None:
