@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     WEB_SEARCH_TIMEOUT_SECONDS: float = 8.0
     WEB_SEARCH_MAX_RESULTS: int = 5
 
+    # MCP integration is opt-in. No external MCP server is contacted unless enabled
+    # and explicitly configured through MCP_SERVERS_JSON.
+    MCP_ENABLED: bool = False
+    MCP_SERVERS_JSON: str = "[]"
+    MCP_MAX_SERVERS: int = 5
+    MCP_MAX_TOOLS_PER_SERVER: int = 20
+
     FRONTEND_URL: str = "http://localhost:5173"
     INITIAL_ADMIN_EMAIL: str | None = None
 
@@ -120,6 +127,28 @@ class Settings(BaseSettings):
     def validate_ai_request_timeout(cls, value: float) -> float:
         if value <= 0:
             raise ValueError("AI_REQUEST_TIMEOUT_SECONDS must be greater than 0")
+        return value
+
+    @field_validator("MCP_SERVERS_JSON", mode="before")
+    @classmethod
+    def validate_mcp_servers_json(cls, value):
+        if value is None or value == "":
+            return "[]"
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise ValueError("MCP_SERVERS_JSON must be valid JSON") from exc
+            if not isinstance(parsed, list):
+                raise ValueError("MCP_SERVERS_JSON must be a JSON list")
+            return json.dumps(parsed, ensure_ascii=False)
+        raise ValueError("MCP_SERVERS_JSON must be a JSON string")
+
+    @field_validator("MCP_MAX_SERVERS", "MCP_MAX_TOOLS_PER_SERVER")
+    @classmethod
+    def validate_mcp_limits(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("MCP limits must be greater than 0")
         return value
 
     @field_validator("AI_ALLOWED_MODELS", mode="before")
