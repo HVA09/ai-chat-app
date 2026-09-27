@@ -284,7 +284,7 @@
 
 ## المرحلة E — Platform & Developer Ecosystem
 
-الحالة: **قيد التنفيذ — E1 إلى E3 مكتملة ومتحققة**
+الحالة: **قيد التنفيذ — E1 إلى E4 مكتملة ومتحققة**
 
 ### E1 — API Keys: **مكتمل ومتحقق**
 - إدارة مفاتيح Developer API موجودة عبر `GET /api-keys` و`POST /api-keys` و`DELETE /api-keys/{key_id}`.
@@ -323,6 +323,19 @@
 - CodeQL run `384`: **نجح**.
 - commit الدمج بعد squash: `e684a55585a90404d72a64c1ee64d88ec1404ae3`.
 
+### E4 — OAuth / Connectors: **مكتمل ومتحقق**
+- تمت إضافة أساس OAuth 2.0 قابل للتفعيل اختياريًا لمزوّدي Google وMicrosoft.
+- تدفق التفويض يستخدم Authorization Code مع PKCE S256 وstate أحادي الاستخدام مع صلاحية زمنية.
+- حالات OAuth وcode verifiers تُخزّن في PostgreSQL، والأسرار وaccess/refresh tokens تُخزن مشفرة باستخدام Fernet.
+- تمت إضافة اكتشاف المزودين المهيئين، بدء/إكمال التفويض، إدارة الاتصالات، تحديث tokens، والفصل، مع عزل كامل حسب المستخدم.
+- أضيفت migration `0069_oauth_connectors` ونماذج `oauth_connections` و`oauth_states` واختبارات lifecycle وإعادة استخدام state والعزل والتحديث.
+- مزودو OAuth يبقون معطلين افتراضيًا حتى تُضبط بيانات الاعتماد من الخادم؛ لا توجد حاجة لمورد Render أو Supabase مدفوع.
+- أضيف تحقق production يلزم `OAUTH_CALLBACK_BASE_URL` عبر HTTPS عند تفعيل موفّر OAuth.
+- تم تعزيز منع replay المتزامن لقيمة state باستخدام قفل صف PostgreSQL أثناء الاستهلاك.
+- PR #320 تم دمجه بنجاح.
+- CI run `3266`: **نجح** بالكامل.
+- CodeQL run `392`: **نجح**.
+- commit الدمج بعد squash: `9a537eb5a77c6fbf20667eae25ed1b1df9c3c8e6`.
 1. API Keys
 2. API versioning
 3. Webhooks
