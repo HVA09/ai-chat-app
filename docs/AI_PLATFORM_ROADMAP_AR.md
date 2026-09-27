@@ -14,7 +14,7 @@
 
 ## المرحلة A — Production Foundation
 
-الحالة: **قيد التنفيذ — PostgreSQL migrated; remaining foundation items are deferred/ongoing**
+الحالة: **مستقرة تشغيليًا — الأساس الإنتاجي مكتمل، مع نقاط اختيارية مؤجلة**
 
 1. Render Health Check
 2. Celery Worker
@@ -38,7 +38,7 @@
 - Credential rotation: **مكتمل** — تم إنشاء `production_db_2026`، تحديث خدمة الـbackend و`PRODUCTION_DATABASE_URL` في GitHub، حذف `ai_chat_db_6nnl_user`، وتحقق PostgreSQL من أن الحساب القديم لم يعد قابلًا لتسجيل الدخول. تم تعيين `PRODUCTION_DB_CREDENTIAL_ROTATED=true`.
 - Domain + HTTPS: **HTTPS على نطاقات Render مكتمل** — خدمات Render تعمل عبر `onrender.com` مع HTTPS. **Custom Domain مؤجل** حاليًا لأن المستخدم لا يريد دفع تكلفة الآن ولا يوجد نطاق مخصص متحقق.
 - Production smoke tests/E2E: **مكتمل تشغيليًا وموسع** — التشغيل يغطي `/health`، `/ready`، `/billing/plans`، تمرير `X-Request-ID`، والوصول إلى الواجهة الأمامية. تم إضافة retries لمعالجة cold starts على Render Free.
-- Observability: **قيد الاستكمال** — `X-Request-ID` مرتبط بسياق logging، وProduction Smoke يتحقق من propagation، وتمت إضافة readiness عميقة تعتمد على DB + Redis.
+- Observability: **مكتمل تشغيليًا** — `X-Request-ID` مرتبط بسياق logging، وProduction Smoke يتحقق من propagation، و`/ready` يفحص DB + Redis. أي تحسينات إضافية للمراقبة لاحقة وليست blocker.
 
 ### تحقق Render الفعلي — 2026-09-26
 
