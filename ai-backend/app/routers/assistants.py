@@ -380,6 +380,31 @@ def restore_assistant_version(
     assistant.name = snapshot.name
     assistant.description = snapshot.description
     assistant.instructions = snapshot.instructions
+    if snapshot.knowledge_file_ids is not None:
+        current_links = db.query(AssistantFileLink).filter(
+            AssistantFileLink.assistant_id == assistant.id
+        ).all()
+        for link in current_links:
+            db.delete(link)
+        db.flush()
+        allowed_ids = {
+            int(file_id)
+            for file_id in snapshot.knowledge_file_ids
+            if str(file_id).isdigit()
+        }
+        if allowed_ids:
+            owned_files = (
+                db.query(FileAttachment.id)
+                .filter(
+                    FileAttachment.id.in_(allowed_ids),
+                    FileAttachment.user_id == current_user.id,
+                    FileAttachment.workspace_id.is_(None),
+                    FileAttachment.project_id.is_(None),
+                )
+                .all()
+            )
+            for (file_id,) in owned_files:
+                db.add(AssistantFileLink(assistant_id=assistant.id, file_id=file_id))
     db.flush()
     _create_assistant_version(assistant, db)
     db.commit()
