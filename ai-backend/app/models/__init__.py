@@ -76,3 +76,6 @@ __all__ = [
     "WebhookEndpoint",
     "WebhookDelivery",
 ]
+
+from app.models.oauth_connection import OAuthConnection
+from app.models.oauth_state import OAuthState
