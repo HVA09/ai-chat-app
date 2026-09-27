@@ -40,7 +40,9 @@ def _oauth_fernet() -> Fernet:
     key = settings.TOTP_ENCRYPTION_KEY
     if not key:
         key = base64.urlsafe_b64encode(
-            hashlib.sha256(settings.JWT_SECRET_KEY.encode("utf-8")).digest()
+            hashlib.sha256(
+                f"oauth:{settings.JWT_SECRET_KEY}".encode("utf-8")
+            ).digest()
         ).decode()
     return Fernet(key.encode())
 
