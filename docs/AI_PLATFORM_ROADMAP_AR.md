@@ -284,7 +284,7 @@
 
 ## المرحلة E — Platform & Developer Ecosystem
 
-الحالة: **قيد التنفيذ — E1 إلى E4 مكتملة ومتحققة**
+الحالة: **قيد التنفيذ — E1 إلى E5 مكتملة ومتحققة**
 
 ### E1 — API Keys: **مكتمل ومتحقق**
 - إدارة مفاتيح Developer API موجودة عبر `GET /api-keys` و`POST /api-keys` و`DELETE /api-keys/{key_id}`.
@@ -336,6 +336,16 @@
 - CI run `3266`: **نجح** بالكامل.
 - CodeQL run `392`: **نجح**.
 - commit الدمج بعد squash: `9a537eb5a77c6fbf20667eae25ed1b1df9c3c8e6`.
+
+### E5 — Python + JavaScript SDKs: **مكتمل ومتحقق**
+- تمت إضافة SDK رسمي للـPython داخل `sdk/python` باسم الحزمة `ai-chat-saas`، مع دعم Python 3.9+، وعميل `AIChatClient` لنقطة `POST /v1/chat`.
+- تمت إضافة SDK رسمي للـJavaScript داخل `sdk/javascript` باسم الحزمة `ai-chat-saas`، مع دعم Node.js 18+ واستخدام `fetch` المدمج.
+- كلا الـSDKs يستخدمان عقد Developer API `v1` نفسه، والمصادقة `X-API-Key`، ويقدمان نماذج رد واضحة ومعالجة أخطاء typed مع `X-Request-ID` و`Retry-After` عند توفرها.
+- أضيفت اختبارات مستقلة للـPython والـJavaScript SDKs، وأصبح CI يشغل حزمة SDK الخاصة بهما إلى جانب اختبارات backend/frontend وProduction Compose.
+- CI run `3290`: **نجح** بالكامل، بما في ذلك اختبارات Python SDK وJavaScript SDK.
+- CodeQL run `397`: **نجح** لـPython وJavaScript/TypeScript.
+- PR #324 تم دمجه بنجاح.
+- commit الدمج بعد squash: `05910814f0a0edf2c527a1da9e98540df5197bf8`.
 1. API Keys
 2. API versioning
 3. Webhooks
