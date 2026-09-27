@@ -47,7 +47,7 @@ class TwoStepProvider:
 
     async def get_reply_with_tools(self, messages, tools, tool_choice="auto"):
         self.calls += 1
-        self.messages_seen.append(messages)
+        self.messages_seen.append(list(messages))
         assert tool_choice == "auto"
         assert tools[0]["function"]["name"] == "demo"
         if self.calls == 1:
