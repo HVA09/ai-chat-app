@@ -169,7 +169,7 @@ export default function ChatComposer({
       }}
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
-      className="border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"
+      className="chat-composer border-t border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"
     >
       {isEditing && !loading ? (
         <div className="mb-2 flex items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
@@ -189,7 +189,7 @@ export default function ChatComposer({
           {attachments.map((file) => (
             <div
               key={file.id}
-              className="flex max-w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+              className="attachment-chip flex max-w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
             >
               <span aria-hidden="true">📎</span>
               <span className="max-w-56 truncate">{file.original_filename}</span>
@@ -212,7 +212,7 @@ export default function ChatComposer({
       ) : null}
 
       {dragOver && !loading && !isEditing ? (
-        <div className="mb-3 rounded-xl border border-dashed border-slate-400 bg-slate-50 px-3 py-2 text-center text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+        <div className="drop-zone mb-3 rounded-xl border border-dashed border-slate-400 bg-slate-50 px-3 py-2 text-center text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-300">
           {t("tools.dropFilesHere")}
         </div>
       ) : null}
@@ -251,13 +251,13 @@ export default function ChatComposer({
             rows={2}
             maxLength={MAX_MESSAGE_LENGTH}
             disabled={loading}
-              className="min-h-[56px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+              className="chat-textarea min-h-[56px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-400 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
             />
             {filteredCommands.length > 0 ? (
               <div
                 role="listbox"
                 aria-label={lang === "ar" ? "أوامر الدردشة" : "Chat commands"}
-                className="absolute inset-x-0 bottom-full z-20 mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+                className="ui-popover absolute inset-x-0 bottom-full z-20 mb-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
               >
                 {filteredCommands.map((command, index) => (
                   <button
@@ -317,7 +317,7 @@ export default function ChatComposer({
                 🧰
               </button>
               {toolsOpen ? (
-                <div className="absolute bottom-full end-0 z-30 mb-2 w-[min(92vw,20rem)] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                <div className="ui-popover absolute bottom-full end-0 z-30 mb-2 w-[min(92vw,20rem)] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
                   <div className="grid grid-cols-2 gap-2">
                     {models.length > 0 ? (
                       <label className="col-span-2 text-xs text-slate-500 dark:text-slate-400">

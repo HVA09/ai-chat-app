@@ -14,7 +14,7 @@ import { getErrorMessage } from "../lib/errors";
 
 function Section({ title, children }) {
   return (
-    <div className="mb-4 rounded-2xl border border-slate-200 p-4">
+    <div className="settings-section mb-4 rounded-2xl border border-slate-200 p-4">
       <p className="mb-2 text-sm font-medium text-slate-900">{title}</p>
       {children}
     </div>
@@ -298,8 +298,8 @@ export default function AccountSettings({
     });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/30 p-4">
-      <div className="my-8 w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-lg">
+    <div className="settings-overlay fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/30 p-4">
+      <div className="settings-dialog my-8 w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-lg">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">{t("account.title")}</h2>
           <button
@@ -719,7 +719,7 @@ export default function AccountSettings({
           )}
         </Section>
 
-        <div className="rounded-2xl border border-red-200 p-4">
+        <div className="ui-danger-zone rounded-2xl border border-red-200 p-4">
           <p className="mb-2 text-sm font-medium text-red-700">{t("account.deleteAccountTitle")}</p>
           <p className="mb-2 text-xs text-slate-500">{t("account.deleteAccountWarning")}</p>
           <input

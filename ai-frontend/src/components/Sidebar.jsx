@@ -278,7 +278,7 @@ export default function Sidebar({
           onSelectConversation(item.id);
           setOpen(false);
         }}
-        className="group relative h-full cursor-pointer rounded-xl border border-slate-200 px-3 py-3 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+        className="conversation-row group relative h-full cursor-pointer rounded-xl border border-slate-200 px-3 py-3 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
       >
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 flex-1 items-start gap-2">
@@ -431,18 +431,18 @@ export default function Sidebar({
   return (
     <>
       <button
-        className="fixed start-4 top-4 z-50 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm md:hidden"
+        className="sidebar-mobile-trigger fixed start-4 top-4 z-50 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm md:hidden"
         onClick={() => setOpen(true)}
       >
         ☰
       </button>
 
       <aside
-        className={`fixed inset-y-0 start-0 z-40 w-[min(92vw,20rem)] border-e border-slate-200 bg-white transition-transform dark:border-slate-700 dark:bg-slate-900 md:static md:flex md:flex-col ${
+        className={`sidebar-shell fixed inset-y-0 start-0 z-40 w-[min(92vw,20rem)] border-e border-slate-200 bg-white transition-transform dark:border-slate-700 dark:bg-slate-900 md:static md:flex md:flex-col ${
           open ? "translate-x-0" : "-translate-x-full rtl:translate-x-full md:translate-x-0"
         }`}
       >
-        <div className="border-b border-slate-200 p-4 dark:border-slate-700">
+        <div className="sidebar-header border-b border-slate-200 p-4 dark:border-slate-700">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-semibold">{t("appName")}</h1>
             <button className="md:hidden" onClick={() => setOpen(false)}>
