@@ -62,6 +62,15 @@ function StatsTab() {
   const [exporting, setExporting] = useState(false);
   const [analyticsDays, setAnalyticsDays] = useState(30);
 
+  const showErrorToast = (errorValue, fallbackKey) => {
+    const message = getErrorMessage(errorValue, t(fallbackKey));
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
+
   useEffect(() => {
     Promise.all([
       getAdminStats(),
@@ -74,7 +83,17 @@ function StatsTab() {
       getCostBudget(),
       getFeedbackAnalytics(analyticsDays),
     ])
-.then(([statsData, dailyData, modelUsageData, providerUsageData, providerLatencyData, costUsageData, costBudgetData, feedbackData]) => {
+.then(([
+        statsData,
+        dailyData,
+        modelUsageData,
+        providerUsageData,
+        providerStatusData,
+        providerLatencyData,
+        costUsageData,
+        costBudgetData,
+        feedbackData,
+      ]) => {
         setStats(statsData);
         setDaily(dailyData.map((p) => ({ ...p, dateLabel: p.date.slice(5) })));
         setModelUsage(modelUsageData);
@@ -85,15 +104,19 @@ function StatsTab() {
         setCostBudget(costBudgetData);
         setFeedback(feedbackData);
       })
-      .catch(() => setError(t("admin.statsError")));
+      .catch((errorValue) => {
+        setError("");
+        showErrorToast(errorValue, "admin.statsError");
+      });
   }, [t, analyticsDays]);
 
   const handleExport = async () => {
     setExporting(true);
     try {
       await downloadAnalyticsCsv(analyticsDays);
-    } catch {
-      setError(t("admin.exportError"));
+    } catch (errorValue) {
+      setError("");
+      showErrorToast(errorValue, "admin.exportError");
     } finally {
       setExporting(false);
     }
@@ -464,6 +487,15 @@ function StatsTab() {
 
 function PlansTab() {
   const { t } = useTranslation();
+  const showErrorToast = (errorValue, fallbackKey) => {
+    const message = getErrorMessage(errorValue, t(fallbackKey));
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
+
   const [plans, setPlans] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
@@ -489,7 +521,10 @@ function PlansTab() {
           )
         );
       })
-      .catch((err) => setError(getErrorMessage(err, t("admin.plansLoadError"))))
+      .catch((err) => {
+        setError("");
+        showErrorToast(err, "admin.plansLoadError");
+      })
       .finally(() => setLoading(false));
   };
 
@@ -528,7 +563,8 @@ function PlansTab() {
       }));
       setSavedId(plan.id);
     } catch (err) {
-      setError(getErrorMessage(err, t("admin.planSaveError")));
+      setError("");
+      showErrorToast(err, "admin.planSaveError");
     } finally {
       setSavingId(null);
     }
@@ -617,6 +653,15 @@ function PlansTab() {
 
 function UsersTab({ currentUserId }) {
   const { t } = useTranslation();
+  const showErrorToast = (errorValue, fallbackKey) => {
+    const message = getErrorMessage(errorValue, t(fallbackKey));
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -625,7 +670,10 @@ function UsersTab({ currentUserId }) {
     setLoading(true);
     listAllUsers()
       .then(setUsers)
-      .catch(() => setError(t("admin.usersLoadError")))
+      .catch((err) => {
+        setError("");
+        showErrorToast(err, "admin.usersLoadError");
+      })
       .finally(() => setLoading(false));
   };
 
@@ -635,8 +683,9 @@ function UsersTab({ currentUserId }) {
     try {
       await updateUser(user.id, { is_active: !user.is_active });
       refresh();
-    } catch {
-      setError(t("admin.updateUserError"));
+    } catch (err) {
+      setError("");
+      showErrorToast(err, "admin.updateUserError");
     }
   };
 
@@ -656,7 +705,8 @@ function UsersTab({ currentUserId }) {
       await deleteUser(user.id);
       refresh();
     } catch (err) {
-      setError(getErrorMessage(err, t("admin.usersLoadError")));
+      setError("");
+      showErrorToast(err, "admin.usersLoadError");
     }
   };
 
@@ -708,6 +758,15 @@ function UsersTab({ currentUserId }) {
 
 function ConversationsTab() {
   const { t } = useTranslation();
+  const showErrorToast = (errorValue, fallbackKey) => {
+    const message = getErrorMessage(errorValue, t(fallbackKey));
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
+
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -716,7 +775,10 @@ function ConversationsTab() {
     setLoading(true);
     listAllConversations()
       .then(setConversations)
-      .catch(() => setError(t("admin.conversationsLoadError")))
+      .catch((err) => {
+        setError("");
+        showErrorToast(err, "admin.conversationsLoadError");
+      })
       .finally(() => setLoading(false));
   };
 
@@ -727,8 +789,9 @@ function ConversationsTab() {
     try {
       await adminDeleteConversation(conversation.id);
       refresh();
-    } catch {
-      setError(t("admin.deleteConversationError"));
+    } catch (err) {
+      setError("");
+      showErrorToast(err, "admin.deleteConversationError");
     }
   };
 
@@ -761,6 +824,15 @@ function ConversationsTab() {
 
 function LogsTab() {
   const { t } = useTranslation();
+  const showErrorToast = (errorValue, fallbackKey) => {
+    const message = getErrorMessage(errorValue, t(fallbackKey));
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
+
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -768,7 +840,10 @@ function LogsTab() {
   useEffect(() => {
     listAuditLogs()
       .then(setLogs)
-      .catch(() => setError(t("admin.logsLoadError")))
+      .catch((err) => {
+        setError("");
+        showErrorToast(err, "admin.logsLoadError");
+      })
       .finally(() => setLoading(false));
   }, [t]);
 
