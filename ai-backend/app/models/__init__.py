@@ -30,6 +30,8 @@ from app.models.plan import Plan
 from app.models.subscription import Subscription, SubscriptionStatus
 from app.models.notification import Notification
 from app.models.webhook_event import WebhookEvent
+from app.models.webhook_endpoint import WebhookEndpoint
+from app.models.webhook_delivery import WebhookDelivery
 
 __all__ = [
     "User",
@@ -71,4 +73,6 @@ __all__ = [
     "SubscriptionStatus",
     "Notification",
     "WebhookEvent",
+    "WebhookEndpoint",
+    "WebhookDelivery",
 ]
