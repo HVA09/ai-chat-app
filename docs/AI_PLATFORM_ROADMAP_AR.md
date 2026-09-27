@@ -317,7 +317,7 @@
 
 ## المرحلة E — Platform & Developer Ecosystem
 
-الحالة: **قيد التنفيذ — E1 إلى E6 مكتملة ومتحققة**
+الحالة: **قيد التنفيذ — E1 إلى E7 مكتملة ومتحققة**
 
 ### E1 — API Keys: **مكتمل ومتحقق**
 - إدارة مفاتيح Developer API موجودة عبر `GET /api-keys` و`POST /api-keys` و`DELETE /api-keys/{key_id}`.
@@ -379,6 +379,16 @@
 - CodeQL run `397`: **نجح** لـPython وJavaScript/TypeScript.
 - PR #324 تم دمجه بنجاح.
 - commit الدمج بعد squash: `05910814f0a0edf2c527a1da9e98540df5197bf8`.
+### E7 — Usage / billing / cost controls: **مكتمل ومتحقق**
+- Usage Logs مرتبطة بالمستخدم وWorkspace وAPI key مع input/output tokens وprovider/model وlatency لدعم التحليلات والحصص.
+- Developer API وBilling يعرضان الاستخدام والحدود اليومية، مع `API key` usage مستقل وعزل حسب المالك.
+- أضيف تسعير قابل للتهيئة عبر `AI_PRICING_JSON`؛ عندما لا يتوفر سعر معروف لا يتم تخمين تكلفة مالية، وتظهر الطلبات غير المسعّرة بوضوح في التحليلات.
+- يوجد guardrail للميزانية الشهرية العامة عبر `AI_MONTHLY_BUDGET_USD` يمنع المستخدمين غير الإداريين من بدء طلبات AI بعد تجاوز الميزانية المهيأة.
+- لكل Workspace حد يومي اختياري وميزانية AI شهرية اختيارية، مع منع التجاوز قبل الطلب وتدقيق التغيير.
+- `/billing/usage` و`/workspaces/{id}/usage` وتحليلات Admin للتكلفة والميزانية توفّر الاستخدام الحالي، تكلفة الشهر، المتبقي، والطلبات غير المسعّرة، مع CSV للاستخدام.
+- واجهات Billing وWorkspace وAdmin تعرض usage/cost guardrails، مع اختبارات backend/frontend للصلاحيات والحسابات وحالات التسعير غير المعروف.
+- لا توجد موارد مدفوعة جديدة مطلوبة لهذه الوظائف؛ تعتمد على PostgreSQL/Redis الموجودين.
+
 ### E6 — Enterprise RBAC: **مكتمل ومتحقق**
 - تم إضافة RBAC على مستوى مساحة العمل مع أدوار مخصصة محفوظة في PostgreSQL، وصلاحيات مسماة مثل `members.read` و`members.invite` و`members.manage` و`rbac.manage` وغيرها.
 - الأدوار المخصصة تُنشأ وتُعدّل وتُحذف من خلال API مخصص، ولا يمكن للمستخدم منح أو تعيين صلاحيات تتجاوز صلاحياته الحالية.
