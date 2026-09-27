@@ -16,6 +16,7 @@ from app.models.conversation_workspace_share import ConversationWorkspaceShare
 from app.models.conversation_folder import ConversationFolder
 from app.models.project import WorkspaceProject
 from app.models.saved_prompt import SavedPrompt
+from app.models.saved_prompt_version import SavedPromptVersion
 from app.models.conversation_tag import ConversationTag
 from app.models.conversation_share import ConversationShare
 from app.models.usage_log import UsageLog
@@ -57,6 +58,7 @@ __all__ = [
     "ConversationFolder",
     "WorkspaceProject",
     "SavedPrompt",
+    "SavedPromptVersion",
     "ConversationTag",
     "ConversationShare",
     "UsageLog",
