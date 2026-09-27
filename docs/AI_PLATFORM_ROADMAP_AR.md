@@ -154,7 +154,7 @@
 
 ### المرحلة C — Product UX
 
-الحالة: **قيد التنفيذ — C1 وC2 مكتملان، وC3 جارٍ**
+الحالة: **قيد التنفيذ — C1 وC2 مكتملان، وC3 متقدم ومتحقق عبر عدة مسارات**
 
 الهدف: تحسين تجربة الاستخدام اليومية مع الحفاظ على المعمارية الحالية، نظام Toast العالمي، اختبارات الواجهة، وعدم إضافة موارد مدفوعة.
 
@@ -192,5 +192,23 @@
 - CI مكتمل بنجاح، وCodeQL وPublish backend image وProduction Smoke نجحت.
 - Render Frontend للـcommit أصبح **live**.
 
+#### C3 — Assistant knowledge action errors: **مكتمل ومتحقق**
+- تم توحيد أخطاء رفع ملفات معرفة المساعد وإرفاقها وإزالتها مع Global Toast.
+- commit: `199c411fead36f9efd38343f2028e7be6a50e395`.
+- تم التحقق عبر CI وRender بعد الدمج.
+
+#### C3 — Workspace conversation comment errors: **مكتمل ومتحقق**
+- تم تحويل أخطاء عمليات تعليقات محادثات مساحة العمل إلى Global Toast بدل الاعتماد على الخطأ المحلي الصامت.
+- commit: `f272e471df2f707be747ec61b3d30774dc287657`.
+- Render نشر التغيير ثم تم استبداله بنشر Billing الأحدث.
+- تم التحقق عبر CI.
+
+#### C3 — Billing error feedback: **مكتمل ومتحقق**
+- أخطاء تحميل Billing، والـcheckout، والإلغاء أصبحت تظهر عبر Global Toast.
+- commit الحالي على `main`: `4e130239b37510083dff4ca8be2e901d5f79391a`.
+- Render Frontend أصبح **live** على هذا commit.
+- Production Smoke وCodeQL وPublish backend image وCI المكتمل لـcommit هذا نجحت؛ يوجد تشغيل CI إضافي لاحق/مكرر ما زال يعيد الاختبارات ولم يظهر فشلًا.
+
 #### C3 — الخطوة التالية
+الانتقال إلى مسار UX آخر خارج Workspace وBilling، مع أولوية للمكونات التي تخفي فشل API أو تترك حالة خطأ محلية عندما يكون Global Toast هو النمط الأنسب.
 مراجعة مسار UX آخر خارج Workspace، مع أولوية للشاشات التي تخفي فشل API أو تعرض حالة خطأ محلية بدل Global Toast عندما يكون Toast هو النمط المناسب.
