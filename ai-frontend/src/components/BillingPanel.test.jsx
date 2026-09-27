@@ -57,6 +57,13 @@ vi.mock("react-i18next", () => ({
 }));
 
 describe("BillingPanel", () => {
+  it("does not render a stray undefined value", async () => {
+    render(<BillingPanel onClose={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.queryByText("undefined", { exact: true })).not.toBeInTheDocument();
+    });
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     getPlans.mockResolvedValue([

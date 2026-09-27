@@ -149,7 +149,6 @@ export default function BillingPanel({ onClose }) {
                 </button>
               </div>
             )}
-undefined
             <div className="space-y-3">
               {plans.map((plan) => {
                 const isCurrentPlan =
