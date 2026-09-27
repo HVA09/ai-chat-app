@@ -192,5 +192,13 @@
 - CI مكتمل بنجاح، وCodeQL وPublish backend image وProduction Smoke نجحت.
 - Render Frontend للـcommit أصبح **live**.
 
+#### C3 — Workspace conversation comments error feedback: **مكتمل ومتحقق**
+- أخطاء تحميل وتعليق/حفظ محادثات مساحة العمل في `WorkspaceConversationCommentsPanel` أصبحت تستخدم Global Toast بدل الاكتفاء بحالة خطأ محلية.
+- تمت إضافة/تحديث اختبارات UI للحالات الفاشلة.
+- commit `f272e471df2f707be747ec61b3d30774dc287657`.
+- CI النهائي نجح.
+- CodeQL وPublish backend image وProduction Smoke نجحت.
+- Render Frontend للـcommit أصبح **live**.
+
 #### C3 — الخطوة التالية
 مراجعة مسار UX آخر خارج Workspace، مع أولوية للشاشات التي تخفي فشل API أو تعرض حالة خطأ محلية بدل Global Toast عندما يكون Toast هو النمط المناسب.
