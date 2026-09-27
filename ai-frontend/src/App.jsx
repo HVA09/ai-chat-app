@@ -1482,8 +1482,12 @@ export default function App() {
           isBookmarked: m.is_bookmarked ?? false,
         }))
       );
-    } catch {
-      setError(t("app.conversationLoadError"));
+    } catch (err) {
+      setError("");
+      setToast({
+        message: getErrorMessage(err, t("app.conversationLoadError")),
+        type: "error",
+      });
     }
   };
 
