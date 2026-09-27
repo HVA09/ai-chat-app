@@ -13,7 +13,6 @@ from app.models.assistant import Assistant
 from app.models.conversation import Conversation, Message
 from app.models.assistant_file_link import AssistantFileLink
 from app.models.file_attachment import FileAttachment
-from app.models.file_attachment import FileAttachment
 from app.models.assistant_version import AssistantVersion
 from app.models.user import User
 from app.schemas.assistant_versions import AssistantVersionCompareOut, AssistantVersionOut
