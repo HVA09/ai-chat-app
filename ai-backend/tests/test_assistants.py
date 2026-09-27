@@ -336,7 +336,7 @@ def test_assistant_version_captures_and_restores_knowledge_files(client, tmp_pat
 
     file_a = uploaded_a.json()["id"]
     file_b = uploaded_b.json()["id"]
-    assert client.post(f"/assistants/{assistant['id']}/files/{file_a}", headers=headers).status_code == 201
+    assert client.post(f"/assistants/{assistant['id']}/files/{file_a}", headers=headers).status_code == 200
 
     versions = client.get(f"/assistants/{assistant['id']}/versions", headers=headers).json()
     assert versions[0]["knowledge_file_ids"] == []
@@ -349,7 +349,7 @@ def test_assistant_version_captures_and_restores_knowledge_files(client, tmp_pat
     versions = client.get(f"/assistants/{assistant['id']}/versions", headers=headers).json()
     assert versions[0]["knowledge_file_ids"] == [file_a]
 
-    assert client.post(f"/assistants/{assistant['id']}/files/{file_b}", headers=headers).status_code == 201
+    assert client.post(f"/assistants/{assistant['id']}/files/{file_b}", headers=headers).status_code == 200
     client.patch(
         f"/assistants/{assistant['id']}",
         json={"instructions": "Version with knowledge A and B."},
