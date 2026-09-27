@@ -2,30 +2,23 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Table, Column
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
 
 
-workspace_rbac_role_permissions = Table(
-    "workspace_rbac_role_permissions",
-    Base.metadata,
-    Column(
-        "role_id",
-        ForeignKey("workspace_rbac_roles.id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
-    Column("permission", String(100), primary_key=True),
-)
-
-
 class WorkspaceRBACRole(Base):
     __tablename__ = "workspace_rbac_roles"
     __table_args__ = (
         Index("ix_workspace_rbac_roles_workspace_id", "workspace_id"),
-        Index("ix_workspace_rbac_roles_workspace_name", "workspace_id", "name", unique=True),
+        Index(
+            "ix_workspace_rbac_roles_workspace_name",
+            "workspace_id",
+            "name",
+            unique=True,
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -54,17 +47,18 @@ class WorkspaceRBACRole(Base):
         "WorkspaceRBACPermission",
         cascade="all, delete-orphan",
         passive_deletes=True,
+        back_populates="role",
     )
 
 
 class WorkspaceRBACPermission(Base):
     __tablename__ = "workspace_rbac_permissions"
-    __table_args__ = (
-        Index("ix_workspace_rbac_permissions_role_id", "role_id"),
-    )
+    __table_args__ = (Index("ix_workspace_rbac_permissions_role_id", "role_id"),)
 
     role_id: Mapped[int] = mapped_column(
         ForeignKey("workspace_rbac_roles.id", ondelete="CASCADE"),
         primary_key=True,
     )
     permission: Mapped[str] = mapped_column(String(100), primary_key=True)
+
+    role = relationship("WorkspaceRBACRole", back_populates="permissions")
