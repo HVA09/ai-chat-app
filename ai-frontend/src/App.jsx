@@ -981,8 +981,11 @@ export default function App() {
   const refreshMemories = async () => {
     try {
       setMemories(await listMemories());
-    } catch {
-      // فشل تحميل الذاكرة لا يوقف الشات.
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.memoriesLoadError")),
+        type: "error",
+      });
     }
   };
 
@@ -1019,16 +1022,22 @@ export default function App() {
   const refreshBookmarkedMessages = async () => {
     try {
       setBookmarkedMessages(await listBookmarkedMessages());
-    } catch {
-      // فشل تحميل المحفوظات لا يوقف الشات.
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.bookmarksLoadError")),
+        type: "error",
+      });
     }
   };
 
   const refreshSavedPrompts = async () => {
     try {
       setSavedPrompts(await listSavedPrompts());
-    } catch {
-      // فشل تحميل الموجهات المحفوظة لا يوقف الشات.
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.savedPromptsLoadError")),
+        type: "error",
+      });
     }
   };
 
@@ -1385,8 +1394,11 @@ export default function App() {
   const refreshNotifications = async () => {
     try {
       setNotifications(await listNotifications());
-    } catch {
-      // فشل تحميل الإشعارات لا يوقف باقي التطبيق — نتجاهله بصمت
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.notificationsLoadError")),
+        type: "error",
+      });
     }
   };
 
