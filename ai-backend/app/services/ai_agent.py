@@ -134,7 +134,7 @@ async def run_agent(
                     "role": "tool",
                     "tool_call_id": call.id,
                     "name": call.name,
-                    "content": result[:MAX_TOOL_RESULT_CHARS],
+                    "content": result.content[:MAX_TOOL_RESULT_CHARS],
                 }
             )
 
