@@ -83,7 +83,7 @@ def test_mcp_tool_handler_calls_remote_tool(monkeypatch):
     monkeypatch.setattr(
         mcp_client.settings,
         "MCP_SERVERS_JSON",
-        '[{"name":"demo","url":"https://example.test/mcp","enabled":true}]',
+        '[{"name":"demo","url":"https://example.test/mcp","enabled":true,"allowed_tools":["add"]}]',
     )
     monkeypatch.setattr(mcp_client, "Client", FakeClient)
 
