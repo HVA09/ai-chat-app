@@ -9,6 +9,7 @@ class ScheduledTaskCreate(BaseModel):
     workspace_id: int
     prompt: str = Field(min_length=1, max_length=4000)
     schedule_type: Literal["once", "daily", "weekly"]
+    execution_mode: Literal["standard", "agent"] = "standard"
     next_run_at: datetime
     weekday: int | None = Field(default=None, ge=0, le=6)
     timezone_name: str = Field(default="UTC", min_length=1, max_length=64)
@@ -50,6 +51,7 @@ class ScheduledTaskCreate(BaseModel):
 class ScheduledTaskUpdate(BaseModel):
     prompt: str | None = Field(default=None, min_length=1, max_length=4000)
     schedule_type: Literal["once", "daily", "weekly"] | None = None
+    execution_mode: Literal["standard", "agent"] | None = None
     next_run_at: datetime | None = None
     weekday: int | None = Field(default=None, ge=0, le=6)
     timezone_name: str | None = Field(default=None, min_length=1, max_length=64)
@@ -92,6 +94,7 @@ class ScheduledTaskOut(BaseModel):
     workspace_id: int
     prompt: str
     schedule_type: str
+    execution_mode: str
     next_run_at: datetime
     weekday: int | None
     timezone_name: str
