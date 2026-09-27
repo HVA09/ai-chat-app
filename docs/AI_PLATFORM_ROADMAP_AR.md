@@ -174,7 +174,7 @@
 
 ## المرحلة D — Agent Platform
 
-الحالة: **قيد التنفيذ — D1 إلى D5 مكتملة ومتحققة**
+الحالة: **قيد التنفيذ — D1 إلى D6 مكتملة ومتحققة**
 
 ### D2 — MCP Integration: **مكتمل ومتحقق**
 - تمت إضافة MCP Python SDK `2.2.0`.
@@ -222,6 +222,19 @@
 - CI run `3113`: **نجح**.
 - CodeQL run `353`: **نجح**.
 - commit الدمج بعد squash: `d6c8a743d257b035b79814edb019b8fe47aaad15`.
+
+### D6 — Long-running Agent Jobs: **مكتمل ومتحقق**
+- تم إنشاء نموذج persisted باسم `agent_jobs` مع حالات `queued` و`running` و`succeeded` و`failed` و`cancelled`، ومؤشرات للحالة والمستخدم وworkspace والـCelery task.
+- أضيفت واجهة `POST /agent-jobs` التي ترجع `202 Accepted` بدل تشغيل Agent داخل طلب HTTP، مع endpoints للقائمة وpolling والإلغاء التعاوني.
+- التنفيذ الخلفي يستخدم Celery وRedis الموجودين أصلًا، دون إنشاء Worker أو مورد مدفوع جديد.
+- Job التنفيذ يستخدم `AgentRuntime` وTool Permissions الحالية، ويتحقق من عضوية workspace وحصة AI وميزانية التكلفة قبل التشغيل.
+- النتيجة تُحفظ في محادثة حقيقية مع `run_id` والمصادر والـtokens، ويُسجل الاستهلاك في `UsageLog`.
+- تمت إضافة migration `0066_agent_jobs` واختبارات lifecycle للعزل والإنشاء والإلغاء والتنفيذ.
+- PR #311 تم دمجه بنجاح بعد إصلاح عرض `celery_task_id` وإعادة استخدام transaction الاختبار.
+- CI run `3154`: **نجح** بالكامل.
+- CodeQL run `367`: **نجح** بالكامل.
+- commit الدمج بعد squash: `a12e5b08af51746042b78ff2acf2c7def8a4c3d4`.
+- تحقق Render التشغيلي بعد الدمج: خدمة الـbackend بدأت نشر commit `a12e5b08…`، وlogs تؤكد تنفيذ migration `0065_object_storage → 0066_agent_jobs`، وبدء Embedded Celery Worker وBeat، ونجاح `/health` عدة مرات بحالة `200` على instance الجديد. حالة Render deploy API بقيت `update_in_progress` في آخر استعلام رغم أن instance الجديد كان يخدم الطلبات بنجاح.
 
 ### D5 — Sandboxed Code Execution: **مكتمل ومتحقق**
 - أداة Python تعمل داخل process منفصل باستخدام Python isolated mode (`-I`) مع `-S` و`-B` وبيئة تشغيل دنيا.
