@@ -28,3 +28,28 @@ API key creation, revocation, expiry, usage reporting, and rate limiting remain 
 ## Migration policy
 
 When a new major version is introduced, the previous version remains available during an explicit compatibility window. A deprecation date should be documented before an older version is removed.
+
+## Webhooks
+
+Developer webhooks are configured through the authenticated control-plane endpoints:
+
+- `POST /webhooks` creates an endpoint and returns its signing secret once.
+- `GET /webhooks` lists only the current user's endpoints.
+- `PATCH /webhooks/{id}` updates the endpoint or rotates its secret.
+- `DELETE /webhooks/{id}` removes an endpoint.
+- `GET /webhooks/{id}/deliveries` lists recent delivery attempts.
+- `POST /webhooks/{id}/test` queues a signed test event.
+
+Supported events currently include:
+
+- `api_key.created`
+- `api_key.revoked`
+- `webhook.test`
+
+Each delivery includes `X-Webhook-Id`, `X-Webhook-Event`, `X-Webhook-Timestamp`, and `X-Webhook-Signature`.
+
+The signature is HMAC-SHA256 over `{timestamp}.{raw_json_body}` and is prefixed with `sha256=`.
+
+Webhook destinations are validated against SSRF-sensitive private, loopback, local, and internal addresses. Production endpoints must use HTTPS. Redirects are not followed.
+
+Delivery is asynchronous through the existing Celery/Redis infrastructure, with persisted attempt history and bounded retries.
