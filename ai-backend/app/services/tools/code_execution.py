@@ -12,6 +12,7 @@ import math
 import os
 import platform
 import resource
+import signal
 import statistics
 import subprocess
 import sys
@@ -294,6 +295,13 @@ def _limit_resources() -> None:
     resource.setrlimit(resource.RLIMIT_AS, (MAX_MEMORY_BYTES, MAX_MEMORY_BYTES))
     resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_FILE_BYTES, MAX_FILE_BYTES))
     resource.setrlimit(resource.RLIMIT_NOFILE, (MAX_OPEN_FILES, MAX_OPEN_FILES))
+    if hasattr(resource, "RLIMIT_NPROC"):
+        try:
+            resource.setrlimit(resource.RLIMIT_NPROC, (1, 1))
+        except (OSError, ValueError):
+            pass
+    if hasattr(resource, "RLIMIT_CORE"):
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
 
 def execute_python_code(code: str) -> str:
@@ -317,30 +325,39 @@ def execute_python_code(code: str) -> str:
     worker = _build_worker_script(code_b64)
 
     try:
-        result = subprocess.run(
+        process = subprocess.Popen(
             [sys.executable, "-I", "-B", "-S", "-c", worker],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             cwd=os.getenv("TMPDIR", "/tmp"),
             env={"PYTHONIOENCODING": "utf-8"},
-            timeout=MAX_EXECUTION_SECONDS,
-            check=False,
             start_new_session=True,
             preexec_fn=_limit_resources if platform.system() == "Linux" else None,
         )
-    except subprocess.TimeoutExpired as exc:
-        raise CodeExecutionError(
-            f"توقف التنفيذ بعد {MAX_EXECUTION_SECONDS:.0f} ثوانٍ بسبب تجاوز المهلة."
-        ) from exc
+        try:
+            stdout, _ = process.communicate(timeout=MAX_EXECUTION_SECONDS)
+        except subprocess.TimeoutExpired as exc:
+            if platform.system() == "Linux":
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            else:
+                process.kill()
+            stdout, _ = process.communicate()
+            raise CodeExecutionError(
+                f"توقف التنفيذ بعد {MAX_EXECUTION_SECONDS:.0f} ثوانٍ بسبب تجاوز المهلة."
+            ) from exc
     except OSError as exc:
         raise CodeExecutionError("تعذر تشغيل المفسّر الآمن حاليًا.") from exc
 
-    output = result.stdout.decode("utf-8", errors="replace").strip()
+    result_returncode = process.returncode
+    output = stdout.decode("utf-8", errors="replace").strip()
     if len(output) > MAX_OUTPUT_CHARS:
         output = output[:MAX_OUTPUT_CHARS] + "\n… تم اقتطاع الناتج."
 
-    if result.returncode != 0 and not output:
+    if result_returncode != 0 and not output:
         raise CodeExecutionError("فشل تشغيل المفسّر الآمن.")
 
     return output or "اكتمل التنفيذ بدون ناتج."
