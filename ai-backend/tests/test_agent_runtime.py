@@ -181,10 +181,11 @@ class UntrustedThenFinalProvider:
         self.calls = 0
         self.tool_choices = []
         self.tools_seen = []
+        self.messages_seen = []
 
     async def get_reply_with_tools(self, messages, tools, tool_choice="auto"):
-        del messages
         self.calls += 1
+        self.messages_seen.append(list(messages))
         self.tool_choices.append(tool_choice)
         self.tools_seen.append(tools)
         if self.calls == 1:
@@ -265,4 +266,4 @@ def test_runtime_wraps_untrusted_output_and_blocks_followup_tools():
     assert provider.tool_choices == ["auto", "none"]
     assert provider.tools_seen[1] == []
     assert any(event["type"] == "runtime_security_block" for event in events)
-    second_messages = provider.messages_seen[1] if hasattr(provider, "messages_seen") else []
+    assert "[BEGIN UNTRUSTED TOOL DATA]" in provider.messages_seen[1][-1]["content"]
