@@ -187,7 +187,6 @@ export default function FilesPanel({
       await deleteFile(id);
       setFiles((prev) => prev.filter((f) => f.id !== id));
     } catch (errorValue) {
-      setError("");
       showErrorToast(errorValue, "files.deleteError");
     }
   };
