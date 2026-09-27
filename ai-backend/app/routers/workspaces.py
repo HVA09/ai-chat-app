@@ -125,6 +125,9 @@ def create_workspace(
         role=WorkspaceRole.owner,
         default_ai_model=workspace.default_ai_model,
         daily_ai_request_limit=workspace.daily_ai_request_limit,
+        monthly_ai_budget_usd=float(workspace.monthly_ai_budget_usd)
+        if workspace.monthly_ai_budget_usd is not None
+        else None,
         created_at=workspace.created_at,
     )
 
@@ -289,6 +292,8 @@ def get_workspace_usage(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="هذه العملية تتطلب صلاحية مدير مساحة العمل",
         )
+
+    workspace = membership.workspace
 
     window_hours = max(1, min(window_hours, 168))
     window_start = datetime.now(timezone.utc) - timedelta(hours=window_hours)
