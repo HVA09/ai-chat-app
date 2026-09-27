@@ -35,6 +35,7 @@ from app.routers.files import router as files_router
 from app.routers.folders import router as folders_router
 from app.routers.notifications import router as notifications_router
 from app.routers.scheduled_tasks import router as scheduled_tasks_router
+from app.routers.agent_jobs import router as agent_jobs_router
 from app.routers.projects import router as projects_router
 from app.routers.public_assistants import router as public_assistants_router
 from app.routers.project_memories import router as project_memories_router
@@ -189,6 +190,7 @@ app.include_router(billing_router)
 app.include_router(api_keys_router)
 app.include_router(notifications_router)
 app.include_router(scheduled_tasks_router)
+app.include_router(agent_jobs_router)
 app.include_router(projects_router)
 app.include_router(public_assistants_router)
 app.include_router(project_memories_router)

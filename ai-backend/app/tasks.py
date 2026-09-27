@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal
 from app.logging_config import get_logger
+from app.models.agent_job import AgentJob
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.scheduled_task import ScheduledTask, ScheduledTaskType
 from app.models.scheduled_task_run import ScheduledTaskRun, ScheduledTaskRunStatus
@@ -16,11 +17,169 @@ from app.models.usage_log import UsageLog
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace, WorkspaceMember
 from app.notifications import notify
+from app.services.agent_runtime import AgentRuntime
+from app.services.ai_providers.factory import get_provider
 from app.services.ai_service import get_ai_reply
 from app.services.email_service import send_email
 from app.dependencies import enforce_ai_cost_budget, get_daily_ai_limit
 
 logger = get_logger("tasks")
+
+
+class AgentJobCancelled(Exception):
+    """Raised when a persistent Agent job is cancelled cooperatively."""
+
+
+async def _agent_job_event_sink(db, job_id: int, event: dict) -> None:
+    if event.get("type") not in {
+        "runtime_round_start",
+        "runtime_start",
+        "start",
+        "result",
+    }:
+        return
+
+    job = db.get(AgentJob, job_id)
+    if job is None or job.cancel_requested or job.status == "cancelled":
+        raise AgentJobCancelled("تم إلغاء مهمة الوكيل.")
+
+
+def _execute_agent_job(job_id: int, db=None) -> None:
+    owns_session = db is None
+    if db is None:
+        db = SessionLocal()
+    now = datetime.now(timezone.utc)
+    try:
+        job = db.get(AgentJob, job_id)
+        if job is None:
+            return
+        if job.status in {"succeeded", "failed", "cancelled"}:
+            return
+        if job.cancel_requested:
+            job.status = "cancelled"
+            job.finished_at = now
+            db.commit()
+            return
+
+        user = db.get(User, job.user_id)
+        workspace = db.get(Workspace, job.workspace_id)
+        conversation = db.get(Conversation, job.conversation_id)
+        if not user or not user.is_active or not workspace or not conversation:
+            job.status = "failed"
+            job.error = "المستخدم أو مساحة العمل أو المحادثة غير متاحة."
+            job.finished_at = now
+            db.commit()
+            return
+
+        membership = (
+            db.query(WorkspaceMember)
+            .filter(
+                WorkspaceMember.workspace_id == workspace.id,
+                WorkspaceMember.user_id == user.id,
+            )
+            .first()
+        )
+        if not membership:
+            job.status = "failed"
+            job.error = "لم تعد تملك عضوية في مساحة العمل."
+            job.finished_at = now
+            db.commit()
+            return
+
+        _ensure_ai_quota(user, workspace, db)
+        enforce_ai_cost_budget(user, db)
+
+        model = workspace.default_ai_model
+        provider = get_provider(model)
+        job.status = "running"
+        job.started_at = now
+        job.error = None
+        db.commit()
+
+        async def event_sink(event: dict) -> None:
+            await _agent_job_event_sink(db, job.id, event)
+
+        result = asyncio.run(
+            AgentRuntime(
+                provider=provider,
+                event_sink=event_sink,
+            ).run(
+                task=job.task,
+                history=[],
+                conversation=conversation,
+                current_user=user,
+                db=db,
+            )
+        )
+
+        refreshed_job = db.get(AgentJob, job.id)
+        if refreshed_job is None:
+            return
+        if refreshed_job.cancel_requested:
+            refreshed_job.status = "cancelled"
+            refreshed_job.finished_at = datetime.now(timezone.utc)
+            refreshed_job.run_id = result.run_id
+            refreshed_job.result_text = result.text
+            refreshed_job.result_sources = result.sources
+            refreshed_job.input_tokens = result.input_tokens
+            refreshed_job.output_tokens = result.output_tokens
+            db.commit()
+            return
+
+        refreshed_job.run_id = result.run_id
+        refreshed_job.result_text = result.text
+        refreshed_job.result_sources = result.sources
+        refreshed_job.input_tokens = result.input_tokens
+        refreshed_job.output_tokens = result.output_tokens
+        refreshed_job.finished_at = datetime.now(timezone.utc)
+
+        if result.status == "completed":
+            refreshed_job.status = "succeeded"
+            db.add(
+                Message(
+                    conversation_id=conversation.id,
+                    role=MessageRole.assistant,
+                    content=result.text,
+                    sources=result.sources or None,
+                )
+            )
+        else:
+            refreshed_job.status = "failed"
+            refreshed_job.error = (
+                "توقف تشغيل الوكيل عند حد الأمان قبل إكمال المهمة."
+            )
+
+        db.add(
+            UsageLog(
+                user_id=user.id,
+                workspace_id=workspace.id,
+                endpoint=f"/agent-jobs/{job.id}",
+                model=model,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                provider=getattr(provider, "name", None) or settings.AI_PROVIDER,
+            )
+        )
+        db.commit()
+
+    except AgentJobCancelled:
+        job = db.get(AgentJob, job_id)
+        if job is not None:
+            job.status = "cancelled"
+            job.finished_at = datetime.now(timezone.utc)
+            db.commit()
+    except Exception as exc:
+        logger.exception("Long-running agent job failed: %s", job_id)
+        db.rollback()
+        job = db.get(AgentJob, job_id)
+        if job is not None:
+            job.status = "failed"
+            job.error = str(exc)[:1000]
+            job.finished_at = datetime.now(timezone.utc)
+            db.commit()
+    finally:
+        if owns_session:
+            db.close()
 
 
 def _next_occurrence(task: ScheduledTask, now: datetime) -> datetime | None:
@@ -329,6 +488,10 @@ try:
     def execute_scheduled_task(task_id: int, run_id: int) -> None:
         _execute_scheduled_task(task_id, run_id)
 
+    @celery_app.task(name="execute_agent_job")
+    def execute_agent_job(job_id: int) -> None:
+        _execute_agent_job(job_id)
+
 
     @celery_app.task(name="run_due_scheduled_tasks")
     def run_due_scheduled_tasks() -> None:
@@ -339,6 +502,7 @@ except ImportError:
     celery_app = None
     send_email_task = None
     execute_scheduled_task = None
+    execute_agent_job = None
     run_due_scheduled_tasks = None
     _CELERY_AVAILABLE = False
     logger.info("مكتبة celery غير مثبّتة — المهام الخلفية غير مفعّلة")
