@@ -83,3 +83,45 @@ def test_saved_prompt_is_private_per_user(client):
 
 def test_saved_prompts_require_authentication(client):
     assert client.get("/saved-prompts").status_code == 401
+
+
+def test_saved_prompt_versions_and_restore(client):
+    token = _register_and_login(client, "saved-prompts-version@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        "/saved-prompts",
+        json={"name": "Versioned", "content": "first"},
+        headers=headers,
+    )
+    assert created.status_code == 201
+    prompt = created.json()
+
+    updated_prompt = client.patch(
+        f"/saved-prompts/{prompt['id']}",
+        json={"name": "Versioned", "content": "second"},
+        headers=headers,
+    )
+    assert updated_prompt.status_code == 200
+
+    versions = client.get(
+        f"/saved-prompts/{prompt['id']}/versions",
+        headers=headers,
+    )
+    assert versions.status_code == 200
+    version_rows = versions.json()
+    assert [row["version"] for row in version_rows] == [2, 1]
+    assert version_rows[-1]["content"] == "first"
+
+    restored = client.post(
+        f"/saved-prompts/{prompt['id']}/versions/1/restore",
+        headers=headers,
+    )
+    assert restored.status_code == 200
+    assert restored.json()["content"] == "first"
+
+    versions_after = client.get(
+        f"/saved-prompts/{prompt['id']}/versions",
+        headers=headers,
+    ).json()
+    assert versions_after[0]["version"] == 3
