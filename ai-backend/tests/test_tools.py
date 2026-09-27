@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock
 
 from app.routers import chat as chat_router_module
 from app.services.tools.calculator import CalculatorError, calculate_expression, extract_calculator_expression
+from app.services.tools.code_execution import CodeExecutionError, execute_python_code
 
 
 def _register_and_login(client, email="tool@example.com"):
@@ -149,3 +150,50 @@ def test_chat_python_unsafe_command_returns_400(client):
         headers=headers,
     )
     assert response.status_code == 400
+
+
+def test_python_sandbox_executes_basic_code():
+    assert execute_python_code("print(sum([1, 2, 3]))") == "6"
+
+
+def test_python_sandbox_rejects_privileged_constructs():
+    for code in (
+        "import os",
+        "from pathlib import Path",
+        "open('/tmp/blocked', 'w')",
+        "eval('1 + 1')",
+        "exec('print(1)')",
+        "x.__class__",
+        "def f():\n    return 1",
+        "lambda x: x + 1",
+    ):
+        try:
+            execute_python_code(code)
+        except CodeExecutionError:
+            continue
+        raise AssertionError(f"privileged code was accepted: {code}")
+
+
+def test_python_sandbox_times_out_infinite_loop():
+    try:
+        execute_python_code("while True:\n    pass")
+    except CodeExecutionError as exc:
+        assert "تجاوز المهلة" in str(exc)
+    else:
+        raise AssertionError("infinite loop was not stopped")
+
+
+def test_python_sandbox_limits_code_length():
+    try:
+        execute_python_code("x = 1\n" * 5000)
+    except CodeExecutionError as exc:
+        assert "أطول من الحد" in str(exc)
+    else:
+        raise AssertionError("oversized code was accepted")
+
+
+def test_python_sandbox_does_not_expose_host_traceback_paths():
+    output = execute_python_code("print(1 / 0)")
+    assert "ZeroDivisionError" in output
+    assert "/opt/" not in output
+    assert "/home/" not in output
