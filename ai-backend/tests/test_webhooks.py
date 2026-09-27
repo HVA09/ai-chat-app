@@ -5,6 +5,7 @@ import pytest
 
 from app.models.user import User
 from app.models.webhook_delivery import WebhookDelivery
+from app.routers import api_keys as api_keys_router
 from app.routers import webhooks as webhooks_router
 from app.services import webhook_service
 from app.services.webhook_service import (
@@ -159,11 +160,9 @@ def test_webhook_url_rejects_private_addresses(monkeypatch):
 def test_api_key_creation_emits_webhook_event(client, monkeypatch, db_session):
     monkeypatch.setattr(webhooks_router, "validate_webhook_url", lambda url: url)
     queued = []
-    monkeypatch.setattr(
-        webhooks_router,
-        "enqueue_webhook_deliveries",
-        lambda ids: queued.extend(ids),
-    )
+    fake_enqueue = lambda ids: queued.extend(ids)
+    monkeypatch.setattr(webhooks_router, "enqueue_webhook_deliveries", fake_enqueue)
+    monkeypatch.setattr(api_keys_router, "enqueue_webhook_deliveries", fake_enqueue)
 
     token = _register_and_login(client, "webhook-api-key@example.com")
     client.post(
