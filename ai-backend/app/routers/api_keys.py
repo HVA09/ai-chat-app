@@ -31,6 +31,7 @@ from app.schemas.api_keys import (
     APIKeyUsageOut,
 )
 from app.services.ai_service import get_ai_reply
+from app.services.webhook_service import enqueue_webhook_deliveries, queue_webhook_event
 from app.services.api_versioning import (
     DEVELOPER_API_PREFIX,
     DEVELOPER_API_VERSION,
@@ -97,6 +98,23 @@ def create_api_key(
     db.commit()
     db.refresh(api_key)
 
+    try:
+        delivery_ids = queue_webhook_event(
+            db,
+            current_user.id,
+            "api_key.created",
+            {
+                "api_key_id": api_key.id,
+                "name": api_key.name,
+                "key_prefix": api_key.key_prefix,
+                "expires_at": api_key.expires_at.isoformat() if api_key.expires_at else None,
+            },
+        )
+        db.commit()
+        enqueue_webhook_deliveries(delivery_ids)
+    except Exception:
+        db.rollback()
+
     return APIKeyCreatedOut(
         id=api_key.id,
         name=api_key.name,
@@ -120,6 +138,21 @@ def revoke_api_key(
     if api_key.revoked_at is None:
         api_key.revoked_at = datetime.now(timezone.utc)
         db.commit()
+        try:
+            delivery_ids = queue_webhook_event(
+                db,
+                current_user.id,
+                "api_key.revoked",
+                {
+                    "api_key_id": api_key.id,
+                    "name": api_key.name,
+                    "key_prefix": api_key.key_prefix,
+                },
+            )
+            db.commit()
+            enqueue_webhook_deliveries(delivery_ids)
+        except Exception:
+            db.rollback()
 
 
 def _get_api_key_auth(
