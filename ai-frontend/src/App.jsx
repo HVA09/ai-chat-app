@@ -2793,7 +2793,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="app-shell flex h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <Sidebar
         conversations={conversations}
         onSelectConversation={openConversation}
@@ -2886,7 +2886,7 @@ export default function App() {
         hasMore={hasMoreConversations}
         onLoadMore={loadMoreConversations}
       />
-      <main className="flex flex-1 flex-col">
+      <main className="app-main flex flex-1 flex-col">
         <ChatHeader
           lang={lang}
           setLang={switchLang}
@@ -2920,7 +2920,7 @@ export default function App() {
           onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
         />
 
-        <section className="flex flex-1 flex-col p-4">
+        <section className="chat-stage flex flex-1 flex-col p-4">
           {conversationId &&
           selectedWorkspaceId !== null &&
           (workspaceShare || readOnlyConversation) ? (
@@ -2945,7 +2945,7 @@ export default function App() {
             </div>
           ) : null}
           {conversationId && (conversationSummary || summaryLoading) ? (
-            <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="chat-summary mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -2974,7 +2974,7 @@ export default function App() {
             </div>
           ) : null}
 
-          <div className="flex-1 space-y-4 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="chat-surface flex-1 space-y-4 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             {empty ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-slate-500">
                 <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{t("emptyTitle")}</h3>
@@ -3101,7 +3101,7 @@ export default function App() {
         </section>
 
         {readOnlyConversation ? (
-          <div className="border-t border-slate-200 bg-white px-4 py-3 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+          <div className="readonly-bar border-t border-slate-200 bg-white px-4 py-3 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
             {t("workspaceSharing.readOnly")}
           </div>
         ) : (
