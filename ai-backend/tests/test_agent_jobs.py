@@ -142,7 +142,7 @@ def test_execute_agent_job_persists_success(client, db_session, monkeypatch):
     monkeypatch.setattr(tasks_module, "AgentRuntime", FakeRuntime)
     monkeypatch.setattr(tasks_module, "get_daily_ai_limit", lambda user, db: 100)
 
-    tasks_module._execute_agent_job(job_id)
+    tasks_module._execute_agent_job(job_id, db=db_session)
 
     db_session.expire_all()
     job = db_session.get(AgentJob, job_id)
