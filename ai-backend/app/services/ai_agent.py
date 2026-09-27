@@ -16,6 +16,7 @@ from app.models.user import User
 from app.services.ai_providers.base import AIToolReply
 from app.services.ai_providers.factory import get_provider
 from app.services.ai_providers.openai_provider import OpenAICompatibleProvider
+from app.services.mcp_client import discover_mcp_tools
 from app.services.tools.registry import ToolContext, tool_registry
 
 MAX_AGENT_ROUNDS = 3
@@ -80,7 +81,11 @@ async def run_agent(
         raise AgentModeError("اكتب المهمة بعد /agent، مثل: /agent ابحث عن أحدث أخبار بايثون.")
 
     messages: list[dict] = _history(history) + [{"role": "user", "content": task}]
-    tools = tool_registry.definitions()
+    registry = tool_registry.scoped()
+    for spec in await discover_mcp_tools():
+        if registry.get(spec.name) is None:
+            registry.register(spec)
+    tools = registry.definitions()
     sources: list[dict] = []
     total_input_tokens = 0
     total_output_tokens = 0
@@ -109,7 +114,7 @@ async def run_agent(
                     "name": call.name,
                 })
 
-            result = await tool_registry.execute(
+            result = await registry.execute(
                 call.name,
                 call.arguments,
                 ToolContext(
