@@ -12,6 +12,7 @@ from app.models.conversation import Conversation, Message, MessageRole
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.agent_jobs import AgentJobCancelOut, AgentJobCreate, AgentJobOut
+from app.services.agent_runtime import get_agent_configuration_version, get_agent_tool_policy_snapshot
 from app.tasks import execute_agent_job, celery_app
 
 router = APIRouter(prefix="/agent-jobs", tags=["Agent Jobs"])
@@ -88,6 +89,8 @@ def create_agent_job(
         conversation_id=conversation.id,
         task=task,
         status="queued",
+        agent_version=get_agent_configuration_version(),
+        tool_policy_snapshot=get_agent_tool_policy_snapshot(),
     )
     db.add(job)
     db.commit()
