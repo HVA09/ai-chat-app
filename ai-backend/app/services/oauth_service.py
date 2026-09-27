@@ -288,6 +288,7 @@ async def complete_oauth(
             OAuthState.state_hash == _hash_state(state),
             OAuthState.used_at.is_(None),
         )
+        .with_for_update()
         .first()
     )
     if oauth_state is None or oauth_state.expires_at <= now:
