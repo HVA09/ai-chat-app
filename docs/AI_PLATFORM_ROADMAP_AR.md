@@ -192,5 +192,17 @@
 - CI مكتمل بنجاح، وCodeQL وPublish backend image وProduction Smoke نجحت.
 - Render Frontend للـcommit أصبح **live**.
 
+#### C3 — Assistant knowledge action error feedback: **مكتمل ومتحقق**
+- أخطاء رفع/إرفاق/إزالة ملفات معرفة المساعد أصبحت تظهر عبر Global Toast بدل الفشل الصامت.
+- commit الدمج `199c411fead36f9efd38343f2028e7be6a50e395`.
+- CI وCodeQL وPublish backend image وProduction Smoke نجحت.
+- Render Frontend أصبح **live**.
+
+#### C3 — Workspace conversation comments error feedback: **مكتمل ومتحقق**
+- أخطاء عمليات تعليقات محادثات Workspace أصبحت تظهر عبر Global Toast بدل بقاء الخطأ محليًا فقط.
+- commit الدمج `f272e471df2f707be747ec61b3d30774dc287657`.
+- CI وCodeQL وPublish backend image وProduction Smoke نجحت.
+- Render Frontend أصبح **live**.
+
 #### C3 — الخطوة التالية
 مراجعة مسار UX آخر خارج Workspace، مع أولوية للشاشات التي تخفي فشل API أو تعرض حالة خطأ محلية بدل Global Toast عندما يكون Toast هو النمط المناسب.
