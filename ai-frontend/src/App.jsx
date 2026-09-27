@@ -2802,7 +2802,7 @@ export default function App() {
 
   return (
     <div className="app-shell flex h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <Sidebar
+      <SidebarModern
         conversations={conversations}
         selectedConversationId={conversationId}
         onSelectConversation={openConversation}
@@ -2894,9 +2894,8 @@ export default function App() {
         loadingMore={conversationsLoadingMore}
         hasMore={hasMoreConversations}
         onLoadMore={loadMoreConversations}
-      />
-      <main className="app-main flex flex-1 flex-col">
-        <ChatHeader
+      />\n      <main className="app-main flex flex-1 flex-col">
+        <ChatHeaderModern\n          conversationTitle={conversations.find((item) => Number(item.id) === Number(conversationId))?.title || ""}
           lang={lang}
           setLang={switchLang}
           onLogout={logout}
@@ -3114,6 +3113,7 @@ export default function App() {
             {t("workspaceSharing.readOnly")}
           </div>
         ) : (
+          <div className="composer-stage mx-auto w-full max-w-5xl">
           <ChatComposer
             value={input}
           setValue={setInput}
@@ -3157,6 +3157,7 @@ export default function App() {
           selectedModel={selectedModel}
           onSelectModel={setSelectedModel}
           />
+          </div>
         )}
       </main>
 
