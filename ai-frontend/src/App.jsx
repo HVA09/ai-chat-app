@@ -1,8 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import Sidebar from "./components/Sidebar";
+import SidebarModern from "./components/SidebarModern";
 import CommandPalette from "./components/CommandPalette";
-import ChatHeader from "./components/ChatHeader";
+import ChatHeaderModern from "./components/ChatHeaderModern";
 import ChatMessage from "./components/ChatMessage";
 import ChatComposer from "./components/ChatComposer";
 import ModelCompareDialog from "./components/ModelCompareDialog";
@@ -2983,7 +2983,7 @@ export default function App() {
             </div>
           ) : null}
 
-          <div className="chat-surface flex-1 space-y-4 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="chat-surface mx-auto flex w-full max-w-5xl flex-1 space-y-4 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             {empty ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-slate-500">
                 <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{t("emptyTitle")}</h3>
