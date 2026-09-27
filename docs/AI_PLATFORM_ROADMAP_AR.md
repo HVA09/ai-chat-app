@@ -154,7 +154,7 @@
 
 ### المرحلة C — Product UX
 
-الحالة: **قيد التنفيذ — C1 وC2 مكتملان، وC3 جارٍ**
+الحالة: **C1 وC2 وC3 مكتملة ومتحققة**
 
 الهدف: تحسين تجربة الاستخدام اليومية مع الحفاظ على المعمارية الحالية، نظام Toast العالمي، اختبارات الواجهة، وعدم إضافة موارد مدفوعة.
 
@@ -175,22 +175,22 @@
 - Render Frontend للـcommit النهائي أصبح **live**.
 - CI النهائي للـcommit نجح بالكامل.
 
-#### C3 — Workspace shared conversations error feedback: **مكتمل ومتحقق**
-- فشل تحميل المحادثات المشتركة في `WorkspaceSharedConversationsPanel` لم يعد يتحول إلى قائمة فارغة بصمت؛ أصبح يرسل Global Toast برسالة API أو رسالة fallback.
-- تمت إضافة اختبار UI يتأكد من إرسال `app:toast` عند فشل التحميل.
-- commit الدمج `129054c476b85159560474abdd6fd0ba47151f1a`.
-- CI النهائي نجح بالكامل: Backend `pytest`، Frontend tests/build، Production Compose.
-- CodeQL نجح.
-- Production Smoke نجح.
-- Render Frontend للـcommit أصبح **live**.
+#### C3 — Global Toast / API error feedback: **مكتمل ومتحقق**
+تم توحيد مسارات أخطاء API الرئيسية في الواجهة ضمن Global Toast مع اختبارات UI، بدل ترك فشل التحميل أو الإجراءات يتحول إلى حالة فارغة أو خطأ محلي بصمت.
 
-#### C3 — Assistant knowledge load error feedback: **مكتمل ومتحقق**
-- فشل تحميل ملفات معرفة المساعد في `AssistantEditor` لم يعد يتحول إلى قوائم فارغة صامتة؛ أصبح يرسل Global Toast برسالة مترجمة.
-- تمت إضافة ترجمة للرسالة بالعربية والإنجليزية.
-- تمت إضافة اختبار UI يتأكد من إرسال `app:toast` عند فشل تحميل ملفات معرفة المساعد.
-- commit الدمج `2914e8df4939adc55da6aa09bb87bf89bb2c255e`.
-- CI مكتمل بنجاح، وCodeQL وPublish backend image وProduction Smoke نجحت.
-- Render Frontend للـcommit أصبح **live**.
+النطاق الذي تم تغطيته يشمل:
+- Workspace/shared conversations وعمليات التعليقات.
+- Files وعمليات الرفع/الإرفاق/الفصل/الحذف/المعاينة.
+- Admin Dashboard، Pricing/Billing، Scheduled Tasks، Account Settings.
+- Public Assistant وModel Compare وConversation Share Manager.
+- تحميل المحادثات وProjects وAssistants وAI Models وبيانات الـsidebar وبيانات المستخدم.
+- AssistantEditor: المعرفة، سجل النسخ، Analytics، إعدادات الرابط العام، المقارنة، وعمليات تفعيل/تدوير/تعطيل الرابط العام.
+- ProjectEditor: تحميل/إضافة/تعديل/حذف ذاكرة المشروع.
 
-#### C3 — الخطوة التالية
-مراجعة مسار UX آخر خارج Workspace، مع أولوية للشاشات التي تخفي فشل API أو تعرض حالة خطأ محلية بدل Global Toast عندما يكون Toast هو النمط المناسب.
+### تحقق C3 النهائي — 2026-09-27
+- PRs الأخيرة #295 و#296 و#297 تم دمجها بنجاح.
+- CI وCodeQL نجحا لكل PR من هذه السلسلة.
+- آخر Frontend deployment للcommit `a11c01fb03235d1bafc5a4966c82fc447658b1a1` أصبح **live** على Render.
+- لا توجد موارد Render مدفوعة أضيفت ضمن C3.
+- التدقيق النهائي لمسارات `catch` و`setError` ميّز الحالات التي تحتاج Global Toast عن الحالات المحلية/أفضل جهد، مثل المصادقة، مشاركة محمية بكلمة مرور، clipboard/speech synthesis، وlocal storage.
+- الحالة الحالية: **C3 مغلقة**، والخطوة التالية هي اختيار بند المرحلة التالية بعد مراجعة Stage B غير المكتملة؛ لا نفتح ميزة منتج جديدة قبل التعامل مع بند B المطلوب.
