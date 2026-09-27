@@ -14,7 +14,7 @@ import { getErrorMessage } from "../lib/errors";
 
 function Section({ title, children }) {
   return (
-    <div className="mb-4 rounded-2xl border border-slate-200 p-4">
+    <div className="settings-section mb-4 rounded-2xl border border-slate-200 p-4">
       <p className="mb-2 text-sm font-medium text-slate-900">{title}</p>
       {children}
     </div>
