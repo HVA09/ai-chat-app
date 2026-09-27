@@ -29,7 +29,7 @@ class WorkspaceOut(BaseModel):
     role: WorkspaceRole
     default_ai_model: str | None
     daily_ai_request_limit: int | None
-    monthly_ai_budget_usd: float | None
+    monthly_ai_budget_usd: float | None = None
     created_at: datetime
 
 
