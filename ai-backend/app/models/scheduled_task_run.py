@@ -73,6 +73,9 @@ class ScheduledTaskRun(Base):
         index=True,
     )
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    agent_job_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agent_jobs.id", ondelete="SET NULL"), nullable=True, unique=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

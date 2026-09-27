@@ -15,5 +15,6 @@ class ScheduledTaskRunOut(BaseModel):
     started_at: datetime | None
     finished_at: datetime | None
     conversation_id: int | None
+    agent_job_id: int | None
     error: str | None
     created_at: datetime
