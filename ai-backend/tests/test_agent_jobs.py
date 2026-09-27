@@ -60,6 +60,8 @@ def test_create_agent_job_returns_accepted_without_running_inline(client, monkey
     payload = response.json()
     assert payload["status"] == "queued"
     assert payload["celery_task_id"] == "celery-" + str(payload["id"])
+    assert payload["agent_version"].startswith("agent-1-")
+    assert payload["tool_policy_snapshot"]["allowed_tools"]
     assert fake_task.calls == [payload["id"]]
 
     fetched = client.get(f"/agent-jobs/{payload['id']}", headers=headers)
