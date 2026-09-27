@@ -28,3 +28,13 @@ class SavedPromptOut(BaseModel):
     content: str
     created_at: datetime
     updated_at: datetime
+
+
+class SavedPromptVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    version: int
+    name: str
+    content: str
+    created_at: datetime

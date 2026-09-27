@@ -271,3 +271,26 @@ def test_runtime_wraps_untrusted_output_and_blocks_followup_tools():
         for message in provider.messages_seen[1]
         if message.get("role") == "tool"
     )
+
+
+def test_agent_configuration_version_tracks_tool_policy(monkeypatch):
+    from app.services.agent_runtime import get_agent_configuration_version, get_agent_tool_policy_snapshot
+
+    monkeypatch.setattr(
+        settings,
+        "AGENT_ALLOWED_TOOLS_JSON",
+        "[\"calculator\",\"python\"]",
+    )
+    first = get_agent_configuration_version()
+    snapshot = get_agent_tool_policy_snapshot()
+    assert snapshot["allowed_tools"] == ["calculator", "python"]
+    assert first.startswith("agent-1-")
+
+    monkeypatch.setattr(
+        settings,
+        "AGENT_ALLOWED_TOOLS_JSON",
+        "[\"calculator\",\"web_search\"]",
+    )
+    second = get_agent_configuration_version()
+    assert second.startswith("agent-1-")
+    assert second != first

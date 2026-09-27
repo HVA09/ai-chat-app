@@ -1,8 +1,7 @@
 """Persistent long-running Agent Platform jobs."""
-
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -37,6 +36,10 @@ class AgentJob(Base):
     celery_task_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True, unique=True, index=True
     )
+    agent_version: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="agent-1", server_default="agent-1"
+    )
+    tool_policy_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     result_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     result_sources: Mapped[list | None] = mapped_column(JSON, nullable=True)

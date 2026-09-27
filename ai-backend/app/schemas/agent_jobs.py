@@ -23,6 +23,8 @@ class AgentJobOut(BaseModel):
     task: str
     status: str
     cancel_requested: bool
+    agent_version: str
+    tool_policy_snapshot: dict | None
     celery_task_id: str | None
     run_id: str | None
     result_text: str | None
