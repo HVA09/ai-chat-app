@@ -337,6 +337,71 @@ describe("AssistantEditor", () => {
     expect(await screen.findByDisplayValue("https://example.com/public-assistant/token")).toBeInTheDocument();
   });
 
+  it("shows a global toast when public link settings fail to load", async () => {
+    getAssistantPublicSettings.mockRejectedValueOnce({
+      response: { data: { detail: "تعذر تحميل الرابط" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد عام",
+          description: "عام",
+          instructions: "تعليمات",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "تعذر تحميل الرابط", type: "error" },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when enabling a public link fails", async () => {
+    enableAssistantPublicLink.mockRejectedValueOnce({
+      response: { data: { detail: "تعذر التفعيل" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد عام",
+          description: "عام",
+          instructions: "تعليمات",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "تفعيل الرابط العام" }));
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "تعذر التفعيل", type: "error" },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
   it("shows assistant usage analytics while editing", async () => {
     render(
       <AssistantEditor
