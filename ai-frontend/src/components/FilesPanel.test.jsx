@@ -16,7 +16,7 @@ vi.mock("../lib/filesApi", () => ({
 }));
 
 vi.mock("../lib/errors", () => ({
-  getErrorMessage: (_error, fallback) => fallback,
+  getErrorMessage: (error, fallback) => error?.response?.data?.detail || fallback,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -36,6 +36,8 @@ vi.mock("react-i18next", () => ({
       "files.deleteError": "Could not delete file",
       "files.uploadErrorForFile": "Could not upload the file {{name}}",
       "files.attachmentError": "Could not update the file attachment",
+      "files.attach": "Attach",
+      "files.detach": "Detach",
       "files.confirmDelete": "Delete this file?",
       "files.delete": "Delete",
     })[key] ?? key,
