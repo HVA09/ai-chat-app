@@ -15,6 +15,11 @@ class ScheduledTaskType(str, enum.Enum):
     weekly = "weekly"
 
 
+class ScheduledTaskExecutionMode(str, enum.Enum):
+    standard = "standard"
+    agent = "agent"
+
+
 class ScheduledTask(Base):
     __tablename__ = "scheduled_tasks"
     __table_args__ = (
@@ -32,6 +37,13 @@ class ScheduledTask(Base):
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     schedule_type: Mapped[ScheduledTaskType] = mapped_column(
         Enum(ScheduledTaskType), nullable=False
+    )
+    execution_mode: Mapped[ScheduledTaskExecutionMode] = mapped_column(
+        Enum(ScheduledTaskExecutionMode),
+        nullable=False,
+        default=ScheduledTaskExecutionMode.standard,
+        server_default=ScheduledTaskExecutionMode.standard.value,
+        index=True,
     )
     next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     weekday: Mapped[int | None] = mapped_column(Integer, nullable=True)
