@@ -137,3 +137,115 @@ def test_duplicate_pending_invitation_rejected(client, monkeypatch):
         headers=owner_headers,
     )
     assert duplicate.status_code == 409
+
+
+def test_enterprise_rbac_custom_role_controls_member_operations(client, monkeypatch):
+    token_value = {"value": "R" * 40}
+    monkeypatch.setattr(
+        "app.routers.workspace_members.send_workspace_invitation_email",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "app.routers.workspace_members.secrets.token_urlsafe",
+        lambda n: token_value["value"],
+    )
+
+    owner_token = _register_and_login(client, "rbac-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace = client.post(
+        "/workspaces",
+        json={"name": "RBAC Team"},
+        headers=owner_headers,
+    ).json()
+
+    member_token = _register_and_login(client, "rbac-member@example.com")
+    member_headers = {"Authorization": f"Bearer {member_token}"}
+    third_token = _register_and_login(client, "rbac-third@example.com")
+    third_headers = {"Authorization": f"Bearer {third_token}"}
+
+    invite_member = client.post(
+        f"/workspaces/{workspace['id']}/invitations",
+        json={"email": "rbac-member@example.com", "role": "member"},
+        headers=owner_headers,
+    )
+    assert invite_member.status_code == 201
+    accepted = client.post(
+        "/workspace-invitations/accept",
+        json={"token": token_value["value"]},
+        headers=member_headers,
+    )
+    assert accepted.status_code == 200
+
+    token_value["value"] = "S" * 40
+    invite_third = client.post(
+        f"/workspaces/{workspace['id']}/invitations",
+        json={"email": "rbac-third@example.com", "role": "member"},
+        headers=owner_headers,
+    )
+    assert invite_third.status_code == 201
+    accepted_third = client.post(
+        "/workspace-invitations/accept",
+        json={"token": token_value["value"]},
+        headers=third_headers,
+    )
+    assert accepted_third.status_code == 200
+
+    role = client.post(
+        f"/workspaces/{workspace['id']}/rbac/roles",
+        json={
+            "name": "Inviter",
+            "description": "Can read members and send invites",
+            "permissions": ["members.read", "members.invite"],
+        },
+        headers=owner_headers,
+    )
+    assert role.status_code == 201
+    role_id = role.json()["id"]
+
+    permissions = client.get(
+        f"/workspaces/{workspace['id']}/rbac/permissions",
+        headers=owner_headers,
+    )
+    assert permissions.status_code == 200
+    assert {item["permission"] for item in permissions.json()} >= {
+        "members.read",
+        "members.invite",
+        "rbac.manage",
+    }
+
+    members = client.get(
+        f"/workspaces/{workspace['id']}/members",
+        headers=owner_headers,
+    )
+    assert members.status_code == 200
+    member_by_email = {item["email"]: item["id"] for item in members.json()}
+
+    assigned = client.patch(
+        f"/workspaces/{workspace['id']}/members/{member_by_email['rbac-member@example.com']}/rbac-role",
+        json={"rbac_role_id": role_id},
+        headers=owner_headers,
+    )
+    assert assigned.status_code == 200
+
+    forbidden_rbac = client.post(
+        f"/workspaces/{workspace['id']}/rbac/roles",
+        json={"name": "Escalation", "permissions": ["rbac.manage"]},
+        headers=member_headers,
+    )
+    assert forbidden_rbac.status_code == 403
+
+    fourth_token = _register_and_login(client, "rbac-fourth@example.com")
+    assert fourth_token
+    token_value["value"] = "T" * 40
+    invitation = client.post(
+        f"/workspaces/{workspace['id']}/invitations",
+        json={"email": "rbac-fourth@example.com", "role": "member"},
+        headers=member_headers,
+    )
+    assert invitation.status_code == 201
+
+    cannot_remove = client.delete(
+        f"/workspaces/{workspace['id']}/members/{member_by_email['rbac-third@example.com']}",
+        headers=member_headers,
+    )
+    assert cannot_remove.status_code == 403
