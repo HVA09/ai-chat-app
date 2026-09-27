@@ -317,7 +317,7 @@
 
 ## المرحلة E — Platform & Developer Ecosystem
 
-الحالة: **قيد التنفيذ — E1 إلى E7 مكتملة ومتحققة**
+الحالة: **مكتملة ومتحققة — E1 إلى E8**
 
 ### E1 — API Keys: **مكتمل ومتحقق**
 - إدارة مفاتيح Developer API موجودة عبر `GET /api-keys` و`POST /api-keys` و`DELETE /api-keys/{key_id}`.
@@ -403,6 +403,19 @@
 - commit الدمج بعد squash: `57dd468eef3aaf1140dd86f14109a8ebfe4c2d1b`.
 - PR #326 القديم أُغلق باعتباره superseded ولا يحمل تغييرًا إضافيًا على `main`.
 - لا توجد أي موارد مدفوعة جديدة ضمن E6.
+### E8 — Versioning for assistants, prompts, knowledge bases and agents: **مكتمل ومتحقق**
+- Assistant versions أصبحت snapshots غير قابلة للتعديل تتضمن إعدادات المساعد، قائمة ملفات المعرفة المرتبطة، وtool-policy snapshot.
+- استرجاع نسخة Assistant يعيد أيضًا snapshot ملفات المعرفة التي ما تزال مملوكة للمستخدم، ثم ينشئ version جديدة بدل تعديل التاريخ القديم.
+- Saved Prompts أصبحت تمتلك تاريخ versions immutable مع endpoints للعرض والاسترجاع، والاسترجاع ينشئ version جديدة.
+- AgentJob يحفظ `agent_version` مشتقًا من runtime/tool-policy/limits، إضافة إلى `tool_policy_snapshot`، بحيث تبقى المهمة قابلة للتتبع حتى عند تغيّر الإعدادات لاحقًا.
+- Scheduled Agent jobs تستخدم نفس snapshot عند إنشاء AgentJob.
+- تمت إضافة migration `0072_platform_asset_versioning` بعد `0071_workspace_cost_controls` لضمان سلسلة Alembic واحدة بدون multiple heads.
+- PR #331 تم دمجه بنجاح بعد إصلاح سلسلة migration.
+- CI run `3398`: **نجح** بالكامل، بما في ذلك Alembic وpytest.
+- CodeQL run `427`: **نجح** بالكامل لـPython وJavaScript/TypeScript.
+- commit الدمج بعد squash: `4c8d52dd89ec828fed5f2aff3e18f1be18ca2b31`.
+- لا توجد موارد مدفوعة جديدة ضمن E8.
+
 1. API Keys
 2. API versioning
 3. Webhooks
