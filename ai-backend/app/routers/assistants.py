@@ -13,6 +13,7 @@ from app.models.assistant import Assistant
 from app.models.conversation import Conversation, Message
 from app.models.assistant_file_link import AssistantFileLink
 from app.models.file_attachment import FileAttachment
+from app.models.file_attachment import FileAttachment
 from app.models.assistant_version import AssistantVersion
 from app.models.user import User
 from app.schemas.assistant_versions import AssistantVersionCompareOut, AssistantVersionOut
@@ -32,12 +33,20 @@ def _create_assistant_version(assistant: Assistant, db: Session) -> AssistantVer
     current_version = db.query(func.max(AssistantVersion.version)).filter(
         AssistantVersion.assistant_id == assistant.id
     ).scalar() or 0
+    knowledge_file_ids = [
+        file_id
+        for (file_id,) in db.query(AssistantFileLink.file_id)
+        .filter(AssistantFileLink.assistant_id == assistant.id)
+        .order_by(AssistantFileLink.file_id.asc())
+        .all()
+    ]
     version = AssistantVersion(
         assistant_id=assistant.id,
         version=current_version + 1,
         name=assistant.name,
         description=assistant.description,
         instructions=assistant.instructions,
+        knowledge_file_ids=knowledge_file_ids,
     )
     db.add(version)
     return version
@@ -311,12 +320,22 @@ def compare_assistant_version_with_current(
         f"description: {snapshot.description or ''}",
         "instructions:",
         snapshot.instructions,
+        "knowledge_file_ids:",
+        ",".join(str(file_id) for file_id in (snapshot.knowledge_file_ids or [])),
     ]
     current = [
         f"name: {assistant.name}",
         f"description: {assistant.description or ''}",
         "instructions:",
         assistant.instructions,
+        "knowledge_file_ids:",
+        ",".join(
+            str(file_id)
+            for (file_id,) in db.query(AssistantFileLink.file_id)
+            .filter(AssistantFileLink.assistant_id == assistant.id)
+            .order_by(AssistantFileLink.file_id.asc())
+            .all()
+        ),
     ]
     diff = "\n".join(
         difflib.unified_diff(
@@ -367,6 +386,31 @@ def restore_assistant_version(
     assistant.name = snapshot.name
     assistant.description = snapshot.description
     assistant.instructions = snapshot.instructions
+
+    desired_file_ids = [
+        file_id
+        for file_id in (snapshot.knowledge_file_ids or [])
+        if db.query(FileAttachment.id)
+        .filter(
+            FileAttachment.id == file_id,
+            FileAttachment.user_id == current_user.id,
+        )
+        .first()
+    ]
+    current_links = (
+        db.query(AssistantFileLink)
+        .filter(AssistantFileLink.assistant_id == assistant.id)
+        .all()
+    )
+    current_file_ids = {link.file_id for link in current_links}
+    desired_file_id_set = set(desired_file_ids)
+    for link in current_links:
+        if link.file_id not in desired_file_id_set:
+            db.delete(link)
+    for file_id in desired_file_ids:
+        if file_id not in current_file_ids:
+            db.add(AssistantFileLink(assistant_id=assistant.id, file_id=file_id))
+
     db.flush()
     _create_assistant_version(assistant, db)
     db.commit()
