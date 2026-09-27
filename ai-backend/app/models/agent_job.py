@@ -28,6 +28,8 @@ class AgentJob(Base):
         ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     task: Mapped[str] = mapped_column(Text, nullable=False)
+    definition_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    definition_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="queued", server_default="queued", index=True
     )
