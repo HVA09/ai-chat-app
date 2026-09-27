@@ -78,6 +78,11 @@ class ToolRegistry:
     def names(self) -> tuple[str, ...]:
         return tuple(self._tools)
 
+    def scoped(self) -> "ToolRegistry":
+        scoped = ToolRegistry()
+        scoped._tools = self._tools.copy()
+        return scoped
+
     def definitions(self) -> list[dict]:
         return [tool.as_provider_definition() for tool in self._tools.values()]
 
