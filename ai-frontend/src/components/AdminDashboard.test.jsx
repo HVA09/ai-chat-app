@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminDashboard from "./AdminDashboard";
 import {
@@ -33,6 +34,37 @@ vi.mock("recharts", () => {
     XAxis: Stub,
     YAxis: Stub,
   };
+  it("shows a global toast when updating a user role fails", async () => {
+    const user = userEvent.setup();
+    listAllUsers.mockResolvedValueOnce([
+      {
+        id: 2,
+        email: "user@example.com",
+        role: "user",
+        is_active: true,
+        is_email_verified: true,
+      },
+    ]);
+    updateUser.mockRejectedValueOnce(new Error("role update failed"));
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(<AdminDashboard currentUserId={1} onClose={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "admin.tabUsers" }));
+    await user.click(await screen.findByRole("button", { name: "admin.promoteAdmin" }));
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "admin.updateUserError", type: "error" },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
 });
 
 vi.mock("../lib/adminApi", () => ({
