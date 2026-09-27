@@ -229,6 +229,16 @@ class Settings(BaseSettings):
                 raise ValueError("SMTP must be configured in production")
             if not self.TOTP_ENCRYPTION_KEY:
                 raise ValueError("TOTP_ENCRYPTION_KEY is required in production")
+            if (
+                (self.OAUTH_GOOGLE_CLIENT_ID or self.OAUTH_MICROSOFT_CLIENT_ID)
+                and (
+                    not self.OAUTH_CALLBACK_BASE_URL
+                    or not self.OAUTH_CALLBACK_BASE_URL.startswith("https://")
+                )
+            ):
+                raise ValueError(
+                    "OAUTH_CALLBACK_BASE_URL must be HTTPS when OAuth connectors are configured in production"
+                )
             if any("localhost" in origin or "127.0.0.1" in origin for origin in self.CORS_ORIGINS):
                 raise ValueError("Production CORS_ORIGINS cannot contain localhost")
         return self
