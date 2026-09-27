@@ -51,6 +51,15 @@ class Settings(BaseSettings):
     MCP_MAX_TOOLS_PER_SERVER: int = 20
     # Explicit allowlist for Agent tools. MCP tools must also be allowed per server.
     AGENT_ALLOWED_TOOLS_JSON: str = "[\"calculator\",\"python\",\"web_search\",\"analyze_data\"]"
+
+    # OAuth / connector foundation. Providers stay disabled until credentials are configured.
+    OAUTH_CALLBACK_BASE_URL: str = ""
+    OAUTH_STATE_TTL_SECONDS: int = 600
+    OAUTH_GOOGLE_CLIENT_ID: str = ""
+    OAUTH_GOOGLE_CLIENT_SECRET: str = ""
+    OAUTH_MICROSOFT_CLIENT_ID: str = ""
+    OAUTH_MICROSOFT_CLIENT_SECRET: str = ""
+    OAUTH_MICROSOFT_TENANT: str = "common"
     AGENT_MAX_TOOL_ARGUMENT_CHARS: int = 12_000
     AGENT_MAX_TOOL_ARGUMENT_DEPTH: int = 8
 
