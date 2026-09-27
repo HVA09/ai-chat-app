@@ -64,13 +64,22 @@ class ToolSpec:
         }
 
 
+class ToolPermissionError(PermissionError):
+    """Raised when a tool is outside the registry's explicit allowlist."""
+
+
 class ToolRegistry:
     """Central registry used by agent mode for discovery and execution."""
 
-    def __init__(self) -> None:
+    def __init__(self, allowed_names: set[str] | None = None) -> None:
         self._tools: dict[str, ToolSpec] = {}
+        self._allowed_names = (
+            None if allowed_names is None else frozenset(allowed_names)
+        )
 
     def register(self, spec: ToolSpec) -> None:
+        if self._allowed_names is not None and spec.name not in self._allowed_names:
+            raise ToolPermissionError(f"Tool is not permitted: {spec.name}")
         if spec.name in self._tools:
             raise ValueError(f"Tool already registered: {spec.name}")
         self._tools[spec.name] = spec
@@ -78,10 +87,25 @@ class ToolRegistry:
     def names(self) -> tuple[str, ...]:
         return tuple(self._tools)
 
-    def scoped(self) -> "ToolRegistry":
-        scoped = ToolRegistry()
-        scoped._tools = self._tools.copy()
+    def scoped(self, allowed_names: set[str] | None = None) -> "ToolRegistry":
+        effective_allowed = (
+            self._allowed_names if allowed_names is None else frozenset(allowed_names)
+        )
+        scoped = ToolRegistry(
+            None if effective_allowed is None else set(effective_allowed)
+        )
+        if effective_allowed is None:
+            scoped._tools = self._tools.copy()
+        else:
+            scoped._tools = {
+                name: spec
+                for name, spec in self._tools.items()
+                if name in effective_allowed
+            }
         return scoped
+
+    def allows(self, name: str) -> bool:
+        return self._allowed_names is None or name in self._allowed_names
 
     def definitions(self) -> list[dict]:
         return [tool.as_provider_definition() for tool in self._tools.values()]
