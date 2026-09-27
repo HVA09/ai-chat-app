@@ -317,7 +317,7 @@
 
 ## المرحلة E — Platform & Developer Ecosystem
 
-الحالة: **قيد التنفيذ — E1 إلى E5 مكتملة ومتحققة**
+الحالة: **قيد التنفيذ — E1 إلى E6 مكتملة ومتحققة**
 
 ### E1 — API Keys: **مكتمل ومتحقق**
 - إدارة مفاتيح Developer API موجودة عبر `GET /api-keys` و`POST /api-keys` و`DELETE /api-keys/{key_id}`.
@@ -379,6 +379,20 @@
 - CodeQL run `397`: **نجح** لـPython وJavaScript/TypeScript.
 - PR #324 تم دمجه بنجاح.
 - commit الدمج بعد squash: `05910814f0a0edf2c527a1da9e98540df5197bf8`.
+### E6 — Enterprise RBAC: **مكتمل ومتحقق**
+- تم إضافة RBAC على مستوى مساحة العمل مع أدوار مخصصة محفوظة في PostgreSQL، وصلاحيات مسماة مثل `members.read` و`members.invite` و`members.manage` و`rbac.manage` وغيرها.
+- الأدوار المخصصة تُنشأ وتُعدّل وتُحذف من خلال API مخصص، ولا يمكن للمستخدم منح أو تعيين صلاحيات تتجاوز صلاحياته الحالية.
+- أصبح بالإمكان إسناد دور RBAC مخصص لعضو غير المالك، مع منع تعيين الدور المخصص للمالك.
+- تم توحيد فحص صلاحيات أعضاء مساحة العمل بدل الاعتماد فقط على `owner/admin/member` في المسارات المغطاة، مع الحفاظ على سلوك الأدوار القديمة كـfallback.
+- أضيفت واجهات لاكتشاف permission catalog وإدارة roles وتعيين/إزالة الدور عن العضو.
+- تمت إضافة migration `0070_enterprise_rbac` مع foreign key اختياري من `workspace_members` إلى دور RBAC.
+- أضيفت اختبارات للعزل، إنشاء الدور، منع تصعيد الصلاحيات، تعيين الدور، ومنع أعضاء الدور المحدود من إدارة RBAC.
+- PR #328 تم دمجه بنجاح بعد نقل E6 إلى أحدث `main` وإصلاح اختبار تصادم invitation token.
+- CI run `3342`: **نجح بالكامل**.
+- CodeQL run `414`: **نجح بالكامل**.
+- commit الدمج بعد squash: `57dd468eef3aaf1140dd86f14109a8ebfe4c2d1b`.
+- PR #326 القديم أُغلق باعتباره superseded ولا يحمل تغييرًا إضافيًا على `main`.
+- لا توجد أي موارد مدفوعة جديدة ضمن E6.
 1. API Keys
 2. API versioning
 3. Webhooks
