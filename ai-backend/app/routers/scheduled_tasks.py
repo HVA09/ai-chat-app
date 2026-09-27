@@ -7,7 +7,11 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models.scheduled_task import ScheduledTask, ScheduledTaskType
+from app.models.scheduled_task import (
+    ScheduledTask,
+    ScheduledTaskExecutionMode,
+    ScheduledTaskType,
+)
 from app.models.scheduled_task_run import ScheduledTaskRun
 from app.models.user import User
 from app.models.workspace import WorkspaceMember
@@ -100,6 +104,7 @@ def create_scheduled_task(
         workspace_id=payload.workspace_id,
         prompt=payload.prompt,
         schedule_type=ScheduledTaskType(payload.schedule_type),
+        execution_mode=ScheduledTaskExecutionMode(payload.execution_mode),
         next_run_at=payload.next_run_at.astimezone(timezone.utc),
         weekday=payload.weekday,
         timezone_name=payload.timezone_name,
@@ -135,6 +140,8 @@ def update_scheduled_task(
         task.prompt = values["prompt"]
     if "schedule_type" in values:
         task.schedule_type = ScheduledTaskType(values["schedule_type"])
+    if "execution_mode" in values:
+        task.execution_mode = ScheduledTaskExecutionMode(values["execution_mode"])
     if "next_run_at" in values and values["next_run_at"] is not None:
         task.next_run_at = values["next_run_at"]
     if "weekday" in values:
