@@ -210,6 +210,68 @@ def enforce_ai_cost_budget(
     return current_user
 
 
+def enforce_workspace_monthly_cost_budget(
+    workspace_id: int,
+    current_user: User,
+    db: Session,
+) -> None:
+    """Block new AI requests after a configured workspace monthly cost budget."""
+    if current_user.role == UserRole.admin:
+        return
+
+    workspace = db.get(Workspace, workspace_id)
+    if workspace is None or workspace.monthly_ai_budget_usd is None:
+        return
+
+    budget = float(workspace.monthly_ai_budget_usd)
+    now = datetime.now(timezone.utc)
+    month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+
+    rows = (
+        db.query(
+            UsageLog.provider,
+            UsageLog.model,
+            func.coalesce(func.sum(UsageLog.input_tokens), 0),
+            func.coalesce(func.sum(UsageLog.output_tokens), 0),
+        )
+        .filter(
+            UsageLog.workspace_id == workspace_id,
+            UsageLog.created_at >= month_start,
+        )
+        .group_by(UsageLog.provider, UsageLog.model)
+        .all()
+    )
+
+    from app.services.ai_cost import estimate_cost_usd
+
+    spent = 0.0
+    priced_any = False
+    for provider, model, input_tokens, output_tokens in rows:
+        _, _, total_cost = estimate_cost_usd(
+            provider,
+            model,
+            int(input_tokens or 0),
+            int(output_tokens or 0),
+        )
+        if total_cost is None:
+            continue
+        priced_any = True
+        spent += total_cost
+
+    if priced_any and spent >= budget:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"تم تجاوز ميزانية AI الشهرية لمساحة العمل ({budget:.2f} USD). "
+                f"الإنفاق الحالي: {spent:.4f} USD."
+            ),
+            headers={
+                "X-AI-Budget-Limit": f"{budget:.4f}",
+                "X-AI-Budget-Spent": f"{spent:.4f}",
+            },
+        )
+
+
 def enforce_workspace_daily_ai_limit(
     workspace_id: int,
     current_user: User,
@@ -236,6 +298,7 @@ def enforce_workspace_daily_ai_limit(
 
     limit = workspace.daily_ai_request_limit
     if limit is None:
+        enforce_workspace_monthly_cost_budget(workspace_id, current_user, db)
         return
 
     since = datetime.now(timezone.utc) - timedelta(days=1)
@@ -271,6 +334,7 @@ def enforce_workspace_daily_ai_limit(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=f"تم الوصول إلى حد مساحة العمل اليومي ({limit} طلب).",
             )
+        enforce_workspace_monthly_cost_budget(workspace_id, current_user, db)
         return
 
     allowed, _current_count, reset_at = redis_result
@@ -291,3 +355,5 @@ def enforce_workspace_daily_ai_limit(
                 "X-RateLimit-Reset": str(reset_at),
             },
         )
+
+    enforce_workspace_monthly_cost_budget(workspace_id, current_user, db)

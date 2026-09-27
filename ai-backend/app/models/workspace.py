@@ -2,7 +2,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -29,6 +29,9 @@ class Workspace(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     default_ai_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     daily_ai_request_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    monthly_ai_budget_usd: Mapped[float | None] = mapped_column(
+        Numeric(12, 4), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

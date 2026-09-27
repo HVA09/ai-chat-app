@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.models.usage_log import UsageLog
 from app.models.user import User
+from app.config import settings as app_settings
 from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
 
 
@@ -231,3 +232,76 @@ def test_workspace_usage_csv_requires_manager_and_scopes_workspace(client, db_se
     assert "usage-csv-owner@example.com" in body
     assert "usage-csv-member@example.com" in body
     assert "999" not in body
+
+
+def test_workspace_usage_reports_monthly_cost_budget(client, db_session, monkeypatch):
+    monkeypatch.setattr(
+        app_settings,
+        "AI_PRICING_JSON",
+        '{"test:test-model":{"input_per_million_usd":1,"output_per_million_usd":3}}',
+    )
+
+    token = _register_and_login(client, "usage-budget-owner@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = client.post(
+        "/workspaces",
+        json={"name": "Budget Workspace"},
+        headers=headers,
+    ).json()
+
+    budget_response = client.patch(
+        f"/workspaces/{workspace['id']}/budget",
+        json={"monthly_ai_budget_usd": 1.0},
+        headers=headers,
+    )
+    assert budget_response.status_code == 200
+    assert budget_response.json()["monthly_ai_budget_usd"] == 1.0
+
+    owner = client.get("/users/me", headers=headers).json()
+    db_session.add(
+        UsageLog(
+            user_id=owner["id"],
+            workspace_id=workspace["id"],
+            endpoint="/chat",
+            provider="test",
+            model="test-model",
+            input_tokens=100_000,
+            output_tokens=100_000,
+            created_at=datetime.now(timezone.utc) - timedelta(days=2),
+        )
+    )
+    db_session.commit()
+
+    response = client.get(
+        f"/workspaces/{workspace['id']}/usage",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["monthly_budget_usd"] == 1.0
+    assert data["month_spent_usd"] == 0.4
+    assert data["monthly_budget_remaining_usd"] == 0.6
+    assert data["pricing_configured"] is True
+
+
+def test_workspace_monthly_budget_requires_manager(client, db_session):
+    owner_token = _register_and_login(client, "usage-budget-owner-2@example.com")
+    owner = client.get("/users/me", headers={"Authorization": f"Bearer {owner_token}"}).json()
+    member_token = _register_and_login(client, "usage-budget-member@example.com")
+    member = client.get("/users/me", headers={"Authorization": f"Bearer {member_token}"}).json()
+
+    workspace = Workspace(owner_id=owner["id"], name="Budget Restricted")
+    db_session.add(workspace)
+    db_session.flush()
+    db_session.add_all([
+        WorkspaceMember(workspace_id=workspace.id, user_id=owner["id"], role=WorkspaceRole.owner),
+        WorkspaceMember(workspace_id=workspace.id, user_id=member["id"], role=WorkspaceRole.member),
+    ])
+    db_session.commit()
+
+    response = client.patch(
+        f"/workspaces/{workspace.id}/budget",
+        json={"monthly_ai_budget_usd": 5},
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
+    assert response.status_code == 403

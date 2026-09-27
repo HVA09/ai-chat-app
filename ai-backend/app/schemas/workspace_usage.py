@@ -21,4 +21,9 @@ class WorkspaceUsageOut(BaseModel):
     input_tokens: int
     output_tokens: int
     total_tokens: int
+    month_start: datetime
+    monthly_budget_usd: float | None
+    month_spent_usd: float
+    monthly_budget_remaining_usd: float | None
+    pricing_configured: bool
     members: list[WorkspaceUsageMemberOut]

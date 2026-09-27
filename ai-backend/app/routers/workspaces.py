@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
+from app.services.ai_cost import estimate_cost_usd
 from app.models.user import User
 from app.models.usage_log import UsageLog
 from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
@@ -22,6 +23,7 @@ from app.schemas.workspaces import (
     WorkspaceDefaultModelUpdate,
     WorkspaceOut,
     WorkspaceRename,
+    WorkspaceMonthlyBudgetUpdate,
 )
 from app.schemas.workspace_usage import WorkspaceUsageMemberOut, WorkspaceUsageOut
 from app.models.audit_log import AuditLog
@@ -84,6 +86,7 @@ def list_workspaces(
             role=role,
             default_ai_model=workspace.default_ai_model,
             daily_ai_request_limit=workspace.daily_ai_request_limit,
+            monthly_ai_budget_usd=float(workspace.monthly_ai_budget_usd) if workspace.monthly_ai_budget_usd is not None else None,
             created_at=workspace.created_at,
         )
         for workspace, role in rows
@@ -122,6 +125,9 @@ def create_workspace(
         role=WorkspaceRole.owner,
         default_ai_model=workspace.default_ai_model,
         daily_ai_request_limit=workspace.daily_ai_request_limit,
+        monthly_ai_budget_usd=float(workspace.monthly_ai_budget_usd)
+        if workspace.monthly_ai_budget_usd is not None
+        else None,
         created_at=workspace.created_at,
     )
 
@@ -232,6 +238,47 @@ def update_workspace_daily_limit(
     )
 
 
+@router.patch("/{workspace_id}/budget", response_model=WorkspaceOut)
+def update_workspace_monthly_budget(
+    workspace_id: int,
+    payload: WorkspaceMonthlyBudgetUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = _get_membership(workspace_id, current_user, db)
+    if membership.role not in {WorkspaceRole.owner, WorkspaceRole.admin}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="هذه العملية تتطلب صلاحية مدير مساحة العمل",
+        )
+
+    workspace = membership.workspace
+    workspace.monthly_ai_budget_usd = payload.monthly_ai_budget_usd
+    db.commit()
+    db.refresh(workspace)
+
+    log_event(
+        db,
+        "workspace_monthly_budget_updated",
+        f"تم تحديث ميزانية AI الشهرية لمساحة العمل #{workspace.id}",
+        current_user.id,
+        workspace.id,
+    )
+
+    return WorkspaceOut(
+        id=workspace.id,
+        name=workspace.name,
+        role=membership.role,
+        default_ai_model=workspace.default_ai_model,
+        daily_ai_request_limit=workspace.daily_ai_request_limit,
+        monthly_ai_budget_usd=float(workspace.monthly_ai_budget_usd)
+        if workspace.monthly_ai_budget_usd is not None
+        else None,
+        created_at=workspace.created_at,
+    )
+
+
+
 @router.get("/{workspace_id}/usage", response_model=WorkspaceUsageOut)
 def get_workspace_usage(
     workspace_id: int,
@@ -245,6 +292,8 @@ def get_workspace_usage(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="هذه العملية تتطلب صلاحية مدير مساحة العمل",
         )
+
+    workspace = membership.workspace
 
     window_hours = max(1, min(window_hours, 168))
     window_start = datetime.now(timezone.utc) - timedelta(hours=window_hours)
@@ -307,6 +356,47 @@ def get_workspace_usage(
     input_tokens = int(totals[1] or 0)
     output_tokens = int(totals[2] or 0)
 
+    now = datetime.now(timezone.utc)
+    month_start = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    month_rows = (
+        db.query(
+            UsageLog.provider,
+            UsageLog.model,
+            func.coalesce(func.sum(UsageLog.input_tokens), 0),
+            func.coalesce(func.sum(UsageLog.output_tokens), 0),
+        )
+        .filter(
+            UsageLog.workspace_id == workspace_id,
+            UsageLog.created_at >= month_start,
+        )
+        .group_by(UsageLog.provider, UsageLog.model)
+        .all()
+    )
+    month_spent = 0.0
+    pricing_configured = False
+    for provider, model, month_input, month_output in month_rows:
+        _, _, total_cost = estimate_cost_usd(
+            provider,
+            model,
+            int(month_input or 0),
+            int(month_output or 0),
+        )
+        if total_cost is None:
+            continue
+        pricing_configured = True
+        month_spent += total_cost
+
+    monthly_budget = (
+        float(workspace.monthly_ai_budget_usd)
+        if workspace.monthly_ai_budget_usd is not None
+        else None
+    )
+    remaining = (
+        max(monthly_budget - month_spent, 0.0)
+        if monthly_budget is not None
+        else None
+    )
+
     return WorkspaceUsageOut(
         workspace_id=workspace_id,
         window_hours=window_hours,
@@ -315,6 +405,11 @@ def get_workspace_usage(
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         total_tokens=input_tokens + output_tokens,
+        month_start=month_start,
+        monthly_budget_usd=monthly_budget,
+        month_spent_usd=month_spent,
+        monthly_budget_remaining_usd=remaining,
+        pricing_configured=pricing_configured,
         members=members,
     )
 
