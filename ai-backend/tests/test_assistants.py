@@ -305,3 +305,64 @@ def test_assistant_usage_analytics_is_private_to_owner(client):
         headers={"Authorization": f"Bearer {token_b}"},
     )
     assert response.status_code == 404
+
+
+
+def test_assistant_version_captures_and_restores_knowledge_files(client, tmp_path, monkeypatch):
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    token = _register_and_login(client, "assistant-version-knowledge@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    assistant = client.post(
+        "/assistants",
+        json={"name": "Knowledge Tutor", "instructions": "Use the attached knowledge."},
+        headers=headers,
+    ).json()
+
+    uploaded_a = client.post(
+        "/files/upload",
+        files={"file": ("knowledge-a.txt", b"knowledge A", "text/plain")},
+        headers=headers,
+    )
+    uploaded_b = client.post(
+        "/files/upload",
+        files={"file": ("knowledge-b.txt", b"knowledge B", "text/plain")},
+        headers=headers,
+    )
+    assert uploaded_a.status_code == 201
+    assert uploaded_b.status_code == 201
+
+    file_a = uploaded_a.json()["id"]
+    file_b = uploaded_b.json()["id"]
+    assert client.post(f"/assistants/{assistant['id']}/files/{file_a}", headers=headers).status_code == 201
+
+    versions = client.get(f"/assistants/{assistant['id']}/versions", headers=headers).json()
+    assert versions[0]["knowledge_file_ids"] == []
+
+    client.patch(
+        f"/assistants/{assistant['id']}",
+        json={"instructions": "Version with knowledge A."},
+        headers=headers,
+    )
+    versions = client.get(f"/assistants/{assistant['id']}/versions", headers=headers).json()
+    assert versions[0]["knowledge_file_ids"] == [file_a]
+
+    assert client.post(f"/assistants/{assistant['id']}/files/{file_b}", headers=headers).status_code == 201
+    client.patch(
+        f"/assistants/{assistant['id']}",
+        json={"instructions": "Version with knowledge A and B."},
+        headers=headers,
+    )
+
+    restored = client.post(
+        f"/assistants/{assistant['id']}/versions/2/restore",
+        headers=headers,
+    )
+    assert restored.status_code == 200
+
+    current_files = client.get(f"/assistants/{assistant['id']}/files", headers=headers)
+    assert current_files.status_code == 200
+    assert [item["id"] for item in current_files.json()] == [file_a]
+    assert restored.json()["instructions"] == "Version with knowledge A."
