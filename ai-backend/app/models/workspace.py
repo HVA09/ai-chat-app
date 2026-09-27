@@ -101,9 +101,13 @@ class WorkspaceMember(Base):
     role: Mapped[WorkspaceRole] = mapped_column(
         Enum(WorkspaceRole), default=WorkspaceRole.member, nullable=False
     )
+    rbac_role_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspace_rbac_roles.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     workspace = relationship("Workspace", back_populates="members")
     user = relationship("User", back_populates="workspace_memberships")
+    rbac_role = relationship("WorkspaceRBACRole")
