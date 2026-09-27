@@ -174,7 +174,7 @@
 
 ## المرحلة D — Agent Platform
 
-الحالة: **قيد التنفيذ — D1 إلى D7 مكتملة ومتحققة**
+الحالة: **مكتملة ومتحققة — D1 إلى D8**
 
 ### D2 — MCP Integration: **مكتمل ومتحقق**
 - تمت إضافة MCP Python SDK `2.2.0`.
@@ -259,6 +259,18 @@
 - CodeQL run `360`: **نجح**.
 - commit الدمج بعد squash: `705a5b6e3b924a49322805c1e2dbdf03dd073c36`.
 - ملاحظة معمارية: هذا sandbox على مستوى Python/process وresource limits، وليس container/kernel isolation كاملًا؛ لذلك يبقى فصل code-runner في container مستقل خيارًا لاحقًا عند الحاجة.
+
+### D8 — Prompt-injection / Tool-abuse defenses: **مكتمل ومتحقق**
+- أضيفت طبقة أمن مشتركة للتحقق من tool arguments عبر JSON schema مبسط، وحجم أقصى `12,000` حرف، وعمق أقصى `8` مستويات.
+- تم تصنيف مخرجات Web Search وData Analysis وMCP كـuntrusted data، مع اكتشاف أنماط شائعة لـprompt injection.
+- مخرجات الأدوات غير الموثوقة تُمرر إلى model داخل حدود بيانات صريحة، ولا تُعامل كتعليمات.
+- بعد وصول محتوى غير موثوق، يمنع Agent Runtime أي tool chaining إضافي ويطلب ردًا نهائيًا بدون أدوات.
+- أضيفت اختبارات للصلاحيات، رفض arguments غير الصالحة أو الكبيرة، كشف prompt injection، تغليف untrusted output، ومنع متابعة استدعاءات الأدوات بعد المحتوى غير الموثوق.
+- PR #313 تم دمجه بنجاح.
+- CI run `3185`: **نجح** بالكامل.
+- CodeQL run `373`: **نجح** بالكامل.
+- commit الدمج بعد squash: `4d9a2f17d03cbad9397aa40b597f3b26673bd157`.
+
 
 
 1. Tool Registry
