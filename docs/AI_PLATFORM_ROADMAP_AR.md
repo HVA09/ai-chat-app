@@ -223,6 +223,17 @@
 - CodeQL run `353`: **نجح**.
 - commit الدمج بعد squash: `d6c8a743d257b035b79814edb019b8fe47aaad15`.
 
+### D4 — Tool Permissions: **مكتمل ومتحقق**
+- تمت إضافة Allowlist صريحة لأدوات Agent عبر `AGENT_ALLOWED_TOOLS_JSON`.
+- الـTool Registry يفرض الـallowlist عند التسجيل والعرض، فلا تصل الأداة غير المسموح بها إلى تعريفات النموذج.
+- خوادم MCP أصبحت تتطلب `allowed_tools` صريحة لكل أداة بعيدة؛ أدوات MCP غير المدرجة لا تُكتشف ولا تُعرض للـAgent.
+- بقي التكامل افتراضيًا مغلقًا، وHTTPS مطلوب في production كما في D2.
+- أضيفت اختبارات للـRegistry والـRuntime وMCP للتحقق من المنع والسماح.
+- PR #308 تم دمجه بنجاح.
+- CI run `3126`: **نجح**.
+- CodeQL run `356`: **نجح**.
+- commit الدمج بعد squash: `82f4e295c1c8fe064fef91131adaee17d87a19bf`.
+
 ### D6 — Long-running Agent Jobs: **مكتمل ومتحقق**
 - تم إنشاء نموذج persisted باسم `agent_jobs` مع حالات `queued` و`running` و`succeeded` و`failed` و`cancelled`، ومؤشرات للحالة والمستخدم وworkspace والـCelery task.
 - أضيفت واجهة `POST /agent-jobs` التي ترجع `202 Accepted` بدل تشغيل Agent داخل طلب HTTP، مع endpoints للقائمة وpolling والإلغاء التعاوني.
