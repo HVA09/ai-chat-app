@@ -266,4 +266,8 @@ def test_runtime_wraps_untrusted_output_and_blocks_followup_tools():
     assert provider.tool_choices == ["auto", "none"]
     assert provider.tools_seen[1] == []
     assert any(event["type"] == "runtime_security_block" for event in events)
-    assert "[BEGIN UNTRUSTED TOOL DATA]" in provider.messages_seen[1][-1]["content"]
+    assert any(
+        "[BEGIN UNTRUSTED TOOL DATA]" in message.get("content", "")
+        for message in provider.messages_seen[1]
+        if message.get("role") == "tool"
+    )
