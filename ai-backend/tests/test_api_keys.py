@@ -312,3 +312,32 @@ def test_api_key_rate_limit_uses_atomic_redis_result(client, monkeypatch):
     assert response.headers["X-RateLimit-Limit"] == "1"
     assert response.headers["X-RateLimit-Remaining"] == "0"
     assert int(response.headers["X-RateLimit-Reset"]) == future_reset
+
+
+def test_developer_api_version_metadata_and_header(client, monkeypatch):
+    monkeypatch.setattr(
+        api_keys_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد API", input_tokens=1, output_tokens=1)),
+    )
+
+    metadata = client.get("/v1")
+    assert metadata.status_code == 200
+    assert metadata.json()["version"] == "v1"
+    assert metadata.json()["status"] == "stable"
+
+    token = _register_and_login(client, "api-version@example.com")
+    created = client.post(
+        "/api-keys",
+        json={"name": "Versioned API"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert created.status_code == 201
+
+    response = client.post(
+        "/v1/chat",
+        json={"message": "version check"},
+        headers={"X-API-Key": created.json()["secret"]},
+    )
+    assert response.status_code == 200
+    assert response.headers["X-API-Version"] == "v1"
