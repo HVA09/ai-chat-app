@@ -17,5 +17,10 @@ dependencies = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/ai_chat_saas"]
 
+[project.optional-dependencies]
+test = [
+  "pytest>=8,<9",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
