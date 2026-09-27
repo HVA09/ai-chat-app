@@ -158,12 +158,12 @@ export default function ChatMessage({
   };
 
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+    <div className={`chat-message-row flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
+        className={`chat-message-bubble max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
           isUser
-            ? "bg-slate-900 text-white"
-            : "border border-slate-200 bg-white text-slate-900"
+            ? "chat-message-user bg-slate-900 text-white"
+            : "chat-message-assistant border border-slate-200 bg-white text-slate-900"
         }`}
       >
         <div className="mb-2 flex items-center justify-between gap-3 text-xs opacity-70">
