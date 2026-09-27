@@ -10,7 +10,7 @@ from app.dependencies import get_current_user
 from app.models.agent_job import AgentJob
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.user import User
-from app.models.workspace import WorkspaceMember
+from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.agent_jobs import AgentJobCancelOut, AgentJobCreate, AgentJobOut
 from app.tasks import execute_agent_job, celery_app
 
@@ -60,8 +60,12 @@ def create_agent_job(
     task = payload.normalized_task()
     _get_membership(payload.workspace_id, current_user, db)
 
-    workspace = db.get(WorkspaceMember, (payload.workspace_id, current_user.id))
-    workspace_obj = workspace.workspace
+    workspace_obj = db.get(Workspace, payload.workspace_id)
+    if workspace_obj is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="مساحة العمل غير موجودة",
+        )
     conversation = Conversation(
         user_id=current_user.id,
         workspace_id=payload.workspace_id,
