@@ -83,7 +83,8 @@ def create_webhook(
     db.add(endpoint)
     db.commit()
     db.refresh(endpoint)
-    return WebhookCreatedOut.model_validate(endpoint).model_copy(update={"secret": secret})
+    public = WebhookOut.model_validate(endpoint)
+    return WebhookCreatedOut(**public.model_dump(), secret=secret)
 
 
 @router.patch("/{endpoint_id}", response_model=WebhookUpdateOut)
