@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getPlans } from "../lib/billingApi";
+import { getErrorMessage } from "../lib/errors";
 
 function formatPrice(cents, currency, interval, t) {
   if (cents === 0) return t("pricing.free");
@@ -12,13 +13,19 @@ function formatPrice(cents, currency, interval, t) {
 export default function PricingPage() {
   const { t } = useTranslation();
   const [plans, setPlans] = useState([]);
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     getPlans()
       .then(setPlans)
-      .catch(() => setError(t("pricing.loadError")))
+      .catch((error) => {
+        const message = getErrorMessage(error, t("pricing.loadError"));
+        window.dispatchEvent(
+          new CustomEvent("app:toast", {
+            detail: { message, type: "error" },
+          })
+        );
+      })
       .finally(() => setLoading(false));
   }, [t]);
 
@@ -32,11 +39,6 @@ export default function PricingPage() {
         <p className="mt-2 text-slate-500">{t("pricing.subtitle")}</p>
 
         {loading && <p className="mt-8 text-slate-400">...</p>}
-        {error && (
-          <div className="mt-8 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
           {plans.map((plan) => (
