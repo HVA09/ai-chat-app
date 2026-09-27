@@ -67,6 +67,7 @@ def test_mcp_discovery_maps_remote_tools(monkeypatch):
     assert [spec.name for spec in specs] == ["mcp__demo__add"]
     assert specs[0].description == "[MCP:demo] Add numbers"
     assert specs[0].parameters["type"] == "object"
+    assert specs[0].output_trust == "untrusted"
     assert FakeClient.instances[0].url == "https://example.test/mcp"
 
 

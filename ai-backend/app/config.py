@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     MCP_MAX_TOOLS_PER_SERVER: int = 20
     # Explicit allowlist for Agent tools. MCP tools must also be allowed per server.
     AGENT_ALLOWED_TOOLS_JSON: str = "[\"calculator\",\"python\",\"web_search\",\"analyze_data\"]"
+    AGENT_MAX_TOOL_ARGUMENT_CHARS: int = 12_000
+    AGENT_MAX_TOOL_ARGUMENT_DEPTH: int = 8
 
     FRONTEND_URL: str = "http://localhost:5173"
     INITIAL_ADMIN_EMAIL: str | None = None
@@ -162,11 +164,11 @@ class Settings(BaseSettings):
             return json.dumps(normalized, ensure_ascii=False)
         raise ValueError("AGENT_ALLOWED_TOOLS_JSON must be a JSON string")
 
-    @field_validator("MCP_MAX_SERVERS", "MCP_MAX_TOOLS_PER_SERVER")
+    @field_validator("AGENT_MAX_TOOL_ARGUMENT_CHARS", "AGENT_MAX_TOOL_ARGUMENT_DEPTH", "MCP_MAX_SERVERS", "MCP_MAX_TOOLS_PER_SERVER")
     @classmethod
-    def validate_mcp_limits(cls, value: int) -> int:
+    def validate_agent_security_limits(cls, value: int) -> int:
         if value <= 0:
-            raise ValueError("MCP limits must be greater than 0")
+            raise ValueError("Agent security limits must be greater than 0")
         return value
 
     @field_validator("AI_ALLOWED_MODELS", mode="before")
