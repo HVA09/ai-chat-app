@@ -14,6 +14,10 @@ const api = vi.hoisted(() => ({
 
 vi.mock("../lib/scheduledTasksApi", () => api);
 
+vi.mock("../lib/errors", () => ({
+  getErrorMessage: (error, fallback) => error?.response?.data?.detail || fallback,
+}));
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key) =>
@@ -105,6 +109,63 @@ describe("ScheduledTasksPanel", () => {
       last_error: null,
       created_at: "2026-09-21T10:00:00Z",
     });
+  });
+
+
+  it("يستخدم Global Toast عند فشل تحميل المهام", async () => {
+    api.listScheduledTasks.mockRejectedValue({
+      response: { data: { detail: "تعذر تحميل المهام" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <ScheduledTasksPanel
+        workspaces={[{ id: 7, name: "عمل" }]}
+        selectedWorkspaceId={7}
+        onClose={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "تعذر تحميل المهام", type: "error" },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("يستخدم Global Toast عند فشل إنشاء المهمة", async () => {
+    const user = userEvent.setup();
+    api.createScheduledTask.mockRejectedValue({
+      response: { data: { detail: "لا يمكن إنشاء المهمة" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <ScheduledTasksPanel
+        workspaces={[{ id: 7, name: "عمل" }]}
+        selectedWorkspaceId={7}
+        onClose={vi.fn()}
+      />
+    );
+
+    await user.type(screen.getByPlaceholderText("اكتب المهمة"), "لخص الأخبار");
+    await user.click(screen.getByRole("button", { name: "إنشاء المهمة" }));
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "لا يمكن إنشاء المهمة", type: "error" },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
   });
 
   it("ينشئ مهمة في مساحة العمل المحددة", async () => {
