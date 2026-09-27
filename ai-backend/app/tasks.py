@@ -44,8 +44,10 @@ async def _agent_job_event_sink(db, job_id: int, event: dict) -> None:
         raise AgentJobCancelled("تم إلغاء مهمة الوكيل.")
 
 
-def _execute_agent_job(job_id: int) -> None:
-    db = SessionLocal()
+def _execute_agent_job(job_id: int, db=None) -> None:
+    owns_session = db is None
+    if db is None:
+        db = SessionLocal()
     now = datetime.now(timezone.utc)
     try:
         job = db.get(AgentJob, job_id)
@@ -176,7 +178,8 @@ def _execute_agent_job(job_id: int) -> None:
             job.finished_at = datetime.now(timezone.utc)
             db.commit()
     finally:
-        db.close()
+        if owns_session:
+            db.close()
 
 
 def _next_occurrence(task: ScheduledTask, now: datetime) -> datetime | None:
