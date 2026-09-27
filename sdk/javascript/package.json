@@ -1,0 +1,16 @@
+{
+  "name": "ai-chat-saas",
+  "version": "0.1.0",
+  "description": "JavaScript SDK for the AI Chat SaaS Developer API v1.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "files": [
+    "src"
+  ],
+  "license": "MIT"
+}
