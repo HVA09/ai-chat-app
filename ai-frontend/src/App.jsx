@@ -153,6 +153,7 @@ export default function App() {
   const [lang, setLang] = useState("ar");
   const [messages, setMessages] = useState(() => [getWelcomeMessage(t)]);
   const [conversationId, setConversationId] = useState(null);
+  const [activeConversationTitle, setActiveConversationTitle] = useState("");
   const [conversations, setConversations] = useState([]);
   const [selectedConversationIds, setSelectedConversationIds] = useState([]);
   const [conversationSearch, setConversationSearch] = useState("");
@@ -1489,6 +1490,7 @@ export default function App() {
       const data = await getConversation(id);
       if (requestId !== conversationOpenRequestRef.current) return;
       setConversationId(data.id);
+      setActiveConversationTitle(data.title || "");
       setParentConversationId(data.parent_conversation_id ?? null);
       messageCountRef.current = data.messages.length;
       autoSummaryLastMessageCountRef.current[data.id] = data.summary
@@ -2399,6 +2401,7 @@ export default function App() {
         setRetryableUserMessage(null);
         setChatAttachments([]);
         if (isNewConversation) {
+          setActiveConversationTitle(userText.slice(0, 50));
           refreshConversations(
             showArchivedConversations,
             selectedFolderId,
