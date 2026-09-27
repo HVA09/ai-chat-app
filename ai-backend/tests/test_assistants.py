@@ -146,6 +146,8 @@ def test_assistant_version_history_and_restore(client):
     assert len(versions.json()) == 1
     assert versions.json()[0]["version"] == 1
     assert versions.json()[0]["instructions"] == "اشرح بالعربية."
+    assert versions.json()[0]["knowledge_file_ids"] == []
+    assert versions.json()[0]["tool_policy_snapshot"]["allowed_tools"]
 
     updated = client.patch(
         f"/assistants/{assistant['id']}",
