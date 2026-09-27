@@ -29,3 +29,9 @@ class SavedPrompt(Base):
     )
 
     owner = relationship("User", back_populates="saved_prompts")
+    versions = relationship(
+        "SavedPromptVersion",
+        back_populates="prompt",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
