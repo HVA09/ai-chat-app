@@ -42,6 +42,15 @@ export default function FilesPanel({
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const showErrorToast = (errorValue, fallbackKey) => {
+    const message = getErrorMessage(errorValue, t(fallbackKey));
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
   const [uploadProgress, setUploadProgress] = useState(null); // 0-100 أثناء الرفع، null لو ما فيه رفع جارٍ
   const [dragOver, setDragOver] = useState(false);
   const [preview, setPreview] = useState(null); // { url, contentType, name }
@@ -76,8 +85,9 @@ export default function FilesPanel({
           showProjectFiles ? projectId : null
         )
       );
-    } catch {
-      setError(t("files.listError"));
+    } catch (errorValue) {
+      setError("");
+      showErrorToast(errorValue, "files.listError");
     } finally {
       setLoading(false);
     }
@@ -189,8 +199,9 @@ export default function FilesPanel({
     try {
       await deleteFile(id);
       setFiles((prev) => prev.filter((f) => f.id !== id));
-    } catch {
-      setError(t("files.deleteError"));
+    } catch (errorValue) {
+      setError("");
+      showErrorToast(errorValue, "files.deleteError");
     }
   };
 
