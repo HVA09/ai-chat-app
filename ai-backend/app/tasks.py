@@ -11,7 +11,11 @@ from app.database import SessionLocal
 from app.logging_config import get_logger
 from app.models.agent_job import AgentJob
 from app.models.conversation import Conversation, Message, MessageRole
-from app.models.scheduled_task import ScheduledTask, ScheduledTaskType
+from app.models.scheduled_task import (
+    ScheduledTask,
+    ScheduledTaskExecutionMode,
+    ScheduledTaskType,
+)
 from app.models.scheduled_task_run import ScheduledTaskRun, ScheduledTaskRunStatus
 from app.models.usage_log import UsageLog
 from app.models.user import User, UserRole
@@ -44,6 +48,32 @@ async def _agent_job_event_sink(db, job_id: int, event: dict) -> None:
         raise AgentJobCancelled("تم إلغاء مهمة الوكيل.")
 
 
+def _sync_scheduled_agent_run(
+    db,
+    job: AgentJob,
+    *,
+    succeeded: bool,
+    conversation_id: int | None = None,
+    error: str | None = None,
+) -> None:
+    run = (
+        db.query(ScheduledTaskRun)
+        .filter(ScheduledTaskRun.agent_job_id == job.id)
+        .first()
+    )
+    if run is None:
+        return
+    run.status = (
+        ScheduledTaskRunStatus.succeeded
+        if succeeded
+        else ScheduledTaskRunStatus.failed
+    )
+    run.finished_at = datetime.now(timezone.utc)
+    if conversation_id is not None:
+        run.conversation_id = conversation_id
+    run.error = error
+
+
 def _execute_agent_job(job_id: int, db=None) -> None:
     owns_session = db is None
     if db is None:
@@ -58,6 +88,12 @@ def _execute_agent_job(job_id: int, db=None) -> None:
         if job.cancel_requested:
             job.status = "cancelled"
             job.finished_at = now
+            _sync_scheduled_agent_run(
+                db,
+                job,
+                succeeded=False,
+                error="تم إلغاء المهمة المجدولة.",
+            )
             db.commit()
             return
 
@@ -68,6 +104,12 @@ def _execute_agent_job(job_id: int, db=None) -> None:
             job.status = "failed"
             job.error = "المستخدم أو مساحة العمل أو المحادثة غير متاحة."
             job.finished_at = now
+            _sync_scheduled_agent_run(
+                db,
+                job,
+                succeeded=False,
+                error=job.error,
+            )
             db.commit()
             return
 
@@ -83,6 +125,12 @@ def _execute_agent_job(job_id: int, db=None) -> None:
             job.status = "failed"
             job.error = "لم تعد تملك عضوية في مساحة العمل."
             job.finished_at = now
+            _sync_scheduled_agent_run(
+                db,
+                job,
+                succeeded=False,
+                error=job.error,
+            )
             db.commit()
             return
 
@@ -123,6 +171,13 @@ def _execute_agent_job(job_id: int, db=None) -> None:
             refreshed_job.result_sources = result.sources
             refreshed_job.input_tokens = result.input_tokens
             refreshed_job.output_tokens = result.output_tokens
+            _sync_scheduled_agent_run(
+                db,
+                refreshed_job,
+                succeeded=False,
+                conversation_id=conversation.id,
+                error="تم إلغاء المهمة المجدولة.",
+            )
             db.commit()
             return
 
@@ -143,10 +198,23 @@ def _execute_agent_job(job_id: int, db=None) -> None:
                     sources=result.sources or None,
                 )
             )
+            _sync_scheduled_agent_run(
+                db,
+                refreshed_job,
+                succeeded=True,
+                conversation_id=conversation.id,
+            )
         else:
             refreshed_job.status = "failed"
             refreshed_job.error = (
                 "توقف تشغيل الوكيل عند حد الأمان قبل إكمال المهمة."
+            )
+            _sync_scheduled_agent_run(
+                db,
+                refreshed_job,
+                succeeded=False,
+                conversation_id=conversation.id,
+                error=refreshed_job.error,
             )
 
         db.add(
@@ -167,6 +235,12 @@ def _execute_agent_job(job_id: int, db=None) -> None:
         if job is not None:
             job.status = "cancelled"
             job.finished_at = datetime.now(timezone.utc)
+            _sync_scheduled_agent_run(
+                db,
+                job,
+                succeeded=False,
+                error="تم إلغاء المهمة المجدولة.",
+            )
             db.commit()
     except Exception as exc:
         logger.exception("Long-running agent job failed: %s", job_id)
@@ -176,6 +250,12 @@ def _execute_agent_job(job_id: int, db=None) -> None:
             job.status = "failed"
             job.error = str(exc)[:1000]
             job.finished_at = datetime.now(timezone.utc)
+            _sync_scheduled_agent_run(
+                db,
+                job,
+                succeeded=False,
+                error=job.error,
+            )
             db.commit()
     finally:
         if owns_session:
@@ -301,6 +381,74 @@ def _execute_scheduled_task(
         enforce_ai_cost_budget(user, db)
 
         ai_model = workspace.default_ai_model
+
+        if task.execution_mode == ScheduledTaskExecutionMode.agent:
+            title = f"Scheduled Agent: {task.prompt[:70]}".strip()
+            conversation = Conversation(
+                user_id=user.id,
+                workspace_id=workspace.id,
+                title=title,
+                ai_model=ai_model,
+            )
+            db.add(conversation)
+            db.flush()
+            db.add(
+                Message(
+                    conversation_id=conversation.id,
+                    role=MessageRole.user,
+                    content=task.prompt,
+                )
+            )
+            job = AgentJob(
+                user_id=user.id,
+                workspace_id=workspace.id,
+                conversation_id=conversation.id,
+                task=task.prompt,
+                status="queued",
+            )
+            db.add(job)
+            db.flush()
+
+            run.agent_job_id = job.id
+            run.status = ScheduledTaskRunStatus.queued
+            run.conversation_id = conversation.id
+            task.last_run_at = now
+            task.last_error = None
+            next_run = _next_occurrence(task, now)
+            if next_run is None:
+                task.next_run_at = now
+                task.is_active = False
+            else:
+                task.next_run_at = next_run
+            db.commit()
+
+            try:
+                if execute_agent_job is not None:
+                    execute_agent_job.delay(job.id)
+                else:
+                    _execute_agent_job(job.id, db=db)
+            except Exception as exc:
+                logger.exception(
+                    "Failed to enqueue scheduled Agent job task_id=%s job_id=%s",
+                    task.id,
+                    job.id,
+                )
+                refreshed_job = db.get(AgentJob, job.id)
+                if refreshed_job is not None:
+                    refreshed_job.status = "failed"
+                    refreshed_job.error = "تعذر جدولة Agent job."
+                    refreshed_job.finished_at = datetime.now(timezone.utc)
+                    _sync_scheduled_agent_run(
+                        db,
+                        refreshed_job,
+                        succeeded=False,
+                        conversation_id=conversation.id,
+                        error=refreshed_job.error,
+                    )
+                    task.last_error = str(exc)[:500]
+                    db.commit()
+            return
+
         reply = asyncio.run(get_ai_reply(task.prompt, [], ai_model))
 
         title_prefix = "Scheduled" if not task.prompt.startswith("م") else "مهمة مجدولة"
