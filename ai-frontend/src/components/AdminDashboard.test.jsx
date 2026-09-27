@@ -33,7 +33,8 @@ vi.mock("recharts", () => {
     Tooltip: Stub,
     XAxis: Stub,
     YAxis: Stub,
-  };});
+  };
+});
 
 vi.mock("../lib/adminApi", () => ({
   getAdminStats: vi.fn(),
