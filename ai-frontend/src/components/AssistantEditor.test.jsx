@@ -487,4 +487,133 @@ describe("AssistantEditor", () => {
     render(<AssistantEditor onClose={vi.fn()} onSave={vi.fn()} />);
     expect(screen.queryByText("ملفات المعرفة")).not.toBeInTheDocument();
   });
+  it("shows a global toast when assistant versions fail to load", async () => {
+    listAssistantVersions.mockRejectedValueOnce({
+      response: { data: { detail: "Versions denied" } },
+    });
+    listAssistantKnowledgeFiles.mockResolvedValue([]);
+    listFiles.mockResolvedValue([]);
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AssistantEditor
+        assistant={{ id: 7, name: "مساعد", instructions: "تعليمات" }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Versions denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when assistant analytics fail to load", async () => {
+    getAssistantAnalytics.mockRejectedValueOnce({
+      response: { data: { detail: "Analytics denied" } },
+    });
+    listAssistantKnowledgeFiles.mockResolvedValue([]);
+    listFiles.mockResolvedValue([]);
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AssistantEditor
+        assistant={{ id: 7, name: "مساعد", instructions: "تعليمات" }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Analytics denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when assistant public settings fail to load", async () => {
+    getAssistantPublicSettings.mockRejectedValueOnce({
+      response: { data: { detail: "Public settings denied" } },
+    });
+    listAssistantKnowledgeFiles.mockResolvedValue([]);
+    listFiles.mockResolvedValue([]);
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AssistantEditor
+        assistant={{ id: 7, name: "مساعد", instructions: "تعليمات" }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Public settings denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when assistant version comparison fails", async () => {
+    listAssistantKnowledgeFiles.mockResolvedValue([]);
+    listFiles.mockResolvedValue([]);
+    listAssistantVersions.mockResolvedValue([
+      {
+        id: 1,
+        version: 1,
+        name: "مساعد قديم",
+        description: "قديم",
+        instructions: "تعليمات قديمة",
+        created_at: "2026-09-22T10:00:00Z",
+      },
+    ]);
+    compareAssistantVersionWithCurrent.mockRejectedValueOnce({
+      response: { data: { detail: "Comparison denied" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{ id: 7, name: "مساعد", instructions: "تعليمات" }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "مقارنة" }));
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Comparison denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+    dispatchSpy.mockRestore();
+  });
+
 });
