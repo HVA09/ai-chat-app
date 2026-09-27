@@ -492,9 +492,13 @@ export default function App() {
       setSelectedProjectId((current) =>
         current && list.some((project) => project.id === current) ? current : null
       );
-    } catch {
+    } catch (err) {
       setProjects([]);
       setSelectedProjectId(null);
+      setToast({
+        message: getErrorMessage(err, t("app.projectLoadError")),
+        type: "error",
+      });
     }
   };
 
