@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { compareChatModels } from "../lib/chatApi";
+import { getErrorMessage } from "../lib/errors";
+
+function showErrorToast(error, fallback) {
+  const message = getErrorMessage(error, fallback);
+  window.dispatchEvent(
+    new CustomEvent("app:toast", {
+      detail: { message, type: "error" },
+    })
+  );
+}
 
 export default function ModelCompareDialog({
   models = [],
@@ -17,7 +27,6 @@ export default function ModelCompareDialog({
   const [modelB, setModelB] = useState(models[1]?.id || models[0]?.id || "");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!modelA && models[0]) setModelA(models[0].id);
@@ -25,14 +34,19 @@ export default function ModelCompareDialog({
   }, [modelA, modelB, models]);
 
   const canCompare = useMemo(
-    () => models.length >= 2 && prompt.trim() && modelA && modelB && modelA !== modelB && !loading,
+    () =>
+      models.length >= 2 &&
+      prompt.trim() &&
+      modelA &&
+      modelB &&
+      modelA !== modelB &&
+      !loading,
     [models.length, prompt, modelA, modelB, loading]
   );
 
   const runComparison = async () => {
     if (!canCompare) return;
     setLoading(true);
-    setError("");
     setResults([]);
     try {
       const data = await compareChatModels({
@@ -46,7 +60,7 @@ export default function ModelCompareDialog({
       });
       setResults(data.results || []);
     } catch (err) {
-      setError(err?.response?.data?.detail || t("modelCompare.error"));
+      showErrorToast(err, t("modelCompare.error"));
     } finally {
       setLoading(false);
     }
@@ -118,12 +132,6 @@ export default function ModelCompareDialog({
                 </select>
               </label>
             </div>
-
-            {error ? (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
-                {error}
-              </div>
-            ) : null}
 
             <div className="mt-4 flex justify-end gap-2">
               <button
