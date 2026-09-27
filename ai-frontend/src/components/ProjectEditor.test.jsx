@@ -52,6 +52,11 @@ const { t } = vi.hoisted(() => ({
     }[key] ?? key),
 }));
 
+
+vi.mock("../lib/errors", () => ({
+  getErrorMessage: vi.fn((error, fallback) => error?.response?.data?.detail || fallback),
+}));
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t }),
 }));
@@ -244,4 +249,135 @@ describe("ProjectEditor", () => {
       expect(screen.queryByText("الذاكرة الجديدة")).not.toBeInTheDocument()
     );
   });
+  it("shows a global toast when project memory loading fails", async () => {
+    listProjectMemories.mockRejectedValueOnce({
+      response: { data: { detail: "Memory load denied" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <ProjectEditor
+        project={{ id: 3, name: "Python" }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Memory load denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+
+    expect(screen.queryByText("Memory load denied")).not.toBeInTheDocument();
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when creating project memory fails", async () => {
+    listProjectMemories.mockResolvedValue([]);
+    createProjectMemory.mockRejectedValueOnce({
+      response: { data: { detail: "Memory create denied" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <ProjectEditor
+        project={{ id: 3, name: "Python" }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.type(screen.getByPlaceholderText("ذاكرة"), "ذاكرة جديدة");
+    await user.click(screen.getByRole("button", { name: "إضافة ذاكرة" }));
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Memory create denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+
+    expect(screen.queryByText("Memory create denied")).not.toBeInTheDocument();
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when updating project memory fails", async () => {
+    listProjectMemories.mockResolvedValue([{ id: 10, content: "Old memory" }]);
+    updateProjectMemory.mockRejectedValueOnce({
+      response: { data: { detail: "Memory update denied" } },
+    });
+    vi.spyOn(window, "prompt").mockReturnValue("New memory");
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <ProjectEditor
+        project={{ id: 3, name: "Python" }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "تعديل" }));
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Memory update denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+
+    expect(screen.queryByText("Memory update denied")).not.toBeInTheDocument();
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when deleting project memory fails", async () => {
+    listProjectMemories.mockResolvedValue([{ id: 10, content: "Old memory" }]);
+    deleteProjectMemory.mockRejectedValueOnce({
+      response: { data: { detail: "Memory delete denied" } },
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <ProjectEditor
+        project={{ id: 3, name: "Python" }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "حذف" }));
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Memory delete denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+
+    expect(screen.queryByText("Memory delete denied")).not.toBeInTheDocument();
+    dispatchSpy.mockRestore();
+  });
+
 });

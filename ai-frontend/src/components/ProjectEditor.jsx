@@ -6,6 +6,7 @@ import {
   listProjectMemories,
   updateProjectMemory,
 } from "../lib/projectMemoriesApi";
+import { getErrorMessage } from "../lib/errors";
 
 export default function ProjectEditor({
   project = null,
@@ -25,7 +26,6 @@ export default function ProjectEditor({
   const [memoryDraft, setMemoryDraft] = useState("");
   const [memoryLoading, setMemoryLoading] = useState(false);
   const [memorySaving, setMemorySaving] = useState(false);
-  const [memoryError, setMemoryError] = useState("");
 
   useEffect(() => {
     setName(project?.name ?? "");
@@ -34,7 +34,6 @@ export default function ProjectEditor({
     setAssistantId(project?.assistant_id ? String(project.assistant_id) : "");
     setValidationError("");
     setMemoryDraft("");
-    setMemoryError("");
 
     if (!project) {
       setMemories([]);
@@ -47,8 +46,10 @@ export default function ProjectEditor({
       .then((items) => {
         if (!cancelled) setMemories(items);
       })
-      .catch(() => {
-        if (!cancelled) setMemoryError(t("projectEditor.memoryLoadError"));
+      .catch((error) => {
+        if (!cancelled) {
+          showErrorToast(error, "projectEditor.memoryLoadError");
+        }
       })
       .finally(() => {
         if (!cancelled) setMemoryLoading(false);
@@ -58,6 +59,15 @@ export default function ProjectEditor({
       cancelled = true;
     };
   }, [project, t]);
+
+  const showErrorToast = (error, fallbackKey) => {
+    const message = getErrorMessage(error, t(fallbackKey));
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
 
   const submit = async (event) => {
     event.preventDefault();
@@ -88,15 +98,12 @@ export default function ProjectEditor({
     const content = memoryDraft.trim();
     if (!isEditing || !content) return;
     setMemorySaving(true);
-    setMemoryError("");
     try {
       const memory = await createProjectMemory(project.id, content);
       setMemories((current) => [memory, ...current]);
       setMemoryDraft("");
     } catch (error) {
-      setMemoryError(
-        error?.response?.data?.detail || t("projectEditor.memorySaveError")
-      );
+      showErrorToast(error, "projectEditor.memorySaveError");
     } finally {
       setMemorySaving(false);
     }
@@ -111,7 +118,6 @@ export default function ProjectEditor({
     if (!content?.trim() || content.trim() === memory.content) return;
 
     setMemorySaving(true);
-    setMemoryError("");
     try {
       const updated = await updateProjectMemory(
         project.id,
@@ -122,9 +128,7 @@ export default function ProjectEditor({
         current.map((item) => (item.id === updated.id ? updated : item))
       );
     } catch (error) {
-      setMemoryError(
-        error?.response?.data?.detail || t("projectEditor.memorySaveError")
-      );
+      showErrorToast(error, "projectEditor.memorySaveError");
     } finally {
       setMemorySaving(false);
     }
@@ -141,16 +145,13 @@ export default function ProjectEditor({
     }
 
     setMemorySaving(true);
-    setMemoryError("");
     try {
       await deleteProjectMemory(project.id, memory.id);
       setMemories((current) =>
         current.filter((item) => item.id !== memory.id)
       );
     } catch (error) {
-      setMemoryError(
-        error?.response?.data?.detail || t("projectEditor.memoryDeleteError")
-      );
+      showErrorToast(error, "projectEditor.memoryDeleteError");
     } finally {
       setMemorySaving(false);
     }
@@ -344,11 +345,6 @@ export default function ProjectEditor({
                 </div>
               )}
 
-              {memoryError && (
-                <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                  {memoryError}
-                </div>
-              )}
             </section>
           )}
 
