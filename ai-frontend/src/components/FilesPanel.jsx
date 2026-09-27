@@ -41,7 +41,6 @@ export default function FilesPanel({
   const { t } = useTranslation();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   const showErrorToast = (errorValue, fallbackKey) => {
     const message = getErrorMessage(errorValue, t(fallbackKey));
@@ -86,7 +85,6 @@ export default function FilesPanel({
         )
       );
     } catch (errorValue) {
-      setError("");
       showErrorToast(errorValue, "files.listError");
     } finally {
       setLoading(false);
@@ -107,7 +105,6 @@ export default function FilesPanel({
     const selectedFiles = Array.from(fileList || []).filter(Boolean);
     if (!selectedFiles.length) return;
 
-    setError("");
     let completed = 0;
     let failed = 0;
 
@@ -126,12 +123,7 @@ export default function FilesPanel({
         );
       } catch (err) {
         failed += 1;
-        setError(
-          getErrorMessage(
-            err,
-            t("files.uploadErrorForFile", { name: file.name })
-          )
-        );
+        showErrorToast(err, t("files.uploadErrorForFile", { name: file.name }));
       } finally {
         completed += 1;
       }
@@ -144,9 +136,6 @@ export default function FilesPanel({
       window.setTimeout(() => setUploadProgress(null), 250);
     }
 
-    if (failed === 0 && selectedFiles.length > 1) {
-      setError("");
-    }
   };
 
   const handleToggleAttachment = async (file) => {
@@ -159,7 +148,7 @@ export default function FilesPanel({
       }
       await refresh();
     } catch (err) {
-      setError(getErrorMessage(err, t("files.attachmentError")));
+      showErrorToast(err, "files.attachmentError");
     }
   };
 
@@ -168,12 +157,11 @@ export default function FilesPanel({
     const prompt = window.prompt(t("files.analyzePrompt"));
     if (!prompt?.trim()) return;
 
-    setError("");
     setAnalyzingId(file.id);
     try {
       await onAnalyzeImage(file, prompt.trim());
     } catch (err) {
-      setError(getErrorMessage(err, t("files.imageAnalyzeError")));
+      showErrorToast(err, "files.imageAnalyzeError");
     } finally {
       setAnalyzingId(null);
     }
@@ -182,13 +170,12 @@ export default function FilesPanel({
   const handleIndexImage = async (file) => {
     if (!file.content_type.startsWith("image/") || file.is_ai_indexed) return;
 
-    setError("");
     setIndexingId(file.id);
     try {
       await indexImageForRag(file.id);
       await refresh();
     } catch (err) {
-      setError(getErrorMessage(err, t("files.imageIndexError")));
+      showErrorToast(err, "files.imageIndexError");
     } finally {
       setIndexingId(null);
     }
@@ -200,7 +187,6 @@ export default function FilesPanel({
       await deleteFile(id);
       setFiles((prev) => prev.filter((f) => f.id !== id));
     } catch (errorValue) {
-      setError("");
       showErrorToast(errorValue, "files.deleteError");
     }
   };
@@ -216,8 +202,8 @@ export default function FilesPanel({
       const blob = await fetchFileBlob(file.id);
       const url = window.URL.createObjectURL(blob);
       setPreview({ url, contentType: file.content_type, name: file.original_filename });
-    } catch {
-      setError(t("files.previewError"));
+    } catch (err) {
+      showErrorToast(err, "files.previewError");
     }
   };
 
@@ -364,11 +350,7 @@ export default function FilesPanel({
           </div>
         )}
 
-        {error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        )}
+
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pe-1 sm:px-6 sm:max-h-[52dvh]">
           {loading ? (

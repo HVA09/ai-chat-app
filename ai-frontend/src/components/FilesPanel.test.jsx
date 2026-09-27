@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import FilesPanel from "./FilesPanel";
-import { deleteFile, listFiles, uploadFile } from "../lib/filesApi";
+import { attachFileToConversation, deleteFile, listFiles, uploadFile } from "../lib/filesApi";
 
 vi.mock("../lib/filesApi", () => ({
   attachFileToConversation: vi.fn(),
@@ -16,7 +16,7 @@ vi.mock("../lib/filesApi", () => ({
 }));
 
 vi.mock("../lib/errors", () => ({
-  getErrorMessage: (_error, fallback) => fallback,
+  getErrorMessage: (error, fallback) => error?.response?.data?.detail || fallback,
 }));
 
 vi.mock("react-i18next", () => ({
@@ -34,6 +34,10 @@ vi.mock("react-i18next", () => ({
       "files.noFiles": "No files",
       "files.listError": "Could not load files",
       "files.deleteError": "Could not delete file",
+      "files.uploadErrorForFile": "Could not upload the file {{name}}",
+      "files.attachmentError": "Could not update the file attachment",
+      "files.attach": "Attach",
+      "files.detach": "Detach",
       "files.confirmDelete": "Delete this file?",
       "files.delete": "Delete",
     })[key] ?? key,
@@ -58,7 +62,7 @@ describe("FilesPanel project knowledge", () => {
         dispatchSpy.mock.calls.some(
           ([event]) =>
             event.type === "app:toast" &&
-            event.detail?.message === "Could not load files" &&
+            event.detail?.message === "Access denied" &&
             event.detail?.type === "error"
         )
       ).toBe(true);
@@ -95,13 +99,75 @@ describe("FilesPanel project knowledge", () => {
         dispatchSpy.mock.calls.some(
           ([event]) =>
             event.type === "app:toast" &&
-            event.detail?.message === "Could not delete file" &&
+            event.detail?.message === "Delete denied" &&
             event.detail?.type === "error"
         )
       ).toBe(true);
     });
 
     confirmSpy.mockRestore();
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when uploading a file fails", async () => {
+    const user = userEvent.setup();
+    const { container } = render(<FilesPanel onClose={vi.fn()} />);
+    uploadFile.mockRejectedValueOnce({
+      response: { data: { detail: "Upload denied" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const input = container.querySelector('input[type="file"]');
+    const file = new File(["data"], "notes.txt", { type: "text/plain" });
+
+    await user.upload(input, file);
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Upload denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when attachment update fails", async () => {
+    const user = userEvent.setup();
+    attachFileToConversation.mockRejectedValueOnce({
+      response: { data: { detail: "Attach denied" } },
+    });
+    listFiles.mockResolvedValueOnce([
+      {
+        id: 12,
+        original_filename: "notes.txt",
+        content_type: "text/plain",
+        size: 100,
+        is_attached: false,
+        is_ai_indexed: false,
+        can_delete: false,
+      },
+    ]);
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(<FilesPanel onClose={vi.fn()} conversationId={55} />);
+
+    await user.click(await screen.findByTitle("Attach"));
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Attach denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+
     dispatchSpy.mockRestore();
   });
 
