@@ -31,6 +31,12 @@ from app.schemas.api_keys import (
     APIKeyUsageOut,
 )
 from app.services.ai_service import get_ai_reply
+from app.services.api_versioning import (
+    DEVELOPER_API_PREFIX,
+    DEVELOPER_API_VERSION,
+    DEVELOPER_API_VERSION_HEADER,
+    developer_api_version_metadata,
+)
 
 router = APIRouter(tags=["Developer API"])
 
@@ -305,7 +311,12 @@ def _enforce_api_key_daily_limit(api_key: APIKey, db: Session) -> tuple[int, int
     return limit, remaining_before, reset_at
 
 
-@router.post("/v1/chat", response_model=APIChatResponse)
+@router.get(DEVELOPER_API_PREFIX)
+def developer_api_metadata():
+    return developer_api_version_metadata()
+
+
+@router.post(f"{DEVELOPER_API_PREFIX}/chat", response_model=APIChatResponse)
 async def developer_chat(
     payload: APIChatRequest,
     response: Response,
@@ -313,6 +324,7 @@ async def developer_chat(
     db: Session = Depends(get_db),
 ):
     current_user, api_key = _get_api_key_auth(x_api_key, db)
+    response.headers[DEVELOPER_API_VERSION_HEADER] = DEVELOPER_API_VERSION
     rate_limit_state = _enforce_api_key_daily_limit(api_key, db)
     enforce_daily_ai_limit(current_user=current_user, db=db)
 
