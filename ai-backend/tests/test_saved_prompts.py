@@ -83,3 +83,83 @@ def test_saved_prompt_is_private_per_user(client):
 
 def test_saved_prompts_require_authentication(client):
     assert client.get("/saved-prompts").status_code == 401
+
+
+
+def test_saved_prompt_version_history_compare_and_restore(client):
+    token = _register_and_login(client, "saved-prompts-versions@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        "/saved-prompts",
+        json={"name": "Research", "content": "Analyze carefully."},
+        headers=headers,
+    )
+    assert created.status_code == 201
+    prompt = created.json()
+
+    versions = client.get(
+        f"/saved-prompts/{prompt['id']}/versions",
+        headers=headers,
+    )
+    assert versions.status_code == 200
+    assert len(versions.json()) == 1
+    assert versions.json()[0]["version"] == 1
+    assert versions.json()[0]["content"] == "Analyze carefully."
+
+    updated = client.patch(
+        f"/saved-prompts/{prompt['id']}",
+        json={"name": "Research Updated", "content": "Analyze carefully and cite sources."},
+        headers=headers,
+    )
+    assert updated.status_code == 200
+
+    compared = client.get(
+        f"/saved-prompts/{prompt['id']}/versions/1/compare-current",
+        headers=headers,
+    )
+    assert compared.status_code == 200
+    assert compared.json()["from_version"] == 1
+    assert compared.json()["current_version"] == 2
+    assert compared.json()["changed"] is True
+    assert "-Analyze carefully." in compared.json()["diff"]
+    assert "+Analyze carefully and cite sources." in compared.json()["diff"]
+
+    restored = client.post(
+        f"/saved-prompts/{prompt['id']}/versions/1/restore",
+        headers=headers,
+    )
+    assert restored.status_code == 200
+    assert restored.json()["name"] == "Research"
+    assert restored.json()["content"] == "Analyze carefully."
+
+    versions = client.get(
+        f"/saved-prompts/{prompt['id']}/versions",
+        headers=headers,
+    )
+    assert [item["version"] for item in versions.json()] == [3, 2, 1]
+
+
+def test_saved_prompt_versions_are_private_to_owner(client):
+    token_a = _register_and_login(client, "saved-prompts-version-owner@example.com")
+    prompt = client.post(
+        "/saved-prompts",
+        json={"name": "Private", "content": "Secret prompt."},
+        headers={"Authorization": f"Bearer {token_a}"},
+    ).json()
+
+    token_b = _register_and_login(client, "saved-prompts-version-other@example.com")
+    headers_b = {"Authorization": f"Bearer {token_b}"}
+
+    assert client.get(
+        f"/saved-prompts/{prompt['id']}/versions",
+        headers=headers_b,
+    ).status_code == 404
+    assert client.get(
+        f"/saved-prompts/{prompt['id']}/versions/1/compare-current",
+        headers=headers_b,
+    ).status_code == 404
+    assert client.post(
+        f"/saved-prompts/{prompt['id']}/versions/1/restore",
+        headers=headers_b,
+    ).status_code == 404
