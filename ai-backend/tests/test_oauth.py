@@ -5,6 +5,7 @@ import pytest
 
 from app.models.oauth_connection import OAuthConnection
 from app.models.oauth_state import OAuthState
+from app.models.user import User
 from app.services import oauth_service
 from app.services.oauth_service import (
     OAuthConnectorError,
@@ -81,8 +82,12 @@ def test_provider_config_requires_credentials(monkeypatch):
 
 def test_begin_oauth_creates_pkce_state_and_authorization_url(db_session, monkeypatch):
     _configure_google(monkeypatch)
+    user = User(email="oauth-start@example.com", hashed_password="x")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
 
-    url, expires_at = begin_oauth("google", 1, db_session)
+    url, expires_at = begin_oauth("google", user.id, db_session)
 
     parsed = urlparse(url)
     params = parse_qs(parsed.query)
@@ -93,9 +98,9 @@ def test_begin_oauth_creates_pkce_state_and_authorization_url(db_session, monkey
     assert params["code_challenge_method"] == ["S256"]
     assert params["client_id"] == ["google-client"]
     assert params["redirect_uri"] == ["https://api.example.com/oauth/google/callback"]
-    assert expires_at > db_session.query(OAuthState).first().expires_at - (
-        expires_at - expires_at
-    )
+    stored_state = db_session.query(OAuthState).first()
+    assert stored_state is not None
+    assert expires_at == stored_state.expires_at
 
 
 def test_oauth_secret_is_encrypted_at_rest(monkeypatch):
@@ -113,7 +118,12 @@ def test_complete_oauth_exchanges_code_fetches_identity_and_persists_connection(
     monkeypatch,
 ):
     _configure_google(monkeypatch)
-    user_id = 1
+    user = User(email="oauth-complete@example.com", hashed_password="x")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    user_id = user.id
     authorization_url, _ = begin_oauth("google", user_id, db_session)
     state = parse_qs(urlparse(authorization_url).query)["state"][0]
 
@@ -153,7 +163,12 @@ def test_complete_oauth_exchanges_code_fetches_identity_and_persists_connection(
 
 def test_oauth_state_cannot_be_replayed(db_session, monkeypatch):
     _configure_google(monkeypatch)
-    authorization_url, _ = begin_oauth("google", 1, db_session)
+    user = User(email="oauth-replay@example.com", hashed_password="x")
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+
+    authorization_url, _ = begin_oauth("google", user.id, db_session)
     state = parse_qs(urlparse(authorization_url).query)["state"][0]
 
     FakeAsyncClient.responses = [
@@ -178,8 +193,13 @@ def test_oauth_state_cannot_be_replayed(db_session, monkeypatch):
 
 def test_refresh_oauth_connection_rotates_tokens(db_session, monkeypatch):
     _configure_google(monkeypatch)
+    owner = User(email="oauth-refresh@example.com", hashed_password="x")
+    db_session.add(owner)
+    db_session.commit()
+    db_session.refresh(owner)
+
     connection = OAuthConnection(
-        user_id=1,
+        user_id=owner.id,
         provider="google",
         subject="google-user-2",
         email="refresh@example.com",
@@ -218,7 +238,7 @@ def test_connection_owner_isolation(client, db_session, monkeypatch):
     other_token = _register_and_login(client, "oauth-other@example.com")
 
     db_user = (
-        db_session.query(__import__("app.models.user", fromlist=["User"]).User)
+        db_session.query(User)
         .filter_by(email="oauth-owner@example.com")
         .first()
     )
