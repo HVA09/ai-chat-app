@@ -694,8 +694,9 @@ function UsersTab({ currentUserId }) {
     try {
       await updateUser(user.id, { role: nextRole });
       refresh();
-    } catch {
-      setError(t("admin.updateUserError"));
+    } catch (err) {
+      setError("");
+      showErrorToast(err, "admin.updateUserError");
     }
   };
 
