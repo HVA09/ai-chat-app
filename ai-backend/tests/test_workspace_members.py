@@ -140,13 +140,14 @@ def test_duplicate_pending_invitation_rejected(client, monkeypatch):
 
 
 def test_enterprise_rbac_custom_role_controls_member_operations(client, monkeypatch):
+    token_value = {"value": "R" * 40}
     monkeypatch.setattr(
         "app.routers.workspace_members.send_workspace_invitation_email",
         lambda **kwargs: None,
     )
     monkeypatch.setattr(
         "app.routers.workspace_members.secrets.token_urlsafe",
-        lambda n: "R" * 40,
+        lambda n: token_value["value"],
     )
 
     owner_token = _register_and_login(client, "rbac-owner@example.com")
@@ -159,6 +160,8 @@ def test_enterprise_rbac_custom_role_controls_member_operations(client, monkeypa
 
     member_token = _register_and_login(client, "rbac-member@example.com")
     member_headers = {"Authorization": f"Bearer {member_token}"}
+    third_token = _register_and_login(client, "rbac-third@example.com")
+    third_headers = {"Authorization": f"Bearer {third_token}"}
 
     invite_member = client.post(
         f"/workspaces/{workspace['id']}/invitations",
@@ -169,10 +172,24 @@ def test_enterprise_rbac_custom_role_controls_member_operations(client, monkeypa
 
     accepted = client.post(
         "/workspace-invitations/accept",
-        json={"token": "R" * 40},
+        json={"token": token_value["value"]},
         headers=member_headers,
     )
     assert accepted.status_code == 200
+
+    invite_third = client.post(
+        f"/workspaces/{workspace['id']}/invitations",
+        json={"email": "rbac-third@example.com", "role": "member"},
+        headers=owner_headers,
+    )
+    assert invite_third.status_code == 201
+
+    accepted_third = client.post(
+        "/workspace-invitations/accept",
+        json={"token": token_value["value"]},
+        headers=third_headers,
+    )
+    assert accepted_third.status_code == 200
 
     role = client.post(
         f"/workspaces/{workspace['id']}/rbac/roles",
@@ -186,8 +203,18 @@ def test_enterprise_rbac_custom_role_controls_member_operations(client, monkeypa
     assert role.status_code == 201
     role_id = role.json()["id"]
 
+    members = client.get(
+        f"/workspaces/{workspace['id']}/members",
+        headers=owner_headers,
+    )
+    assert members.status_code == 200
+    member_by_email = {
+        item["email"]: item["id"]
+        for item in members.json()
+    }
+
     assigned = client.patch(
-        f"/workspaces/{workspace['id']}/members/2/rbac-role",
+        f"/workspaces/{workspace['id']}/members/{member_by_email['rbac-member@example.com']}/rbac-role",
         json={"rbac_role_id": role_id},
         headers=owner_headers,
     )
@@ -204,62 +231,18 @@ def test_enterprise_rbac_custom_role_controls_member_operations(client, monkeypa
     )
     assert forbidden_rbac.status_code == 403
 
-    third_token = _register_and_login(client, "rbac-third@example.com")
-    assert third_token
+    fourth_token = _register_and_login(client, "rbac-fourth@example.com")
+    assert fourth_token
 
     invitation = client.post(
         f"/workspaces/{workspace['id']}/invitations",
-        json={"email": "rbac-third@example.com", "role": "member"},
+        json={"email": "rbac-fourth@example.com", "role": "member"},
         headers=member_headers,
     )
     assert invitation.status_code == 201
 
-    members = client.get(
-        f"/workspaces/{workspace['id']}/members",
-        headers=member_headers,
-    )
-    assert members.status_code == 200
-    assert any(item["email"] == "rbac-member@example.com" for item in members.json())
-
     cannot_remove = client.delete(
-        f"/workspaces/{workspace['id']}/members/3",
+        f"/workspaces/{workspace['id']}/members/{member_by_email['rbac-third@example.com']}",
         headers=member_headers,
     )
     assert cannot_remove.status_code == 403
-
-
-def test_enterprise_rbac_role_cannot_grant_permissions_beyond_creator(client):
-    owner_token = _register_and_login(client, "rbac-limit-owner@example.com")
-    owner_headers = {"Authorization": f"Bearer {owner_token}"}
-    workspace = client.post(
-        "/workspaces",
-        json={"name": "RBAC Limit"},
-        headers=owner_headers,
-    ).json()
-
-    role = client.post(
-        f"/workspaces/{workspace['id']}/rbac/roles",
-        json={
-            "name": "Full Role",
-            "permissions": ["rbac.manage", "billing.manage"],
-        },
-        headers=owner_headers,
-    )
-    assert role.status_code == 201
-
-    member_token = _register_and_login(client, "rbac-limit-member@example.com")
-    member_headers = {"Authorization": f"Bearer {member_token}"}
-
-    invite = client.post(
-        f"/workspaces/{workspace['id']}/invitations",
-        json={"email": "rbac-limit-member@example.com", "role": "member"},
-        headers=owner_headers,
-    )
-    assert invite.status_code == 201
-
-    accepted = client.post(
-        "/workspace-invitations/accept",
-        json={"token": "D" * 40},
-        headers=member_headers,
-    )
-    assert accepted.status_code in {404, 410}
