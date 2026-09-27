@@ -118,7 +118,6 @@ export default function ProjectEditor({
     if (!content?.trim() || content.trim() === memory.content) return;
 
     setMemorySaving(true);
-    setMemoryError("");
     try {
       const updated = await updateProjectMemory(
         project.id,
@@ -129,9 +128,7 @@ export default function ProjectEditor({
         current.map((item) => (item.id === updated.id ? updated : item))
       );
     } catch (error) {
-      setMemoryError(
-        error?.response?.data?.detail || t("projectEditor.memorySaveError")
-      );
+      showErrorToast(error, "projectEditor.memorySaveError");
     } finally {
       setMemorySaving(false);
     }
@@ -148,7 +145,6 @@ export default function ProjectEditor({
     }
 
     setMemorySaving(true);
-    setMemoryError("");
     try {
       await deleteProjectMemory(project.id, memory.id);
       setMemories((current) =>
