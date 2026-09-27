@@ -182,12 +182,12 @@ def test_oauth_state_cannot_be_replayed(db_session, monkeypatch):
     monkeypatch.setattr(oauth_service.httpx, "AsyncClient", FakeAsyncClient)
 
     asyncio.run(
-        complete_oauth("google", 1, state, "auth-code", db_session)
+        complete_oauth("google", user.id, state, "auth-code", db_session)
     )
 
     with pytest.raises(OAuthConnectorError, match="invalid or expired"):
         asyncio.run(
-            complete_oauth("google", 1, state, "auth-code", db_session)
+            complete_oauth("google", user.id, state, "auth-code", db_session)
         )
 
 
