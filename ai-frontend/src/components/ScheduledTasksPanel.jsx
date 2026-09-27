@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { getErrorMessage } from "../lib/errors";
 import {
   createScheduledTask,
   deleteScheduledTask,
@@ -105,7 +106,6 @@ export default function ScheduledTasksPanel({
   const [timezoneName, setTimezoneName] = useState(browserTimeZone);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
   const [runsByTask, setRunsByTask] = useState({});
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [runningTaskId, setRunningTaskId] = useState(null);
@@ -117,6 +117,16 @@ export default function ScheduledTasksPanel({
   const [editTimezoneName, setEditTimezoneName] = useState(browserTimeZone);
   const [savingEdit, setSavingEdit] = useState(false);
 
+
+  const showErrorToast = (errorValue, fallbackKey) => {
+    const message = getErrorMessage(errorValue, t(fallbackKey));
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
+
   const activeWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === Number(workspaceId)),
     [workspaces, workspaceId]
@@ -124,11 +134,10 @@ export default function ScheduledTasksPanel({
 
   const refresh = async () => {
     setLoading(true);
-    setError("");
     try {
       setTasks(await listScheduledTasks(workspaceId));
-    } catch {
-      setError(t("scheduledTasks.loadError"));
+    } catch (err) {
+      showErrorToast(err, "scheduledTasks.loadError");
     } finally {
       setLoading(false);
     }
@@ -143,7 +152,6 @@ export default function ScheduledTasksPanel({
     const trimmed = prompt.trim();
     if (!trimmed || workspaceId == null) return;
     setSaving(true);
-    setError("");
     try {
       await createScheduledTask({
         workspace_id: Number(workspaceId),
@@ -157,7 +165,7 @@ export default function ScheduledTasksPanel({
       setTimezoneName(browserTimeZone());
       await refresh();
     } catch (err) {
-      setError(err?.response?.data?.detail || t("scheduledTasks.saveError"));
+      showErrorToast(err, "scheduledTasks.saveError");
     } finally {
       setSaving(false);
     }
@@ -167,8 +175,8 @@ export default function ScheduledTasksPanel({
     try {
       const runs = await listScheduledTaskRuns(taskId);
       setRunsByTask((prev) => ({ ...prev, [taskId]: runs }));
-    } catch {
-      setError(t("scheduledTasks.historyLoadError"));
+    } catch (err) {
+      showErrorToast(err, "scheduledTasks.historyLoadError");
     }
   };
 
@@ -183,14 +191,13 @@ export default function ScheduledTasksPanel({
 
   const retryRun = async (taskId, runId) => {
     setRunningTaskId(`retry-${runId}`);
-    setError("");
     try {
       await retryScheduledTaskRun(taskId, runId);
       await loadRuns(taskId);
       await refresh();
       setExpandedTaskId(taskId);
     } catch (err) {
-      setError(err?.response?.data?.detail || t("scheduledTasks.retryError"));
+      showErrorToast(err, "scheduledTasks.retryError");
     } finally {
       setRunningTaskId(null);
     }
@@ -198,14 +205,13 @@ export default function ScheduledTasksPanel({
 
   const runNow = async (task) => {
     setRunningTaskId(task.id);
-    setError("");
     try {
       await runScheduledTask(task.id);
       await loadRuns(task.id);
       await refresh();
       setExpandedTaskId(task.id);
-    } catch {
-      setError(t("scheduledTasks.runNowError"));
+    } catch (err) {
+      showErrorToast(err, "scheduledTasks.runNowError");
     } finally {
       setRunningTaskId(null);
     }
@@ -218,7 +224,6 @@ export default function ScheduledTasksPanel({
     setEditNextRunAt(toLocalDateTimeInput(task.next_run_at, task.timezone_name || browserTimeZone()));
     setEditWeekday(String(task.weekday ?? 0));
     setEditTimezoneName(task.timezone_name || browserTimeZone());
-    setError("");
   };
 
   const cancelEdit = () => {
@@ -234,7 +239,6 @@ export default function ScheduledTasksPanel({
     if (!trimmed || !editNextRunAt) return;
 
     setSavingEdit(true);
-    setError("");
     try {
       await updateScheduledTask(editingTaskId, {
         prompt: trimmed,
@@ -246,7 +250,7 @@ export default function ScheduledTasksPanel({
       cancelEdit();
       await refresh();
     } catch (err) {
-      setError(err?.response?.data?.detail || t("scheduledTasks.editError"));
+      showErrorToast(err, "scheduledTasks.editError");
     } finally {
       setSavingEdit(false);
     }
@@ -256,8 +260,8 @@ export default function ScheduledTasksPanel({
     try {
       await updateScheduledTask(task.id, { is_active: !task.is_active });
       await refresh();
-    } catch {
-      setError(t("scheduledTasks.updateError"));
+    } catch (err) {
+      showErrorToast(err, "scheduledTasks.updateError");
     }
   };
 
@@ -266,8 +270,8 @@ export default function ScheduledTasksPanel({
     try {
       await deleteScheduledTask(task.id);
       await refresh();
-    } catch {
-      setError(t("scheduledTasks.deleteError"));
+    } catch (err) {
+      showErrorToast(err, "scheduledTasks.deleteError");
     }
   };
 
@@ -372,11 +376,6 @@ export default function ScheduledTasksPanel({
           </button>
         </form>
 
-        {error && (
-          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        )}
 
         <div className="mt-5">
           <div className="mb-2 flex items-center justify-between">
