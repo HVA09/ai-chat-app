@@ -35,8 +35,18 @@ export default function AccountSettings({
 }) {
   const { t } = useTranslation();
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+
+  const showErrorToast = (errorValue, fallbackKey) => {
+    const message = getErrorMessage(errorValue, t(fallbackKey));
+    window.dispatchEvent(
+      new CustomEvent("app:toast", {
+        detail: { message, type: "error" },
+      })
+    );
+  };
+
 
   const [fullName, setFullName] = useState(user?.full_name || "");
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || "");
@@ -69,7 +79,7 @@ export default function AccountSettings({
     try {
       setMemories(await listMemories());
     } catch (err) {
-      setError(getErrorMessage(err, t("account.memoryLoadError")));
+      showErrorToast(err, "account.memoryLoadError");
     }
   };
 
@@ -77,7 +87,7 @@ export default function AccountSettings({
     try {
       setSessions(await listSessions());
     } catch (err) {
-      setError(getErrorMessage(err, t("account.sessionsLoadError")));
+      showErrorToast(err, "account.sessionsLoadError");
     }
   };
 
@@ -96,7 +106,7 @@ export default function AccountSettings({
       );
       setApiKeyUsage(Object.fromEntries(usageEntries));
     } catch (err) {
-      setError(getErrorMessage(err, t("account.apiKeysLoadError")));
+      showErrorToast(err, "account.apiKeysLoadError");
     }
   };
 
@@ -141,13 +151,12 @@ export default function AccountSettings({
   };
 
   const runAction = async (action) => {
-    setError("");
     setMessage("");
     setLoading(true);
     try {
       await action();
     } catch (err) {
-      setError(getErrorMessage(err, t("account.genericError")));
+      showErrorToast(err, "account.genericError");
     } finally {
       setLoading(false);
     }
@@ -184,8 +193,8 @@ export default function AccountSettings({
     try {
       await navigator.clipboard.writeText(createdApiKeySecret);
       setMessage(t("account.apiKeyCopied"));
-    } catch {
-      setError(t("account.apiKeyCopyError"));
+    } catch (err) {
+      showErrorToast(err, "account.apiKeyCopyError");
     }
   };
 
@@ -728,12 +737,6 @@ export default function AccountSettings({
             {t("account.deletePermanently")}
           </button>
         </div>
-
-        {error && (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        )}
         {message && (
           <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
             {message}
