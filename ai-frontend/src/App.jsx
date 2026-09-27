@@ -469,8 +469,11 @@ export default function App() {
       }
 
       setHasMoreConversations(list.length > pageSize);
-    } catch {
-      // فشل تحميل القائمة لا يوقف الشات نفسه — نتجاهله بصمت
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.conversationsLoadError")),
+        type: "error",
+      });
     } finally {
       if (reset) setConversationsLoading(false);
       else setConversationsLoadingMore(false);
