@@ -22,6 +22,7 @@ from app.schemas.workspace_members import (
     WorkspaceRoleUpdate,
 )
 from app.services.email_service import send_workspace_invitation_email
+from app.services.workspace_rbac import has_workspace_permission, permissions_for_membership
 from app.validators import normalize_email
 
 router = APIRouter(tags=["Workspace Members"])
@@ -41,10 +42,18 @@ def _get_membership(workspace_id: int, current_user: User, db: Session) -> Works
     return membership
 
 
-def _require_manager(workspace_id: int, current_user: User, db: Session) -> WorkspaceMember:
+def _require_manager(
+    workspace_id: int,
+    current_user: User,
+    db: Session,
+    permission: str = "members.manage",
+) -> WorkspaceMember:
     membership = _get_membership(workspace_id, current_user, db)
-    if membership.role not in {WorkspaceRole.owner, WorkspaceRole.admin}:
-        raise HTTPException(status_code=403, detail="هذه العملية تتطلب صلاحية إدارة مساحة العمل")
+    if not has_workspace_permission(db, membership, permission):
+        raise HTTPException(
+            status_code=403,
+            detail=f"تحتاج إلى الصلاحية {permission}",
+        )
     return membership
 
 
@@ -58,7 +67,9 @@ def list_workspace_members(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _get_membership(workspace_id, current_user, db)
+    membership = _get_membership(workspace_id, current_user, db)
+    if not has_workspace_permission(db, membership, "members.read"):
+        raise HTTPException(status_code=403, detail="تحتاج إلى الصلاحية members.read")
     rows = (
         db.query(WorkspaceMember, User)
         .join(User, User.id == WorkspaceMember.user_id)
@@ -90,8 +101,8 @@ def create_workspace_invitation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    membership = _require_manager(workspace_id, current_user, db)
-    if membership.role == WorkspaceRole.admin and payload.role == WorkspaceRole.admin:
+    membership = _require_manager(workspace_id, current_user, db, "members.invite")
+    if payload.role == WorkspaceRole.admin and "members.manage" not in permissions_for_membership(db, membership):
         raise HTTPException(
             status_code=403,
             detail="مدير مساحة العمل لا يمكنه منح صلاحية مدير آخر",
@@ -160,7 +171,7 @@ def list_workspace_invitations(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _require_manager(workspace_id, current_user, db)
+    _require_manager(workspace_id, current_user, db, "members.manage")
     now = datetime.now(timezone.utc)
     return (
         db.query(WorkspaceInvitation)
@@ -210,9 +221,7 @@ def update_workspace_member_role(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    membership = _get_membership(workspace_id, current_user, db)
-    if membership.role != WorkspaceRole.owner:
-        raise HTTPException(status_code=403, detail="تغيير أدوار الأعضاء للمالك فقط")
+    membership = _require_manager(workspace_id, current_user, db, "members.manage")
 
     target = (
         db.query(WorkspaceMember, User)
@@ -263,8 +272,6 @@ def remove_workspace_member(
         raise HTTPException(status_code=404, detail="العضو غير موجود")
     if target.role == WorkspaceRole.owner:
         raise HTTPException(status_code=403, detail="لا يمكن إزالة مالك مساحة العمل")
-    if manager.role == WorkspaceRole.admin and target.role != WorkspaceRole.member:
-        raise HTTPException(status_code=403, detail="المدير لا يمكنه إزالة مدير آخر")
     target_user_id = target.user_id
     db.delete(target)
     db.commit()
