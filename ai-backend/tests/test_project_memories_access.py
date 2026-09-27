@@ -62,7 +62,7 @@ def test_other_user_cannot_read_or_manage_project_memory(client):
     ).status_code == 404
 
 
-def test_project_memory_is_shared_with_workspace_member_but_not_external_user(client):
+def test_project_memory_is_shared_with_workspace_member_but_not_external_user(client, monkeypatch):
     owner_token = _register_and_login(client, "project-memory-shared-owner@example.com")
     owner_headers = {"Authorization": f"Bearer {owner_token}"}
     workspace = _create_workspace(client, owner_headers, "Shared")
@@ -77,6 +77,13 @@ def test_project_memory_is_shared_with_workspace_member_but_not_external_user(cl
 
     member_token = _register_and_login(client, "project-memory-member@example.com")
     member_headers = {"Authorization": f"Bearer {member_token}"}
+    captured = {}
+
+    monkeypatch.setattr(
+        "app.routers.workspace_members.send_workspace_invitation_email",
+        lambda **kwargs: captured.update(kwargs),
+    )
+
     invite = client.post(
         f"/workspaces/{workspace['id']}/invitations",
         json={"email": "project-memory-member@example.com", "role": "member"},
@@ -84,9 +91,7 @@ def test_project_memory_is_shared_with_workspace_member_but_not_external_user(cl
     )
     assert invite.status_code == 201
 
-    invitation = client.get("/workspace-invitations", headers=member_headers)
-    assert invitation.status_code == 200
-    token = invitation.json()[0]["token"]
+    token = captured["token"]
 
     accepted = client.post(
         "/workspace-invitations/accept",
