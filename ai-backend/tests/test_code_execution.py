@@ -54,3 +54,37 @@ def test_safe_python_timeout():
         assert "المهلة" in str(exc)
     else:
         raise AssertionError("infinite loop was accepted")
+
+
+def test_safe_python_rejects_dunder_import_and_dynamic_evaluation():
+    for code in (
+        "__import__('os')",
+        "eval('2 + 2')",
+        "getattr(str, '__class__')",
+        "print(__builtins__)",
+    ):
+        try:
+            execute_python_code(code)
+        except CodeExecutionError:
+            pass
+        else:
+            raise AssertionError(f"unsafe dynamic access was accepted: {code}")
+
+
+def test_safe_python_rejects_comprehensions_and_callable_attributes():
+    for code in (
+        "print([x for x in range(3)])",
+        "print(str.upper('hello'))",
+        "print((1).__class__)",
+    ):
+        try:
+            execute_python_code(code)
+        except CodeExecutionError:
+            pass
+        else:
+            raise AssertionError(f"unsafe syntax was accepted: {code}")
+
+
+def test_safe_python_limits_output_size():
+    result = execute_python_code("print('x' * 20000)")
+    assert len(result) <= 12000
