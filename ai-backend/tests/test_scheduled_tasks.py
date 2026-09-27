@@ -38,6 +38,7 @@ def test_scheduled_task_crud_and_validation(client):
             "workspace_id": workspace["id"],
             "prompt": "لخص أخبار التقنية",
             "schedule_type": "daily",
+            "execution_mode": "standard",
             "next_run_at": future,
         },
         headers=headers,
@@ -45,6 +46,7 @@ def test_scheduled_task_crud_and_validation(client):
     assert created.status_code == 201
     task = created.json()
     assert task["is_active"] is True
+    assert task["execution_mode"] == "standard"
 
     listed = client.get(
         "/scheduled-tasks",
