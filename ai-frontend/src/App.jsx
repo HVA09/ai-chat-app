@@ -426,8 +426,11 @@ export default function App() {
       setSelectedModel((current) =>
         current && models.some((model) => model.id === current) ? current : fallback
       );
-    } catch {
-      // فشل تحميل النماذج لا يمنع استخدام النموذج الافتراضي.
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.aiModelsLoadError")),
+        type: "error",
+      });
     }
   };
 
