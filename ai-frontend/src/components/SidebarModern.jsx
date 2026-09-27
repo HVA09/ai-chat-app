@@ -233,19 +233,40 @@ export default function SidebarModern({
                       </span>
                       {item.is_pinned ? <span className="text-amber-500">★</span> : null}
                     </button>
-                    <button type="button" className="modern-conversation-more" title={t("sidebar.renameTitle")} onClick={(event) => {
-                      event.stopPropagation();
-                      const title = window.prompt(t("sidebar.renamePrompt"), item.title);
-                      if (title?.trim()) onRenameConversation(item.id, title.trim());
-                    }}>
-                      <Icon name="more" size={16} />
-                    </button>
-                    <div className="modern-conversation-menu">
-                      <button type="button" onClick={() => onTogglePinConversation(item.id)} title={item.is_pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}><Icon name="pin" size={14} /></button>
-                      <button type="button" onClick={() => onDuplicateConversation(item.id)} title={t("sidebar.duplicateTitle")}><Icon name="copy" size={14} /></button>
-                      <button type="button" onClick={() => onToggleArchiveConversation(item.id)} title={showArchived ? t("sidebar.unarchiveTitle") : t("sidebar.archiveTitle")}><Icon name="archive" size={14} /></button>
-                      <button type="button" onClick={() => onToggleTrashConversation(item.id)} title={t("sidebar.trashTitle")}><Icon name="trash" size={14} /></button>
+                    <div className="modern-row-tools">
+                      <input
+                        type="checkbox"
+                        aria-label={t("sidebar.selectConversation", { title: item.title })}
+                        checked={selectedConversationIds.includes(item.id)}
+                        onChange={(event) => {
+                          event.stopPropagation();
+                          onToggleConversationSelection(item.id);
+                        }}
+                        onClick={(event) => event.stopPropagation()}
+                        className="h-3.5 w-3.5 rounded border-slate-300"
+                      />
+                      <button
+                        type="button"
+                        className="modern-conversation-more"
+                        title={t("sidebar.renameTitle")}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setContextOpenId((current) => current === item.id ? null : item.id);
+                        }}
+                      >
+                        <Icon name="more" size={16} />
+                      </button>
                     </div>
+                    {contextOpenId === item.id ? (
+                      <div className="modern-conversation-menu">
+                        <button type="button" onClick={() => { onTogglePinConversation(item.id); setContextOpenId(null); }} title={item.is_pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}><Icon name="pin" size={14} /></button>
+                        <button type="button" onClick={() => { const title = window.prompt(t("sidebar.renamePrompt"), item.title); if (title?.trim()) onRenameConversation(item.id, title.trim()); setContextOpenId(null); }} title={t("sidebar.renameTitle")}><Icon name="edit" size={14} /></button>
+                        <button type="button" onClick={() => { onDuplicateConversation(item.id); setContextOpenId(null); }} title={t("sidebar.duplicateTitle")}><Icon name="copy" size={14} /></button>
+                        <button type="button" onClick={() => { onToggleArchiveConversation(item.id); setContextOpenId(null); }} title={showArchived ? t("sidebar.unarchiveTitle") : t("sidebar.archiveTitle")}><Icon name="archive" size={14} /></button>
+                        <button type="button" onClick={() => { onToggleTrashConversation(item.id); setContextOpenId(null); }} title={t("sidebar.trashTitle")}><Icon name="trash" size={14} /></button>
+                      </div>
+                    ) : null}
+                  </div>
                   </div>
                 );
               })}
