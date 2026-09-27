@@ -171,6 +171,33 @@
 - Render PostgreSQL القديم لا يزال احتياطي رجوع مؤقتًا حتى 2026-10-10.
 
 
+
+## المرحلة D — Agent Platform
+
+الحالة: **لم تبدأ**
+
+1. Tool Registry
+2. MCP integration
+3. Agent runtime
+4. Tool permissions
+5. Sandboxed code execution
+6. Long-running agent jobs
+7. Scheduled agents
+8. Prompt-injection / tool-abuse defenses
+
+## المرحلة E — Platform & Developer Ecosystem
+
+الحالة: **لم تبدأ**
+
+1. API Keys
+2. API versioning
+3. Webhooks
+4. OAuth / connectors
+5. Python + JavaScript SDKs
+6. Enterprise RBAC
+7. Usage / billing / cost controls
+8. Versioning for assistants, prompts, knowledge bases and agents
+
 ### المرحلة C — Product UX
 
 الحالة: **C1 وC2 وC3 مكتملة ومتحققة**
