@@ -153,3 +153,99 @@ def test_webhook_url_rejects_private_addresses(monkeypatch):
     )
     with pytest.raises(WebhookValidationError):
         validate_webhook_url("http://example.test/hook")
+
+
+def test_api_key_creation_emits_webhook_event(client, monkeypatch, db_session):
+    monkeypatch.setattr(webhooks_router, "validate_webhook_url", lambda url: url)
+    queued = []
+    monkeypatch.setattr(
+        webhooks_router,
+        "enqueue_webhook_deliveries",
+        lambda ids: queued.extend(ids),
+    )
+
+    token = _register_and_login(client, "webhook-api-key@example.com")
+    client.post(
+        "/webhooks",
+        json={
+            "name": "API Key Listener",
+            "url": "https://example.test/hook",
+            "event_types": ["api_key.created"],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    created = client.post(
+        "/api-keys",
+        json={"name": "event-key"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert created.status_code == 201
+
+    delivery = (
+        db_session.query(WebhookDelivery)
+        .order_by(WebhookDelivery.id.desc())
+        .first()
+    )
+    assert delivery is not None
+    assert delivery.event_type == "api_key.created"
+    assert delivery.payload["name"] == "event-key"
+    assert queued
+
+
+def test_delivery_sends_signed_request_and_marks_delivered(db_session, monkeypatch):
+    from app.models.webhook_endpoint import WebhookEndpoint
+    from app.services.webhook_service import deliver_webhook_delivery
+
+    endpoint = WebhookEndpoint(
+        user_id=1,
+        name="Delivery",
+        url="https://example.test/hook",
+        secret_encrypted=encrypt_webhook_secret("whsec_delivery"),
+        event_types=["webhook.test"],
+        is_active=True,
+    )
+    db_session.add(endpoint)
+    db_session.flush()
+    delivery = WebhookDelivery(
+        webhook_endpoint_id=endpoint.id,
+        event_id="evt_delivery",
+        event_type="webhook.test",
+        payload={"hello": "world"},
+        status="queued",
+    )
+    db_session.add(delivery)
+    db_session.commit()
+
+    monkeypatch.setattr(webhook_service, "validate_webhook_url", lambda url: url)
+
+    sent = {}
+
+    class FakeResponse:
+        status_code = 200
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def post(self, url, content, headers):
+            sent["url"] = url
+            sent["content"] = content
+            sent["headers"] = headers
+            return FakeResponse()
+
+    monkeypatch.setattr(webhook_service.httpx, "Client", FakeClient)
+
+    deliver_webhook_delivery(delivery.id, db=db_session)
+
+    db_session.refresh(delivery)
+    assert delivery.status == "delivered"
+    assert delivery.response_status == 200
+    assert sent["headers"]["X-Webhook-Id"] == "evt_delivery"
+    assert sent["headers"]["X-Webhook-Signature"].startswith("sha256=")
