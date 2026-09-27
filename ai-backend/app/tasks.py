@@ -21,7 +21,7 @@ from app.models.usage_log import UsageLog
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace, WorkspaceMember
 from app.notifications import notify
-from app.services.agent_runtime import AgentRuntime
+from app.services.agent_runtime import AgentRuntime, get_agent_configuration_version, get_agent_tool_policy_snapshot
 from app.services.ai_providers.factory import get_provider
 from app.services.ai_service import get_ai_reply
 from app.services.email_service import send_email
@@ -405,6 +405,8 @@ def _execute_scheduled_task(
                 conversation_id=conversation.id,
                 task=task.prompt,
                 status="queued",
+                agent_version=get_agent_configuration_version(),
+                tool_policy_snapshot=get_agent_tool_policy_snapshot(),
             )
             db.add(job)
             db.flush()
