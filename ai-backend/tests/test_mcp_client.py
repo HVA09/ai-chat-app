@@ -58,7 +58,7 @@ def test_mcp_discovery_maps_remote_tools(monkeypatch):
     monkeypatch.setattr(
         mcp_client.settings,
         "MCP_SERVERS_JSON",
-        '[{"name":"demo","url":"https://example.test/mcp","enabled":true}]',
+        '[{"name":"demo","url":"https://example.test/mcp","enabled":true,"allowed_tools":["add"]}]',
     )
     monkeypatch.setattr(mcp_client, "Client", FakeClient)
 
@@ -83,7 +83,7 @@ def test_mcp_tool_handler_calls_remote_tool(monkeypatch):
     monkeypatch.setattr(
         mcp_client.settings,
         "MCP_SERVERS_JSON",
-        '[{"name":"demo","url":"https://example.test/mcp","enabled":true}]',
+        '[{"name":"demo","url":"https://example.test/mcp","enabled":true,"allowed_tools":["add"]}]',
     )
     monkeypatch.setattr(mcp_client, "Client", FakeClient)
 
@@ -93,3 +93,26 @@ def test_mcp_tool_handler_calls_remote_tool(monkeypatch):
     assert result.succeeded is True
     assert '"name": "add"' in result.content
     assert '"a": 2' in result.content
+
+
+def test_mcp_tools_are_denied_without_server_allowlist(monkeypatch):
+    monkeypatch.setattr(mcp_client.settings, "MCP_ENABLED", True)
+    monkeypatch.setattr(
+        mcp_client.settings,
+        "MCP_SERVERS_JSON",
+        '[{"name":"demo","url":"https://example.test/mcp","enabled":true}]',
+    )
+    monkeypatch.setattr(mcp_client, "Client", FakeClient)
+
+    assert asyncio.run(discover_mcp_tools()) == []
+
+
+def test_mcp_server_config_parses_allowed_tools(monkeypatch):
+    monkeypatch.setattr(
+        mcp_client.settings,
+        "MCP_SERVERS_JSON",
+        '[{"name":"demo","url":"https://example.test/mcp","allowed_tools":["add","lookup"]}]',
+    )
+    config = _load_server_configs()[0]
+
+    assert config.allowed_tools == ("add", "lookup")

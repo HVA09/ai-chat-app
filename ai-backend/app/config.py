@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     MCP_SERVERS_JSON: str = "[]"
     MCP_MAX_SERVERS: int = 5
     MCP_MAX_TOOLS_PER_SERVER: int = 20
+    # Explicit allowlist for Agent tools. MCP tools must also be allowed per server.
+    AGENT_ALLOWED_TOOLS_JSON: str = "[\"calculator\",\"python\",\"web_search\",\"analyze_data\"]"
 
     FRONTEND_URL: str = "http://localhost:5173"
     INITIAL_ADMIN_EMAIL: str | None = None
@@ -143,6 +145,22 @@ class Settings(BaseSettings):
                 raise ValueError("MCP_SERVERS_JSON must be a JSON list")
             return json.dumps(parsed, ensure_ascii=False)
         raise ValueError("MCP_SERVERS_JSON must be a JSON string")
+
+    @field_validator("AGENT_ALLOWED_TOOLS_JSON", mode="before")
+    @classmethod
+    def validate_agent_allowed_tools_json(cls, value):
+        if value is None or value == "":
+            return "[]"
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise ValueError("AGENT_ALLOWED_TOOLS_JSON must be valid JSON") from exc
+            if not isinstance(parsed, list):
+                raise ValueError("AGENT_ALLOWED_TOOLS_JSON must be a JSON list")
+            normalized = [str(item).strip() for item in parsed if str(item).strip()]
+            return json.dumps(normalized, ensure_ascii=False)
+        raise ValueError("AGENT_ALLOWED_TOOLS_JSON must be a JSON string")
 
     @field_validator("MCP_MAX_SERVERS", "MCP_MAX_TOOLS_PER_SERVER")
     @classmethod

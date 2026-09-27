@@ -68,3 +68,29 @@ def test_registry_rejects_duplicate_tool_names():
 
     with pytest.raises(ValueError, match="Tool already registered"):
         registry.register(spec)
+
+
+def test_scoped_registry_enforces_explicit_tool_allowlist():
+    registry = ToolRegistry(allowed_names={"allowed"})
+    registry.register(
+        ToolSpec(
+            name="allowed",
+            description="Allowed tool",
+            parameters={"type": "object", "properties": {}},
+            handler=_ok_handler,
+        )
+    )
+
+    with pytest.raises(PermissionError, match="not permitted"):
+        registry.register(
+            ToolSpec(
+                name="denied",
+                description="Denied tool",
+                parameters={"type": "object", "properties": {}},
+                handler=_ok_handler,
+            )
+        )
+
+    assert registry.allows("allowed") is True
+    assert registry.allows("denied") is False
+    assert registry.names() == ("allowed",)

@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from app.config import settings
 from app.services.agent_runtime import AgentRuntime, AgentRuntimeLimits
 from app.services.ai_providers.base import AIToolCall, AIToolReply
 from app.services.tools.registry import ToolContext, ToolRegistry, ToolResult, ToolSpec
@@ -140,3 +141,36 @@ def test_runtime_rejects_invalid_limits():
             provider=object(),
             limits=AgentRuntimeLimits(max_rounds=0),
         )
+
+
+class CaptureToolsProvider:
+    def __init__(self):
+        self.tool_names = []
+
+    async def get_reply_with_tools(self, messages, tools, tool_choice="auto"):
+        del messages
+        assert tool_choice == "auto"
+        self.tool_names = [item["function"]["name"] for item in tools]
+        return AIToolReply(text="done")
+
+
+def test_runtime_exposes_only_globally_allowed_tools(monkeypatch):
+    monkeypatch.setattr(
+        settings,
+        "AGENT_ALLOWED_TOOLS_JSON",
+        "[\"calculator\",\"web_search\"]",
+    )
+    provider = CaptureToolsProvider()
+
+    result = asyncio.run(
+        AgentRuntime(provider=provider).run(
+            task="use tools",
+            history=[],
+            conversation=object(),
+            current_user=object(),
+            db=object(),
+        )
+    )
+
+    assert result.status == "completed"
+    assert provider.tool_names == ["calculator", "web_search"]

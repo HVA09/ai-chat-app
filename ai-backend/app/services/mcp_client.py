@@ -26,6 +26,7 @@ class MCPServerConfig:
     name: str
     url: str
     enabled: bool = True
+    allowed_tools: tuple[str, ...] = ()
 
 
 def _load_server_configs() -> list[MCPServerConfig]:
@@ -44,6 +45,16 @@ def _load_server_configs() -> list[MCPServerConfig]:
         name = str(item.get("name") or "").strip()
         url = str(item.get("url") or "").strip()
         enabled = bool(item.get("enabled", True))
+        raw_allowed_tools = item.get("allowed_tools", [])
+        if not isinstance(raw_allowed_tools, list):
+            raise MCPIntegrationError(
+                f"MCP server '{name}' allowed_tools must be a JSON list."
+            )
+        allowed_tools = tuple(
+            str(tool_name).strip()
+            for tool_name in raw_allowed_tools
+            if str(tool_name).strip()
+        )
         if not name or not url or not enabled:
             continue
         if not re.match(r"^https?://[^\s]+$", url, flags=re.IGNORECASE):
@@ -52,7 +63,14 @@ def _load_server_configs() -> list[MCPServerConfig]:
             raise MCPIntegrationError(
                 f"MCP server '{name}' must use HTTPS in production."
             )
-        configs.append(MCPServerConfig(name=name, url=url, enabled=enabled))
+        configs.append(
+            MCPServerConfig(
+                name=name,
+                url=url,
+                enabled=enabled,
+                allowed_tools=allowed_tools,
+            )
+        )
 
     return configs
 
@@ -151,6 +169,13 @@ async def discover_mcp_tools() -> list[ToolSpec]:
         for remote_tool in remote_tools:
             remote_name = str(getattr(remote_tool, "name", "") or "").strip()
             if not remote_name:
+                continue
+            if remote_name not in server.allowed_tools:
+                logger.info(
+                    "MCP tool denied by server allowlist server=%s tool=%s",
+                    server.name,
+                    remote_name,
+                )
                 continue
 
             description = str(
