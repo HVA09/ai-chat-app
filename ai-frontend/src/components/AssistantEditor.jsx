@@ -89,19 +89,28 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
     setVersionsLoading(true);
     listAssistantVersions(assistant.id)
       .then(setVersions)
-      .catch(() => setVersions([]))
+      .catch((error) => {
+        setVersions([]);
+        showErrorToast(error, "assistantEditor.versionsLoadError");
+      })
       .finally(() => setVersionsLoading(false));
 
     setAnalyticsLoading(true);
     getAssistantAnalytics(assistant.id, 30)
       .then(setAnalytics)
-      .catch(() => setAnalytics(null))
+      .catch((error) => {
+        setAnalytics(null);
+        showErrorToast(error, "assistantEditor.analyticsLoadError");
+      })
       .finally(() => setAnalyticsLoading(false));
 
     setPublicLoading(true);
     getAssistantPublicSettings(assistant.id)
       .then(setPublicSettings)
-      .catch(() => setPublicSettings(null))
+      .catch((error) => {
+        setPublicSettings(null);
+        showErrorToast(error, "assistantEditor.publicLoadError");
+      })
       .finally(() => setPublicLoading(false));
   }, [assistant?.id]);
 
@@ -111,8 +120,9 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
     try {
       const result = await compareAssistantVersionWithCurrent(assistant.id, version);
       setComparison(result);
-    } catch {
+    } catch (error) {
       setComparison({ error: true });
+      showErrorToast(error, "assistantEditor.compareError");
     } finally {
       setComparingVersion(null);
     }
