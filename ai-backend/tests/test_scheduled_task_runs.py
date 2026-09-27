@@ -2,7 +2,9 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
-from app.models.scheduled_task_run import ScheduledTaskRunStatus
+from app.models.agent_job import AgentJob
+from app.models.scheduled_task import ScheduledTask
+from app.models.scheduled_task_run import ScheduledTaskRun, ScheduledTaskRunStatus
 from app.services.ai_providers.base import AIReply
 from app import tasks as tasks_module
 
