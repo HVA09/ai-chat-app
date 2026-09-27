@@ -174,7 +174,7 @@
 
 ## المرحلة D — Agent Platform
 
-الحالة: **قيد التنفيذ — D1 وD2 وD3 وD4 مكتملة ومتحققة**
+الحالة: **قيد التنفيذ — D1 إلى D5 مكتملة ومتحققة**
 
 ### D2 — MCP Integration: **مكتمل ومتحقق**
 - تمت إضافة MCP Python SDK `2.2.0`.
@@ -222,6 +222,18 @@
 - CI run `3113`: **نجح**.
 - CodeQL run `353`: **نجح**.
 - commit الدمج بعد squash: `d6c8a743d257b035b79814edb019b8fe47aaad15`.
+
+### D5 — Sandboxed Code Execution: **مكتمل ومتحقق**
+- أداة Python تعمل داخل process منفصل باستخدام Python isolated mode (`-I`) مع `-S` و`-B` وبيئة تشغيل دنيا.
+- AST allowlist تمنع imports، attribute access، dynamic evaluation، definitions، comprehensions، وميزات خطرة أخرى قبل التنفيذ.
+- لا توجد filesystem/network imports، و`__builtins__` معطلة داخل worker.
+- حدود تشغيل حالية: 2 ثانية، 256MB ذاكرة افتراضية، 1MB لحجم الملفات، و16 file descriptors مع output limit 12,000 حرف.
+- الاختبارات الإضافية تغطي محاولات `__import__` و`eval` والوصول إلى builtins وattributes وcomprehensions وحد الناتج.
+- PR #310 تم دمجه بنجاح.
+- CI run `3134`: **نجح** بالكامل.
+- CodeQL run `360`: **نجح**.
+- commit الدمج بعد squash: `705a5b6e3b924a49322805c1e2dbdf03dd073c36`.
+- ملاحظة معمارية: هذا sandbox على مستوى Python/process وresource limits، وليس container/kernel isolation كاملًا؛ لذلك يبقى فصل code-runner في container مستقل خيارًا لاحقًا عند الحاجة.
 
 
 1. Tool Registry
