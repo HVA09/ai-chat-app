@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
+from app.config import settings as app_settings
 from app.models.usage_log import UsageLog
 from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
 from app.routers import chat as chat_router_module
@@ -178,3 +179,55 @@ def test_workspace_daily_limit_rejects_invalid_values(client):
             headers=headers,
         )
         assert response.status_code == 422
+
+
+def test_workspace_monthly_budget_blocks_ai_requests(client, db_session, monkeypatch):
+    monkeypatch.setattr(
+        app_settings,
+        "AI_PRICING_JSON",
+        '{"test:test-model":{"input_per_million_usd":1,"output_per_million_usd":3}}',
+    )
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="لن يصل", input_tokens=1000, output_tokens=1000)),
+    )
+
+    token = _register_and_login(client, "quota-budget@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = client.post(
+        "/workspaces",
+        json={"name": "Budget Enforcement"},
+        headers=headers,
+    ).json()
+
+    response = client.patch(
+        f"/workspaces/{workspace['id']}/budget",
+        json={"monthly_ai_budget_usd": 0.001},
+        headers=headers,
+    )
+    assert response.status_code == 200
+
+    user = client.get("/users/me", headers=headers).json()
+    db_session.add(
+        UsageLog(
+            user_id=user["id"],
+            workspace_id=workspace["id"],
+            endpoint="/chat",
+            provider="test",
+            model="test-model",
+            input_tokens=10_000,
+            output_tokens=10_000,
+            created_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+    )
+    db_session.commit()
+
+    blocked = client.post(
+        "/chat",
+        json={"message": "تجاوز الميزانية", "workspace_id": workspace["id"]},
+        headers=headers,
+    )
+    assert blocked.status_code == 429
+    assert "ميزانية AI الشهرية لمساحة العمل" in blocked.json()["detail"]
+    chat_router_module.get_ai_reply.assert_not_awaited()
