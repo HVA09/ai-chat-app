@@ -90,13 +90,91 @@ vi.mock("../lib/apiKeysApi", () => ({
 }));
 
 vi.mock("../lib/errors", () => ({
-  getErrorMessage: vi.fn((err, fallback) => fallback),
+  getErrorMessage: vi.fn((err, fallback) => err?.response?.data?.detail || fallback),
 }));
 
 describe("AccountSettings", () => {
   beforeEach(() => {
     window.localStorage.clear();
     listSessions.mockResolvedValue([]);
+  });
+
+
+  it("يستخدم Global Toast عند فشل تحميل الذاكرة", async () => {
+    const { listMemories } = await import("../lib/memoriesApi");
+    listMemories.mockRejectedValueOnce({
+      response: { data: { detail: "تعذر تحميل الذاكرة" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AccountSettings
+        user={{
+          full_name: "",
+          avatar_url: "",
+          is_email_verified: true,
+          is_2fa_enabled: false,
+        }}
+        autoGenerateTitles={false}
+        onAutoGenerateTitlesChanged={vi.fn()}
+        autoGenerateSummaries={false}
+        onAutoGenerateSummariesChanged={vi.fn()}
+        onClose={vi.fn()}
+        onUserUpdated={vi.fn()}
+        onAccountDeleted={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "تعذر تحميل الذاكرة", type: "error" },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("يستخدم Global Toast عند فشل حفظ الملف الشخصي", async () => {
+    const { updateProfile } = await import("../lib/usersApi");
+    const user = userEvent.setup();
+    updateProfile.mockRejectedValueOnce({
+      response: { data: { detail: "تعذر حفظ الملف الشخصي" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AccountSettings
+        user={{
+          full_name: "",
+          avatar_url: "",
+          is_email_verified: true,
+          is_2fa_enabled: false,
+        }}
+        autoGenerateTitles={false}
+        onAutoGenerateTitlesChanged={vi.fn()}
+        autoGenerateSummaries={false}
+        onAutoGenerateSummariesChanged={vi.fn()}
+        onClose={vi.fn()}
+        onUserUpdated={vi.fn()}
+        onAccountDeleted={vi.fn()}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "حفظ" }));
+
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: { message: "تعذر حفظ الملف الشخصي", type: "error" },
+        })
+      );
+    });
+
+    dispatchSpy.mockRestore();
   });
 
   it("toggles the automatic summary preference and persists it locally", async () => {
