@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import time
 import uuid
@@ -23,6 +24,55 @@ from app.services.tools.registry import ToolContext, ToolRegistry, ToolResult, t
 AgentEventSink = Callable[[dict[str, Any]], Awaitable[None]]
 RegistryFactory = Callable[[], ToolRegistry]
 MCPDiscoverer = Callable[[], Awaitable[list[Any]]]
+
+
+AGENT_RUNTIME_VERSION = "1"
+
+
+def get_agent_tool_policy_snapshot() -> dict[str, Any]:
+    try:
+        allowed_tools = sorted(json.loads(settings.AGENT_ALLOWED_TOOLS_JSON))
+    except (TypeError, json.JSONDecodeError):
+        allowed_tools = []
+    try:
+        raw_servers = json.loads(settings.MCP_SERVERS_JSON)
+    except (TypeError, json.JSONDecodeError):
+        raw_servers = []
+    mcp_servers = []
+    for item in raw_servers if isinstance(raw_servers, list) else []:
+        if not isinstance(item, dict) or not item.get("enabled", True):
+            continue
+        mcp_servers.append({
+            "name": str(item.get("name") or "").strip(),
+            "allowed_tools": sorted(
+                str(name).strip()
+                for name in (item.get("allowed_tools") or [])
+                if str(name).strip()
+            ),
+        })
+    return {
+        "runtime_version": AGENT_RUNTIME_VERSION,
+        "allowed_tools": [name for name in allowed_tools if name],
+        "mcp_servers": [item for item in mcp_servers if item["name"]],
+    }
+
+
+def get_agent_configuration_version(limits: AgentRuntimeLimits | None = None) -> str:
+    limits = limits or AgentRuntimeLimits()
+    snapshot = {
+        **get_agent_tool_policy_snapshot(),
+        "limits": {
+            "max_rounds": limits.max_rounds,
+            "max_tool_calls_per_round": limits.max_tool_calls_per_round,
+            "max_tool_result_chars": limits.max_tool_result_chars,
+            "max_history_messages": limits.max_history_messages,
+            "tool_timeout_seconds": limits.tool_timeout_seconds,
+        },
+    }
+    digest = hashlib.sha256(
+        json.dumps(snapshot, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    ).hexdigest()[:12]
+    return f"agent-{AGENT_RUNTIME_VERSION}-{digest}"
 
 
 @dataclass(frozen=True, slots=True)
