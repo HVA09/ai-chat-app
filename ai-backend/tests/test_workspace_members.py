@@ -140,7 +140,8 @@ def test_duplicate_pending_invitation_rejected(client, monkeypatch):
 
 
 def test_enterprise_rbac_custom_role_controls_member_operations(client, monkeypatch):
-    token_value = {"value": "R" * 40}
+    token_values = iter(["R" * 40, "S" * 40])
+    token_value = {"value": next(token_values)}
     monkeypatch.setattr(
         "app.routers.workspace_members.send_workspace_invitation_email",
         lambda **kwargs: None,
@@ -177,6 +178,7 @@ def test_enterprise_rbac_custom_role_controls_member_operations(client, monkeypa
     )
     assert accepted.status_code == 200
 
+    token_value["value"] = next(token_values)
     invite_third = client.post(
         f"/workspaces/{workspace['id']}/invitations",
         json={"email": "rbac-third@example.com", "role": "member"},
