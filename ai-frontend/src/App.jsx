@@ -2855,7 +2855,6 @@ export default function App() {
         onBulkExport={handleBulkExport}
         onBulkMoveToFolder={handleBulkMoveToFolder}
         workspaces={workspaces}
-        selectedWorkspaceId={selectedWorkspaceId}
         onSelectWorkspace={handleSelectWorkspace}
         onCreateWorkspace={handleCreateWorkspace}
         onRenameWorkspace={handleRenameWorkspace}
