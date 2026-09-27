@@ -11,6 +11,7 @@ from typing import Any, Awaitable, Callable
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.conversation import Conversation
 from app.models.user import User
 from app.services.ai_providers.base import AIToolReply
@@ -58,7 +59,12 @@ class AgentRuntime:
     ) -> None:
         self.provider = provider
         self.limits = limits or AgentRuntimeLimits()
-        self.registry_factory = registry_factory or tool_registry.scoped
+        if registry_factory is None:
+            self.registry_factory = lambda: tool_registry.scoped(
+                set(json.loads(settings.AGENT_ALLOWED_TOOLS_JSON))
+            )
+        else:
+            self.registry_factory = registry_factory
         self.mcp_discoverer = mcp_discoverer or discover_mcp_tools
         self.event_sink = event_sink
 
@@ -198,7 +204,7 @@ class AgentRuntime:
 
         registry = self.registry_factory()
         for spec in await self.mcp_discoverer():
-            if registry.get(spec.name) is None:
+            if registry.get(spec.name) is None and registry.allows(spec.name):
                 registry.register(spec)
 
         tools = registry.definitions()
