@@ -187,10 +187,32 @@
 #### C3 — Assistant knowledge load error feedback: **مكتمل ومتحقق**
 - فشل تحميل ملفات معرفة المساعد في `AssistantEditor` لم يعد يتحول إلى قوائم فارغة صامتة؛ أصبح يرسل Global Toast برسالة مترجمة.
 - تمت إضافة ترجمة للرسالة بالعربية والإنجليزية.
-- تمت إضافة اختبار UI يتأكد من إرسال `app:toast` عند فشل تحميل ملفات معرفة المساعد.
+- تمت إضافة اختبار UI يتأكد من إرسال `app:toast` عند فشل التحميل.
 - commit الدمج `2914e8df4939adc55da6aa09bb87bf89bb2c255e`.
 - CI مكتمل بنجاح، وCodeQL وPublish backend image وProduction Smoke نجحت.
 - Render Frontend للـcommit أصبح **live**.
+
+#### C3 — Assistant knowledge action errors: **مكتمل ومتحقق**
+- أخطاء رفع/إرفاق/إزالة ملفات المعرفة في `AssistantEditor` أصبحت تستخدم Global Toast بدل الفشل الصامت.
+- أضيفت تغطية اختبارية للحالات الجديدة.
+- commit `199c411fead36f9efd38343f2028e7be6a50e395`.
+- CI وProduction Smoke نجحا، وRender نشر commit ثم استبدله لاحقًا بالتغييرات التالية.
+
+#### C3 — Workspace conversation comments: **مكتمل ومتحقق**
+- أخطاء تحميل/إضافة/تعديل/حذف تعليقات المحادثة في `WorkspaceConversationCommentsPanel` أصبحت تستخدم Global Toast.
+- أضيفت اختبارات UI لمسار فشل التحميل على الأقل.
+- commit `f272e471df2f707be747ec61b3d30774dc287657`.
+- CI وCodeQL وProduction Smoke نجحت، وRender نشر التغيير قبل الانتقال إلى Billing.
+
+#### C3 — Billing errors: **مكتمل ومتحقق**
+- أخطاء تحميل بيانات الاشتراك، بدء الدفع، وإلغاء الاشتراك أصبحت تستخدم Global Toast.
+- أضيفت اختبارات UI للحالات الثلاث.
+- commit الحالي `4e130239b37510083dff4ca8be2e901d5f79391a`.
+- CI: **نجح**.
+- CodeQL: **نجح**.
+- Publish backend image: **نجح**.
+- Production Smoke: **نجح**.
+- Render Frontend: **live**.
 
 #### C3 — الخطوة التالية
 مراجعة مسار UX آخر خارج Workspace، مع أولوية للشاشات التي تخفي فشل API أو تعرض حالة خطأ محلية بدل Global Toast عندما يكون Toast هو النمط المناسب.
