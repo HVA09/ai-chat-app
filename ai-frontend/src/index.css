@@ -914,3 +914,17 @@ html.dark .chat-message-user {
     border-radius: 20px !important;
   }
 }
+
+.modern-row-tools {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-inline-end: 3px;
+}
+.modern-row-tools input {
+  accent-color: #2563eb;
+}
+.modern-conversation-item .modern-conversation-menu {
+  top: calc(100% + 3px);
+  inset-inline-end: 8px;
+}
