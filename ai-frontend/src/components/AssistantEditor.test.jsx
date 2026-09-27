@@ -337,6 +337,112 @@ describe("AssistantEditor", () => {
     expect(await screen.findByDisplayValue("https://example.com/public-assistant/token")).toBeInTheDocument();
   });
 
+  it("shows a global toast when enabling the public link fails", async () => {
+    enableAssistantPublicLink.mockRejectedValueOnce({
+      response: { data: { detail: "Enable denied" } },
+    });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{ id: 7, name: "مساعد عام", description: "عام", instructions: "تعليمات" }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "تفعيل الرابط العام" }));
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Enable denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+    expect(screen.queryByText("Enable denied")).not.toBeInTheDocument();
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when rotating the public link fails", async () => {
+    getAssistantPublicSettings.mockResolvedValueOnce({
+      is_public: true,
+      public_token: "token",
+      public_url: "https://example.com/public-assistant/token",
+    });
+    rotateAssistantPublicLink.mockRejectedValueOnce({
+      response: { data: { detail: "Rotate denied" } },
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{ id: 7, name: "مساعد عام", description: "عام", instructions: "تعليمات" }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "تغيير الرابط" }));
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Rotate denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+    expect(screen.queryByText("Rotate denied")).not.toBeInTheDocument();
+    dispatchSpy.mockRestore();
+  });
+
+  it("shows a global toast when disabling the public link fails", async () => {
+    getAssistantPublicSettings.mockResolvedValueOnce({
+      is_public: true,
+      public_token: "token",
+      public_url: "https://example.com/public-assistant/token",
+    });
+    disableAssistantPublicLink.mockRejectedValueOnce({
+      response: { data: { detail: "Disable denied" } },
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{ id: 7, name: "مساعد عام", description: "عام", instructions: "تعليمات" }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "إيقاف الرابط العام" }));
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Disable denied" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+    expect(screen.queryByText("Disable denied")).not.toBeInTheDocument();
+    dispatchSpy.mockRestore();
+  });
+
+
   it("shows assistant usage analytics while editing", async () => {
     render(
       <AssistantEditor
