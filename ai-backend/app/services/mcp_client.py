@@ -200,6 +200,7 @@ async def discover_mcp_tools() -> list[ToolSpec]:
                     description=f"[MCP:{server.name}] {description}",
                     parameters=_tool_schema(remote_tool),
                     handler=handler,
+                    output_trust="untrusted",
                 )
             )
 
