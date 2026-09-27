@@ -1,5 +1,6 @@
 """إدارة المساعدين المخصصين للمستخدم الحالي."""
 import difflib
+import json
 from secrets import token_urlsafe
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -32,12 +33,24 @@ def _create_assistant_version(assistant: Assistant, db: Session) -> AssistantVer
     current_version = db.query(func.max(AssistantVersion.version)).filter(
         AssistantVersion.assistant_id == assistant.id
     ).scalar() or 0
+    knowledge_file_ids = [
+        file_id
+        for (file_id,) in db.query(AssistantFileLink.file_id)
+        .filter(AssistantFileLink.assistant_id == assistant.id)
+        .order_by(AssistantFileLink.file_id.asc())
+        .all()
+    ]
+    tool_policy_snapshot = {
+        "allowed_tools": sorted(json.loads(settings.AGENT_ALLOWED_TOOLS_JSON)),
+    }
     version = AssistantVersion(
         assistant_id=assistant.id,
         version=current_version + 1,
         name=assistant.name,
         description=assistant.description,
         instructions=assistant.instructions,
+        knowledge_file_ids=knowledge_file_ids,
+        tool_policy_snapshot=tool_policy_snapshot,
     )
     db.add(version)
     return version
