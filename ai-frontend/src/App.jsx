@@ -2435,7 +2435,7 @@ export default function App() {
         if (failedConversationId) {
           setRetryableUserMessage({
             conversationId: failedConversationId,
-            text: userText,
+            text: submittedText,
           });
         }
       },
