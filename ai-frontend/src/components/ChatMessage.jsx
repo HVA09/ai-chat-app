@@ -1,18 +1,93 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTranslation } from "react-i18next";
+import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+
+const prismLightPromise = import("react-syntax-highlighter/dist/esm/prism-light");
+const loadedPrismLanguages = new Set();
+
+const languageLoaders = {
+  javascript: () => import("react-syntax-highlighter/dist/esm/languages/prism/javascript"),
+  js: () => import("react-syntax-highlighter/dist/esm/languages/prism/javascript"),
+  typescript: () => import("react-syntax-highlighter/dist/esm/languages/prism/typescript"),
+  ts: () => import("react-syntax-highlighter/dist/esm/languages/prism/typescript"),
+  python: () => import("react-syntax-highlighter/dist/esm/languages/prism/python"),
+  py: () => import("react-syntax-highlighter/dist/esm/languages/prism/python"),
+  json: () => import("react-syntax-highlighter/dist/esm/languages/prism/json"),
+  bash: () => import("react-syntax-highlighter/dist/esm/languages/prism/bash"),
+  sh: () => import("react-syntax-highlighter/dist/esm/languages/prism/bash"),
+  shell: () => import("react-syntax-highlighter/dist/esm/languages/prism/bash"),
+  css: () => import("react-syntax-highlighter/dist/esm/languages/prism/css"),
+  html: () => import("react-syntax-highlighter/dist/esm/languages/prism/markup"),
+  xml: () => import("react-syntax-highlighter/dist/esm/languages/prism/markup"),
+  markup: () => import("react-syntax-highlighter/dist/esm/languages/prism/markup"),
+  sql: () => import("react-syntax-highlighter/dist/esm/languages/prism/sql"),
+  java: () => import("react-syntax-highlighter/dist/esm/languages/prism/java"),
+  c: () => import("react-syntax-highlighter/dist/esm/languages/prism/c"),
+  cpp: () => import("react-syntax-highlighter/dist/esm/languages/prism/cpp"),
+  csharp: () => import("react-syntax-highlighter/dist/esm/languages/prism/csharp"),
+  cs: () => import("react-syntax-highlighter/dist/esm/languages/prism/csharp"),
+  go: () => import("react-syntax-highlighter/dist/esm/languages/prism/go"),
+  rust: () => import("react-syntax-highlighter/dist/esm/languages/prism/rust"),
+  php: () => import("react-syntax-highlighter/dist/esm/languages/prism/php"),
+  ruby: () => import("react-syntax-highlighter/dist/esm/languages/prism/ruby"),
+};
 
 function CodeBlock({ className, children }) {
   const match = /language-(\w+)/.exec(className || "");
-  return match ? (
-    <SyntaxHighlighter language={match[1]} style={oneLight} PreTag="div">
+  const language = match?.[1]?.toLowerCase();
+  const [Highlighter, setHighlighter] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!language) {
+      setHighlighter(null);
+      return undefined;
+    }
+
+    const loader = languageLoaders[language];
+    if (!loader) {
+      setHighlighter(null);
+      return undefined;
+    }
+
+    const load = async () => {
+      const PrismLight = (await prismLightPromise).default;
+
+      if (!loadedPrismLanguages.has(language)) {
+        const languageModule = await loader();
+        PrismLight.registerLanguage(language, languageModule.default);
+        loadedPrismLanguages.add(language);
+      }
+
+      if (!cancelled) setHighlighter(() => PrismLight);
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [language]);
+
+  if (!match) {
+    return <code className="rounded bg-slate-100 px-1 py-0.5">{children}</code>;
+  }
+
+  if (!Highlighter) {
+    return (
+      <pre className="overflow-x-auto rounded bg-slate-100 p-3 text-xs">
+        <code>{String(children).replace(/\n$/, "")}</code>
+      </pre>
+    );
+  }
+
+  return (
+    <Highlighter language={language} style={oneLight} PreTag="div">
       {String(children).replace(/\n$/, "")}
-    </SyntaxHighlighter>
-  ) : (
-    <code className="rounded bg-slate-100 px-1 py-0.5">{children}</code>
+    </Highlighter>
   );
 }
 
