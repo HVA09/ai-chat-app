@@ -161,7 +161,7 @@ export default function ChatComposer({
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (!value.trim() || loading || attachmentUploading) return;
+        if ((!value.trim() && attachments.length === 0) || loading || attachmentUploading) return;
         onSend();
       }}
       onDragOver={(e) => {
@@ -218,7 +218,7 @@ export default function ChatComposer({
         </div>
       ) : null}
 
-      <div className="flex items-end gap-3">
+      <div className="chat-composer-row">
         <div className="chat-composer-input flex-1">
           <div className="relative">
             <textarea
@@ -288,6 +288,7 @@ export default function ChatComposer({
             </p>
           )}
         </div>
+        <div className="chat-composer-controls">
         {!loading && !isEditing ? (
           <>
             <label
@@ -305,6 +306,19 @@ export default function ChatComposer({
                 disabled={attachmentUploading}
               />
             </label>
+
+            {voiceSupported ? (
+              <button
+                type="button"
+                onClick={toggleVoiceInput}
+                title={isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
+                aria-label={isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
+                aria-pressed={isListening}
+                className={`chat-composer-control ${isListening ? "chat-composer-control-active" : ""}`}
+              >
+                <Icon name={isListening ? "stop" : "mic"} size={18} />
+              </button>
+            ) : null}
 
             <div className="relative">
               <button
@@ -394,48 +408,12 @@ export default function ChatComposer({
               ) : null}
             </div>
 
-            <div className="hidden">
-              {models.length > 0 ? (
-                <select
-                  value={selectedModel || ""}
-                  onChange={(event) => onSelectModel?.(event.target.value || null)}
-                  title={t("tools.modelSelector")}
-                  aria-label={t("tools.modelSelector")}
-                  className="max-w-[180px] rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                >
-                  {models.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.label}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-              {voiceSupported ? (
-                <button
-                  type="button"
-                  onClick={toggleVoiceInput}
-                  title={isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
-                  aria-label={isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
-                  aria-pressed={isListening}
-                  className={`rounded-2xl border px-3 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-slate-400 ${isListening ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-300" : "border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"}`}
-                >
-                  <Icon name={isListening ? "stop" : "mic"} size={18} />
-                </button>
-              ) : null}
-              <button type="button" onClick={onInsertCalculator} title={t("tools.calculator")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"><Icon name="calculator" size={18} /></button>
-              <button type="button" onClick={onInsertWebSearch} title={t("tools.webSearch")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"><Icon name="search" size={18} /></button>
-              <button type="button" onClick={onInsertAgent} title={t("tools.agent")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"><Icon name="robot" size={18} /></button>
-              <button type="button" onClick={onInsertPython} title={t("tools.python")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"><Icon name="code" size={18} /></button>
-              <button type="button" onClick={onInsertDataAnalysis} title={t("tools.dataAnalysis")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"><Icon name="chart" size={18} /></button>
-              <button type="button" onClick={onCompareModels} disabled={models.length < 2} title={t("tools.compareModels")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"><Icon name="scale" size={18} /></button>
-            </div>
-          </>
-        ) : null}
+
         {loading ? (
           <button
             type="button"
             onClick={onStop}
-            className="rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-400 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
+            className="chat-stop-button rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-400 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
           >
             <Icon name="stop" size={16} />
             {t("stop")}
@@ -443,13 +421,14 @@ export default function ChatComposer({
         ) : (
           <button
             type="submit"
-            disabled={!value.trim()}
-            className="rounded-2xl bg-slate-900 px-5 py-3 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-1 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+            disabled={!value.trim() && attachments.length === 0}
+            className="chat-send-button rounded-2xl bg-slate-900 px-5 py-3 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-1 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           >
             <Icon name="send" size={16} />
             <span>{isEditing ? saveEditLabel : t("send")}</span>
           </button>
         )}
+        </div>
       </div>
     </form>
   );
