@@ -306,7 +306,7 @@ export default function ChatComposer({
               />
             </label>
 
-            <div className="relative md:hidden">
+            <div className="relative">
               <button
                 type="button"
                 onClick={() => setToolsOpen((open) => !open)}
@@ -315,7 +315,7 @@ export default function ChatComposer({
                 aria-expanded={toolsOpen}
                 className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
               >
-                <Icon name="wrench" size={18} />
+                <Icon name="plus" size={18} />
               </button>
               {toolsOpen ? (
                 <div className="ui-popover absolute bottom-full end-0 z-30 mb-2 w-[min(92vw,20rem)] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
@@ -394,7 +394,7 @@ export default function ChatComposer({
               ) : null}
             </div>
 
-            <div className="hidden md:flex min-w-0 items-center gap-2">
+            <div className="hidden">
               {models.length > 0 ? (
                 <select
                   value={selectedModel || ""}

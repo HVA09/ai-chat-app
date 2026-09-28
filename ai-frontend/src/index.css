@@ -1247,3 +1247,29 @@ html.dark .chat-message-user {
 .chat-composer .ui-popover button {
   justify-content: flex-start;
 }
+
+
+/* UX v5: cleaner ChatGPT-style surfaces */
+.modern-sidebar{width:286px;min-width:286px;background:#f7f7f8;border-inline-end-color:rgba(17,24,39,.08)}
+.dark .modern-sidebar{background:#171717;border-inline-end-color:rgba(255,255,255,.08)}
+.modern-sidebar-top{padding:12px 12px 10px}
+.modern-new-chat{margin-top:8px;border-radius:10px;background:#fff;color:#171717;border:1px solid rgba(17,24,39,.1);box-shadow:none}
+.modern-new-chat:hover{background:#eeeeef;transform:none}
+.dark .modern-new-chat{background:#212121;color:#f5f5f5;border-color:rgba(255,255,255,.1)}
+.dark .modern-new-chat:hover{background:#2a2a2a}
+.modern-search{margin-top:8px;border-radius:10px;background:rgba(17,24,39,.045)}
+.dark .modern-search{background:rgba(255,255,255,.06)}
+.modern-conversation-item.active{box-shadow:none;background:#e8e8e9}
+.dark .modern-conversation-item.active{box-shadow:none;background:#2a2a2a}
+.modern-chat-dot{width:24px;height:24px;border-radius:7px}
+.modern-sidebar-section-toggle,.modern-library-toggle{border-radius:8px}
+.modern-sidebar-section-toggle:hover,.modern-library-toggle:hover{background:rgba(17,24,39,.05)}
+.dark .modern-sidebar-section-toggle:hover,.dark .modern-library-toggle:hover{background:rgba(255,255,255,.06)}
+.chat-composer .ui-popover{min-width:290px;max-width:min(94vw,340px);border-radius:16px!important}
+.chat-composer .ui-popover button{min-height:40px;border-radius:11px}
+@media (min-width:768px){
+.chat-composer> .flex.items-end.gap-3{max-width:960px;margin-inline:auto;padding:6px;border:1px solid rgba(17,24,39,.11);border-radius:20px;background:#fff;box-shadow:0 6px 24px rgba(0,0,0,.06)}
+.dark .chat-composer> .flex.items-end.gap-3{background:#212121;border-color:rgba(255,255,255,.1);box-shadow:0 6px 24px rgba(0,0,0,.18)}
+.chat-composer-input .chat-textarea{border:0!important;background:transparent!important;box-shadow:none!important}
+.chat-composer> .flex.items-end.gap-3>label,.chat-composer> .flex.items-end.gap-3> .relative>button,.chat-composer> .flex.items-end.gap-3>button{min-width:42px;min-height:42px;border-radius:13px!important}
+}

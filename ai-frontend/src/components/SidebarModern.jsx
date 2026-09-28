@@ -95,7 +95,7 @@ export default function SidebarModern({
 }) {
   const { t } = useTranslation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(true);
   const [openSection, setOpenSection] = useState(null);
   const [contextOpenId, setContextOpenId] = useState(null);
   const importRef = useRef(null);
@@ -128,10 +128,10 @@ export default function SidebarModern({
       ? t("sidebar.archivedTitle")
       : t("appName");
 
-  const visibleAssistants = useMemo(() => assistants.slice(0, 6), [assistants]);
-  const visibleProjects = useMemo(() => projects.slice(0, 6), [projects]);
-  const visibleFolders = useMemo(() => folders.slice(0, 8), [folders]);
-  const visibleTags = useMemo(() => tags.slice(0, 8), [tags]);
+  const visibleAssistants = useMemo(() => assistants, [assistants]);
+  const visibleProjects = useMemo(() => projects, [projects]);
+  const visibleFolders = useMemo(() => folders, [folders]);
+  const visibleTags = useMemo(() => tags, [tags]);
 
   const handleSelectAll = () => onToggleSelectAllVisible(recent.map((item) => item.id));
 
@@ -359,7 +359,7 @@ export default function SidebarModern({
               </Section>
 
               <Section title={t("sidebar.savedPromptsTitle")} icon="edit" open={openSection === "prompts"} onToggle={() => toggleSection("prompts")} action={<button type="button" className="modern-section-add" onClick={onCreateSavedPrompt}>+</button>}>
-                {savedPrompts.slice(0, 8).map((prompt) => (
+                {savedPrompts.map((prompt) => (
                   <div key={prompt.id} className="modern-library-item-group">
                     <button type="button" onClick={() => onUseSavedPrompt(prompt.content)} className="modern-library-item"><Icon name="edit" size={14} /><span className="truncate">{prompt.name}</span></button>
                     <button type="button" className="modern-item-action" onClick={() => onRenameSavedPrompt(prompt.id, prompt.name, prompt.content)} title={t("sidebar.editSavedPromptTitle")}><Icon name="edit" size={13} /></button>
