@@ -14,7 +14,6 @@ export async function uploadFile(
   if (workspaceId) params.workspace_id = workspaceId;
   if (projectId) params.project_id = projectId;
   const { data } = await api.post("/files/upload", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
     params,
     onUploadProgress: (event) => {
       if (onProgress && event.total) {

@@ -1,8 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import Sidebar from "./components/Sidebar";
+import SidebarModern from "./components/SidebarModern";
 import CommandPalette from "./components/CommandPalette";
-import ChatHeader from "./components/ChatHeader";
+import ChatHeaderModern from "./components/ChatHeaderModern";
 import ChatMessage from "./components/ChatMessage";
 import ChatComposer from "./components/ChatComposer";
 import ModelCompareDialog from "./components/ModelCompareDialog";
@@ -153,6 +153,7 @@ export default function App() {
   const [lang, setLang] = useState("ar");
   const [messages, setMessages] = useState(() => [getWelcomeMessage(t)]);
   const [conversationId, setConversationId] = useState(null);
+  const [activeConversationTitle, setActiveConversationTitle] = useState("");
   const [conversations, setConversations] = useState([]);
   const [selectedConversationIds, setSelectedConversationIds] = useState([]);
   const [conversationSearch, setConversationSearch] = useState("");
@@ -217,6 +218,8 @@ export default function App() {
   const [toolActivity, setToolActivity] = useState(null);
   const bottomRef = useRef(null);
   const streamAbortRef = useRef(null);
+  const conversationLoadRequestRef = useRef(0);
+  const conversationOpenRequestRef = useRef(0);
   const autoSummaryInFlightRef = useRef(false);
   const autoSummaryLastMessageCountRef = useRef({});
   const messageCountRef = useRef(messages.length);
@@ -448,6 +451,7 @@ export default function App() {
     if (reset) setConversationsLoading(true);
     else setConversationsLoadingMore(true);
 
+    const requestId = ++conversationLoadRequestRef.current;
     try {
       const list = await listConversations(
         includeArchived,
@@ -462,6 +466,7 @@ export default function App() {
       );
       const page = list.slice(0, pageSize);
 
+      if (requestId !== conversationLoadRequestRef.current) return;
       if (reset) {
         setConversations(page);
       } else {
@@ -1469,6 +1474,8 @@ export default function App() {
   };
 
   const openConversation = async (id) => {
+    const requestId = ++conversationOpenRequestRef.current;
+    setConversationId(Number(id));
     setShowShareManager(false);
     setReadOnlyConversation(false);
     setShowWorkspaceComments(false);
@@ -1481,7 +1488,9 @@ export default function App() {
     setRetryableUserMessage(null);
     try {
       const data = await getConversation(id);
+      if (requestId !== conversationOpenRequestRef.current) return;
       setConversationId(data.id);
+      setActiveConversationTitle(data.title || "");
       setParentConversationId(data.parent_conversation_id ?? null);
       messageCountRef.current = data.messages.length;
       autoSummaryLastMessageCountRef.current[data.id] = data.summary
@@ -1520,6 +1529,7 @@ export default function App() {
         }))
       );
     } catch (err) {
+      if (requestId !== conversationOpenRequestRef.current) return;
       setError("");
       setToast({
         message: getErrorMessage(err, t("app.conversationLoadError")),
@@ -1643,7 +1653,7 @@ export default function App() {
     try {
       for (const file of validFiles) {
         try {
-          const result = await uploadFile(file, undefined, conversationId, null);
+          const result = await uploadFile(file, undefined, conversationId, selectedWorkspaceId, selectedProjectId);
           uploadedAny = true;
           setChatAttachments((current) => [
             ...current,
@@ -2391,6 +2401,7 @@ export default function App() {
         setRetryableUserMessage(null);
         setChatAttachments([]);
         if (isNewConversation) {
+          setActiveConversationTitle(userText.slice(0, 50));
           refreshConversations(
             showArchivedConversations,
             selectedFolderId,
@@ -2794,8 +2805,9 @@ export default function App() {
 
   return (
     <div className="app-shell flex h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <Sidebar
+      <SidebarModern
         conversations={conversations}
+        selectedConversationId={conversationId}
         onSelectConversation={openConversation}
         onNewChat={startNewChat}
         onImportConversation={handleImportConversation}
@@ -2887,7 +2899,8 @@ export default function App() {
         onLoadMore={loadMoreConversations}
       />
       <main className="app-main flex flex-1 flex-col">
-        <ChatHeader
+        <ChatHeaderModern
+          conversationTitle={conversations.find((item) => Number(item.id) === Number(conversationId))?.title || ""}
           lang={lang}
           setLang={switchLang}
           onLogout={logout}
@@ -2974,7 +2987,7 @@ export default function App() {
             </div>
           ) : null}
 
-          <div className="chat-surface flex-1 space-y-4 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="chat-surface mx-auto flex w-full max-w-5xl flex-1 space-y-4 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             {empty ? (
               <div className="flex h-full flex-col items-center justify-center text-center text-slate-500">
                 <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{t("emptyTitle")}</h3>
@@ -3105,6 +3118,7 @@ export default function App() {
             {t("workspaceSharing.readOnly")}
           </div>
         ) : (
+          <div className="composer-stage mx-auto w-full max-w-5xl">
           <ChatComposer
             value={input}
           setValue={setInput}
@@ -3148,6 +3162,7 @@ export default function App() {
           selectedModel={selectedModel}
           onSelectModel={setSelectedModel}
           />
+          </div>
         )}
       </main>
 
