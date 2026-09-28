@@ -218,7 +218,7 @@ export default function ChatComposer({
       ) : null}
 
       <div className="flex items-end gap-3">
-        <div className="flex-1">
+        <div className="chat-composer-input flex-1">
           <div className="relative">
             <textarea
               ref={textareaRef}
