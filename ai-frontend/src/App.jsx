@@ -2897,8 +2897,10 @@ export default function App() {
         loadingMore={conversationsLoadingMore}
         hasMore={hasMoreConversations}
         onLoadMore={loadMoreConversations}
-      />\n      <main className="app-main flex flex-1 flex-col">
-        <ChatHeaderModern\n          conversationTitle={conversations.find((item) => Number(item.id) === Number(conversationId))?.title || ""}
+      />
+      <main className="app-main flex flex-1 flex-col">
+        <ChatHeaderModern
+          conversationTitle={conversations.find((item) => Number(item.id) === Number(conversationId))?.title || ""}
           lang={lang}
           setLang={switchLang}
           onLogout={logout}
