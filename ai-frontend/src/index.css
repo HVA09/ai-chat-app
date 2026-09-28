@@ -1234,3 +1234,16 @@ html.dark .chat-message-user {
     transition: none !important;
   }
 }
+
+
+/* ===== UX v4: consistent icon controls ===== */
+.chat-composer label,
+.chat-composer button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+.chat-composer .ui-popover button {
+  justify-content: flex-start;
+}
