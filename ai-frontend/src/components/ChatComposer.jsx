@@ -419,7 +419,7 @@ export default function ChatComposer({
                   aria-pressed={isListening}
                   className={`rounded-2xl border px-3 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-slate-400 ${isListening ? "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-300" : "border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"}`}
                 >
-                  {isListening ? "⏹️" : "🎙️"}
+                  <Icon name={isListening ? "stop" : "mic"} size={18} />
                 </button>
               ) : null}
               <button type="button" onClick={onInsertCalculator} title={t("tools.calculator")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"><Icon name="calculator" size={18} /></button>
