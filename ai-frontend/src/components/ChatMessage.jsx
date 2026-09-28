@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useId, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useTranslation } from "react-i18next";
+import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 const prismLightPromise = import("react-syntax-highlighter/dist/esm/prism-light");
 const loadedPrismLanguages = new Set();
