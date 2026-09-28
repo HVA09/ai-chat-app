@@ -1,9 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const api = {
+const api = vi.hoisted(() => ({
   post: vi.fn(),
   get: vi.fn(),
-};
+}));
 
 vi.mock("./api", () => ({ default: api }));
 
