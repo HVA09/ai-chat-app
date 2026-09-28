@@ -1088,7 +1088,7 @@ html.dark .chat-message-user {
   }
   .modern-chat-header {
     min-height: 60px;
-    padding: 9px 10px 9px 58px;
+    padding: 9px 10px;
     gap: 8px;
   }
   .modern-chat-header h2 {
