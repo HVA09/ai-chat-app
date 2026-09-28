@@ -128,7 +128,7 @@ export default function ChatHeaderModern({
         ) : null}
 
         <div className="relative">
-          <button type="button" onClick={() => setMenuOpen((value) => !value)} className="modern-header-more" aria-label={t("header.more")} aria-expanded={menuOpen}>
+          <button type="button" onClick={() => { setMenuOpen((value) => !value); setSettingsOpen(false); }} className="modern-header-more" aria-label={t("header.more")} aria-expanded={menuOpen}>
             <Icon name="more" size={18} />
           </button>
           {menuOpen ? (
