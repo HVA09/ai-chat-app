@@ -1,16 +1,35 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useTranslation } from "react-i18next";
+
+const SyntaxHighlighter = lazy(() =>
+  Promise.all([
+    import("react-syntax-highlighter"),
+    import("react-syntax-highlighter/dist/esm/styles/prism"),
+  ]).then(([highlighter, styles]) => {
+    const PrismHighlighter = highlighter.Prism;
+    const style = styles.oneLight;
+    return {
+      default: (props) => <PrismHighlighter {...props} style={style} />,
+    };
+  })
+);
 
 function CodeBlock({ className, children }) {
   const match = /language-(\w+)/.exec(className || "");
   return match ? (
-    <SyntaxHighlighter language={match[1]} style={oneLight} PreTag="div">
-      {String(children).replace(/\n$/, "")}
-    </SyntaxHighlighter>
+    <Suspense
+      fallback={
+        <pre className="overflow-x-auto rounded bg-slate-100 p-3 text-xs">
+          <code>{String(children).replace(/\n$/, "")}</code>
+        </pre>
+      }
+    >
+      <SyntaxHighlighter language={match[1]} PreTag="div">
+        {String(children).replace(/\n$/, "")}
+      </SyntaxHighlighter>
+    </Suspense>
   ) : (
     <code className="rounded bg-slate-100 px-1 py-0.5">{children}</code>
   );
