@@ -35,11 +35,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           "react-vendor": ["react", "react-dom", "react-is"],
-          "markdown-vendor": [
-            "react-markdown",
-            "remark-gfm",
-            "react-syntax-highlighter",
-          ],
+          "markdown-vendor": ["react-markdown", "remark-gfm"],
           "charts-vendor": ["recharts"],
           "i18n-vendor": ["i18next", "react-i18next"],
         },
