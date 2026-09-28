@@ -413,7 +413,8 @@ export default function ChatComposer({
                 </div>
               ) : null}
             </div>
-
+          </>
+        ) : null}
 
         {loading ? (
           <button
