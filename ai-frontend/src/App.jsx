@@ -2328,16 +2328,18 @@ export default function App() {
     }
 
     const userText = input.trim();
-    if (!userText) return;
-
     const fileIds = chatAttachments.map((file) => file.id);
+    if (!userText && fileIds.length === 0) return;
+    const submittedText =
+      userText ||
+      (document.documentElement.lang === "ar" ? "أرسل لي الملف المرفق وحلله." : "Please analyze the attached file.");
     clearChatDraft(currentUser?.id, conversationId);
     setError("");
     setRetryableUserMessage(null);
     messageCountRef.current += 2;
     setMessages((prev) => [
       ...prev,
-      { role: "user", text: userText, time: new Date().toLocaleTimeString() },
+      { role: "user", text: submittedText, time: new Date().toLocaleTimeString() },
       { role: "assistant", text: "", time: new Date().toLocaleTimeString(), feedback: null },
     ]);
     setInput("");
@@ -2359,7 +2361,7 @@ export default function App() {
       });
     };
 
-    await streamChatMessage(userText, conversationId, selectedAssistantId, {
+    await streamChatMessage(submittedText, conversationId, selectedAssistantId, {
       signal: controller.signal,
       workspaceId: selectedWorkspaceId,
       projectId: selectedProjectId,
@@ -2401,7 +2403,7 @@ export default function App() {
         setRetryableUserMessage(null);
         setChatAttachments([]);
         if (isNewConversation) {
-          setActiveConversationTitle(userText.slice(0, 50));
+          setActiveConversationTitle(submittedText.slice(0, 50));
           refreshConversations(
             showArchivedConversations,
             selectedFolderId,
