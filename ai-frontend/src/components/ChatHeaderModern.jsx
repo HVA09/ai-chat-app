@@ -56,9 +56,11 @@ export default function ChatHeaderModern({
         </div>
       </div>
 
-      <div className="flex items-center gap-1.5">
-        <LanguageToggle lang={lang} setLang={setLang} />
-        <ThemeToggle />
+      <div className="modern-header-actions flex items-center gap-1.5">
+        <div className="modern-header-preferences flex items-center gap-1.5">
+          <LanguageToggle lang={lang} setLang={setLang} />
+          <ThemeToggle />
+        </div>
         <NotificationBell
           notifications={notifications}
           onMarkRead={onMarkNotificationRead}
@@ -89,6 +91,7 @@ export default function ChatHeaderModern({
           </button>
           {menuOpen ? (
             <div className="modern-header-menu modern-header-menu-wide">
+              <div className="modern-header-menu-label">{lang === "ar" ? "المحادثة" : "Conversation"}</div>
               <button type="button" disabled={!canShareConversation} onClick={() => { onShareConversation?.(); setMenuOpen(false); }} className="modern-header-menu-item">{t("sharing.shareButton")}</button>
               <button type="button" disabled={!canManageShares} onClick={() => { onManageShares?.(); setMenuOpen(false); }} className="modern-header-menu-item">{t("sharing.manageButton")}</button>
               <button type="button" disabled={!canShareWithWorkspace} onClick={() => { onToggleWorkspaceShare?.(); setMenuOpen(false); }} className="modern-header-menu-item">{workspaceShareActive ? t("workspaceSharing.unshareButton") : t("workspaceSharing.shareButton")}</button>
@@ -96,9 +99,13 @@ export default function ChatHeaderModern({
               <button type="button" disabled={!canExportConversation} onClick={() => { onExportConversation?.("json"); setMenuOpen(false); }} className="modern-header-menu-item">{t("exportJson")}</button>
               <button type="button" disabled={!canGenerateConversationTitle || titleLoading} onClick={() => { onGenerateConversationTitle?.(); setMenuOpen(false); }} className="modern-header-menu-item">{titleLoading ? t("conversationTitle.loading") : t("conversationTitle.generateButton")}</button>
               <button type="button" disabled={!canSummarizeConversation || summaryLoading} onClick={() => { onSummarizeConversation?.(); setMenuOpen(false); }} className="modern-header-menu-item">{summaryLoading ? t("summary.loading") : t("summary.button")}</button>
+              <div className="modern-header-menu-divider" />
+              <div className="modern-header-menu-label">{lang === "ar" ? "مساحة العمل والملفات" : "Workspace & files"}</div>
               <button type="button" onClick={() => { onOpenFiles?.(); setMenuOpen(false); }} className="modern-header-menu-item">{t("header.files")}</button>
               <button type="button" onClick={() => { onOpenBilling?.(); setMenuOpen(false); }} className="modern-header-menu-item">{t("header.billing")}</button>
               {isAdmin ? <button type="button" onClick={() => { onOpenAdmin?.(); setMenuOpen(false); }} className="modern-header-menu-item">{t("header.admin")}</button> : null}
+              <div className="modern-header-menu-divider" />
+              <div className="modern-header-menu-label">{lang === "ar" ? "الحساب" : "Account"}</div>
               <button type="button" onClick={() => { onOpenAccount?.(); setMenuOpen(false); }} className="modern-header-menu-item">{t("header.account")}</button>
               <div className="modern-header-menu-divider" />
               <button type="button" onClick={() => { onLogout?.(); setMenuOpen(false); }} className="modern-header-menu-item danger">{t("logout")}</button>
