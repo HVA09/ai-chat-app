@@ -42,6 +42,7 @@ describe("ChatComposer tools", () => {
       />
     );
 
+    await user.click(screen.getByTitle("فتح أدوات الرسالة"));
     await user.click(screen.getByTitle("بحث الويب"));
     expect(onInsertWebSearch).toHaveBeenCalled();
   });
@@ -64,6 +65,7 @@ describe("ChatComposer tools", () => {
       />
     );
 
+    await user.click(screen.getByTitle("فتح أدوات الرسالة"));
     await user.click(screen.getByTitle("تحليل البيانات"));
     expect(onInsertDataAnalysis).toHaveBeenCalled();
   });
@@ -86,6 +88,7 @@ describe("ChatComposer tools", () => {
       />
     );
 
+    await user.click(screen.getByTitle("فتح أدوات الرسالة"));
     await user.click(screen.getByTitle("مفسّر بايثون آمن"));
     expect(onInsertPython).toHaveBeenCalled();
   });
@@ -104,6 +107,7 @@ describe("ChatComposer tools", () => {
       />
     );
 
+    await user.click(screen.getByTitle("فتح أدوات الرسالة"));
     await user.click(screen.getByTitle("الآلة الحاسبة"));
     expect(onInsertCalculator).toHaveBeenCalled();
   });
@@ -175,6 +179,7 @@ describe("ChatComposer tools", () => {
       />
     );
 
+    await user.click(screen.getByTitle("فتح أدوات الرسالة"));
     const select = screen.getByLabelText("نموذج الذكاء الاصطناعي");
     expect(screen.getByRole("option", { name: "gemini-2.5-flash" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "gemini-test" })).toBeInTheDocument();
@@ -200,6 +205,7 @@ describe("ChatComposer tools", () => {
       />
     );
 
+    await user.click(screen.getByTitle("فتح أدوات الرسالة"));
     await user.click(screen.getByTitle("وضع الوكيل"));
     expect(onInsertAgent).toHaveBeenCalled();
   });
