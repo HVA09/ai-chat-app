@@ -57,7 +57,7 @@ export default function ChatHeaderModern({
       </div>
 
       <div className="modern-header-actions flex items-center gap-1.5">
-        <div className="modern-header-preferences flex items-center gap-1.5">
+        <div className="modern-header-preferences hidden items-center gap-1.5 sm:flex">
           <LanguageToggle lang={lang} setLang={setLang} />
           <ThemeToggle />
         </div>
@@ -70,7 +70,7 @@ export default function ChatHeaderModern({
         {conversationBranches.length > 0 ? (
           <div className="relative hidden sm:block">
             <button type="button" onClick={() => setBranchOpen((value) => !value)} className="modern-header-icon-action" title={t("chat.branchListTitle")}>
-              <Icon name="more" size={18} />
+              <Icon name="gitBranch" size={18} />
             </button>
             {branchOpen ? (
               <div className="modern-header-menu">
@@ -91,6 +91,12 @@ export default function ChatHeaderModern({
           </button>
           {menuOpen ? (
             <div className="modern-header-menu modern-header-menu-wide">
+              <div className="modern-header-menu-label">{lang === "ar" ? "التفضيلات" : "Preferences"}</div>
+              <div className="flex items-center justify-between gap-3 px-3 py-2">
+                <LanguageToggle lang={lang} setLang={setLang} />
+                <ThemeToggle />
+              </div>
+              <div className="modern-header-menu-divider" />
               <div className="modern-header-menu-label">{lang === "ar" ? "المحادثة" : "Conversation"}</div>
               <button type="button" disabled={!canShareConversation} onClick={() => { onShareConversation?.(); setMenuOpen(false); }} className="modern-header-menu-item">{t("sharing.shareButton")}</button>
               <button type="button" disabled={!canManageShares} onClick={() => { onManageShares?.(); setMenuOpen(false); }} className="modern-header-menu-item">{t("sharing.manageButton")}</button>

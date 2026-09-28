@@ -95,8 +95,8 @@ export default function SidebarModern({
 }) {
   const { t } = useTranslation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [libraryOpen, setLibraryOpen] = useState(true);
-  const [openSection, setOpenSection] = useState("projects");
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [openSection, setOpenSection] = useState(null);
   const [contextOpenId, setContextOpenId] = useState(null);
   const importRef = useRef(null);
 
