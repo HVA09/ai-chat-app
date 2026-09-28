@@ -267,7 +267,6 @@ export default function SidebarModern({
                       </div>
                     ) : null}
                   </div>
-                  </div>
                 );
               })}
               {hasMore ? (
