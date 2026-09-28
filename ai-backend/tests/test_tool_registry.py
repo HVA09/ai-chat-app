@@ -16,12 +16,14 @@ def test_builtin_tool_registry_has_expected_tools():
         "python",
         "web_search",
         "analyze_data",
+        "create_project_archive",
     )
     assert [item["function"]["name"] for item in tool_registry.definitions()] == [
         "calculator",
         "python",
         "web_search",
         "analyze_data",
+        "create_project_archive",
     ]
 
 
