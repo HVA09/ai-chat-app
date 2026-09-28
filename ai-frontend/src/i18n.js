@@ -197,7 +197,9 @@ const resources = {
         billing: "الاشتراك",
         files: "الملفات",
         account: "الحساب",
+        settings: "الإعدادات",
         more: "المزيد",
+        openNavigation: "فتح القائمة",
       },
 
       auth: {
@@ -1302,7 +1304,9 @@ const resources = {
         billing: "Billing",
         files: "Files",
         account: "Account",
+        settings: "Settings",
         more: "More",
+        openNavigation: "Open navigation",
       },
 
       auth: {
