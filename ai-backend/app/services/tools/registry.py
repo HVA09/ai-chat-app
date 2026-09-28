@@ -488,7 +488,7 @@ tool_registry.register(
 tool_registry.register(
     ToolSpec(
         name="create_project_archive",
-        description="Create a downloadable ZIP project from small text files. Use for building a project from scratch. Never execute the generated code.",
+        description="Build a downloadable ZIP project from small text files. When the user asks to build or create a project, use this tool instead of claiming the agent is text-only. Never execute the generated code.",
         parameters={
             "type": "object",
             "properties": {
