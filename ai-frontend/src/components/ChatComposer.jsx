@@ -354,6 +354,7 @@ export default function ChatComposer({
                     <button
                       type="button"
                       onClick={() => { onInsertCalculator?.(); setToolsOpen(false); }}
+                      title={t("tools.calculator")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
                       <Icon name="calculator" size={16} /> {t("tools.calculatorShort")}
@@ -361,6 +362,7 @@ export default function ChatComposer({
                     <button
                       type="button"
                       onClick={() => { onInsertWebSearch?.(); setToolsOpen(false); }}
+                      title={t("tools.webSearch")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
                       <Icon name="search" size={16} /> {t("tools.webSearchShort")}
@@ -368,6 +370,7 @@ export default function ChatComposer({
                     <button
                       type="button"
                       onClick={() => { onInsertDataAnalysis?.(); setToolsOpen(false); }}
+                      title={t("tools.dataAnalysis")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
                       <Icon name="chart" size={16} /> {t("tools.dataAnalysisShort")}
@@ -375,6 +378,7 @@ export default function ChatComposer({
                     <button
                       type="button"
                       onClick={() => { onInsertAgent?.(); setToolsOpen(false); }}
+                      title={t("tools.agent")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
                       <Icon name="robot" size={16} /> {t("tools.agentShort")}
@@ -383,6 +387,7 @@ export default function ChatComposer({
                       type="button"
                       onClick={() => { onCompareModels?.(); setToolsOpen(false); }}
                       disabled={models.length < 2}
+                      title={t("tools.compareModels")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
                       <Icon name="scale" size={16} /> {t("tools.compareModelsShort")}
@@ -390,6 +395,7 @@ export default function ChatComposer({
                     <button
                       type="button"
                       onClick={() => { onInsertPython?.(); setToolsOpen(false); }}
+                      title={t("tools.python")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
                       <Icon name="code" size={16} /> {t("tools.pythonShort")}
