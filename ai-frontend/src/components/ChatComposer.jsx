@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import Icon from "./ui/Icon";
 
 // لازم يطابق حد ChatRequest.message بالباكيند (Field max_length=4000) — بدونه المستخدم
 // يقدر يبعت رسالة أطول من المسموح ويوصله خطأ 422 بدل ما نمنعه من الأساس
@@ -191,7 +192,7 @@ export default function ChatComposer({
               key={file.id}
               className="attachment-chip flex max-w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
             >
-              <span aria-hidden="true">📎</span>
+              <Icon name="paperclip" size={14} />
               <span className="max-w-56 truncate">{file.original_filename}</span>
               <button
                 type="button"
@@ -314,7 +315,7 @@ export default function ChatComposer({
                 aria-expanded={toolsOpen}
                 className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
               >
-                🧰
+                <Icon name="wrench" size={18} />
               </button>
               {toolsOpen ? (
                 <div className="ui-popover absolute bottom-full end-0 z-30 mb-2 w-[min(92vw,20rem)] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
@@ -341,28 +342,28 @@ export default function ChatComposer({
                       onClick={() => { onInsertCalculator?.(); setToolsOpen(false); }}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
-                      🧮 {t("tools.calculatorShort")}
+                      <Icon name="calculator" size={16} /> {t("tools.calculatorShort")}
                     </button>
                     <button
                       type="button"
                       onClick={() => { onInsertWebSearch?.(); setToolsOpen(false); }}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
-                      🔎 {t("tools.webSearchShort")}
+                      <Icon name="search" size={16} /> {t("tools.webSearchShort")}
                     </button>
                     <button
                       type="button"
                       onClick={() => { onInsertDataAnalysis?.(); setToolsOpen(false); }}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
-                      📊 {t("tools.dataAnalysisShort")}
+                      <Icon name="chart" size={16} /> {t("tools.dataAnalysisShort")}
                     </button>
                     <button
                       type="button"
                       onClick={() => { onInsertAgent?.(); setToolsOpen(false); }}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
-                      🤖 {t("tools.agentShort")}
+                      <Icon name="robot" size={16} /> {t("tools.agentShort")}
                     </button>
                     <button
                       type="button"
@@ -370,14 +371,14 @@ export default function ChatComposer({
                       disabled={models.length < 2}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
-                      ⚖️ {t("tools.compareModelsShort")}
+                      <Icon name="scale" size={16} /> {t("tools.compareModelsShort")}
                     </button>
                     <button
                       type="button"
                       onClick={() => { onInsertPython?.(); setToolsOpen(false); }}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
-                      🐍 {t("tools.pythonShort")}
+                      <Icon name="code" size={16} /> {t("tools.pythonShort")}
                     </button>
                     {voiceSupported ? (
                       <button
@@ -385,7 +386,7 @@ export default function ChatComposer({
                         onClick={() => { toggleVoiceInput(); setToolsOpen(false); }}
                         className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                       >
-                        🎙️ {isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
+                        <Icon name={isListening ? "stop" : "mic"} size={16} /> {isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
                       </button>
                     ) : null}
                   </div>
@@ -421,12 +422,12 @@ export default function ChatComposer({
                   {isListening ? "⏹️" : "🎙️"}
                 </button>
               ) : null}
-              <button type="button" onClick={onInsertCalculator} title={t("tools.calculator")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">🧮</button>
-              <button type="button" onClick={onInsertWebSearch} title={t("tools.webSearch")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">🔎</button>
-              <button type="button" onClick={onInsertAgent} title={t("tools.agent")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">🤖</button>
-              <button type="button" onClick={onInsertPython} title={t("tools.python")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">🐍</button>
-              <button type="button" onClick={onInsertDataAnalysis} title={t("tools.dataAnalysis")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">📊</button>
-              <button type="button" onClick={onCompareModels} disabled={models.length < 2} title={t("tools.compareModels")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700">⚖️</button>
+              <button type="button" onClick={onInsertCalculator} title={t("tools.calculator")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"><Icon name="calculator" size={18} /></button>
+              <button type="button" onClick={onInsertWebSearch} title={t("tools.webSearch")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"><Icon name="search" size={18} /></button>
+              <button type="button" onClick={onInsertAgent} title={t("tools.agent")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"><Icon name="robot" size={18} /></button>
+              <button type="button" onClick={onInsertPython} title={t("tools.python")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"><Icon name="code" size={18} /></button>
+              <button type="button" onClick={onInsertDataAnalysis} title={t("tools.dataAnalysis")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"><Icon name="chart" size={18} /></button>
+              <button type="button" onClick={onCompareModels} disabled={models.length < 2} title={t("tools.compareModels")} className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"><Icon name="scale" size={18} /></button>
             </div>
           </>
         ) : null}
@@ -436,6 +437,7 @@ export default function ChatComposer({
             onClick={onStop}
             className="rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-red-700 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-400 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
           >
+            <Icon name="stop" size={16} />
             {t("stop")}
           </button>
         ) : (
@@ -444,7 +446,8 @@ export default function ChatComposer({
             disabled={!value.trim()}
             className="rounded-2xl bg-slate-900 px-5 py-3 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-1 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           >
-            {isEditing ? saveEditLabel : t("send")}
+            <Icon name="send" size={16} />
+            <span>{isEditing ? saveEditLabel : t("send")}</span>
           </button>
         )}
       </div>
