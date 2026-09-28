@@ -2989,9 +2989,27 @@ export default function App() {
 
           <div className="chat-surface mx-auto flex w-full max-w-5xl flex-1 space-y-4 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             {empty ? (
-              <div className="flex h-full flex-col items-center justify-center text-center text-slate-500">
+              <div className="empty-state flex h-full flex-col items-center justify-center px-4 text-center">
+                <div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-slate-900 text-xs font-extrabold tracking-[0.12em] text-white shadow-lg dark:bg-slate-100 dark:text-slate-900">AI</div>
                 <h3 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{t("emptyTitle")}</h3>
-                <p className="mt-2 max-w-md">{t("emptyDesc")}</p>
+                <p className="mt-2 max-w-lg text-sm leading-6 text-slate-500 dark:text-slate-400">{t("emptyDesc")}</p>
+                <div className="mt-6 grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
+                  {[
+                    { label: document.documentElement.lang === "ar" ? "اشرح لي شيئًا" : "Explain something", value: document.documentElement.lang === "ar" ? "اشرح لي موضوعًا بطريقة بسيطة مع أمثلة." : "Explain a topic simply with examples." },
+                    { label: document.documentElement.lang === "ar" ? "حلل ملفًا" : "Analyze a file", value: document.documentElement.lang === "ar" ? "سأرفع ملفًا. ساعدني في تحليله واستخراج أهم النقاط." : "I will upload a file. Help me analyze it and extract the key points." },
+                    { label: document.documentElement.lang === "ar" ? "اكتب كودًا" : "Write code", value: document.documentElement.lang === "ar" ? "اكتب لي مثالًا برمجيًا وفسّر الكود خطوة بخطوة." : "Write a coding example and explain it step by step." },
+                    { label: document.documentElement.lang === "ar" ? "ساعدني على التعلم" : "Help me learn", value: document.documentElement.lang === "ar" ? "أنشئ لي خطة تعلم عملية لهذا الموضوع." : "Create a practical learning plan for this topic." },
+                  ].map((prompt) => (
+                    <button
+                      key={prompt.label}
+                      type="button"
+                      onClick={() => setInput(prompt.value)}
+                      className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-start text-sm font-medium text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800"
+                    >
+                      {prompt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : (
               messages.map((msg, index) => {

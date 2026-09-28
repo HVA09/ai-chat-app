@@ -103,6 +103,17 @@ export default function SidebarModern({
   const recent = conversations || [];
   const allSelected = recent.length > 0 && recent.every((item) => selectedConversationIds.includes(item.id));
 
+  const formatConversationMeta = (item) => {
+    const value = item.updated_at ?? item.created_at;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const now = new Date();
+    const sameDay = now.toDateString() === date.toDateString();
+    return sameDay
+      ? date.toLocaleTimeString(document.documentElement.lang === "ar" ? "ar-LY" : "en-US", { hour: "numeric", minute: "2-digit" })
+      : date.toLocaleDateString(document.documentElement.lang === "ar" ? "ar-LY" : "en-US", { month: "short", day: "numeric" });
+  };
+
   const selectConversation = async (id) => {
     setMobileOpen(false);
     setContextOpenId(null);
@@ -229,7 +240,7 @@ export default function SidebarModern({
                       <span className="modern-chat-dot"><Icon name="chat" size={14} /></span>
                       <span className="min-w-0 flex-1 text-start">
                         <span className="block truncate text-sm font-medium">{item.title}</span>
-                        <span className="block truncate text-[11px] text-slate-400">{new Date(item.updated_at ?? item.created_at).toLocaleDateString()}</span>
+                        <span className="block truncate text-[11px] text-slate-400">{formatConversationMeta(item)}</span>
                       </span>
                       {item.is_pinned ? <span className="text-amber-500">★</span> : null}
                     </button>
