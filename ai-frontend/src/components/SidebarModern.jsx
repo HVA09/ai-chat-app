@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import WorkspaceSharedConversationsPanel from "./WorkspaceSharedConversationsPanel";
 import Icon from "./ui/Icon";
@@ -100,6 +100,17 @@ export default function SidebarModern({
   const [contextOpenId, setContextOpenId] = useState(null);
   const importRef = useRef(null);
 
+  useEffect(() => {
+    const handleOpen = () => setMobileOpen(true);
+    const handleClose = () => setMobileOpen(false);
+    window.addEventListener("app:open-sidebar", handleOpen);
+    window.addEventListener("app:close-sidebar", handleClose);
+    return () => {
+      window.removeEventListener("app:open-sidebar", handleOpen);
+      window.removeEventListener("app:close-sidebar", handleClose);
+    };
+  }, []);
+
   const recent = conversations || [];
   const allSelected = recent.length > 0 && recent.every((item) => selectedConversationIds.includes(item.id));
 
@@ -114,8 +125,10 @@ export default function SidebarModern({
       : date.toLocaleDateString(document.documentElement.lang === "ar" ? "ar-LY" : "en-US", { month: "short", day: "numeric" });
   };
 
+  const closeMobile = () => setMobileOpen(false);
+
   const selectConversation = async (id) => {
-    setMobileOpen(false);
+    closeMobile();
     setContextOpenId(null);
     await onSelectConversation(id);
   };
@@ -145,15 +158,6 @@ export default function SidebarModern({
           className="modern-sidebar-backdrop md:hidden"
         />
       ) : null}
-
-      <button
-        type="button"
-        className="modern-mobile-menu md:hidden"
-        onClick={() => setMobileOpen(true)}
-        aria-label="Open navigation"
-      >
-        <Icon name="menu" size={19} />
-      </button>
 
       <aside className={`modern-sidebar ${mobileOpen ? "modern-sidebar-open" : ""}`}>
         <div className="modern-sidebar-top">
@@ -298,7 +302,7 @@ export default function SidebarModern({
           {libraryOpen ? (
             <div className="modern-library-scroll">
               <Section title={t("sidebar.projectsTitle")} icon="project" open={openSection === "projects"} onToggle={() => toggleSection("projects")} action={<button type="button" className="modern-section-add" onClick={onCreateProject}>+</button>}>
-                <button type="button" onClick={() => onSelectProject(null)} className={`modern-library-item ${selectedProjectId === null ? "active" : ""}`}><Icon name="project" size={14} /><span>{t("sidebar.allProjects")}</span></button>
+                <button type="button" onClick={() => { closeMobile(); onSelectProject(null); }} className={`modern-library-item ${selectedProjectId === null ? "active" : ""}`}><Icon name="project" size={14} /><span>{t("sidebar.allProjects")}</span></button>
                 {visibleProjects.map((project) => (
                   <div key={project.id} className="modern-library-item-group">
                     <button type="button" onClick={() => onSelectProject(project.id)} className={`modern-library-item ${selectedProjectId === project.id ? "active" : ""}`}><Icon name="project" size={14} /><span className="truncate">{project.name}</span></button>
@@ -310,7 +314,7 @@ export default function SidebarModern({
               </Section>
 
               <Section title={t("sidebar.foldersTitle")} icon="folder" open={openSection === "folders"} onToggle={() => toggleSection("folders")} action={<button type="button" className="modern-section-add" onClick={onCreateFolder}>+</button>}>
-                <button type="button" onClick={() => onSelectFolder(null)} className={`modern-library-item ${selectedFolderId === null ? "active" : ""}`}><Icon name="folder" size={14} /><span>{t("sidebar.allConversations")}</span></button>
+                <button type="button" onClick={() => { closeMobile(); onSelectFolder(null); }} className={`modern-library-item ${selectedFolderId === null ? "active" : ""}`}><Icon name="folder" size={14} /><span>{t("sidebar.allConversations")}</span></button>
                 {visibleFolders.map((folder) => (
                   <div key={folder.id} className="modern-library-item-group">
                     <button type="button" onClick={() => onSelectFolder(folder.id)} className={`modern-library-item ${selectedFolderId === folder.id ? "active" : ""}`}><span className={`h-2.5 w-2.5 rounded-full bg-slate-400`} /><span className="truncate">{folder.name}</span></button>
@@ -323,7 +327,7 @@ export default function SidebarModern({
               </Section>
 
               <Section title={t("sidebar.assistantsTitle")} icon="robot" open={openSection === "assistants"} onToggle={() => toggleSection("assistants")} action={<button type="button" className="modern-section-add" onClick={onCreateAssistant}>+</button>}>
-                <button type="button" onClick={() => onSelectAssistant(null)} className={`modern-library-item ${selectedAssistantId === null ? "active" : ""}`}><Icon name="robot" size={14} /><span>{t("sidebar.defaultAssistant")}</span></button>
+                <button type="button" onClick={() => { closeMobile(); onSelectAssistant(null); }} className={`modern-library-item ${selectedAssistantId === null ? "active" : ""}`}><Icon name="robot" size={14} /><span>{t("sidebar.defaultAssistant")}</span></button>
                 {visibleAssistants.map((assistant) => (
                   <div key={assistant.id} className="modern-library-item-group">
                     <button type="button" onClick={() => onSelectAssistant(assistant.id)} className={`modern-library-item ${selectedAssistantId === assistant.id ? "active" : ""}`}><Icon name="robot" size={14} /><span className="truncate">{assistant.name}</span></button>
@@ -338,7 +342,7 @@ export default function SidebarModern({
               </Section>
 
               <Section title={t("sidebar.tagsTitle")} icon="tag" open={openSection === "tags"} onToggle={() => toggleSection("tags")} action={<button type="button" className="modern-section-add" onClick={onCreateTag}>+</button>}>
-                <button type="button" onClick={() => onSelectTag(null)} className={`modern-library-item ${selectedTagId === null ? "active" : ""}`}><Icon name="tag" size={14} /><span>{t("sidebar.allTags")}</span></button>
+                <button type="button" onClick={() => { closeMobile(); onSelectTag(null); }} className={`modern-library-item ${selectedTagId === null ? "active" : ""}`}><Icon name="tag" size={14} /><span>{t("sidebar.allTags")}</span></button>
                 {visibleTags.map((tag) => (
                   <div key={tag.id} className="modern-library-item-group">
                     <button type="button" onClick={() => onSelectTag(tag.id)} className={`modern-library-item ${selectedTagId === tag.id ? "active" : ""}`}><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tag.color }} /><span className="truncate">{tag.name}</span></button>
