@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useAppDialog } from "../components/AppDialog";
 import { useTranslation } from "react-i18next";
 import {
   createSavedPrompt,
@@ -9,6 +10,7 @@ import {
 
 export default function useSavedPrompts({ setToast }) {
   const { t } = useTranslation();
+  const { confirm, prompt } = useAppDialog();
   const [savedPrompts, setSavedPrompts] = useState([]);
 
   const resetSavedPrompts = useCallback(() => setSavedPrompts([]), []);
@@ -25,9 +27,15 @@ export default function useSavedPrompts({ setToast }) {
   }, [setToast, t]);
 
   const handleCreateSavedPrompt = useCallback(async () => {
-    const name = window.prompt(t("sidebar.savedPromptCreateNamePrompt"));
+    const name = await prompt({
+      title: t("sidebar.savedPromptCreateNamePrompt"),
+      message: t("sidebar.savedPromptCreateNamePrompt"),
+    });
     if (!name?.trim()) return;
-    const content = window.prompt(t("sidebar.savedPromptCreateContentPrompt"));
+    const content = await prompt({
+      title: t("sidebar.savedPromptCreateContentPrompt"),
+      message: t("sidebar.savedPromptCreateContentPrompt"),
+    });
     if (!content?.trim()) return;
 
     try {
@@ -39,20 +47,22 @@ export default function useSavedPrompts({ setToast }) {
         type: "error",
       });
     }
-  }, [refreshSavedPrompts, setToast, t]);
+  }, [confirm, prompt, refreshSavedPrompts, setToast, t]);
 
   const handleRenameSavedPrompt = useCallback(
     async (id, currentName, currentContent) => {
-      const name = window.prompt(
-        t("sidebar.savedPromptRenameNamePrompt"),
-        currentName
-      );
+      const name = await prompt({
+        title: t("sidebar.savedPromptRenameNamePrompt"),
+        message: t("sidebar.savedPromptRenameNamePrompt"),
+        defaultValue: currentName,
+      });
       if (!name?.trim()) return;
 
-      const content = window.prompt(
-        t("sidebar.savedPromptRenameContentPrompt"),
-        currentContent
-      );
+      const content = await prompt({
+        title: t("sidebar.savedPromptRenameContentPrompt"),
+        message: t("sidebar.savedPromptRenameContentPrompt"),
+        defaultValue: currentContent,
+      });
       if (!content?.trim()) return;
 
       try {
@@ -70,7 +80,11 @@ export default function useSavedPrompts({ setToast }) {
 
   const handleDeleteSavedPrompt = useCallback(
     async (id, name) => {
-      if (!window.confirm(t("sidebar.savedPromptDeleteConfirm", { name }))) return;
+      const confirmed = await confirm({
+        title: t("sidebar.savedPromptDeleteConfirm", { name }),
+        message: t("sidebar.savedPromptDeleteConfirm", { name }),
+      });
+      if (!confirmed) return;
 
       try {
         await deleteSavedPrompt(id);
