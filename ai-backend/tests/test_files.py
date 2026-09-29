@@ -304,3 +304,32 @@ def test_upload_text_file_is_processed_before_response_when_queue_unavailable(cl
     body = response.json()
     assert body["processing_status"] == "ready"
     assert body["processing_error"] is None
+
+
+def test_image_indexing_is_queued(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    token = _register_and_login(client, "image-queue@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    upload = client.post(
+        "/files/upload",
+        files={"file": ("photo.png", b"\x89PNG\r\n\x1a\n" + b"image", "image/png")},
+        headers=headers,
+    )
+    assert upload.status_code == 201
+    file_id = upload.json()["id"]
+
+    calls = []
+
+    class FakeTask:
+        def delay(self, file_id, model):
+            calls.append((file_id, model))
+
+    monkeypatch.setattr("app.routers.files.process_file_attachment", FakeTask())
+    from app.tasks import process_file_attachment
+    monkeypatch.setattr("app.routers.files.process_file_attachment", FakeTask())
+
+    response = client.post(f"/files/{file_id}/index-image", headers=headers)
+    assert response.status_code == 200
+    assert calls == [(file_id, app_settings.AI_MODEL)]
+    assert response.json()["processing_status"] == "queued"
