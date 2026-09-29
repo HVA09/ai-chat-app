@@ -75,7 +75,7 @@ export default function useSavedPrompts({ setToast }) {
         });
       }
     },
-    [refreshSavedPrompts, setToast, t]
+    [prompt, refreshSavedPrompts, setToast, t]
   );
 
   const handleDeleteSavedPrompt = useCallback(
@@ -96,7 +96,7 @@ export default function useSavedPrompts({ setToast }) {
         });
       }
     },
-    [refreshSavedPrompts, setToast, t]
+    [confirm, refreshSavedPrompts, setToast, t]
   );
 
   return {
