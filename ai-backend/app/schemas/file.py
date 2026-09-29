@@ -17,3 +17,5 @@ class FileOut(BaseModel):
     is_owner: bool = False
     can_delete: bool = False
     is_ai_indexed: bool = False
+    processing_status: str = "queued"
+    processing_error: str | None = None
