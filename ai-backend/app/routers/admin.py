@@ -24,6 +24,7 @@ from app.models.conversation import Conversation, Message
 from app.models.file_attachment import FileAttachment
 from app.models.usage_log import UsageLog
 from app.models.user import User
+from app.services.storage import StorageError, delete_user_objects
 from app.schemas.admin import (
     AdminConversationOut,
     AdminPlanOut,
@@ -573,6 +574,14 @@ def delete_user(
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المستخدم غير موجود")
+
+    try:
+        delete_user_objects(user.id)
+    except StorageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="تعذر تنظيف ملفات المستخدم الآن. أعد المحاولة لاحقًا.",
+        ) from exc
 
     log_event(db, "admin_user_deleted", f"admin {admin.email} حذف المستخدم {user.email}", admin.id)
     shutil.rmtree(Path(app_settings.UPLOAD_DIR) / str(user.id), ignore_errors=True)
