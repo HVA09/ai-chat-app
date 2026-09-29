@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from pathlib import Path
 
 from app.services import storage
@@ -132,6 +133,14 @@ def test_materialize_file_prefers_remote_storage(monkeypatch, tmp_path):
             pass
 
     monkeypatch.setattr(storage, "open_file", lambda key, path: FakeBody())
+
+    @contextmanager
+    def isolated_named_tempfile(*, prefix, suffix, delete):
+        path = tmp_path / f"{prefix}test{suffix}"
+        with path.open("w+b") as handle:
+            yield handle
+
+    monkeypatch.setattr(storage, "NamedTemporaryFile", isolated_named_tempfile)
 
     with storage.materialize_file("users/1/example.pdf", fallback) as materialized:
         assert materialized != fallback
