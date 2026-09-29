@@ -1,3 +1,7 @@
+import { vi } from "vitest";
+
+vi.unmock("./AppDialog");
+
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
 import i18n from "../i18n";
