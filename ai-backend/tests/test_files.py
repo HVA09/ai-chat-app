@@ -317,6 +317,7 @@ def test_image_indexing_is_queued(client, tmp_path, monkeypatch):
         headers=headers,
     )
     assert upload.status_code == 201
+    assert upload.json()["processing_status"] == "ready"
     file_id = upload.json()["id"]
 
     calls = []
