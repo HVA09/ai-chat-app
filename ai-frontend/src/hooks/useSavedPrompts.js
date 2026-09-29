@@ -47,7 +47,7 @@ export default function useSavedPrompts({ setToast }) {
         type: "error",
       });
     }
-  }, [confirm, prompt, refreshSavedPrompts, setToast, t]);
+  }, [prompt, refreshSavedPrompts, setToast, t]);
 
   const handleRenameSavedPrompt = useCallback(
     async (id, currentName, currentContent) => {
