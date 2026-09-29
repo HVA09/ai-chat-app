@@ -306,7 +306,7 @@ def test_upload_text_file_is_processed_before_response_when_queue_unavailable(cl
     assert body["processing_error"] is None
 
 
-def test_image_indexing_is_queued(client, db_session, tmp_path, monkeypatch):
+def test_image_indexing_is_queued(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client, "image-queue@example.com")
     headers = {"Authorization": f"Bearer {token}"}
@@ -318,13 +318,6 @@ def test_image_indexing_is_queued(client, db_session, tmp_path, monkeypatch):
     )
     assert upload.status_code == 201
     file_id = upload.json()["id"]
-
-    # The upload task queues normal file processing first; mark it ready so
-    # this test exercises the explicit image-indexing queue path.
-    from app.models.file_attachment import FileAttachment
-    attachment = db_session.query(FileAttachment).filter(FileAttachment.id == file_id).one()
-    attachment.processing_status = "ready"
-    db_session.commit()
 
     calls = []
 
