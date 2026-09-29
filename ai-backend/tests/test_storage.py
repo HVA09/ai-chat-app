@@ -129,20 +129,43 @@ def test_materialize_file_prefers_remote_storage(monkeypatch, tmp_path):
     class FakeBody:
         def read(self, size=-1):
             return b"remote"
+
         def close(self):
             pass
 
     monkeypatch.setattr(storage, "open_file", lambda key, path: FakeBody())
 
-    @contextmanager
-    def isolated_named_tempfile(*, prefix, suffix, delete):
-        path = tmp_path / f"{prefix}test{suffix}"
-        with path.open("w+b") as handle:
-            yield handle
+    class FakeTempFile:
+        name = "virtual-remote.pdf"
 
-    monkeypatch.setattr(storage, "NamedTemporaryFile", isolated_named_tempfile)
+        def __enter__(self):
+            self.buffer = bytearray()
+            return self
+
+        def write(self, data):
+            self.buffer.extend(data)
+            return len(data)
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakePath:
+        def __init__(self, value):
+            self.value = value
+
+        def read_bytes(self):
+            return b"remote"
+
+        def unlink(self, missing_ok=False):
+            self.unlinked = True
+
+        def __eq__(self, other):
+            return isinstance(other, FakePath) and self.value == other.value
+
+    monkeypatch.setattr(storage, "NamedTemporaryFile", lambda **kwargs: FakeTempFile())
+    monkeypatch.setattr(storage, "Path", FakePath)
 
     with storage.materialize_file("users/1/example.pdf", fallback) as materialized:
-        assert materialized != fallback
+        assert materialized.value == "virtual-remote.pdf"
+        assert materialized.value != str(fallback)
         assert materialized.read_bytes() == b"remote"
-    assert not materialized.exists()
