@@ -52,7 +52,7 @@ function AppDialogHost({ request, resolve }) {
 
   const close = useCallback(() => resolve(request.cancelValue ?? null), [request.cancelValue, resolve]);
   const submit = useCallback(() => {
-    if (request.kind === "confirm") resolve(true);
+    if (request.kind === "confirm" || request.kind === "notice") resolve(true);
     else resolve(value.trim() || null);
   }, [request.kind, resolve, value]);
 
@@ -66,20 +66,26 @@ function AppDialogHost({ request, resolve }) {
       onClose={close}
       actions={
         <>
-          <button
-            type="button"
-            onClick={close}
-            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-          >
-            {request.cancelLabel || t("common.cancel")}
-          </button>
+          {request.kind !== "notice" && (
+            <button
+              type="button"
+              onClick={close}
+              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              {request.cancelLabel || t("common.cancel")}
+            </button>
+          )}
           <button
             type="button"
             onClick={submit}
             className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           >
             {request.confirmLabel ||
-              (request.kind === "confirm" ? t("common.confirm") : t("common.save"))}
+              (request.kind === "notice"
+                ? t("common.close")
+                : request.kind === "confirm"
+                  ? t("common.confirm")
+                  : t("common.save"))}
           </button>
         </>
       }
@@ -125,6 +131,13 @@ export function AppDialogProvider({ children }) {
     });
   }, []);
 
+  const alert = useCallback((options = {}) => {
+    return new Promise((resolve) => {
+      resolverRef.current = resolve;
+      setRequest({ kind: "notice", ...options });
+    });
+  }, []);
+
   const prompt = useCallback((options = {}) => {
     return new Promise((resolve) => {
       resolverRef.current = resolve;
@@ -133,7 +146,7 @@ export function AppDialogProvider({ children }) {
   }, []);
 
   return (
-    <DialogContext.Provider value={{ confirm, prompt }}>
+    <DialogContext.Provider value={{ alert, confirm, prompt }}>
       {children}
       {request ? <AppDialogHost request={request} resolve={close} /> : null}
     </DialogContext.Provider>
