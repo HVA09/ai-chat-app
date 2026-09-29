@@ -325,7 +325,7 @@ def test_image_indexing_is_queued(client, tmp_path, monkeypatch):
         def delay(self, file_id, model):
             calls.append((file_id, model))
 
-    monkeypatch.setattr("app.routers.files.process_file_attachment", FakeTask())
+    monkeypatch.setattr("app.routers.files.index_image_file_task", FakeTask())
 
     response = client.post(f"/files/{file_id}/index-image", headers=headers)
     assert response.status_code == 200
