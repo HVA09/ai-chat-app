@@ -307,7 +307,7 @@ async def upload_file(
         content_type=sniffed,
         size_bytes=total,
         extracted_text=None,
-        processing_status="queued",
+        processing_status="ready" if sniffed.startswith("image/") else "queued",
     )
     db.add(attachment)
     db.flush()
@@ -324,26 +324,27 @@ async def upload_file(
     db.commit()
     db.refresh(attachment)
 
-    try:
-        if process_file_attachment is not None:
-            process_file_attachment.delay(attachment.id)
-        else:
-            from app.tasks import _process_file_attachment
-            _process_file_attachment(attachment.id)
-    except Exception:
-        logger.exception("Failed to enqueue file processing file_id=%s; using direct fallback", attachment.id)
+    if not attachment.content_type.startswith("image/"):
         try:
-            from app.tasks import _process_file_attachment
-            _process_file_attachment(attachment.id)
-        except Exception as exc:
-            logger.exception("Direct file processing fallback failed file_id=%s", attachment.id)
-            attachment.processing_status = "failed"
-            attachment.processing_error = str(exc)[:1000]
-            db.commit()
+            if process_file_attachment is not None:
+                process_file_attachment.delay(attachment.id)
+            else:
+                from app.tasks import _process_file_attachment
+                _process_file_attachment(attachment.id)
+        except Exception:
+            logger.exception("Failed to enqueue file processing file_id=%s; using direct fallback", attachment.id)
+            try:
+                from app.tasks import _process_file_attachment
+                _process_file_attachment(attachment.id)
+            except Exception as exc:
+                logger.exception("Direct file processing fallback failed file_id=%s", attachment.id)
+                attachment.processing_status = "failed"
+                attachment.processing_error = str(exc)[:1000]
+                db.commit()
 
-    # Queue/direct fallback may update the row through another DB session.
-    # Refresh before returning so synchronous fallback reports the real state.
-    db.refresh(attachment)
+        # Queue/direct fallback may update the row through another DB session.
+        # Refresh before returning so synchronous fallback reports the real state.
+        db.refresh(attachment)
 
     log_event(
         db,
