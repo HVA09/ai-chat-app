@@ -2328,16 +2328,18 @@ export default function App() {
     }
 
     const userText = input.trim();
-    if (!userText) return;
-
     const fileIds = chatAttachments.map((file) => file.id);
+    if (!userText && fileIds.length === 0) return;
+    const submittedText =
+      userText ||
+      (document.documentElement.lang === "ar" ? "أرسل لي الملف المرفق وحلله." : "Please analyze the attached file.");
     clearChatDraft(currentUser?.id, conversationId);
     setError("");
     setRetryableUserMessage(null);
     messageCountRef.current += 2;
     setMessages((prev) => [
       ...prev,
-      { role: "user", text: userText, time: new Date().toLocaleTimeString() },
+      { role: "user", text: submittedText, time: new Date().toLocaleTimeString() },
       { role: "assistant", text: "", time: new Date().toLocaleTimeString(), feedback: null },
     ]);
     setInput("");
@@ -2359,7 +2361,7 @@ export default function App() {
       });
     };
 
-    await streamChatMessage(userText, conversationId, selectedAssistantId, {
+    await streamChatMessage(submittedText, conversationId, selectedAssistantId, {
       signal: controller.signal,
       workspaceId: selectedWorkspaceId,
       projectId: selectedProjectId,
@@ -2401,7 +2403,7 @@ export default function App() {
         setRetryableUserMessage(null);
         setChatAttachments([]);
         if (isNewConversation) {
-          setActiveConversationTitle(userText.slice(0, 50));
+          setActiveConversationTitle(submittedText.slice(0, 50));
           refreshConversations(
             showArchivedConversations,
             selectedFolderId,
@@ -2433,7 +2435,7 @@ export default function App() {
         if (failedConversationId) {
           setRetryableUserMessage({
             conversationId: failedConversationId,
-            text: userText,
+            text: submittedText,
           });
         }
       },
@@ -2933,7 +2935,7 @@ export default function App() {
           onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
         />
 
-        <section className="chat-stage flex flex-1 flex-col p-4">
+        <section className="chat-stage flex flex-1 flex-col p-3 sm:p-4">
           {conversationId &&
           selectedWorkspaceId !== null &&
           (workspaceShare || readOnlyConversation) ? (
@@ -2987,7 +2989,7 @@ export default function App() {
             </div>
           ) : null}
 
-          <div className="chat-surface mx-auto flex w-full max-w-5xl flex-1 space-y-4 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="chat-surface mx-auto flex w-full max-w-4xl flex-1 space-y-3 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             {empty ? (
               <div className="empty-state flex h-full flex-col items-center justify-center px-4 text-center">
                 <div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-slate-900 text-xs font-extrabold tracking-[0.12em] text-white shadow-lg dark:bg-slate-100 dark:text-slate-900">AI</div>
@@ -3136,7 +3138,7 @@ export default function App() {
             {t("workspaceSharing.readOnly")}
           </div>
         ) : (
-          <div className="composer-stage mx-auto w-full max-w-5xl">
+          <div className="composer-stage mx-auto w-full max-w-4xl">
           <ChatComposer
             value={input}
           setValue={setInput}

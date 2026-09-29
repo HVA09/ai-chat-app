@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     MCP_MAX_SERVERS: int = 5
     MCP_MAX_TOOLS_PER_SERVER: int = 20
     # Explicit allowlist for Agent tools. MCP tools must also be allowed per server.
-    AGENT_ALLOWED_TOOLS_JSON: str = "[\"calculator\",\"python\",\"web_search\",\"analyze_data\"]"
+    AGENT_ALLOWED_TOOLS_JSON: str = "[\"calculator\",\"python\",\"web_search\",\"analyze_data\",\"create_project_archive\"]"
 
     # OAuth / connector foundation. Providers stay disabled until credentials are configured.
     OAUTH_CALLBACK_BASE_URL: str = ""

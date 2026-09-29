@@ -10,8 +10,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
+import uuid
+import zipfile
 from typing import Any, Awaitable, Callable
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -22,6 +26,7 @@ from app.models.user import User
 from app.services.tools.calculator import CalculatorError, calculate_expression
 from app.services.tools.code_execution import CodeExecutionError, execute_python_code
 from app.services.tools.data_analysis import DataAnalysisError, DataFile, analyze_file
+from app.services.storage import put_file, delete_file as delete_stored_file, delete_file as delete_stored_file
 from app.services.tool_security import (
     ToolArgumentSecurityError,
     inspect_untrusted_output,
@@ -280,6 +285,133 @@ async def _analyze_data(arguments: dict[str, Any], context: ToolContext) -> Tool
         )
 
 
+
+async def _create_project_archive(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
+    """Create a safe, text-only project ZIP and expose it through the existing files API."""
+    project_name = str(arguments.get("project_name") or "ai-project").strip()
+    files = arguments.get("files")
+    if not project_name or not isinstance(files, list) or not files:
+        return ToolResult(
+            content="لإنشاء مشروع، أرسل اسم المشروع وقائمة ملفات تحتوي على المسار والمحتوى.",
+            sources=[],
+            succeeded=False,
+        )
+
+    if len(files) > 50:
+        return ToolResult(content="المشروع أكبر من الحد الآمن: الحد الأقصى 50 ملفًا.", sources=[], succeeded=False)
+
+    safe_project_name = re.sub(r"[^A-Za-z0-9._-]+", "-", project_name).strip("-._")[:80] or "ai-project"
+    seen_paths: set[str] = set()
+    normalized_files: list[tuple[str, str]] = []
+    total_chars = 0
+
+    for item in files:
+        if not isinstance(item, dict):
+            return ToolResult(content="كل ملف يجب أن يكون كائنًا يحتوي على path وcontent.", sources=[], succeeded=False)
+        raw_path = str(item.get("path") or "").replace("\\", "/").strip()
+        content = item.get("content")
+        if not raw_path or not isinstance(content, str):
+            return ToolResult(content="ملف غير صالح: يجب أن يكون path نصًا وcontent نصًا.", sources=[], succeeded=False)
+        path_obj = Path(raw_path)
+        if path_obj.is_absolute() or ".." in path_obj.parts or raw_path.startswith("/"):
+            return ToolResult(content=f"مسار ملف غير آمن: {raw_path}", sources=[], succeeded=False)
+        normalized = "/".join(part for part in path_obj.parts if part not in {"", "."})
+        if not normalized:
+            return ToolResult(content="يوجد ملف بلا مسار صالح.", sources=[], succeeded=False)
+        if normalized in seen_paths:
+            return ToolResult(content=f"المسار مكرر: {normalized}", sources=[], succeeded=False)
+        if len(content) > 50_000:
+            return ToolResult(content=f"الملف كبير جدًا: {normalized}", sources=[], succeeded=False)
+        total_chars += len(content)
+        if total_chars > 450_000:
+            return ToolResult(content="حجم محتوى المشروع أكبر من الحد الآمن 450 ألف حرف.", sources=[], succeeded=False)
+        seen_paths.add(normalized)
+        normalized_files.append((normalized, content))
+
+    user_dir = Path(settings.UPLOAD_DIR) / str(context.current_user.id)
+    user_dir.mkdir(parents=True, exist_ok=True)
+    stored_filename = f"{uuid.uuid4().hex}.zip"
+    destination = user_dir / stored_filename
+    object_key = f"users/{context.current_user.id}/{stored_filename}"
+    original_filename = f"{safe_project_name}.zip"
+
+    try:
+        with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for path, content in normalized_files:
+                archive.writestr(path, content)
+        size_bytes = destination.stat().st_size
+
+        current_files = (
+            context.db.query(func.count(FileAttachment.id))
+            .filter(FileAttachment.user_id == context.current_user.id)
+            .scalar()
+            or 0
+        )
+        current_storage = (
+            context.db.query(func.coalesce(func.sum(FileAttachment.size_bytes), 0))
+            .filter(FileAttachment.user_id == context.current_user.id)
+            .scalar()
+            or 0
+        )
+        if current_files >= settings.MAX_FILES_PER_USER:
+            destination.unlink(missing_ok=True)
+            return ToolResult(content="وصلت إلى الحد الأقصى لعدد الملفات في الحساب.", sources=[], succeeded=False)
+        if current_storage + size_bytes > settings.MAX_STORAGE_PER_USER_MB * 1024 * 1024:
+            destination.unlink(missing_ok=True)
+            return ToolResult(content="مساحة التخزين في الحساب لا تكفي لحفظ حزمة المشروع.", sources=[], succeeded=False)
+
+        try:
+            put_file(destination, object_key, "application/zip")
+        except Exception:
+            destination.unlink(missing_ok=True)
+            raise
+
+        attachment = FileAttachment(
+            user_id=context.current_user.id,
+            workspace_id=context.conversation.workspace_id,
+            project_id=context.conversation.project_id,
+            original_filename=original_filename,
+            stored_filename=stored_filename,
+            object_key=object_key,
+            content_type="application/zip",
+            size_bytes=size_bytes,
+            extracted_text=None,
+        )
+        context.db.add(attachment)
+        context.db.flush()
+        context.db.add(
+            ConversationFileLink(
+                conversation_id=context.conversation.id,
+                file_id=attachment.id,
+            )
+        )
+        context.db.commit()
+        context.db.refresh(attachment)
+    except Exception as exc:
+        context.db.rollback()
+        try:
+            if destination.exists():
+                destination.unlink(missing_ok=True)
+            delete_stored_file(object_key, destination)
+        except Exception:
+            pass
+        return ToolResult(
+            content=f"تعذر إنشاء حزمة المشروع: {exc}",
+            sources=[],
+            succeeded=False,
+        )
+
+    return ToolResult(
+        content=f"تم إنشاء حزمة المشروع «{original_filename}» ويمكن تنزيلها من قسم الملفات أو من المصادر أسفل الرد.",
+        sources=[{
+            "id": "P1",
+            "filename": original_filename,
+            "file_id": attachment.id,
+            "kind": "project-artifact",
+        }],
+        succeeded=True,
+    )
+
 tool_registry = ToolRegistry()
 
 tool_registry.register(
@@ -350,5 +482,35 @@ tool_registry.register(
         },
         handler=_analyze_data,
         output_trust="untrusted",
+    )
+)
+
+tool_registry.register(
+    ToolSpec(
+        name="create_project_archive",
+        description="Build a downloadable ZIP project from small text files. When the user asks to build or create a project, use this tool instead of claiming the agent is text-only. Never execute the generated code.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "project_name": {"type": "string", "description": "Short project name."},
+                "files": {
+                    "type": "array",
+                    "description": "Project text files. Each item contains path and content.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string"},
+                            "content": {"type": "string"},
+                        },
+                        "required": ["path", "content"],
+                        "additionalProperties": False,
+                    },
+                    "maxItems": 50,
+                },
+            },
+            "required": ["project_name", "files"],
+            "additionalProperties": False,
+        },
+        handler=_create_project_archive,
     )
 )

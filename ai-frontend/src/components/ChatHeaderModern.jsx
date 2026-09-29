@@ -41,9 +41,22 @@ export default function ChatHeaderModern({
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [branchOpen, setBranchOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const openSidebar = () => window.dispatchEvent(new CustomEvent("app:open-sidebar"));
 
   return (
     <header className="modern-chat-header">
+      <button
+        type="button"
+        className="modern-header-mobile-menu md:hidden"
+        onClick={openSidebar}
+        aria-label={lang === "ar" ? "فتح القائمة" : "Open navigation"}
+        title={lang === "ar" ? "فتح القائمة" : "Open navigation"}
+      >
+        <Icon name="menu" size={19} />
+      </button>
+
       <div className="min-w-0">
         <div className="flex items-center gap-3">
           <div className="modern-chat-status-dot" />
@@ -67,6 +80,35 @@ export default function ChatHeaderModern({
           onMarkAllRead={onMarkAllNotificationsRead}
         />
 
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => { setSettingsOpen((value) => !value); setMenuOpen(false); }}
+            className="modern-header-icon-action"
+            aria-label={lang === "ar" ? "الإعدادات" : "Settings"}
+            aria-expanded={settingsOpen}
+            title={lang === "ar" ? "الإعدادات" : "Settings"}
+          >
+            <Icon name="settings" size={18} />
+          </button>
+          {settingsOpen ? (
+            <div className="modern-header-menu modern-settings-menu">
+              <div className="modern-header-menu-label">{lang === "ar" ? "الإعدادات" : "Settings"}</div>
+              <div className="flex items-center justify-between gap-3 px-3 py-2">
+                <LanguageToggle lang={lang} setLang={setLang} />
+                <ThemeToggle />
+              </div>
+              <div className="modern-header-menu-divider" />
+              <button type="button" onClick={() => { onOpenAccount?.(); setSettingsOpen(false); }} className="modern-header-menu-item">{t("header.account")}</button>
+              <button type="button" onClick={() => { onOpenFiles?.(); setSettingsOpen(false); }} className="modern-header-menu-item">{t("header.files")}</button>
+              <button type="button" onClick={() => { onOpenBilling?.(); setSettingsOpen(false); }} className="modern-header-menu-item">{t("header.billing")}</button>
+              {isAdmin ? <button type="button" onClick={() => { onOpenAdmin?.(); setSettingsOpen(false); }} className="modern-header-menu-item">{t("header.admin")}</button> : null}
+              <div className="modern-header-menu-divider" />
+              <button type="button" onClick={() => { onLogout?.(); setSettingsOpen(false); }} className="modern-header-menu-item danger">{t("logout")}</button>
+            </div>
+          ) : null}
+        </div>
+
         {conversationBranches.length > 0 ? (
           <div className="relative hidden sm:block">
             <button type="button" onClick={() => setBranchOpen((value) => !value)} className="modern-header-icon-action" title={t("chat.branchListTitle")}>
@@ -86,17 +128,11 @@ export default function ChatHeaderModern({
         ) : null}
 
         <div className="relative">
-          <button type="button" onClick={() => setMenuOpen((value) => !value)} className="modern-header-more" aria-label={t("header.more")} aria-expanded={menuOpen}>
+          <button type="button" onClick={() => { setMenuOpen((value) => !value); setSettingsOpen(false); }} className="modern-header-more" aria-label={t("header.more")} aria-expanded={menuOpen}>
             <Icon name="more" size={18} />
           </button>
           {menuOpen ? (
             <div className="modern-header-menu modern-header-menu-wide">
-              <div className="modern-header-menu-label">{lang === "ar" ? "التفضيلات" : "Preferences"}</div>
-              <div className="flex items-center justify-between gap-3 px-3 py-2">
-                <LanguageToggle lang={lang} setLang={setLang} />
-                <ThemeToggle />
-              </div>
-              <div className="modern-header-menu-divider" />
               <div className="modern-header-menu-label">{lang === "ar" ? "المحادثة" : "Conversation"}</div>
               <button type="button" disabled={!canShareConversation} onClick={() => { onShareConversation?.(); setMenuOpen(false); }} className="modern-header-menu-item">{t("sharing.shareButton")}</button>
               <button type="button" disabled={!canManageShares} onClick={() => { onManageShares?.(); setMenuOpen(false); }} className="modern-header-menu-item">{t("sharing.manageButton")}</button>
@@ -105,16 +141,6 @@ export default function ChatHeaderModern({
               <button type="button" disabled={!canExportConversation} onClick={() => { onExportConversation?.("json"); setMenuOpen(false); }} className="modern-header-menu-item">{t("exportJson")}</button>
               <button type="button" disabled={!canGenerateConversationTitle || titleLoading} onClick={() => { onGenerateConversationTitle?.(); setMenuOpen(false); }} className="modern-header-menu-item">{titleLoading ? t("conversationTitle.loading") : t("conversationTitle.generateButton")}</button>
               <button type="button" disabled={!canSummarizeConversation || summaryLoading} onClick={() => { onSummarizeConversation?.(); setMenuOpen(false); }} className="modern-header-menu-item">{summaryLoading ? t("summary.loading") : t("summary.button")}</button>
-              <div className="modern-header-menu-divider" />
-              <div className="modern-header-menu-label">{lang === "ar" ? "مساحة العمل والملفات" : "Workspace & files"}</div>
-              <button type="button" onClick={() => { onOpenFiles?.(); setMenuOpen(false); }} className="modern-header-menu-item">{t("header.files")}</button>
-              <button type="button" onClick={() => { onOpenBilling?.(); setMenuOpen(false); }} className="modern-header-menu-item">{t("header.billing")}</button>
-              {isAdmin ? <button type="button" onClick={() => { onOpenAdmin?.(); setMenuOpen(false); }} className="modern-header-menu-item">{t("header.admin")}</button> : null}
-              <div className="modern-header-menu-divider" />
-              <div className="modern-header-menu-label">{lang === "ar" ? "الحساب" : "Account"}</div>
-              <button type="button" onClick={() => { onOpenAccount?.(); setMenuOpen(false); }} className="modern-header-menu-item">{t("header.account")}</button>
-              <div className="modern-header-menu-divider" />
-              <button type="button" onClick={() => { onLogout?.(); setMenuOpen(false); }} className="modern-header-menu-item danger">{t("logout")}</button>
             </div>
           ) : null}
         </div>
