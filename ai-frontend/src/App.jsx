@@ -14,8 +14,6 @@ import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, listAiModels, compareChatModels } from "./lib/chatApi";
-import { listBookmarkedMessages, toggleMessageBookmark } from "./lib/bookmarksApi";
-import { listMemories, createMemory, deleteMemory } from "./lib/memoriesApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
 import {
@@ -104,6 +102,8 @@ import { uploadFile, deleteFile } from "./lib/filesApi";
 import { getErrorMessage } from "./lib/errors";
 import { clearChatDraft, loadChatDraft, saveChatDraft } from "./lib/chatDrafts";
 import useSavedPrompts from "./hooks/useSavedPrompts";
+import useMemories from "./hooks/useMemories";
+import useBookmarks from "./hooks/useBookmarks";
 import { getCurrentUser } from "./lib/usersApi";
 import {
   listNotifications,
@@ -171,8 +171,6 @@ export default function App() {
   const [editingAssistantId, setEditingAssistantId] = useState(null);
   const [showProjectEditor, setShowProjectEditor] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState(null);
-  const [bookmarkedMessages, setBookmarkedMessages] = useState([]);
-  const [memories, setMemories] = useState([]);
   const [aiModels, setAiModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [input, setInput] = useState("");
@@ -977,57 +975,27 @@ export default function App() {
     }
   };
 
-  const refreshMemories = async () => {
-    try {
-      setMemories(await listMemories());
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.memoriesLoadError")),
-        type: "error",
-      });
-    }
-  };
+  const { memories, refreshMemories, handleToggleMessageMemory } = useMemories({
+    setToast,
+    messages,
+    readOnlyConversation,
+    loading,
+    editingMessageIndex,
+  });
 
-  const handleToggleMessageMemory = async (index) => {
-    if (
-      readOnlyConversation ||
-      loading ||
-      editingMessageIndex !== null ||
-      messages[index]?.role !== "user"
-    ) return;
+  const {
+    bookmarkedMessages,
+    refreshBookmarkedMessages,
+    handleToggleMessageBookmark,
+  } = useBookmarks({
+    setToast,
+    conversationId,
+    loading,
+    readOnlyConversation,
+    setMessages,
+  });
 
-    const content = messages[index]?.text?.trim();
-    if (!content) return;
 
-    const existing = memories.find((memory) => memory.content === content);
-    try {
-      if (existing) {
-        await deleteMemory(existing.id);
-        setMemories((current) => current.filter((memory) => memory.id !== existing.id));
-        setToast({ message: t("memory.removed"), type: "success" });
-      } else {
-        const created = await createMemory(content);
-        setMemories((current) => [created, ...current]);
-        setToast({ message: t("memory.saved"), type: "success" });
-      }
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("memory.error"),
-        type: "error",
-      });
-    }
-  };
-
-  const refreshBookmarkedMessages = async () => {
-    try {
-      setBookmarkedMessages(await listBookmarkedMessages());
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.bookmarksLoadError")),
-        type: "error",
-      });
-    }
-  };
 
   const {
     savedPrompts,
@@ -1038,25 +1006,7 @@ export default function App() {
   } = useSavedPrompts({ setToast });
 
 
-  const handleToggleMessageBookmark = async (index) => {
-    if (!conversationId || loading || readOnlyConversation) return;
-    try {
-      const result = await toggleMessageBookmark(conversationId, index + 1);
-      setMessages((prev) =>
-        prev.map((message, messageIndex) =>
-          messageIndex === index
-            ? { ...message, isBookmarked: result.bookmarked }
-            : message
-        )
-      );
-      await refreshBookmarkedMessages();
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.bookmarkError"),
-        type: "error",
-      });
-    }
-  };
+
 
   const handleOpenBookmarkedMessage = async (item) => {
     await openConversation(item.conversation_id);
