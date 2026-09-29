@@ -246,9 +246,9 @@ export default function App() {
     setTags([]);
     setSelectedTagId(null);
     setAssistants([]);
-    setSavedPrompts([]);
-    setBookmarkedMessages([]);
-    setMemories([]);
+    resetSavedPrompts();
+    resetBookmarks();
+    resetMemories();
     setAiModels([]);
     setSelectedModel("");
     setSelectedFolderId(null);
@@ -282,7 +282,7 @@ export default function App() {
     autoSummaryLastMessageCountRef.current = {};
     messageCountRef.current = 1;
     resetNotifications();
-  }, [t]);
+  }, [resetBookmarks, resetMemories, resetNotifications, resetSavedPrompts, t]);
 
   useEffect(() => {
     restoreSession().then(() => setAuthed(true)).catch(() => setAuthed(false)).finally(() => setSessionChecking(false));
@@ -918,7 +918,7 @@ export default function App() {
     }
   };
 
-  const { memories, refreshMemories, handleToggleMessageMemory } = useMemories({
+  const { memories, resetMemories, refreshMemories, handleToggleMessageMemory } = useMemories({
     setToast,
     messages,
     readOnlyConversation,
@@ -928,6 +928,7 @@ export default function App() {
 
   const {
     bookmarkedMessages,
+    resetBookmarks,
     refreshBookmarkedMessages,
     handleToggleMessageBookmark,
   } = useBookmarks({
@@ -943,6 +944,7 @@ export default function App() {
   const {
     savedPrompts,
     refreshSavedPrompts,
+    resetSavedPrompts,
     handleCreateSavedPrompt,
     handleRenameSavedPrompt,
     handleDeleteSavedPrompt,
