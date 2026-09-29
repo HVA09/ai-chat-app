@@ -26,7 +26,7 @@ from app.models.user import User
 from app.services.tools.calculator import CalculatorError, calculate_expression
 from app.services.tools.code_execution import CodeExecutionError, execute_python_code
 from app.services.tools.data_analysis import DataAnalysisError, DataFile, analyze_file
-from app.services.storage import put_file, delete_file as delete_stored_file, delete_file as delete_stored_file
+from app.services.storage import put_file, delete_file as delete_stored_file
 from app.services.tool_security import (
     ToolArgumentSecurityError,
     inspect_untrusted_output,
