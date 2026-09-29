@@ -11,6 +11,8 @@ export default function useSavedPrompts({ setToast }) {
   const { t } = useTranslation();
   const [savedPrompts, setSavedPrompts] = useState([]);
 
+  const resetSavedPrompts = useCallback(() => setSavedPrompts([]), []);
+
   const refreshSavedPrompts = useCallback(async () => {
     try {
       setSavedPrompts(await listSavedPrompts());
@@ -85,6 +87,7 @@ export default function useSavedPrompts({ setToast }) {
 
   return {
     savedPrompts,
+    resetSavedPrompts,
     refreshSavedPrompts,
     handleCreateSavedPrompt,
     handleRenameSavedPrompt,
