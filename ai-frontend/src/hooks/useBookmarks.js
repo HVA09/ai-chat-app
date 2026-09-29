@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { listBookmarkedMessages, toggleMessageBookmark } from "../lib/bookmarksApi";
 import { getErrorMessage } from "../lib/errors";
 
-export default function useBookmarks({ setToast, conversationId, loading, readOnlyConversation, setMessages, openConversation }) {
+export default function useBookmarks({ setToast, conversationId, loading, readOnlyConversation, setMessages }) {
   const { t } = useTranslation();
   const [bookmarkedMessages, setBookmarkedMessages] = useState([]);
 
@@ -39,14 +39,11 @@ export default function useBookmarks({ setToast, conversationId, loading, readOn
     }
   }, [conversationId, loading, readOnlyConversation, refreshBookmarkedMessages, setMessages, setToast, t]);
 
-  const handleOpenBookmarkedMessage = useCallback(async (item) => {
-    await openConversation(item.conversation_id);
-  }, [openConversation]);
+
 
   return {
     bookmarkedMessages,
     refreshBookmarkedMessages,
     handleToggleMessageBookmark,
-    handleOpenBookmarkedMessage,
   };
 }
