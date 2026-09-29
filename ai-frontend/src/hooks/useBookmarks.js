@@ -7,6 +7,8 @@ export default function useBookmarks({ setToast, conversationId, loading, readOn
   const { t } = useTranslation();
   const [bookmarkedMessages, setBookmarkedMessages] = useState([]);
 
+  const resetBookmarks = useCallback(() => setBookmarkedMessages([]), []);
+
   const refreshBookmarkedMessages = useCallback(async () => {
     try {
       setBookmarkedMessages(await listBookmarkedMessages());
@@ -43,6 +45,7 @@ export default function useBookmarks({ setToast, conversationId, loading, readOn
 
   return {
     bookmarkedMessages,
+    resetBookmarks,
     refreshBookmarkedMessages,
     handleToggleMessageBookmark,
   };
