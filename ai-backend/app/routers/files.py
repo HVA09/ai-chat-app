@@ -330,12 +330,12 @@ async def upload_file(
                 process_file_attachment.delay(attachment.id)
             else:
                 from app.tasks import _process_file_attachment
-                _process_file_attachment(attachment.id)
+                _process_file_attachment(attachment.id, db=db)
         except Exception:
             logger.exception("Failed to enqueue file processing file_id=%s; using direct fallback", attachment.id)
             try:
                 from app.tasks import _process_file_attachment
-                _process_file_attachment(attachment.id)
+                _process_file_attachment(attachment.id, db=db)
             except Exception as exc:
                 logger.exception("Direct file processing fallback failed file_id=%s", attachment.id)
                 attachment.processing_status = "failed"
@@ -582,12 +582,12 @@ def index_image_for_rag(
             index_image_file_task.delay(attachment.id, model)
         else:
             from app.tasks import _index_image_file_job
-            _index_image_file_job(attachment.id, model)
+            _index_image_file_job(attachment.id, model, db=db)
     except Exception:
         logger.exception("Failed to enqueue image indexing file_id=%s; using direct fallback", attachment.id)
         try:
             from app.tasks import _index_image_file_job
-            _index_image_file_job(attachment.id, model)
+            _index_image_file_job(attachment.id, model, db=db)
         except Exception as exc:
             attachment.processing_status = "failed"
             attachment.processing_error = str(exc)[:1000]
@@ -623,12 +623,12 @@ def reprocess_file(
                 index_image_file_task.delay(file.id, model)
             else:
                 from app.tasks import _index_image_file_job
-                _index_image_file_job(file.id, model)
+                _index_image_file_job(file.id, model, db=db)
         elif process_file_attachment is not None:
             process_file_attachment.delay(file.id)
         else:
             from app.tasks import _process_file_attachment
-            _process_file_attachment(file.id)
+            _process_file_attachment(file.id, db=db)
     except Exception:
         logger.exception("Failed to enqueue file reprocessing file_id=%s", file.id)
         try:
@@ -636,10 +636,10 @@ def reprocess_file(
                 from app.tasks import _index_image_file_job
                 allowed_models = get_allowed_ai_models(current_user, db)
                 model = allowed_models[0] if allowed_models else settings.AI_MODEL
-                _index_image_file_job(file.id, model)
+                _index_image_file_job(file.id, model, db=db)
             else:
                 from app.tasks import _process_file_attachment
-                _process_file_attachment(file.id)
+                _process_file_attachment(file.id, db=db)
         except Exception as exc:
             file.processing_status = "failed"
             file.processing_error = str(exc)[:1000]
