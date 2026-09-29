@@ -290,7 +290,12 @@ export default function App() {
     setError("");
   };
 
-  const { autoGenerateTitles, autoGenerateSummaries } = useChatPreferences();
+  const {
+    autoGenerateTitles,
+    setAutoGenerateTitles,
+    autoGenerateSummaries,
+    setAutoGenerateSummaries,
+  } = useChatPreferences();
 
   const logout = useCallback(async () => {
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
