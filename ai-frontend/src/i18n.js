@@ -6,6 +6,13 @@ const resources = {
     translation: {
       appName: "مساعد الذكاء الاصطناعي",
       newChat: "محادثة جديدة",
+      common: {
+        confirmTitle: "تأكيد",
+        inputTitle: "إدخال",
+        cancel: "إلغاء",
+        confirm: "تأكيد",
+        save: "حفظ",
+      },
       
       onboarding: {
         title: "مرحبًا بك في مساعد الذكاء الاصطناعي",
@@ -547,6 +554,13 @@ const resources = {
         hint: "Open the command palette from anywhere",
         actions: {
           newChat: "New chat",
+      common: {
+        confirmTitle: "Confirm",
+        inputTitle: "Input",
+        cancel: "Cancel",
+        confirm: "Confirm",
+        save: "Save",
+      },
           archived: "Archived conversations",
           backToChats: "Back to chats",
           trash: "Trash",
