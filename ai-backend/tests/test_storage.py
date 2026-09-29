@@ -110,3 +110,30 @@ def test_delete_user_objects_removes_all_remote_objects(monkeypatch):
     storage.delete_user_objects(42)
 
     assert deleted == ["users/42/a.txt", "users/42/b.zip"]
+
+
+def test_materialize_file_prefers_remote_storage(monkeypatch, tmp_path):
+    for name, value in (
+        ("S3_BUCKET", "bucket"),
+        ("S3_ENDPOINT_URL", "https://s3.example.test"),
+        ("S3_REGION", "us-west-004"),
+        ("S3_ACCESS_KEY_ID", "key"),
+        ("S3_SECRET_ACCESS_KEY", "secret"),
+    ):
+        monkeypatch.setattr(storage.settings, name, value)
+
+    fallback = tmp_path / "example.pdf"
+    fallback.write_bytes(b"local")
+
+    class FakeBody:
+        def read(self, size=-1):
+            return b"remote"
+        def close(self):
+            pass
+
+    monkeypatch.setattr(storage, "open_file", lambda key, path: FakeBody())
+
+    with storage.materialize_file("users/1/example.pdf", fallback) as materialized:
+        assert materialized != fallback
+        assert materialized.read_bytes() == b"remote"
+    assert not materialized.exists()
