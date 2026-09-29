@@ -77,6 +77,31 @@ def open_file(object_key: str, fallback_path: Path) -> BinaryIO:
         raise StorageError("فشل قراءة الملف من Object Storage") from exc
 
 
+def delete_user_objects(user_id: int) -> None:
+    """Delete every remote object owned by a user, including orphaned objects."""
+    if not _s3_enabled():
+        return
+
+    prefix = f"users/{user_id}/"
+    try:
+        client = _client()
+        paginator = client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=settings.S3_BUCKET, Prefix=prefix):
+            contents = page.get("Contents") or []
+            if not contents:
+                continue
+            for start in range(0, len(contents), 1000):
+                objects = [{"Key": item["Key"]} for item in contents[start : start + 1000]]
+                response = client.delete_objects(
+                    Bucket=settings.S3_BUCKET,
+                    Delete={"Objects": objects, "Quiet": True},
+                )
+                errors = response.get("Errors") or []
+                if errors:
+                    raise StorageError("فشل حذف بعض ملفات المستخدم من Object Storage")
+    except (BotoCoreError, ClientError) as exc:
+        raise StorageError("تعذر تنظيف ملفات المستخدم من Object Storage") from exc
+
 def delete_file(object_key: str, fallback_path: Path) -> None:
     if _s3_enabled():
         try:
