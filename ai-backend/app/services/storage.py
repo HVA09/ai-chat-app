@@ -1,8 +1,11 @@
 """Unified file storage with S3-compatible object storage and local fallback."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
-from typing import BinaryIO
+from shutil import copyfileobj
+from tempfile import NamedTemporaryFile
+from typing import BinaryIO, Iterator
 
 import boto3
 from botocore.config import Config
@@ -75,6 +78,27 @@ def open_file(object_key: str, fallback_path: Path) -> BinaryIO:
         if fallback_path.exists():
             return fallback_path.open("rb")
         raise StorageError("فشل قراءة الملف من Object Storage") from exc
+
+
+@contextmanager
+def materialize_file(object_key: str | None, fallback_path: Path) -> Iterator[Path]:
+    """Materialize a stored object into a temporary local path for libraries that need a filename."""
+    if not _s3_enabled():
+        if not fallback_path.exists():
+            raise FileNotFoundError(str(fallback_path))
+        yield fallback_path
+        return
+
+    source = open_file(object_key or "", fallback_path)
+    try:
+        suffix = fallback_path.suffix or ".bin"
+        with NamedTemporaryFile(prefix="ai-chat-storage-", suffix=suffix, delete=False) as tmp:
+            temp_path = Path(tmp.name)
+            copyfileobj(source, tmp)
+        yield temp_path
+    finally:
+        source.close()
+        temp_path.unlink(missing_ok=True)
 
 
 def delete_user_objects(user_id: int) -> None:
