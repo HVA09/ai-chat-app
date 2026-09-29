@@ -105,6 +105,7 @@ import useSavedPrompts from "./hooks/useSavedPrompts";
 import useMemories from "./hooks/useMemories";
 import useBookmarks from "./hooks/useBookmarks";
 import useNotifications from "./hooks/useNotifications";
+import useChatPreferences from "./hooks/useChatPreferences";
 import { getCurrentUser } from "./lib/usersApi";
 import "./i18n";
 
@@ -189,8 +190,6 @@ export default function App() {
   const [parentConversationId, setParentConversationId] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [titleLoading, setTitleLoading] = useState(false);
-  const [autoGenerateTitles, setAutoGenerateTitles] = useState(false);
-  const [autoGenerateSummaries, setAutoGenerateSummaries] = useState(false);
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [retryableUserMessage, setRetryableUserMessage] = useState(null);
   const [toolActivity, setToolActivity] = useState(null);
@@ -291,6 +290,8 @@ export default function App() {
     setError("");
   };
 
+  const { autoGenerateTitles, autoGenerateSummaries } = useChatPreferences();
+
   const logout = useCallback(async () => {
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
     setAuthed(false);
@@ -381,27 +382,6 @@ export default function App() {
       }
     };
   }, [authed, currentUser?.id, conversationId, input]);
-
-  useEffect(() => {
-    const readPreference = () => {
-      setAutoGenerateTitles(window.localStorage.getItem("ai-chat-auto-title") === "true");
-    };
-    readPreference();
-    window.addEventListener("ai-chat:auto-title-changed", readPreference);
-    return () => window.removeEventListener("ai-chat:auto-title-changed", readPreference);
-  }, []);
-
-  useEffect(() => {
-    const readPreference = () => {
-      setAutoGenerateSummaries(
-        window.localStorage.getItem("ai-chat-auto-summary") === "true"
-      );
-    };
-    readPreference();
-    window.addEventListener("ai-chat:auto-summary-changed", readPreference);
-    return () =>
-      window.removeEventListener("ai-chat:auto-summary-changed", readPreference);
-  }, []);
 
   // لو أي طلب بأي مكان بالتطبيق رجع 401 (مو بس إرسال رسالة)، نسجّل خروج
   // ونوضّح السبب — قبل كذا كان يصير خروج صامت بدون تفسير
