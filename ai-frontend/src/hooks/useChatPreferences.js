@@ -29,6 +29,8 @@ export default function useChatPreferences() {
 
   return {
     autoGenerateTitles,
+    setAutoGenerateTitles,
     autoGenerateSummaries,
+    setAutoGenerateSummaries,
   };
 }
