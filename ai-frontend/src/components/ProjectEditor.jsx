@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useAppDialog } from "./AppDialog";
 import {
   createProjectMemory,
   deleteProjectMemory,
@@ -15,6 +16,7 @@ export default function ProjectEditor({
   onSave,
 }) {
   const { t } = useTranslation();
+  const { confirm, prompt } = useAppDialog();
   const isEditing = Boolean(project);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -111,10 +113,7 @@ export default function ProjectEditor({
 
   const handleEditMemory = async (memory) => {
     if (!isEditing) return;
-    const content = window.prompt(
-      t("projectEditor.memoryEditPrompt"),
-      memory.content
-    );
+    const content = await prompt({ title: t("projectEditor.memoryEditPrompt"), message: t("projectEditor.memoryEditPrompt"), defaultValue: memory.content });
     if (!content?.trim() || content.trim() === memory.content) return;
 
     setMemorySaving(true);
@@ -137,9 +136,7 @@ export default function ProjectEditor({
   const handleDeleteMemory = async (memory) => {
     if (
       !isEditing ||
-      !window.confirm(
-        t("projectEditor.memoryDeleteConfirm", { content: memory.content })
-      )
+      !(await confirm({ title: t("projectEditor.memoryDeleteConfirm", { content: memory.content }), message: t("projectEditor.memoryDeleteConfirm", { content: memory.content }) }))
     ) {
       return;
     }
