@@ -545,12 +545,12 @@ def download_file(
 
 
 @router.post("/{file_id}/index-image", response_model=FileOut)
-async def index_image_for_rag(
+def index_image_for_rag(
     file_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """يفهرس صورة صراحةً في RAG بدون استدعاء Vision مخفي أثناء كل رسالة."""
+    """Queue explicit image indexing without blocking the HTTP request."""
     attachment = _get_accessible_file(file_id, current_user, db)
 
     if not attachment.content_type.startswith("image/"):
@@ -559,47 +559,38 @@ async def index_image_for_rag(
             detail="يمكن فهرسة الصور فقط",
         )
 
-    if attachment.extracted_text:
+    if attachment.processing_status in {"queued", "processing"}:
         return _file_response(attachment, current_user, db)
 
     enforce_daily_ai_limit(current_user, db)
-
     if attachment.workspace_id is not None:
         enforce_workspace_daily_ai_limit(attachment.workspace_id, current_user, db)
 
     allowed_models = get_allowed_ai_models(current_user, db)
     model = allowed_models[0] if allowed_models else settings.AI_MODEL
 
-    try:
-        reply, indexed_chunks = await index_image_file(attachment, db, model)
-    except (FileNotFoundError, ValueError) as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
-
-    db.add(
-        UsageLog(
-            user_id=current_user.id,
-            workspace_id=attachment.workspace_id,
-            endpoint="/files/index-image",
-            model=model,
-            provider=reply.provider,
-            input_tokens=reply.input_tokens,
-            output_tokens=reply.output_tokens,
-            latency_ms=reply.latency_ms,
-        )
-    )
+    attachment.processing_status = "queued"
+    attachment.processing_error = None
     db.commit()
     db.refresh(attachment)
 
-    log_event(
-        db,
-        "file_rag_indexed",
-        f"فهرسة صورة للـ RAG: {attachment.original_filename} ({indexed_chunks} مقطع)",
-        current_user.id,
-    )
+    try:
+        from app.tasks import index_image_file_task
+        if index_image_file_task is not None:
+            index_image_file_task.delay(attachment.id, model)
+        else:
+            from app.tasks import _index_image_file_job
+            _index_image_file_job(attachment.id, model)
+    except Exception:
+        logger.exception("Failed to enqueue image indexing file_id=%s; using direct fallback", attachment.id)
+        try:
+            from app.tasks import _index_image_file_job
+            _index_image_file_job(attachment.id, model)
+        except Exception as exc:
+            attachment.processing_status = "failed"
+            attachment.processing_error = str(exc)[:1000]
+            db.commit()
+
     return _file_response(attachment, current_user, db)
 
 
