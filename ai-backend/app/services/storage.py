@@ -90,6 +90,7 @@ def materialize_file(object_key: str | None, fallback_path: Path) -> Iterator[Pa
         return
 
     source = open_file(object_key or "", fallback_path)
+    temp_path: Path | None = None
     try:
         suffix = fallback_path.suffix or ".bin"
         with NamedTemporaryFile(prefix="ai-chat-storage-", suffix=suffix, delete=False) as tmp:
