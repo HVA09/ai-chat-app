@@ -262,6 +262,59 @@ def _execute_agent_job(job_id: int, db=None) -> None:
             db.close()
 
 
+def _process_file_attachment(file_id: int) -> None:
+    """Extract text and build RAG embeddings outside the upload request."""
+    from pathlib import Path
+
+    from app.models.file_attachment import FileAttachment
+    from app.services.embeddings import EmbeddingServiceError
+    from app.services.file_text_extractor import FileTextExtractionError, extract_text
+    from app.services.rag import index_file_chunks
+    from app.services.storage import materialize_file
+
+    db = SessionLocal()
+    try:
+        file = db.get(FileAttachment, file_id)
+        if file is None or file.processing_status == "ready":
+            return
+
+        file.processing_status = "processing"
+        file.processing_error = None
+        db.commit()
+
+        fallback_path = Path(settings.UPLOAD_DIR) / str(file.user_id) / file.stored_filename
+        with materialize_file(file.object_key, fallback_path) as path:
+            try:
+                extracted = extract_text(path, file.content_type)
+            except FileTextExtractionError as exc:
+                file.processing_status = "failed"
+                file.processing_error = str(exc)[:1000]
+                db.commit()
+                return
+
+        file.extracted_text = extracted
+        file.processing_status = "ready"
+        db.flush()
+
+        if extracted:
+            try:
+                index_file_chunks(db, file)
+            except EmbeddingServiceError as exc:
+                logger.warning("File RAG indexing failed file_id=%s: %s", file.id, exc)
+
+        db.commit()
+    except Exception as exc:
+        logger.exception("File processing failed: %s", file_id)
+        db.rollback()
+        file = db.get(FileAttachment, file_id)
+        if file is not None:
+            file.processing_status = "failed"
+            file.processing_error = str(exc)[:1000]
+            db.commit()
+    finally:
+        db.close()
+
+
 def _next_occurrence(task: ScheduledTask, now: datetime) -> datetime | None:
     if task.schedule_type == ScheduledTaskType.once:
         return None
@@ -630,6 +683,10 @@ try:
         }
     }
 
+    @celery_app.task(name="process_file_attachment")
+    def process_file_attachment(file_id: int) -> None:
+        _process_file_attachment(file_id)
+
     @celery_app.task(name="send_email_task")
     def send_email_task(to: str, subject: str, body: str) -> None:
         send_email(to, subject, body)
@@ -659,6 +716,7 @@ except ImportError:
     send_email_task = None
     execute_scheduled_task = None
     execute_agent_job = None
+    process_file_attachment = None
     run_due_scheduled_tasks = None
     _CELERY_AVAILABLE = False
     logger.info("مكتبة celery غير مثبّتة — المهام الخلفية غير مفعّلة")
