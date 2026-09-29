@@ -601,6 +601,44 @@ async def index_image_for_rag(
     return _file_response(attachment, current_user, db)
 
 
+@router.post("/{file_id}/reprocess", response_model=FileOut)
+def reprocess_file(
+    file_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    file = _get_accessible_file(file_id, current_user, db)
+    if file.processing_status not in {"failed", "ready"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="الملف قيد المعالجة بالفعل.",
+        )
+    file.processing_status = "queued"
+    file.processing_error = None
+    file.extracted_text = None
+    db.query(FileChunk).filter(FileChunk.file_id == file.id).delete(synchronize_session=False)
+    db.commit()
+    db.refresh(file)
+
+    try:
+        if process_file_attachment is not None:
+            process_file_attachment.delay(file.id)
+        else:
+            from app.tasks import _process_file_attachment
+            _process_file_attachment(file.id)
+    except Exception:
+        logger.exception("Failed to enqueue file reprocessing file_id=%s", file.id)
+        try:
+            from app.tasks import _process_file_attachment
+            _process_file_attachment(file.id)
+        except Exception as exc:
+            file.processing_status = "failed"
+            file.processing_error = str(exc)[:1000]
+            db.commit()
+
+    return _file_response(file, current_user, db)
+
+
 @router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_file(
     file_id: int,
