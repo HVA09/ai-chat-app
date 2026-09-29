@@ -100,15 +100,10 @@ import {
   deleteTag,
   setConversationTags,
 } from "./lib/tagsApi";
-import {
-  listSavedPrompts,
-  createSavedPrompt,
-  updateSavedPrompt,
-  deleteSavedPrompt,
-} from "./lib/savedPromptsApi";
 import { uploadFile, deleteFile } from "./lib/filesApi";
 import { getErrorMessage } from "./lib/errors";
 import { clearChatDraft, loadChatDraft, saveChatDraft } from "./lib/chatDrafts";
+import useSavedPrompts from "./hooks/useSavedPrompts";
 import { getCurrentUser } from "./lib/usersApi";
 import {
   listNotifications,
@@ -176,7 +171,6 @@ export default function App() {
   const [editingAssistantId, setEditingAssistantId] = useState(null);
   const [showProjectEditor, setShowProjectEditor] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState(null);
-  const [savedPrompts, setSavedPrompts] = useState([]);
   const [bookmarkedMessages, setBookmarkedMessages] = useState([]);
   const [memories, setMemories] = useState([]);
   const [aiModels, setAiModels] = useState([]);
@@ -1035,67 +1029,14 @@ export default function App() {
     }
   };
 
-  const refreshSavedPrompts = async () => {
-    try {
-      setSavedPrompts(await listSavedPrompts());
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.savedPromptsLoadError")),
-        type: "error",
-      });
-    }
-  };
+  const {
+    savedPrompts,
+    refreshSavedPrompts,
+    handleCreateSavedPrompt,
+    handleRenameSavedPrompt,
+    handleDeleteSavedPrompt,
+  } = useSavedPrompts({ setToast });
 
-  const handleCreateSavedPrompt = async () => {
-    const name = window.prompt(t("sidebar.savedPromptCreateNamePrompt"));
-    if (!name?.trim()) return;
-    const content = window.prompt(t("sidebar.savedPromptCreateContentPrompt"));
-    if (!content?.trim()) return;
-    try {
-      await createSavedPrompt(name.trim(), content.trim());
-      await refreshSavedPrompts();
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.savedPromptCreateError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleRenameSavedPrompt = async (id, currentName, currentContent) => {
-    const name = window.prompt(
-      t("sidebar.savedPromptRenameNamePrompt"),
-      currentName
-    );
-    if (!name?.trim()) return;
-    const content = window.prompt(
-      t("sidebar.savedPromptRenameContentPrompt"),
-      currentContent
-    );
-    if (!content?.trim()) return;
-    try {
-      await updateSavedPrompt(id, name.trim(), content.trim());
-      await refreshSavedPrompts();
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.savedPromptUpdateError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleDeleteSavedPrompt = async (id, name) => {
-    if (!window.confirm(t("sidebar.savedPromptDeleteConfirm", { name }))) return;
-    try {
-      await deleteSavedPrompt(id);
-      await refreshSavedPrompts();
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.savedPromptDeleteError"),
-        type: "error",
-      });
-    }
-  };
 
   const handleToggleMessageBookmark = async (index) => {
     if (!conversationId || loading || readOnlyConversation) return;
