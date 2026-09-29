@@ -5,6 +5,7 @@ import CommandPalette from "./components/CommandPalette";
 import ChatHeaderModern from "./components/ChatHeaderModern";
 import ChatMessage from "./components/ChatMessage";
 import ChatComposer from "./components/ChatComposer";
+import { useAppDialog } from "./components/AppDialog";
 import ModelCompareDialog from "./components/ModelCompareDialog";
 import WorkspaceConversationCommentsPanel from "./components/WorkspaceConversationCommentsPanel";
 import AssistantEditor from "./components/AssistantEditor";
@@ -133,6 +134,8 @@ function ModalLoadingFallback() {
 
 export default function App() {
   const { i18n, t } = useTranslation();
+  const { alert, confirm, prompt } = useAppDialog();
+
   const [authed, setAuthed] = useState(false);
   const [sessionChecking, setSessionChecking] = useState(true);
   const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
@@ -540,7 +543,7 @@ export default function App() {
   };
 
   const handleCreateTag = async () => {
-    const name = window.prompt(t("sidebar.tagCreatePrompt"));
+    const name = await prompt({ title: t("sidebar.tagCreatePrompt"), message: t("sidebar.tagCreatePrompt") });
     if (!name?.trim()) return;
     try {
       const tag = await createTag(name.trim());
@@ -564,7 +567,7 @@ export default function App() {
   };
 
   const handleRenameTag = async (id, currentName, currentColor) => {
-    const name = window.prompt(t("sidebar.tagRenamePrompt"), currentName);
+    const name = await prompt({ title: t("sidebar.tagRenamePrompt"), message: t("sidebar.tagRenamePrompt"), defaultValue: currentName });
     if (!name?.trim()) return;
     try {
       await updateTag(id, name.trim(), currentColor);
@@ -578,7 +581,7 @@ export default function App() {
   };
 
   const handleDeleteTag = async (id, name) => {
-    if (!window.confirm(t("sidebar.tagDeleteConfirm", { name }))) return;
+    if (!(await confirm({ title: t("sidebar.tagDeleteConfirm", { name }), message: t("sidebar.tagDeleteConfirm", { name }) }))) return;
     const wasSelected = id === selectedTagId;
     try {
       await deleteTag(id);
@@ -671,7 +674,7 @@ export default function App() {
   };
 
   const handleCreateWorkspace = async () => {
-    const name = window.prompt(t("sidebar.workspaceCreatePrompt"));
+    const name = await prompt({ title: t("sidebar.workspaceCreatePrompt"), message: t("sidebar.workspaceCreatePrompt") });
     if (!name?.trim()) return;
     try {
       const workspace = await createWorkspace(name.trim());
@@ -693,10 +696,7 @@ export default function App() {
   const handleRenameWorkspace = async () => {
     if (selectedWorkspaceId === null) return;
     const current = workspaces.find((workspace) => workspace.id === selectedWorkspaceId);
-    const name = window.prompt(
-      t("sidebar.workspaceRenamePrompt"),
-      current?.name || ""
-    );
+    const name = await prompt({ title: t("sidebar.workspaceRenamePrompt"), message: t("sidebar.workspaceRenamePrompt"), defaultValue: current?.name || "" });
     if (!name?.trim()) return;
     try {
       const updated = await renameWorkspace(selectedWorkspaceId, name.trim());
@@ -765,7 +765,7 @@ export default function App() {
   };
 
   const handleCreateFolder = async () => {
-    const name = window.prompt(t("sidebar.folderCreatePrompt"));
+    const name = await prompt({ title: t("sidebar.folderCreatePrompt"), message: t("sidebar.folderCreatePrompt") });
     if (!name?.trim()) return;
     try {
       const folder = await createFolder(name.trim(), selectedWorkspaceId);
@@ -900,7 +900,7 @@ export default function App() {
   };
 
   const handleDeleteProject = async (id, name) => {
-    if (!window.confirm(t("sidebar.projectDeleteConfirm", { name }))) return;
+    if (!(await confirm({ title: t("sidebar.projectDeleteConfirm", { name }), message: t("sidebar.projectDeleteConfirm", { name }) }))) return;
     const wasSelected = id === selectedProjectId;
     try {
       await deleteProject(id);
@@ -1090,7 +1090,7 @@ export default function App() {
   };
 
   const handleDeleteAssistant = async (id, name) => {
-    if (!window.confirm(t("sidebar.assistantDeleteConfirm", { name }))) return;
+    if (!(await confirm({ title: t("sidebar.assistantDeleteConfirm", { name }), message: t("sidebar.assistantDeleteConfirm", { name }) }))) return;
     try {
       await deleteAssistant(id);
       if (id === selectedAssistantId) {
@@ -1167,9 +1167,10 @@ export default function App() {
 
   const handleBulkDelete = async () => {
     if (!selectedConversationIds.length) return;
-    const confirmed = window.confirm(
-      t("sidebar.bulkDeleteConfirm", { count: selectedConversationIds.length })
-    );
+    const confirmed = await confirm({
+      title: t("sidebar.bulkDeleteConfirm", { count: selectedConversationIds.length }),
+      message: t("sidebar.bulkDeleteConfirm", { count: selectedConversationIds.length }),
+    });
     if (!confirmed) return;
 
     const selectedIds = [...selectedConversationIds];
@@ -1830,11 +1831,11 @@ export default function App() {
   const handleShareConversation = async () => {
     if (!conversationId) return;
     try {
-      const protect = window.confirm(t("sharing.protectConfirm"));
+      const protect = await confirm({ title: t("sharing.protectConfirm"), message: t("sharing.protectConfirm") });
       let password = null;
 
       if (protect) {
-        password = window.prompt(t("sharing.passwordPrompt"));
+        password = await prompt({ title: t("sharing.passwordPrompt"), message: t("sharing.passwordPrompt"), maxLength: 255 });
         if (password === null) return;
         password = password.trim();
         if (password.length < 8) {
@@ -1863,7 +1864,7 @@ export default function App() {
         return;
       }
 
-      window.prompt(t("sharing.copyPrompt"), share.url);
+      await alert({ title: t("sharing.copyPrompt"), message: share.url, confirmLabel: t("common.close") });
     } catch (err) {
       setToast({
         message: err?.response?.data?.detail || t("sharing.createError"),
@@ -1988,11 +1989,12 @@ export default function App() {
     if (!conversationId || loading || editingMessageIndex !== null || readOnlyConversation) return;
 
     const isArabic = document.documentElement.lang === "ar";
-    const confirmed = window.confirm(
-      isArabic
+    const confirmed = await confirm({
+      title: isArabic ? "تأكيد الحذف" : "Confirm deletion",
+      message: isArabic
         ? "حذف هذه الرسالة؟ إذا كانت رسالة مستخدم فسيُحذف رد المساعد المرتبط بها أيضًا."
-        : "Delete this message? For a user message, its linked assistant reply will also be deleted."
-    );
+        : "Delete this message? For a user message, its linked assistant reply will also be deleted.",
+    });
     if (!confirmed) return;
 
     setError("");
