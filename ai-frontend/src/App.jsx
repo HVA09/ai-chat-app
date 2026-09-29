@@ -232,6 +232,65 @@ export default function App() {
     return -1;
   }, [messages]);
 
+  const { memories, resetMemories, refreshMemories, handleToggleMessageMemory } = useMemories({
+    setToast,
+    messages,
+    readOnlyConversation,
+    loading,
+    editingMessageIndex,
+  });
+
+  const {
+    bookmarkedMessages,
+    resetBookmarks,
+    refreshBookmarkedMessages,
+    handleToggleMessageBookmark,
+  } = useBookmarks({
+    setToast,
+    conversationId,
+    loading,
+    readOnlyConversation,
+    setMessages,
+  });
+
+
+
+  const {
+    savedPrompts,
+    refreshSavedPrompts,
+    resetSavedPrompts,
+    handleCreateSavedPrompt,
+    handleRenameSavedPrompt,
+    handleDeleteSavedPrompt,
+  } = useSavedPrompts({ setToast });
+
+  const {
+    notifications,
+    notificationPreferences,
+    refreshNotifications,
+    resetNotifications,
+    handleNotificationToastsChanged,
+    handleMarkNotificationRead,
+    handleMarkAllNotificationsRead,
+  } = useNotifications({
+    setToast,
+    authed,
+    currentUserId: currentUser?.id,
+  });
+
+
+
+
+  const handleOpenBookmarkedMessage = async (item) => {
+    await openConversation(item.conversation_id);
+  };
+
+  const handleUseSavedPrompt = (content) => {
+    setInput(content);
+    setEditingMessageIndex(null);
+    setError("");
+  };
+
   const logout = useCallback(async () => {
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
     setAuthed(false);
@@ -918,64 +977,7 @@ export default function App() {
     }
   };
 
-  const { memories, resetMemories, refreshMemories, handleToggleMessageMemory } = useMemories({
-    setToast,
-    messages,
-    readOnlyConversation,
-    loading,
-    editingMessageIndex,
-  });
 
-  const {
-    bookmarkedMessages,
-    resetBookmarks,
-    refreshBookmarkedMessages,
-    handleToggleMessageBookmark,
-  } = useBookmarks({
-    setToast,
-    conversationId,
-    loading,
-    readOnlyConversation,
-    setMessages,
-  });
-
-
-
-  const {
-    savedPrompts,
-    refreshSavedPrompts,
-    resetSavedPrompts,
-    handleCreateSavedPrompt,
-    handleRenameSavedPrompt,
-    handleDeleteSavedPrompt,
-  } = useSavedPrompts({ setToast });
-
-  const {
-    notifications,
-    notificationPreferences,
-    refreshNotifications,
-    resetNotifications,
-    handleNotificationToastsChanged,
-    handleMarkNotificationRead,
-    handleMarkAllNotificationsRead,
-  } = useNotifications({
-    setToast,
-    authed,
-    currentUserId: currentUser?.id,
-  });
-
-
-
-
-  const handleOpenBookmarkedMessage = async (item) => {
-    await openConversation(item.conversation_id);
-  };
-
-  const handleUseSavedPrompt = (content) => {
-    setInput(content);
-    setEditingMessageIndex(null);
-    setError("");
-  };
 
   const refreshAssistants = async (workspaceId = selectedWorkspaceId) => {
     try {
