@@ -283,3 +283,52 @@ def test_project_file_cannot_attach_to_different_project_conversation(client, db
     )
     assert attached.status_code == 400
 
+
+
+def test_upload_text_file_is_processed_before_response_when_queue_unavailable(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr("app.routers.files.process_file_attachment", None)
+    monkeypatch.setattr(
+        "app.services.rag.index_file_chunks",
+        lambda db, attachment: 0,
+    )
+
+    token = _register_and_login(client, "processing@example.com")
+    response = client.post(
+        "/files/upload",
+        files={"file": ("note.txt", b"hello background processing", "text/plain")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["processing_status"] == "ready"
+    assert body["processing_error"] is None
+
+
+def test_image_indexing_is_queued(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    token = _register_and_login(client, "image-queue@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    upload = client.post(
+        "/files/upload",
+        files={"file": ("photo.png", b"\x89PNG\r\n\x1a\n" + b"image", "image/png")},
+        headers=headers,
+    )
+    assert upload.status_code == 201
+    assert upload.json()["processing_status"] == "ready"
+    file_id = upload.json()["id"]
+
+    calls = []
+
+    class FakeTask:
+        def delay(self, file_id, model):
+            calls.append((file_id, model))
+
+    monkeypatch.setattr("app.routers.files.index_image_file_task", FakeTask())
+
+    response = client.post(f"/files/{file_id}/index-image", headers=headers)
+    assert response.status_code == 200
+    assert calls == [(file_id, app_settings.AI_MODEL)]
+    assert response.json()["processing_status"] == "queued"

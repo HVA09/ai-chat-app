@@ -79,3 +79,9 @@ export async function indexImageForRag(id) {
   const { data } = await api.post(`/files/${id}/index-image`);
   return data;
 }
+
+
+export async function reprocessFile(id) {
+  const { data } = await api.post(`/files/${id}/reprocess`);
+  return data;
+}

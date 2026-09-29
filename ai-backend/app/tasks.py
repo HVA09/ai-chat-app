@@ -262,6 +262,114 @@ def _execute_agent_job(job_id: int, db=None) -> None:
             db.close()
 
 
+def _index_image_file_job(file_id: int, model: str) -> None:
+    """Index an image through Vision and pgvector outside the HTTP request."""
+    from app.models.file_attachment import FileAttachment
+    from app.services.image_rag import index_image_file
+
+    db = SessionLocal()
+    try:
+        file = db.get(FileAttachment, file_id)
+        if file is None:
+            return
+        if not file.content_type.startswith("image/"):
+            file.processing_status = "failed"
+            file.processing_error = "الملف ليس صورة."
+            db.commit()
+            return
+        if file.processing_status == "ready" and file.extracted_text:
+            return
+
+        file.processing_status = "processing"
+        file.processing_error = None
+        db.commit()
+
+        reply, indexed_chunks = asyncio.run(index_image_file(file, db, model))
+        file.processing_status = "ready"
+        file.processing_error = None
+        db.add(
+            UsageLog(
+                user_id=file.user_id,
+                workspace_id=file.workspace_id,
+                endpoint="/files/index-image",
+                model=model,
+                provider=reply.provider,
+                input_tokens=reply.input_tokens,
+                output_tokens=reply.output_tokens,
+                latency_ms=reply.latency_ms,
+            )
+        )
+        db.commit()
+        logger.info(
+            "Image indexed file_id=%s chunks=%s",
+            file.id,
+            indexed_chunks,
+        )
+    except Exception as exc:
+        logger.exception("Image indexing failed file_id=%s", file_id)
+        db.rollback()
+        file = db.get(FileAttachment, file_id)
+        if file is not None:
+            file.processing_status = "failed"
+            file.processing_error = str(exc)[:1000]
+            db.commit()
+    finally:
+        db.close()
+
+
+def _process_file_attachment(file_id: int) -> None:
+    """Extract text and build RAG embeddings outside the upload request."""
+    from pathlib import Path
+
+    from app.models.file_attachment import FileAttachment
+    from app.services.embeddings import EmbeddingServiceError
+    from app.services.file_text_extractor import FileTextExtractionError, extract_text
+    from app.services.rag import index_file_chunks
+    from app.services.storage import materialize_file
+
+    db = SessionLocal()
+    try:
+        file = db.get(FileAttachment, file_id)
+        if file is None or file.processing_status == "ready":
+            return
+
+        file.processing_status = "processing"
+        file.processing_error = None
+        db.commit()
+
+        fallback_path = Path(settings.UPLOAD_DIR) / str(file.user_id) / file.stored_filename
+        with materialize_file(file.object_key, fallback_path) as path:
+            try:
+                extracted = extract_text(path, file.content_type)
+            except FileTextExtractionError as exc:
+                file.processing_status = "failed"
+                file.processing_error = str(exc)[:1000]
+                db.commit()
+                return
+
+        file.extracted_text = extracted
+        file.processing_status = "ready"
+        db.flush()
+
+        if extracted:
+            try:
+                index_file_chunks(db, file)
+            except EmbeddingServiceError as exc:
+                logger.warning("File RAG indexing failed file_id=%s: %s", file.id, exc)
+
+        db.commit()
+    except Exception as exc:
+        logger.exception("File processing failed: %s", file_id)
+        db.rollback()
+        file = db.get(FileAttachment, file_id)
+        if file is not None:
+            file.processing_status = "failed"
+            file.processing_error = str(exc)[:1000]
+            db.commit()
+    finally:
+        db.close()
+
+
 def _next_occurrence(task: ScheduledTask, now: datetime) -> datetime | None:
     if task.schedule_type == ScheduledTaskType.once:
         return None
@@ -630,6 +738,14 @@ try:
         }
     }
 
+    @celery_app.task(name="index_image_file")
+    def index_image_file_task(file_id: int, model: str) -> None:
+        _index_image_file_job(file_id, model)
+
+    @celery_app.task(name="process_file_attachment")
+    def process_file_attachment(file_id: int) -> None:
+        _process_file_attachment(file_id)
+
     @celery_app.task(name="send_email_task")
     def send_email_task(to: str, subject: str, body: str) -> None:
         send_email(to, subject, body)
@@ -659,6 +775,8 @@ except ImportError:
     send_email_task = None
     execute_scheduled_task = None
     execute_agent_job = None
+    index_image_file_task = None
+    process_file_attachment = None
     run_due_scheduled_tasks = None
     _CELERY_AVAILABLE = False
     logger.info("مكتبة celery غير مثبّتة — المهام الخلفية غير مفعّلة")

@@ -1,5 +1,5 @@
 """
-نموذج الملفات المرفوعة — البيانات الوصفية بقاعدة البيانات، والملف نفسه على القرص
+نموذج الملفات المرفوعة — البيانات الوصفية بقاعدة البيانات، والملف نفسه في Object Storage مع fallback محلي
 """
 from datetime import datetime
 
@@ -30,6 +30,10 @@ class FileAttachment(Base):
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    processing_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="queued", server_default="queued", index=True
+    )
+    processing_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")

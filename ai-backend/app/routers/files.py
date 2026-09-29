@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_allowed_ai_models, get_current_user
+from app.logging_config import get_logger
 from app.audit import log_event
 from app.models.conversation import Conversation
 from app.models.conversation_file_link import ConversationFileLink
@@ -26,13 +27,12 @@ from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.file import FileOut
-from app.services.embeddings import EmbeddingServiceError
-from app.services.file_text_extractor import FileTextExtractionError, extract_text
-from app.services.rag import index_file_chunks
 from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
+from app.tasks import index_image_file_task, process_file_attachment
 
 router = APIRouter(prefix="/files", tags=["Files"])
+logger = get_logger("files")
 
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg",
@@ -297,18 +297,6 @@ async def upload_file(
         if temp_path:
             temp_path.unlink(missing_ok=True)
 
-    extracted_text = None
-    if sniffed is not None:
-        try:
-            extracted_text = extract_text(destination, sniffed)
-        except FileTextExtractionError as exc:
-            log_event(
-                db,
-                "file_text_extraction_failed",
-                f"فشل استخراج نص الملف: {file.filename or stored_filename} ({exc})",
-                current_user.id,
-            )
-
     attachment = FileAttachment(
         user_id=current_user.id,
         workspace_id=workspace_id,
@@ -318,28 +306,11 @@ async def upload_file(
         object_key=object_key,
         content_type=sniffed,
         size_bytes=total,
-        extracted_text=extracted_text,
+        extracted_text=None,
+        processing_status="ready" if sniffed.startswith("image/") else "queued",
     )
     db.add(attachment)
     db.flush()
-
-    if extracted_text:
-        try:
-            indexed_chunks = index_file_chunks(db, attachment)
-            if indexed_chunks:
-                log_event(
-                    db,
-                    "file_rag_indexed",
-                    f"تم فهرسة {indexed_chunks} مقطعًا للملف {attachment.original_filename}",
-                    current_user.id,
-                )
-        except EmbeddingServiceError as exc:
-            log_event(
-                db,
-                "file_rag_index_failed",
-                f"تعذر فهرسة الملف {attachment.original_filename}: {exc}",
-                current_user.id,
-            )
 
     if conversation_id is not None:
         db.add(
@@ -350,6 +321,31 @@ async def upload_file(
         )
     db.commit()
     db.refresh(attachment)
+    db.commit()
+    db.refresh(attachment)
+
+    if not attachment.content_type.startswith("image/"):
+        try:
+            if process_file_attachment is not None:
+                process_file_attachment.delay(attachment.id)
+            else:
+                from app.tasks import _process_file_attachment
+                _process_file_attachment(attachment.id)
+        except Exception:
+            logger.exception("Failed to enqueue file processing file_id=%s; using direct fallback", attachment.id)
+            try:
+                from app.tasks import _process_file_attachment
+                _process_file_attachment(attachment.id)
+            except Exception as exc:
+                logger.exception("Direct file processing fallback failed file_id=%s", attachment.id)
+                attachment.processing_status = "failed"
+                attachment.processing_error = str(exc)[:1000]
+                db.commit()
+
+        # Queue/direct fallback may update the row through another DB session.
+        # Refresh before returning so synchronous fallback reports the real state.
+        db.refresh(attachment)
+
     log_event(
         db,
         "file_uploaded",
@@ -554,12 +550,12 @@ def download_file(
 
 
 @router.post("/{file_id}/index-image", response_model=FileOut)
-async def index_image_for_rag(
+def index_image_for_rag(
     file_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """يفهرس صورة صراحةً في RAG بدون استدعاء Vision مخفي أثناء كل رسالة."""
+    """Queue explicit image indexing without blocking the HTTP request."""
     attachment = _get_accessible_file(file_id, current_user, db)
 
     if not attachment.content_type.startswith("image/"):
@@ -568,48 +564,95 @@ async def index_image_for_rag(
             detail="يمكن فهرسة الصور فقط",
         )
 
-    if attachment.extracted_text:
+    if attachment.processing_status in {"queued", "processing"}:
         return _file_response(attachment, current_user, db)
 
     enforce_daily_ai_limit(current_user, db)
-
     if attachment.workspace_id is not None:
         enforce_workspace_daily_ai_limit(attachment.workspace_id, current_user, db)
 
     allowed_models = get_allowed_ai_models(current_user, db)
     model = allowed_models[0] if allowed_models else settings.AI_MODEL
 
-    try:
-        reply, indexed_chunks = await index_image_file(attachment, db, model)
-    except (FileNotFoundError, ValueError) as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
-
-    db.add(
-        UsageLog(
-            user_id=current_user.id,
-            workspace_id=attachment.workspace_id,
-            endpoint="/files/index-image",
-            model=model,
-            provider=reply.provider,
-            input_tokens=reply.input_tokens,
-            output_tokens=reply.output_tokens,
-            latency_ms=reply.latency_ms,
-        )
-    )
+    attachment.processing_status = "queued"
+    attachment.processing_error = None
     db.commit()
     db.refresh(attachment)
 
-    log_event(
-        db,
-        "file_rag_indexed",
-        f"فهرسة صورة للـ RAG: {attachment.original_filename} ({indexed_chunks} مقطع)",
-        current_user.id,
-    )
+    try:
+        if index_image_file_task is not None:
+            index_image_file_task.delay(attachment.id, model)
+        else:
+            from app.tasks import _index_image_file_job
+            _index_image_file_job(attachment.id, model)
+    except Exception:
+        logger.exception("Failed to enqueue image indexing file_id=%s; using direct fallback", attachment.id)
+        try:
+            from app.tasks import _index_image_file_job
+            _index_image_file_job(attachment.id, model)
+        except Exception as exc:
+            attachment.processing_status = "failed"
+            attachment.processing_error = str(exc)[:1000]
+            db.commit()
+
+    # The direct fallback uses a separate DB session; reload the row before
+    # building the response so the returned status is accurate.
+    db.refresh(attachment)
+
     return _file_response(attachment, current_user, db)
+
+
+@router.post("/{file_id}/reprocess", response_model=FileOut)
+def reprocess_file(
+    file_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    file = _get_accessible_file(file_id, current_user, db)
+    if file.processing_status not in {"failed", "ready"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="الملف قيد المعالجة بالفعل.",
+        )
+    file.processing_status = "queued"
+    file.processing_error = None
+    file.extracted_text = None
+    db.query(FileChunk).filter(FileChunk.file_id == file.id).delete(synchronize_session=False)
+    db.commit()
+    db.refresh(file)
+
+    try:
+        if file.content_type.startswith("image/"):
+            allowed_models = get_allowed_ai_models(current_user, db)
+            model = allowed_models[0] if allowed_models else settings.AI_MODEL
+            if index_image_file_task is not None:
+                index_image_file_task.delay(file.id, model)
+            else:
+                from app.tasks import _index_image_file_job
+                _index_image_file_job(file.id, model)
+        elif process_file_attachment is not None:
+            process_file_attachment.delay(file.id)
+        else:
+            from app.tasks import _process_file_attachment
+            _process_file_attachment(file.id)
+    except Exception:
+        logger.exception("Failed to enqueue file reprocessing file_id=%s", file.id)
+        try:
+            if file.content_type.startswith("image/"):
+                from app.tasks import _index_image_file_job
+                allowed_models = get_allowed_ai_models(current_user, db)
+                model = allowed_models[0] if allowed_models else settings.AI_MODEL
+                _index_image_file_job(file.id, model)
+            else:
+                from app.tasks import _process_file_attachment
+                _process_file_attachment(file.id)
+        except Exception as exc:
+            file.processing_status = "failed"
+            file.processing_error = str(exc)[:1000]
+            db.commit()
+
+    db.refresh(file)
+    return _file_response(file, current_user, db)
 
 
 @router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)

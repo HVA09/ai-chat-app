@@ -9,6 +9,7 @@ import {
   listFiles,
   uploadFile,
   indexImageForRag,
+  reprocessFile,
 } from "../lib/filesApi";
 import { getErrorMessage } from "../lib/errors";
 
@@ -95,6 +96,19 @@ export default function FilesPanel({
     refresh();
   }, [conversationId, showWorkspaceFiles, showProjectFiles, workspaceId, projectId]);
 
+  useEffect(() => {
+    const hasPending = files.some(
+      (file) => file.processing_status === "queued" || file.processing_status === "processing"
+    );
+    if (!hasPending) return undefined;
+
+    const timer = window.setInterval(() => {
+      refresh();
+    }, 2500);
+
+    return () => window.clearInterval(timer);
+  }, [files]);
+
   const filteredFiles = files.filter((file) =>
     file.original_filename
       .toLocaleLowerCase()
@@ -178,6 +192,15 @@ export default function FilesPanel({
       showErrorToast(err, "files.imageIndexError");
     } finally {
       setIndexingId(null);
+    }
+  };
+
+  const handleReprocess = async (file) => {
+    try {
+      await reprocessFile(file.id);
+      await refresh();
+    } catch (err) {
+      showErrorToast(err, "files.reprocessError");
     }
   };
 
@@ -425,6 +448,15 @@ export default function FilesPanel({
                       {file.is_attached ? "↩" : "＋"}
                     </button>
                   )}
+                  {file.processing_status === "failed" && (
+                    <button
+                      onClick={() => handleReprocess(file)}
+                      title={t("files.reprocess")}
+                      className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                    >
+                      ↻
+                    </button>
+                  )}
                   {file.can_delete && (
                   <button
                     onClick={() => handleDelete(file.id)}
@@ -451,6 +483,18 @@ export default function FilesPanel({
                   {file.is_ai_indexed ? (
                     <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                       {t("files.indexed")}
+                    </span>
+                  ) : null}
+                  {file.processing_status && file.processing_status !== "ready" ? (
+                    <span
+                      className={
+                        file.processing_status === "failed"
+                          ? "rounded-full bg-red-50 px-2 py-0.5 text-red-700 dark:bg-red-950 dark:text-red-300"
+                          : "rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                      }
+                      title={file.processing_error || undefined}
+                    >
+                      {t(`files.status.${file.processing_status}`, { defaultValue: file.processing_status })}
                     </span>
                   ) : null}
                 </div>
