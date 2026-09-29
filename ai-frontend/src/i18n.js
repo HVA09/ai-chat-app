@@ -12,6 +12,7 @@ const resources = {
         cancel: "إلغاء",
         confirm: "تأكيد",
         save: "حفظ",
+        close: "إغلاق",
       },
       
       onboarding: {
@@ -560,6 +561,7 @@ const resources = {
         cancel: "Cancel",
         confirm: "Confirm",
         save: "Save",
+        close: "Close",
       },
           archived: "Archived conversations",
           backToChats: "Back to chats",
