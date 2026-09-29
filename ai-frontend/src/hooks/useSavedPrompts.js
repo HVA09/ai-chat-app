@@ -35,6 +35,8 @@ export default function useSavedPrompts({ setToast }) {
     const content = await prompt({
       title: t("sidebar.savedPromptCreateContentPrompt"),
       message: t("sidebar.savedPromptCreateContentPrompt"),
+      multiline: true,
+      maxLength: 4000,
     });
     if (!content?.trim()) return;
 
@@ -62,6 +64,8 @@ export default function useSavedPrompts({ setToast }) {
         title: t("sidebar.savedPromptRenameContentPrompt"),
         message: t("sidebar.savedPromptRenameContentPrompt"),
         defaultValue: currentContent,
+        multiline: true,
+        maxLength: 4000,
       });
       if (!content?.trim()) return;
 
