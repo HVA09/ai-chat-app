@@ -614,7 +614,16 @@ def reprocess_file(
     db.refresh(file)
 
     try:
-        if process_file_attachment is not None:
+        if file.content_type.startswith("image/"):
+            allowed_models = get_allowed_ai_models(current_user, db)
+            model = allowed_models[0] if allowed_models else settings.AI_MODEL
+            from app.tasks import index_image_file_task
+            if index_image_file_task is not None:
+                index_image_file_task.delay(file.id, model)
+            else:
+                from app.tasks import _index_image_file_job
+                _index_image_file_job(file.id, model)
+        elif process_file_attachment is not None:
             process_file_attachment.delay(file.id)
         else:
             from app.tasks import _process_file_attachment
@@ -622,8 +631,14 @@ def reprocess_file(
     except Exception:
         logger.exception("Failed to enqueue file reprocessing file_id=%s", file.id)
         try:
-            from app.tasks import _process_file_attachment
-            _process_file_attachment(file.id)
+            if file.content_type.startswith("image/"):
+                from app.tasks import _index_image_file_job
+                allowed_models = get_allowed_ai_models(current_user, db)
+                model = allowed_models[0] if allowed_models else settings.AI_MODEL
+                _index_image_file_job(file.id, model)
+            else:
+                from app.tasks import _process_file_attachment
+                _process_file_attachment(file.id)
         except Exception as exc:
             file.processing_status = "failed"
             file.processing_error = str(exc)[:1000]
