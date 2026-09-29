@@ -262,12 +262,19 @@ def _execute_agent_job(job_id: int, db=None) -> None:
             db.close()
 
 
-def _index_image_file_job(file_id: int, model: str) -> None:
-    """Index an image through Vision and pgvector outside the HTTP request."""
+def _index_image_file_job(file_id: int, model: str, db=None) -> None:
+    """Index an image through Vision and pgvector.
+
+    When called as a Celery task it owns a dedicated DB session. When called
+    synchronously as an HTTP fallback it reuses the request session so newly
+    uploaded rows inside a test/request transaction remain visible.
+    """
     from app.models.file_attachment import FileAttachment
     from app.services.image_rag import index_image_file
 
-    db = SessionLocal()
+    owns_session = db is None
+    if db is None:
+        db = SessionLocal()
     try:
         file = db.get(FileAttachment, file_id)
         if file is None:
@@ -307,17 +314,22 @@ def _index_image_file_job(file_id: int, model: str) -> None:
         )
     except Exception as exc:
         logger.exception("Image indexing failed file_id=%s", file_id)
-        db.rollback()
+        if owns_session:
+            db.rollback()
         file = db.get(FileAttachment, file_id)
         if file is not None:
             file.processing_status = "failed"
             file.processing_error = str(exc)[:1000]
-            db.commit()
+            if owns_session:
+                db.commit()
+            else:
+                db.flush()
     finally:
-        db.close()
+        if owns_session:
+            db.close()
 
 
-def _process_file_attachment(file_id: int) -> None:
+def _process_file_attachment(file_id: int, db=None) -> None:
     """Extract text and build RAG embeddings outside the upload request."""
     from pathlib import Path
 
@@ -327,7 +339,9 @@ def _process_file_attachment(file_id: int) -> None:
     from app.services.rag import index_file_chunks
     from app.services.storage import materialize_file
 
-    db = SessionLocal()
+    owns_session = db is None
+    if db is None:
+        db = SessionLocal()
     try:
         file = db.get(FileAttachment, file_id)
         if file is None or file.processing_status == "ready":
@@ -360,14 +374,19 @@ def _process_file_attachment(file_id: int) -> None:
         db.commit()
     except Exception as exc:
         logger.exception("File processing failed: %s", file_id)
-        db.rollback()
+        if owns_session:
+            db.rollback()
         file = db.get(FileAttachment, file_id)
         if file is not None:
             file.processing_status = "failed"
             file.processing_error = str(exc)[:1000]
-            db.commit()
+            if owns_session:
+                db.commit()
+            else:
+                db.flush()
     finally:
-        db.close()
+        if owns_session:
+            db.close()
 
 
 def _next_occurrence(task: ScheduledTask, now: datetime) -> datetime | None:
