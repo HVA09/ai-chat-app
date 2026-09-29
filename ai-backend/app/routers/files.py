@@ -26,11 +26,9 @@ from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.file import FileOut
-from app.services.embeddings import EmbeddingServiceError
-from app.services.file_text_extractor import FileTextExtractionError, extract_text
-from app.services.rag import index_file_chunks
 from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
+from app.tasks import process_file_attachment
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
@@ -297,18 +295,6 @@ async def upload_file(
         if temp_path:
             temp_path.unlink(missing_ok=True)
 
-    extracted_text = None
-    if sniffed is not None:
-        try:
-            extracted_text = extract_text(destination, sniffed)
-        except FileTextExtractionError as exc:
-            log_event(
-                db,
-                "file_text_extraction_failed",
-                f"فشل استخراج نص الملف: {file.filename or stored_filename} ({exc})",
-                current_user.id,
-            )
-
     attachment = FileAttachment(
         user_id=current_user.id,
         workspace_id=workspace_id,
@@ -318,28 +304,11 @@ async def upload_file(
         object_key=object_key,
         content_type=sniffed,
         size_bytes=total,
-        extracted_text=extracted_text,
+        extracted_text=None,
+        processing_status="queued",
     )
     db.add(attachment)
     db.flush()
-
-    if extracted_text:
-        try:
-            indexed_chunks = index_file_chunks(db, attachment)
-            if indexed_chunks:
-                log_event(
-                    db,
-                    "file_rag_indexed",
-                    f"تم فهرسة {indexed_chunks} مقطعًا للملف {attachment.original_filename}",
-                    current_user.id,
-                )
-        except EmbeddingServiceError as exc:
-            log_event(
-                db,
-                "file_rag_index_failed",
-                f"تعذر فهرسة الملف {attachment.original_filename}: {exc}",
-                current_user.id,
-            )
 
     if conversation_id is not None:
         db.add(
@@ -350,6 +319,21 @@ async def upload_file(
         )
     db.commit()
     db.refresh(attachment)
+    db.commit()
+    db.refresh(attachment)
+
+    try:
+        if process_file_attachment is not None:
+            process_file_attachment.delay(attachment.id)
+        else:
+            from app.tasks import _process_file_attachment
+            _process_file_attachment(attachment.id)
+    except Exception:
+        logger.exception("Failed to enqueue file processing file_id=%s", attachment.id)
+        attachment.processing_status = "failed"
+        attachment.processing_error = "تعذر بدء معالجة الملف."
+        db.commit()
+
     log_event(
         db,
         "file_uploaded",
