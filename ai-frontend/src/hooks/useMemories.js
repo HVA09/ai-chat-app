@@ -7,6 +7,8 @@ export default function useMemories({ setToast, messages, readOnlyConversation, 
   const { t } = useTranslation();
   const [memories, setMemories] = useState([]);
 
+  const resetMemories = useCallback(() => setMemories([]), []);
+
   const refreshMemories = useCallback(async () => {
     try {
       setMemories(await listMemories());
@@ -48,5 +50,5 @@ export default function useMemories({ setToast, messages, readOnlyConversation, 
     }
   }, [editingMessageIndex, loading, memories, messages, readOnlyConversation, setToast, t]);
 
-  return { memories, refreshMemories, handleToggleMessageMemory };
+  return { memories, resetMemories, refreshMemories, handleToggleMessageMemory };
 }
