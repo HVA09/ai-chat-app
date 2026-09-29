@@ -29,7 +29,7 @@ from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.file import FileOut
 from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
-from app.tasks import process_file_attachment
+from app.tasks import index_image_file_task, process_file_attachment
 
 router = APIRouter(prefix="/files", tags=["Files"])
 logger = get_logger("files")
@@ -580,7 +580,6 @@ def index_image_for_rag(
     db.refresh(attachment)
 
     try:
-        from app.tasks import index_image_file_task
         if index_image_file_task is not None:
             index_image_file_task.delay(attachment.id, model)
         else:
@@ -626,7 +625,6 @@ def reprocess_file(
         if file.content_type.startswith("image/"):
             allowed_models = get_allowed_ai_models(current_user, db)
             model = allowed_models[0] if allowed_models else settings.AI_MODEL
-            from app.tasks import index_image_file_task
             if index_image_file_task is not None:
                 index_image_file_task.delay(file.id, model)
             else:
