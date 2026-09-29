@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useAppDialog } from "./AppDialog";
 import { listFiles, uploadFile } from "../lib/filesApi";
 import {
   listAssistantKnowledgeFiles,
@@ -21,6 +22,7 @@ import {
 
 export default function AssistantEditor({ assistant = null, onClose, onSave, onRestored }) {
   const { t } = useTranslation();
+  const { alert, confirm } = useAppDialog();
   const isEditing = Boolean(assistant);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -195,7 +197,7 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
 
   const rotatePublicLink = async () => {
     if (!assistant?.id || publicLoading) return;
-    if (!window.confirm(t("assistantEditor.rotatePublicConfirm"))) return;
+    if (!(await confirm({ title: t("assistantEditor.rotatePublicConfirm"), message: t("assistantEditor.rotatePublicConfirm") }))) return;
     setPublicLoading(true);
     try {
       setPublicSettings(await rotateAssistantPublicLink(assistant.id));
@@ -208,7 +210,7 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
 
   const disablePublicLink = async () => {
     if (!assistant?.id || publicLoading) return;
-    if (!window.confirm(t("assistantEditor.disablePublicConfirm"))) return;
+    if (!(await confirm({ title: t("assistantEditor.disablePublicConfirm"), message: t("assistantEditor.disablePublicConfirm") }))) return;
     setPublicLoading(true);
     try {
       setPublicSettings(await disableAssistantPublicLink(assistant.id));
@@ -225,10 +227,10 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(publicSettings.public_url);
       } else {
-        window.prompt(t("assistantEditor.copyPublicPrompt"), publicSettings.public_url);
+        await alert({ title: t("assistantEditor.copyPublicPrompt"), message: publicSettings.public_url, confirmLabel: t("common.close") });
       }
     } catch {
-      window.prompt(t("assistantEditor.copyPublicPrompt"), publicSettings.public_url);
+      await alert({ title: t("assistantEditor.copyPublicPrompt"), message: publicSettings.public_url, confirmLabel: t("common.close") });
     }
   };
 
