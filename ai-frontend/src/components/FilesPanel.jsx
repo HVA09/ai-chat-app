@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useAppDialog } from "./AppDialog";
 import {
   attachFileToConversation,
   deleteFile,
@@ -40,6 +41,7 @@ export default function FilesPanel({
   onAnalyzeImage,
 }) {
   const { t } = useTranslation();
+  const { confirm, prompt } = useAppDialog();
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -168,12 +170,15 @@ export default function FilesPanel({
 
   const handleAnalyzeImage = async (file) => {
     if (!conversationId || !file.content_type.startsWith("image/") || !onAnalyzeImage) return;
-    const prompt = window.prompt(t("files.analyzePrompt"));
-    if (!prompt?.trim()) return;
+    const analysisPrompt = await prompt({
+      title: t("files.analyzePrompt"),
+      message: t("files.analyzePrompt"),
+    });
+    if (!analysisPrompt?.trim()) return;
 
     setAnalyzingId(file.id);
     try {
-      await onAnalyzeImage(file, prompt.trim());
+      await onAnalyzeImage(file, analysisPrompt.trim());
     } catch (err) {
       showErrorToast(err, "files.imageAnalyzeError");
     } finally {
@@ -205,7 +210,11 @@ export default function FilesPanel({
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm(t("files.confirmDelete"))) return;
+    const confirmed = await confirm({
+      title: t("files.confirmDelete"),
+      message: t("files.confirmDelete"),
+    });
+    if (!confirmed) return;
     try {
       await deleteFile(id);
       setFiles((prev) => prev.filter((f) => f.id !== id));
