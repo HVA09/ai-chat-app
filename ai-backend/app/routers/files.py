@@ -29,7 +29,7 @@ from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.file import FileOut
 from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
-from app.tasks import process_file_attachment
+from app.tasks import index_image_file_task, process_file_attachment
 
 router = APIRouter(prefix="/files", tags=["Files"])
 logger = get_logger("files")
@@ -307,7 +307,7 @@ async def upload_file(
         content_type=sniffed,
         size_bytes=total,
         extracted_text=None,
-        processing_status="queued",
+        processing_status="ready" if sniffed.startswith("image/") else "queued",
     )
     db.add(attachment)
     db.flush()
@@ -324,22 +324,25 @@ async def upload_file(
     db.commit()
     db.refresh(attachment)
 
-    try:
-        if process_file_attachment is not None:
-            process_file_attachment.delay(attachment.id)
-        else:
-            from app.tasks import _process_file_attachment
-            _process_file_attachment(attachment.id)
-    except Exception:
-        logger.exception("Failed to enqueue file processing file_id=%s; using direct fallback", attachment.id)
+    if not attachment.content_type.startswith("image/"):
         try:
-            from app.tasks import _process_file_attachment
-            _process_file_attachment(attachment.id)
-        except Exception as exc:
-            logger.exception("Direct file processing fallback failed file_id=%s", attachment.id)
-            attachment.processing_status = "failed"
-            attachment.processing_error = str(exc)[:1000]
-            db.commit()
+            if process_file_attachment is not None:
+                process_file_attachment.delay(attachment.id)
+            else:
+                from app.tasks import _process_file_attachment
+                _process_file_attachment(attachment.id)
+        except Exception:
+            logger.exception("Failed to enqueue file processing file_id=%s; using direct fallback", attachment.id)
+            try:
+                from app.tasks import _process_file_attachment
+                _process_file_attachment(attachment.id)
+            except Exception as exc:
+                logger.exception("Direct file processing fallback failed file_id=%s", attachment.id)
+                attachment.processing_status = "failed"
+                attachment.processing_error = str(exc)[:1000]
+                db.commit()
+
+    db.refresh(attachment)
 
     log_event(
         db,
@@ -575,7 +578,6 @@ def index_image_for_rag(
     db.refresh(attachment)
 
     try:
-        from app.tasks import index_image_file_task
         if index_image_file_task is not None:
             index_image_file_task.delay(attachment.id, model)
         else:
@@ -617,7 +619,6 @@ def reprocess_file(
         if file.content_type.startswith("image/"):
             allowed_models = get_allowed_ai_models(current_user, db)
             model = allowed_models[0] if allowed_models else settings.AI_MODEL
-            from app.tasks import index_image_file_task
             if index_image_file_task is not None:
                 index_image_file_task.delay(file.id, model)
             else:
