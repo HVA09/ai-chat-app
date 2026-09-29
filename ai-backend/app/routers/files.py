@@ -341,6 +341,10 @@ async def upload_file(
             attachment.processing_error = str(exc)[:1000]
             db.commit()
 
+    # Queue/direct fallback may update the row through another DB session.
+    # Refresh before returning so synchronous fallback reports the real state.
+    db.refresh(attachment)
+
     log_event(
         db,
         "file_uploaded",
@@ -591,6 +595,10 @@ def index_image_for_rag(
             attachment.processing_error = str(exc)[:1000]
             db.commit()
 
+    # The direct fallback uses a separate DB session; reload the row before
+    # building the response so the returned status is accurate.
+    db.refresh(attachment)
+
     return _file_response(attachment, current_user, db)
 
 
@@ -644,6 +652,7 @@ def reprocess_file(
             file.processing_error = str(exc)[:1000]
             db.commit()
 
+    db.refresh(file)
     return _file_response(file, current_user, db)
 
 
