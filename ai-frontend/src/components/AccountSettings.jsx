@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useAppDialog } from "./AppDialog";
 import {
   requestEmailVerification,
   setupTwoFactor,
@@ -34,6 +35,7 @@ export default function AccountSettings({
   onAccountDeleted,
 }) {
   const { t } = useTranslation();
+  const { confirm, prompt } = useAppDialog();
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -182,7 +184,7 @@ export default function AccountSettings({
   const handleRevokeApiKey = (item) =>
     runAction(async () => {
       if (item.revoked_at) return;
-      if (!window.confirm(t("account.apiKeyRevokeConfirm", { name: item.name }))) return;
+      if (!(await confirm({ title: t("account.apiKeyRevokeConfirm", { name: item.name }), message: t("account.apiKeyRevokeConfirm", { name: item.name }) }))) return;
       await revokeApiKey(item.id);
       await loadApiKeys();
       setMessage(t("account.apiKeyRevoked"));
@@ -208,7 +210,7 @@ export default function AccountSettings({
 
   const handleEditMemory = (memory) =>
     runAction(async () => {
-      const content = window.prompt(t("account.memoryEditPrompt"), memory.content);
+      const content = await prompt({ title: t("account.memoryEditPrompt"), message: t("account.memoryEditPrompt"), defaultValue: memory.content });
       if (!content?.trim()) return;
       await updateMemory(memory.id, content.trim());
       await loadMemories();
@@ -217,7 +219,7 @@ export default function AccountSettings({
 
   const handleDeleteMemory = (memory) =>
     runAction(async () => {
-      if (!window.confirm(t("account.memoryDeleteConfirm", { content: memory.content }))) return;
+      if (!(await confirm({ title: t("account.memoryDeleteConfirm", { content: memory.content }), message: t("account.memoryDeleteConfirm", { content: memory.content }) }))) return;
       await deleteMemory(memory.id);
       await loadMemories();
       setMessage(t("account.memoryDeleted"));
@@ -225,7 +227,7 @@ export default function AccountSettings({
 
   const handleRevokeSession = (session) =>
     runAction(async () => {
-      if (!window.confirm(t("account.sessionRevokeConfirm"))) return;
+      if (!(await confirm({ title: t("account.sessionRevokeConfirm"), message: t("account.sessionRevokeConfirm") }))) return;
       await revokeSession(session.id);
       await loadSessions();
       setMessage(t("account.sessionRevoked"));
@@ -233,7 +235,7 @@ export default function AccountSettings({
 
   const handleRevokeAllSessions = () =>
     runAction(async () => {
-      if (!window.confirm(t("account.sessionRevokeAllConfirm"))) return;
+      if (!(await confirm({ title: t("account.sessionRevokeAllConfirm"), message: t("account.sessionRevokeAllConfirm") }))) return;
       await revokeAllSessions();
       setSessions([]);
       setMessage(t("account.sessionsRevoked"));
@@ -263,7 +265,7 @@ export default function AccountSettings({
 
   const handleDeleteAccount = () =>
     runAction(async () => {
-      if (!window.confirm(t("account.confirmDeleteAccount"))) return;
+      if (!(await confirm({ title: t("account.confirmDeleteAccount"), message: t("account.confirmDeleteAccount") }))) return;
       await deleteAccount(deletePassword);
       onAccountDeleted();
     });
