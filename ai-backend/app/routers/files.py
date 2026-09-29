@@ -329,10 +329,15 @@ async def upload_file(
             from app.tasks import _process_file_attachment
             _process_file_attachment(attachment.id)
     except Exception:
-        logger.exception("Failed to enqueue file processing file_id=%s", attachment.id)
-        attachment.processing_status = "failed"
-        attachment.processing_error = "تعذر بدء معالجة الملف."
-        db.commit()
+        logger.exception("Failed to enqueue file processing file_id=%s; using direct fallback", attachment.id)
+        try:
+            from app.tasks import _process_file_attachment
+            _process_file_attachment(attachment.id)
+        except Exception as exc:
+            logger.exception("Direct file processing fallback failed file_id=%s", attachment.id)
+            attachment.processing_status = "failed"
+            attachment.processing_error = str(exc)[:1000]
+            db.commit()
 
     log_event(
         db,
