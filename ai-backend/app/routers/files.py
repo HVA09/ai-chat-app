@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_allowed_ai_models, get_current_user
+from app.logging_config import get_logger
 from app.audit import log_event
 from app.models.conversation import Conversation
 from app.models.conversation_file_link import ConversationFileLink
@@ -31,6 +32,7 @@ from app.services.storage import StorageError, delete_file as delete_stored_file
 from app.tasks import process_file_attachment
 
 router = APIRouter(prefix="/files", tags=["Files"])
+logger = get_logger("files")
 
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg",
