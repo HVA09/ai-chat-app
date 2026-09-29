@@ -104,18 +104,8 @@ import { clearChatDraft, loadChatDraft, saveChatDraft } from "./lib/chatDrafts";
 import useSavedPrompts from "./hooks/useSavedPrompts";
 import useMemories from "./hooks/useMemories";
 import useBookmarks from "./hooks/useBookmarks";
+import useNotifications from "./hooks/useNotifications";
 import { getCurrentUser } from "./lib/usersApi";
-import {
-  listNotifications,
-  markNotificationRead,
-  markAllNotificationsRead,
-  buildNotificationsWebSocketUrl,
-} from "./lib/notificationsApi";
-import {
-  loadNotificationPreferences,
-  saveNotificationPreferences,
-  NOTIFICATION_PREFERENCE_EVENT,
-} from "./lib/notificationPreferences";
 import "./i18n";
 
 // دالة بدل ثابت — لازم نستدعيها بعد ما يصير عندنا t() جوا المكوّن عشان رسالة
@@ -201,10 +191,6 @@ export default function App() {
   const [titleLoading, setTitleLoading] = useState(false);
   const [autoGenerateTitles, setAutoGenerateTitles] = useState(false);
   const [autoGenerateSummaries, setAutoGenerateSummaries] = useState(false);
-  const [notifications, setNotifications] = useState([]);
-  const [notificationPreferences, setNotificationPreferences] = useState({
-    realtimeToasts: true,
-  });
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [retryableUserMessage, setRetryableUserMessage] = useState(null);
   const [toolActivity, setToolActivity] = useState(null);
@@ -295,55 +281,12 @@ export default function App() {
     setSummaryLoading(false);
     autoSummaryLastMessageCountRef.current = {};
     messageCountRef.current = 1;
-    setNotifications([]);
+    resetNotifications();
   }, [t]);
 
   useEffect(() => {
     restoreSession().then(() => setAuthed(true)).catch(() => setAuthed(false)).finally(() => setSessionChecking(false));
   }, []);
-
-  useEffect(() => {
-    if (!authed || !currentUser?.id) return;
-    setNotificationPreferences(loadNotificationPreferences(currentUser.id));
-  }, [authed, currentUser?.id]);
-
-  useEffect(() => {
-    const handlePreferenceChange = (event) => {
-      if (event.detail) {
-        setNotificationPreferences((current) => ({ ...current, ...event.detail }));
-      } else if (currentUser?.id) {
-        setNotificationPreferences(loadNotificationPreferences(currentUser.id));
-      }
-    };
-    window.addEventListener(NOTIFICATION_PREFERENCE_EVENT, handlePreferenceChange);
-    return () =>
-      window.removeEventListener(NOTIFICATION_PREFERENCE_EVENT, handlePreferenceChange);
-  }, [currentUser?.id]);
-
-  const handleNotificationToastsChanged = useCallback(
-    (enabled) => {
-      if (!currentUser?.id) return;
-      const next = { realtimeToasts: enabled };
-      setNotificationPreferences(next);
-      saveNotificationPreferences(currentUser.id, next);
-    },
-    [currentUser?.id]
-  );
-
-  useEffect(() => {
-    if (!authed || !currentUser?.id || typeof window === "undefined") return;
-    const key = `ai-chat-onboarding:${currentUser.id}`;
-    if (window.localStorage.getItem(key) !== "done") {
-      setShowOnboarding(true);
-    }
-  }, [authed, currentUser?.id]);
-
-  const closeOnboarding = useCallback(() => {
-    if (currentUser?.id && typeof window !== "undefined") {
-      window.localStorage.setItem(`ai-chat-onboarding:${currentUser.id}`, "done");
-    }
-    setShowOnboarding(false);
-  }, [currentUser?.id]);
 
   useEffect(() => {
     if (!authed || !currentUser?.id) return;
@@ -1005,6 +948,20 @@ export default function App() {
     handleDeleteSavedPrompt,
   } = useSavedPrompts({ setToast });
 
+  const {
+    notifications,
+    notificationPreferences,
+    refreshNotifications,
+    resetNotifications,
+    handleNotificationToastsChanged,
+    handleMarkNotificationRead,
+    handleMarkAllNotificationsRead,
+  } = useNotifications({
+    setToast,
+    authed,
+    currentUserId: currentUser?.id,
+  });
+
 
 
 
@@ -1287,17 +1244,6 @@ export default function App() {
     }
   };
 
-  const refreshNotifications = async () => {
-    try {
-      setNotifications(await listNotifications());
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.notificationsLoadError")),
-        type: "error",
-      });
-    }
-  };
-
   useEffect(() => {
     if (authed) {
       refreshWorkspaces();
@@ -1323,22 +1269,6 @@ export default function App() {
     window.addEventListener("app:toast", handleAppToast);
     return () => window.removeEventListener("app:toast", handleAppToast);
   }, []);
-
-  // اتصال WebSocket للإشعارات الفورية — يُفتح عند الدخول، ويُغلق عند الخروج
-  useEffect(() => {
-    if (!authed) return;
-
-    const ws = new WebSocket(buildNotificationsWebSocketUrl());
-    ws.onmessage = (event) => {
-      const notification = JSON.parse(event.data);
-      setNotifications((prev) => [notification, ...prev]);
-      if (notificationPreferences.realtimeToasts) {
-        setToast({ message: notification.title, type: "success" });
-      }
-    };
-
-    return () => ws.close();
-  }, [authed, notificationPreferences.realtimeToasts]);
 
   const switchLang = (nextLang) => {
     setLang(nextLang);
@@ -2482,24 +2412,6 @@ export default function App() {
         );
       },
     });
-  };
-
-  const handleMarkNotificationRead = async (id) => {
-    try {
-      await markNotificationRead(id);
-      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
-    } catch {
-      // تجاهل بصمت — مو حرج
-    }
-  };
-
-  const handleMarkAllNotificationsRead = async () => {
-    try {
-      await markAllNotificationsRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-    } catch {
-      // تجاهل بصمت — مو حرج
-    }
   };
 
   const commandPaletteActions = [
