@@ -330,7 +330,7 @@ async def upload_file(
                 process_file_attachment.delay(attachment.id)
             else:
                 from app.tasks import _process_file_attachment
-                _process_file_attachment(attachment.id)
+                _process_file_attachment(attachment.id, db=db)
         except Exception:
             logger.exception("Failed to enqueue file processing file_id=%s; using direct fallback", attachment.id)
             try:
