@@ -593,6 +593,9 @@ def index_image_for_rag(
             attachment.processing_error = str(exc)[:1000]
             db.commit()
 
+    # Direct fallbacks mutate the same request session; refresh before building
+    # the response so processing_status/extracted_text reflect the completed job.
+    db.refresh(attachment)
     return _file_response(attachment, current_user, db)
 
 
@@ -645,6 +648,7 @@ def reprocess_file(
             file.processing_error = str(exc)[:1000]
             db.commit()
 
+    db.refresh(file)
     return _file_response(file, current_user, db)
 
 
