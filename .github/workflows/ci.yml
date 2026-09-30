@@ -13,6 +13,10 @@ permissions:
 
 jobs:
   backend:
+    strategy:
+      fail-fast: false
+      matrix:
+        test_group: [0, 1, 2, 3, 4, 5]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -53,8 +57,9 @@ jobs:
           REDIS_URL: "redis://localhost:6379/0"
           CELERY_BROKER_URL: "redis://localhost:6379/1"
           CELERY_RESULT_BACKEND: "redis://localhost:6379/1"
-      - run: pytest -q
+      - name: Run pytest group ${{ matrix.test_group }}
         env:
+          PYTEST_GROUP: ${{ matrix.test_group }}
           ENVIRONMENT: test
           DEBUG: "false"
           TEST_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/ai_backend_test"
@@ -65,6 +70,39 @@ jobs:
           REDIS_URL: "redis://localhost:6379/0"
           CELERY_BROKER_URL: "redis://localhost:6379/1"
           CELERY_RESULT_BACKEND: "redis://localhost:6379/1"
+        run: |
+          python - <<'PY'
+          import ast
+          import os
+          import subprocess
+          from pathlib import Path
+
+          group_index = int(os.environ["PYTEST_GROUP"])
+          group_count = 6
+          files = sorted(Path("tests").glob("test_*.py"))
+
+          weighted = []
+          for path in files:
+              tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+              count = sum(
+                  isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                  and node.name.startswith("test_")
+                  for node in ast.walk(tree)
+              )
+              weighted.append((count, str(path)))
+
+          groups = [[] for _ in range(group_count)]
+          weights = [0] * group_count
+          for count, path in sorted(weighted, reverse=True):
+              target = min(range(group_count), key=lambda i: weights[i])
+              groups[target].append(path)
+              weights[target] += count
+
+          selected = sorted(groups[group_index])
+          print(f"pytest group {group_index + 1}/{group_count}: {len(selected)} files, {weights[group_index]} tests")
+          print("\n".join(selected))
+          subprocess.run(["pytest", "-q", *selected], check=True)
+          PY
 
   frontend:
     runs-on: ubuntu-latest
