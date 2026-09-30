@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useAppDialog } from "./AppDialog";
 import WorkspaceSharedConversationsPanel from "./WorkspaceSharedConversationsPanel";
 import Icon from "./ui/Icon";
 
@@ -94,6 +95,7 @@ export default function SidebarModern({
   onLoadMore = () => {},
 }) {
   const { t } = useTranslation();
+  const { prompt } = useAppDialog();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [openSection, setOpenSection] = useState(null);
@@ -275,7 +277,7 @@ export default function SidebarModern({
                     {contextOpenId === item.id ? (
                       <div className="modern-conversation-menu">
                         <button type="button" onClick={() => { onTogglePinConversation(item.id); setContextOpenId(null); }} title={item.is_pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}><Icon name="pin" size={14} /></button>
-                        <button type="button" onClick={() => { const title = window.prompt(t("sidebar.renamePrompt"), item.title); if (title?.trim()) onRenameConversation(item.id, title.trim()); setContextOpenId(null); }} title={t("sidebar.renameTitle")}><Icon name="edit" size={14} /></button>
+                        <button type="button" onClick={async () => { const title = await prompt({ title: t("sidebar.renamePrompt"), message: t("sidebar.renamePrompt"), defaultValue: item.title }); if (title?.trim()) onRenameConversation(item.id, title.trim()); setContextOpenId(null); }} title={t("sidebar.renameTitle")}><Icon name="edit" size={14} /></button>
                         <button type="button" onClick={() => { onDuplicateConversation(item.id); setContextOpenId(null); }} title={t("sidebar.duplicateTitle")}><Icon name="copy" size={14} /></button>
                         <button type="button" onClick={() => { onToggleArchiveConversation(item.id); setContextOpenId(null); }} title={showArchived ? t("sidebar.unarchiveTitle") : t("sidebar.archiveTitle")}><Icon name="archive" size={14} /></button>
                         <button type="button" onClick={() => { onToggleTrashConversation(item.id); setContextOpenId(null); }} title={t("sidebar.trashTitle")}><Icon name="trash" size={14} /></button>

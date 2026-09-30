@@ -5,6 +5,7 @@ import CommandPalette from "./components/CommandPalette";
 import ChatHeaderModern from "./components/ChatHeaderModern";
 import ChatMessage from "./components/ChatMessage";
 import ChatComposer from "./components/ChatComposer";
+import { useAppDialog } from "./components/AppDialog";
 import ModelCompareDialog from "./components/ModelCompareDialog";
 import WorkspaceConversationCommentsPanel from "./components/WorkspaceConversationCommentsPanel";
 import AssistantEditor from "./components/AssistantEditor";
@@ -14,8 +15,6 @@ import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, listAiModels, compareChatModels } from "./lib/chatApi";
-import { listBookmarkedMessages, toggleMessageBookmark } from "./lib/bookmarksApi";
-import { listMemories, createMemory, deleteMemory } from "./lib/memoriesApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
 import {
@@ -100,27 +99,15 @@ import {
   deleteTag,
   setConversationTags,
 } from "./lib/tagsApi";
-import {
-  listSavedPrompts,
-  createSavedPrompt,
-  updateSavedPrompt,
-  deleteSavedPrompt,
-} from "./lib/savedPromptsApi";
 import { uploadFile, deleteFile } from "./lib/filesApi";
 import { getErrorMessage } from "./lib/errors";
 import { clearChatDraft, loadChatDraft, saveChatDraft } from "./lib/chatDrafts";
+import useSavedPrompts from "./hooks/useSavedPrompts";
+import useMemories from "./hooks/useMemories";
+import useBookmarks from "./hooks/useBookmarks";
+import useNotifications from "./hooks/useNotifications";
+import useChatPreferences from "./hooks/useChatPreferences";
 import { getCurrentUser } from "./lib/usersApi";
-import {
-  listNotifications,
-  markNotificationRead,
-  markAllNotificationsRead,
-  buildNotificationsWebSocketUrl,
-} from "./lib/notificationsApi";
-import {
-  loadNotificationPreferences,
-  saveNotificationPreferences,
-  NOTIFICATION_PREFERENCE_EVENT,
-} from "./lib/notificationPreferences";
 import "./i18n";
 
 // دالة بدل ثابت — لازم نستدعيها بعد ما يصير عندنا t() جوا المكوّن عشان رسالة
@@ -147,6 +134,8 @@ function ModalLoadingFallback() {
 
 export default function App() {
   const { i18n, t } = useTranslation();
+  const { alert, confirm, prompt } = useAppDialog();
+
   const [authed, setAuthed] = useState(false);
   const [sessionChecking, setSessionChecking] = useState(true);
   const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
@@ -176,9 +165,6 @@ export default function App() {
   const [editingAssistantId, setEditingAssistantId] = useState(null);
   const [showProjectEditor, setShowProjectEditor] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState(null);
-  const [savedPrompts, setSavedPrompts] = useState([]);
-  const [bookmarkedMessages, setBookmarkedMessages] = useState([]);
-  const [memories, setMemories] = useState([]);
   const [aiModels, setAiModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [input, setInput] = useState("");
@@ -207,12 +193,6 @@ export default function App() {
   const [parentConversationId, setParentConversationId] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [titleLoading, setTitleLoading] = useState(false);
-  const [autoGenerateTitles, setAutoGenerateTitles] = useState(false);
-  const [autoGenerateSummaries, setAutoGenerateSummaries] = useState(false);
-  const [notifications, setNotifications] = useState([]);
-  const [notificationPreferences, setNotificationPreferences] = useState({
-    realtimeToasts: true,
-  });
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [retryableUserMessage, setRetryableUserMessage] = useState(null);
   const [toolActivity, setToolActivity] = useState(null);
@@ -254,6 +234,72 @@ export default function App() {
     return -1;
   }, [messages]);
 
+  const { memories, resetMemories, refreshMemories, handleToggleMessageMemory } = useMemories({
+    setToast,
+    messages,
+    readOnlyConversation,
+    loading,
+    editingMessageIndex,
+  });
+
+  const {
+    bookmarkedMessages,
+    resetBookmarks,
+    refreshBookmarkedMessages,
+    handleToggleMessageBookmark,
+  } = useBookmarks({
+    setToast,
+    conversationId,
+    loading,
+    readOnlyConversation,
+    setMessages,
+  });
+
+
+
+  const {
+    savedPrompts,
+    refreshSavedPrompts,
+    resetSavedPrompts,
+    handleCreateSavedPrompt,
+    handleRenameSavedPrompt,
+    handleDeleteSavedPrompt,
+  } = useSavedPrompts({ setToast });
+
+  const {
+    notifications,
+    notificationPreferences,
+    refreshNotifications,
+    resetNotifications,
+    handleNotificationToastsChanged,
+    handleMarkNotificationRead,
+    handleMarkAllNotificationsRead,
+  } = useNotifications({
+    setToast,
+    authed,
+    currentUserId: currentUser?.id,
+  });
+
+
+
+
+  const handleOpenBookmarkedMessage = async (item) => {
+    await openConversation(item.conversation_id);
+  };
+
+  const handleUseSavedPrompt = (content) => {
+    setInput(content);
+    setEditingMessageIndex(null);
+    setError("");
+  };
+
+  const {
+    autoGenerateTitles,
+    setAutoGenerateTitles,
+    autoGenerateSummaries,
+    setAutoGenerateSummaries,
+  } = useChatPreferences();
+
   const logout = useCallback(async () => {
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
     setAuthed(false);
@@ -268,9 +314,9 @@ export default function App() {
     setTags([]);
     setSelectedTagId(null);
     setAssistants([]);
-    setSavedPrompts([]);
-    setBookmarkedMessages([]);
-    setMemories([]);
+    resetSavedPrompts();
+    resetBookmarks();
+    resetMemories();
     setAiModels([]);
     setSelectedModel("");
     setSelectedFolderId(null);
@@ -303,55 +349,12 @@ export default function App() {
     setSummaryLoading(false);
     autoSummaryLastMessageCountRef.current = {};
     messageCountRef.current = 1;
-    setNotifications([]);
-  }, [t]);
+    resetNotifications();
+  }, [resetBookmarks, resetMemories, resetNotifications, resetSavedPrompts, t]);
 
   useEffect(() => {
     restoreSession().then(() => setAuthed(true)).catch(() => setAuthed(false)).finally(() => setSessionChecking(false));
   }, []);
-
-  useEffect(() => {
-    if (!authed || !currentUser?.id) return;
-    setNotificationPreferences(loadNotificationPreferences(currentUser.id));
-  }, [authed, currentUser?.id]);
-
-  useEffect(() => {
-    const handlePreferenceChange = (event) => {
-      if (event.detail) {
-        setNotificationPreferences((current) => ({ ...current, ...event.detail }));
-      } else if (currentUser?.id) {
-        setNotificationPreferences(loadNotificationPreferences(currentUser.id));
-      }
-    };
-    window.addEventListener(NOTIFICATION_PREFERENCE_EVENT, handlePreferenceChange);
-    return () =>
-      window.removeEventListener(NOTIFICATION_PREFERENCE_EVENT, handlePreferenceChange);
-  }, [currentUser?.id]);
-
-  const handleNotificationToastsChanged = useCallback(
-    (enabled) => {
-      if (!currentUser?.id) return;
-      const next = { realtimeToasts: enabled };
-      setNotificationPreferences(next);
-      saveNotificationPreferences(currentUser.id, next);
-    },
-    [currentUser?.id]
-  );
-
-  useEffect(() => {
-    if (!authed || !currentUser?.id || typeof window === "undefined") return;
-    const key = `ai-chat-onboarding:${currentUser.id}`;
-    if (window.localStorage.getItem(key) !== "done") {
-      setShowOnboarding(true);
-    }
-  }, [authed, currentUser?.id]);
-
-  const closeOnboarding = useCallback(() => {
-    if (currentUser?.id && typeof window !== "undefined") {
-      window.localStorage.setItem(`ai-chat-onboarding:${currentUser.id}`, "done");
-    }
-    setShowOnboarding(false);
-  }, [currentUser?.id]);
 
   useEffect(() => {
     if (!authed || !currentUser?.id) return;
@@ -387,27 +390,6 @@ export default function App() {
       }
     };
   }, [authed, currentUser?.id, conversationId, input]);
-
-  useEffect(() => {
-    const readPreference = () => {
-      setAutoGenerateTitles(window.localStorage.getItem("ai-chat-auto-title") === "true");
-    };
-    readPreference();
-    window.addEventListener("ai-chat:auto-title-changed", readPreference);
-    return () => window.removeEventListener("ai-chat:auto-title-changed", readPreference);
-  }, []);
-
-  useEffect(() => {
-    const readPreference = () => {
-      setAutoGenerateSummaries(
-        window.localStorage.getItem("ai-chat-auto-summary") === "true"
-      );
-    };
-    readPreference();
-    window.addEventListener("ai-chat:auto-summary-changed", readPreference);
-    return () =>
-      window.removeEventListener("ai-chat:auto-summary-changed", readPreference);
-  }, []);
 
   // لو أي طلب بأي مكان بالتطبيق رجع 401 (مو بس إرسال رسالة)، نسجّل خروج
   // ونوضّح السبب — قبل كذا كان يصير خروج صامت بدون تفسير
@@ -561,7 +543,7 @@ export default function App() {
   };
 
   const handleCreateTag = async () => {
-    const name = window.prompt(t("sidebar.tagCreatePrompt"));
+    const name = await prompt({ title: t("sidebar.tagCreatePrompt"), message: t("sidebar.tagCreatePrompt") });
     if (!name?.trim()) return;
     try {
       const tag = await createTag(name.trim());
@@ -585,7 +567,7 @@ export default function App() {
   };
 
   const handleRenameTag = async (id, currentName, currentColor) => {
-    const name = window.prompt(t("sidebar.tagRenamePrompt"), currentName);
+    const name = await prompt({ title: t("sidebar.tagRenamePrompt"), message: t("sidebar.tagRenamePrompt"), defaultValue: currentName });
     if (!name?.trim()) return;
     try {
       await updateTag(id, name.trim(), currentColor);
@@ -599,7 +581,7 @@ export default function App() {
   };
 
   const handleDeleteTag = async (id, name) => {
-    if (!window.confirm(t("sidebar.tagDeleteConfirm", { name }))) return;
+    if (!(await confirm({ title: t("sidebar.tagDeleteConfirm", { name }), message: t("sidebar.tagDeleteConfirm", { name }) }))) return;
     const wasSelected = id === selectedTagId;
     try {
       await deleteTag(id);
@@ -692,7 +674,7 @@ export default function App() {
   };
 
   const handleCreateWorkspace = async () => {
-    const name = window.prompt(t("sidebar.workspaceCreatePrompt"));
+    const name = await prompt({ title: t("sidebar.workspaceCreatePrompt"), message: t("sidebar.workspaceCreatePrompt") });
     if (!name?.trim()) return;
     try {
       const workspace = await createWorkspace(name.trim());
@@ -714,10 +696,7 @@ export default function App() {
   const handleRenameWorkspace = async () => {
     if (selectedWorkspaceId === null) return;
     const current = workspaces.find((workspace) => workspace.id === selectedWorkspaceId);
-    const name = window.prompt(
-      t("sidebar.workspaceRenamePrompt"),
-      current?.name || ""
-    );
+    const name = await prompt({ title: t("sidebar.workspaceRenamePrompt"), message: t("sidebar.workspaceRenamePrompt"), defaultValue: current?.name || "" });
     if (!name?.trim()) return;
     try {
       const updated = await renameWorkspace(selectedWorkspaceId, name.trim());
@@ -786,7 +765,7 @@ export default function App() {
   };
 
   const handleCreateFolder = async () => {
-    const name = window.prompt(t("sidebar.folderCreatePrompt"));
+    const name = await prompt({ title: t("sidebar.folderCreatePrompt"), message: t("sidebar.folderCreatePrompt") });
     if (!name?.trim()) return;
     try {
       const folder = await createFolder(name.trim(), selectedWorkspaceId);
@@ -921,7 +900,7 @@ export default function App() {
   };
 
   const handleDeleteProject = async (id, name) => {
-    if (!window.confirm(t("sidebar.projectDeleteConfirm", { name }))) return;
+    if (!(await confirm({ title: t("sidebar.projectDeleteConfirm", { name }), message: t("sidebar.projectDeleteConfirm", { name }) }))) return;
     const wasSelected = id === selectedProjectId;
     try {
       await deleteProject(id);
@@ -983,149 +962,7 @@ export default function App() {
     }
   };
 
-  const refreshMemories = async () => {
-    try {
-      setMemories(await listMemories());
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.memoriesLoadError")),
-        type: "error",
-      });
-    }
-  };
 
-  const handleToggleMessageMemory = async (index) => {
-    if (
-      readOnlyConversation ||
-      loading ||
-      editingMessageIndex !== null ||
-      messages[index]?.role !== "user"
-    ) return;
-
-    const content = messages[index]?.text?.trim();
-    if (!content) return;
-
-    const existing = memories.find((memory) => memory.content === content);
-    try {
-      if (existing) {
-        await deleteMemory(existing.id);
-        setMemories((current) => current.filter((memory) => memory.id !== existing.id));
-        setToast({ message: t("memory.removed"), type: "success" });
-      } else {
-        const created = await createMemory(content);
-        setMemories((current) => [created, ...current]);
-        setToast({ message: t("memory.saved"), type: "success" });
-      }
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("memory.error"),
-        type: "error",
-      });
-    }
-  };
-
-  const refreshBookmarkedMessages = async () => {
-    try {
-      setBookmarkedMessages(await listBookmarkedMessages());
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.bookmarksLoadError")),
-        type: "error",
-      });
-    }
-  };
-
-  const refreshSavedPrompts = async () => {
-    try {
-      setSavedPrompts(await listSavedPrompts());
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.savedPromptsLoadError")),
-        type: "error",
-      });
-    }
-  };
-
-  const handleCreateSavedPrompt = async () => {
-    const name = window.prompt(t("sidebar.savedPromptCreateNamePrompt"));
-    if (!name?.trim()) return;
-    const content = window.prompt(t("sidebar.savedPromptCreateContentPrompt"));
-    if (!content?.trim()) return;
-    try {
-      await createSavedPrompt(name.trim(), content.trim());
-      await refreshSavedPrompts();
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.savedPromptCreateError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleRenameSavedPrompt = async (id, currentName, currentContent) => {
-    const name = window.prompt(
-      t("sidebar.savedPromptRenameNamePrompt"),
-      currentName
-    );
-    if (!name?.trim()) return;
-    const content = window.prompt(
-      t("sidebar.savedPromptRenameContentPrompt"),
-      currentContent
-    );
-    if (!content?.trim()) return;
-    try {
-      await updateSavedPrompt(id, name.trim(), content.trim());
-      await refreshSavedPrompts();
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.savedPromptUpdateError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleDeleteSavedPrompt = async (id, name) => {
-    if (!window.confirm(t("sidebar.savedPromptDeleteConfirm", { name }))) return;
-    try {
-      await deleteSavedPrompt(id);
-      await refreshSavedPrompts();
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.savedPromptDeleteError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleToggleMessageBookmark = async (index) => {
-    if (!conversationId || loading || readOnlyConversation) return;
-    try {
-      const result = await toggleMessageBookmark(conversationId, index + 1);
-      setMessages((prev) =>
-        prev.map((message, messageIndex) =>
-          messageIndex === index
-            ? { ...message, isBookmarked: result.bookmarked }
-            : message
-        )
-      );
-      await refreshBookmarkedMessages();
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.bookmarkError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleOpenBookmarkedMessage = async (item) => {
-    await openConversation(item.conversation_id);
-  };
-
-  const handleUseSavedPrompt = (content) => {
-    setInput(content);
-    setEditingMessageIndex(null);
-    setError("");
-  };
 
   const refreshAssistants = async (workspaceId = selectedWorkspaceId) => {
     try {
@@ -1253,7 +1090,7 @@ export default function App() {
   };
 
   const handleDeleteAssistant = async (id, name) => {
-    if (!window.confirm(t("sidebar.assistantDeleteConfirm", { name }))) return;
+    if (!(await confirm({ title: t("sidebar.assistantDeleteConfirm", { name }), message: t("sidebar.assistantDeleteConfirm", { name }) }))) return;
     try {
       await deleteAssistant(id);
       if (id === selectedAssistantId) {
@@ -1330,9 +1167,10 @@ export default function App() {
 
   const handleBulkDelete = async () => {
     if (!selectedConversationIds.length) return;
-    const confirmed = window.confirm(
-      t("sidebar.bulkDeleteConfirm", { count: selectedConversationIds.length })
-    );
+    const confirmed = await confirm({
+      title: t("sidebar.bulkDeleteConfirm", { count: selectedConversationIds.length }),
+      message: t("sidebar.bulkDeleteConfirm", { count: selectedConversationIds.length }),
+    });
     if (!confirmed) return;
 
     const selectedIds = [...selectedConversationIds];
@@ -1396,17 +1234,6 @@ export default function App() {
     }
   };
 
-  const refreshNotifications = async () => {
-    try {
-      setNotifications(await listNotifications());
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.notificationsLoadError")),
-        type: "error",
-      });
-    }
-  };
-
   useEffect(() => {
     if (authed) {
       refreshWorkspaces();
@@ -1432,22 +1259,6 @@ export default function App() {
     window.addEventListener("app:toast", handleAppToast);
     return () => window.removeEventListener("app:toast", handleAppToast);
   }, []);
-
-  // اتصال WebSocket للإشعارات الفورية — يُفتح عند الدخول، ويُغلق عند الخروج
-  useEffect(() => {
-    if (!authed) return;
-
-    const ws = new WebSocket(buildNotificationsWebSocketUrl());
-    ws.onmessage = (event) => {
-      const notification = JSON.parse(event.data);
-      setNotifications((prev) => [notification, ...prev]);
-      if (notificationPreferences.realtimeToasts) {
-        setToast({ message: notification.title, type: "success" });
-      }
-    };
-
-    return () => ws.close();
-  }, [authed, notificationPreferences.realtimeToasts]);
 
   const switchLang = (nextLang) => {
     setLang(nextLang);
@@ -2020,11 +1831,11 @@ export default function App() {
   const handleShareConversation = async () => {
     if (!conversationId) return;
     try {
-      const protect = window.confirm(t("sharing.protectConfirm"));
+      const protect = await confirm({ title: t("sharing.protectConfirm"), message: t("sharing.protectConfirm") });
       let password = null;
 
       if (protect) {
-        password = window.prompt(t("sharing.passwordPrompt"));
+        password = await prompt({ title: t("sharing.passwordPrompt"), message: t("sharing.passwordPrompt"), maxLength: 255 });
         if (password === null) return;
         password = password.trim();
         if (password.length < 8) {
@@ -2053,7 +1864,7 @@ export default function App() {
         return;
       }
 
-      window.prompt(t("sharing.copyPrompt"), share.url);
+      await alert({ title: t("sharing.copyPrompt"), message: share.url, confirmLabel: t("common.close") });
     } catch (err) {
       setToast({
         message: err?.response?.data?.detail || t("sharing.createError"),
@@ -2178,11 +1989,12 @@ export default function App() {
     if (!conversationId || loading || editingMessageIndex !== null || readOnlyConversation) return;
 
     const isArabic = document.documentElement.lang === "ar";
-    const confirmed = window.confirm(
-      isArabic
+    const confirmed = await confirm({
+      title: isArabic ? "تأكيد الحذف" : "Confirm deletion",
+      message: isArabic
         ? "حذف هذه الرسالة؟ إذا كانت رسالة مستخدم فسيُحذف رد المساعد المرتبط بها أيضًا."
-        : "Delete this message? For a user message, its linked assistant reply will also be deleted."
-    );
+        : "Delete this message? For a user message, its linked assistant reply will also be deleted.",
+    });
     if (!confirmed) return;
 
     setError("");
@@ -2591,24 +2403,6 @@ export default function App() {
         );
       },
     });
-  };
-
-  const handleMarkNotificationRead = async (id) => {
-    try {
-      await markNotificationRead(id);
-      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
-    } catch {
-      // تجاهل بصمت — مو حرج
-    }
-  };
-
-  const handleMarkAllNotificationsRead = async () => {
-    try {
-      await markAllNotificationsRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-    } catch {
-      // تجاهل بصمت — مو حرج
-    }
   };
 
   const commandPaletteActions = [

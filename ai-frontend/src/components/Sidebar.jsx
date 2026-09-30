@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useAppDialog } from "./AppDialog";
 import { FixedSizeList } from "react-window";
 import AutoSizer from "react-virtualized-auto-sizer";
 import WorkspaceSharedConversationsPanel from "./WorkspaceSharedConversationsPanel";
@@ -123,6 +124,7 @@ export default function Sidebar({
   onLoadMore = () => {},
 }) {
   const { t } = useTranslation();
+  const { confirm, prompt } = useAppDialog();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState(searchValue);
   const [tagPickerConversationId, setTagPickerConversationId] = useState(null);
@@ -150,9 +152,9 @@ export default function Sidebar({
     filteredConversationIds.length > 0 &&
     filteredConversationIds.every((id) => selectedConversationIds.includes(id));
 
-  const handleRename = (e, item) => {
+  const handleRename = async (e, item) => {
     e.stopPropagation();
-    const newTitle = window.prompt(t("sidebar.renamePrompt"), item.title);
+    const newTitle = await prompt({ title: t("sidebar.renamePrompt"), message: t("sidebar.renamePrompt"), defaultValue: item.title });
     if (newTitle && newTitle.trim() && newTitle.trim() !== item.title) {
       onRenameConversation(item.id, newTitle.trim());
     }
@@ -168,12 +170,10 @@ export default function Sidebar({
     onToggleArchiveConversation(item.id);
   };
 
-  const handleToggleTrash = (e, item) => {
+  const handleToggleTrash = async (e, item) => {
     e.stopPropagation();
     if (showTrash) {
-      const confirmed = window.confirm(
-        t("sidebar.permanentDeleteConfirm", { title: item.title })
-      );
+      const confirmed = await confirm({ title: t("sidebar.permanentDeleteConfirm", { title: item.title }), message: t("sidebar.permanentDeleteConfirm", { title: item.title }) });
       if (confirmed) onDeleteConversation(item.id);
       return;
     }
@@ -208,9 +208,9 @@ export default function Sidebar({
     onDeleteProject(project.id, project.name);
   };
 
-  const handleRenameFolder = (e, folder) => {
+  const handleRenameFolder = async (e, folder) => {
     e.stopPropagation();
-    const newName = window.prompt(t("sidebar.folderRenamePrompt"), folder.name);
+    const newName = await prompt({ title: t("sidebar.folderRenamePrompt"), message: t("sidebar.folderRenamePrompt"), defaultValue: folder.name });
     if (newName && newName.trim() && newName.trim() !== folder.name) {
       onRenameFolder(folder.id, newName.trim(), folder.color ?? "slate");
     }
@@ -251,9 +251,9 @@ export default function Sidebar({
     onMoveFolder(folder.id, direction);
   };
 
-  const handleDeleteFolder = (e, folder) => {
+  const handleDeleteFolder = async (e, folder) => {
     e.stopPropagation();
-    if (window.confirm(t("sidebar.folderDeleteConfirm", { name: folder.name }))) {
+    if (await confirm({ title: t("sidebar.folderDeleteConfirm", { name: folder.name }), message: t("sidebar.folderDeleteConfirm", { name: folder.name }) })) {
       onDeleteFolder(folder.id);
     }
   };
@@ -263,9 +263,9 @@ export default function Sidebar({
     onToggleConversationSelection(item.id);
   };
 
-  const handleDelete = (e, item) => {
+  const handleDelete = async (e, item) => {
     e.stopPropagation();
-    if (window.confirm(t("sidebar.confirmDelete", { title: item.title }))) {
+    if (await confirm({ title: t("sidebar.confirmDelete", { title: item.title }), message: t("sidebar.confirmDelete", { title: item.title }) })) {
       onDeleteConversation(item.id);
     }
   };
