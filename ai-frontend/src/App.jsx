@@ -3166,17 +3166,25 @@ export default function App() {
                         aria-hidden="true"
                         className={toolActivity.phase === "running" ? "animate-pulse" : ""}
                       >
-                        {toolActivity.phase === "error" ? "⚠️" : toolActivity.phase === "done" ? "✓" : "⚙️"}
+                        {toolActivity.phase === "error" || toolActivity.phase === "warning"
+                          ? "⚠️"
+                          : toolActivity.phase === "done"
+                            ? "✓"
+                            : toolActivity.phase === "cancelled"
+                              ? "⏹️"
+                              : "⚙️"}
                       </span>
                       <span>
-                        {toolActivity.phase === "running"
-                          ? t("tools.activity.running", { tool: toolActivityLabel(toolActivity.name) })
-                          : toolActivity.phase === "done"
-                            ? t("tools.activity.done", {
-                                tool: toolActivityLabel(toolActivity.name),
-                                duration: toolActivity.duration_ms ?? 0,
-                              })
-                            : t("tools.activity.error", { tool: toolActivityLabel(toolActivity.name) })}
+                        {toolActivity.message
+                          ? toolActivity.message
+                          : toolActivity.phase === "running"
+                            ? t("tools.activity.running", { tool: toolActivityLabel(toolActivity.name) })
+                            : toolActivity.phase === "done"
+                              ? t("tools.activity.done", {
+                                  tool: toolActivityLabel(toolActivity.name),
+                                  duration: toolActivity.duration_ms ?? 0,
+                                })
+                              : t("tools.activity.error", { tool: toolActivityLabel(toolActivity.name) })}
                       </span>
                     </span>
                   ) : (
