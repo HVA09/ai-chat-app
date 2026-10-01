@@ -28,7 +28,7 @@ request_with_retry() {
     fi
     attempts=$((attempts + 1))
     if (( attempts < max_attempts )); then
-      info "Retry $attempts/$((max_attempts - 1)) after transient failure on $url"
+      info "Retry $attempts/$((max_attempts - 1)) after transient failure on $url" >&2
       sleep 5
     fi
   done
