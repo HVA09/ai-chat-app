@@ -8,11 +8,21 @@ const {
   createProjectMemory,
   updateProjectMemory,
   deleteProjectMemory,
+  listProjectFiles,
+  getProjectFile,
+  createProjectFile,
+  updateProjectFile,
+  deleteProjectFile,
 } = vi.hoisted(() => ({
   listProjectMemories: vi.fn(),
   createProjectMemory: vi.fn(),
   updateProjectMemory: vi.fn(),
   deleteProjectMemory: vi.fn(),
+  listProjectFiles: vi.fn().mockResolvedValue([]),
+  getProjectFile: vi.fn(),
+  createProjectFile: vi.fn(),
+  updateProjectFile: vi.fn(),
+  deleteProjectFile: vi.fn(),
 }));
 
 const { t } = vi.hoisted(() => ({
@@ -66,6 +76,14 @@ vi.mock("../lib/projectMemoriesApi", () => ({
   createProjectMemory,
   updateProjectMemory,
   deleteProjectMemory,
+}));
+
+vi.mock("../lib/projectFilesApi", () => ({
+  listProjectFiles,
+  getProjectFile,
+  createProjectFile,
+  updateProjectFile,
+  deleteProjectFile,
 }));
 
 describe("ProjectEditor", () => {
@@ -249,6 +267,69 @@ describe("ProjectEditor", () => {
       expect(screen.queryByText("الذاكرة الجديدة")).not.toBeInTheDocument()
     );
   });
+  it("loads, edits, creates, and deletes project source files", async () => {
+    listProjectMemories.mockResolvedValue([]);
+    listProjectFiles.mockResolvedValue([
+      { id: 20, project_id: 3, path: "src/App.jsx", content_length: 22 },
+    ]);
+    getProjectFile.mockResolvedValue({
+      id: 20,
+      project_id: 3,
+      path: "src/App.jsx",
+      content: "export default App;",
+    });
+    updateProjectFile.mockResolvedValue({
+      id: 20,
+      project_id: 3,
+      path: "src/main.jsx",
+      content: "export default Main;",
+    });
+    createProjectFile.mockResolvedValue({
+      id: 21,
+      project_id: 3,
+      path: "README.md",
+      content: "# App",
+    });
+    deleteProjectFile.mockResolvedValue(undefined);
+
+    const user = userEvent.setup();
+    render(
+      <ProjectEditor
+        project={{ id: 3, name: "App", description: null, instructions: null }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText("src/App.jsx")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "src/App.jsx" }));
+    expect(await screen.findByDisplayValue("export default App;")).toBeInTheDocument();
+
+    await user.clear(screen.getByPlaceholderText("src/App.jsx"));
+    await user.type(screen.getByPlaceholderText("src/App.jsx"), "src/main.jsx");
+    await user.clear(screen.getByDisplayValue("export default App;"));
+    await user.type(screen.getByDisplayValue("export default App;"), "export default Main;");
+    await user.click(screen.getByRole("button", { name: "حفظ الملف" }));
+
+    expect(updateProjectFile).toHaveBeenCalledWith(
+      3,
+      20,
+      "src/main.jsx",
+      "export default Main;"
+    );
+
+    await user.click(screen.getByRole("button", { name: "ملف جديد" }));
+    await user.type(screen.getByPlaceholderText("src/App.jsx"), "README.md");
+    await user.type(screen.getByPlaceholderText("اكتب كود أو نص الملف هنا..."), "# App");
+    await user.click(screen.getByRole("button", { name: "إنشاء الملف" }));
+
+    expect(createProjectFile).toHaveBeenCalledWith(3, "README.md", "# App");
+
+    await user.click(screen.getByRole("button", { name: "حذف الملف" }));
+    expect(deleteProjectFile).toHaveBeenCalledWith(3, 21);
+  });
+
   it("shows a global toast when project memory loading fails", async () => {
     listProjectMemories.mockRejectedValueOnce({
       response: { data: { detail: "Memory load denied" } },
