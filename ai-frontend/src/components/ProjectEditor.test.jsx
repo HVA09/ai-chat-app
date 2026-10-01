@@ -288,9 +288,18 @@ describe("ProjectEditor", () => {
   });
   it("loads, edits, creates, and deletes project source files", async () => {
     listProjectMemories.mockResolvedValue([]);
-    listProjectFiles.mockResolvedValue([
-      { id: 20, project_id: 3, path: "src/App.jsx", content_length: 22 },
-    ]);
+    listProjectFiles
+      .mockResolvedValueOnce([
+        { id: 20, project_id: 3, path: "src/App.jsx", content_length: 22 },
+      ])
+      .mockResolvedValueOnce([
+        { id: 20, project_id: 3, path: "src/main.jsx", content_length: 19 },
+      ])
+      .mockResolvedValueOnce([
+        { id: 20, project_id: 3, path: "src/main.jsx", content_length: 19 },
+        { id: 21, project_id: 3, path: "README.md", content_length: 5 },
+      ])
+      .mockResolvedValueOnce([]);
     getProjectFile.mockResolvedValue({
       id: 20,
       project_id: 3,
