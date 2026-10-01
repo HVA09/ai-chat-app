@@ -22,6 +22,7 @@ from app.config import settings
 from app.models.conversation import Conversation
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
+from app.models.project_file import ProjectFile
 from app.models.user import User
 from app.services.tools.calculator import CalculatorError, calculate_expression
 from app.services.tools.code_execution import CodeExecutionError, execute_python_code
@@ -385,6 +386,33 @@ async def _create_project_archive(arguments: dict[str, Any], context: ToolContex
                 file_id=attachment.id,
             )
         )
+
+        project_id = context.conversation.project_id
+        project_file_count = 0
+        if project_id is not None:
+            existing_project_files = (
+                context.db.query(ProjectFile)
+                .filter(ProjectFile.project_id == project_id)
+                .all()
+            )
+            existing_by_path = {item.path: item for item in existing_project_files}
+            new_paths = [path for path, _ in normalized_files if path not in existing_by_path]
+            if len(existing_project_files) + len(new_paths) > 200:
+                raise ValueError("المشروع تجاوز الحد الأقصى 200 ملف مصدر.")
+
+            for path, content in normalized_files:
+                project_file = existing_by_path.get(path)
+                if project_file is None:
+                    project_file = ProjectFile(
+                        project_id=project_id,
+                        path=path,
+                        content=content,
+                    )
+                    context.db.add(project_file)
+                else:
+                    project_file.content = content
+                project_file_count += 1
+
         context.db.commit()
         context.db.refresh(attachment)
     except Exception as exc:
@@ -401,8 +429,13 @@ async def _create_project_archive(arguments: dict[str, Any], context: ToolContex
             succeeded=False,
         )
 
+    project_suffix = (
+        f" وتم تحديث {project_file_count} ملفًا في شجرة المشروع."
+        if context.conversation.project_id is not None
+        else ""
+    )
     return ToolResult(
-        content=f"تم إنشاء حزمة المشروع «{original_filename}» ويمكن تنزيلها من قسم الملفات أو من المصادر أسفل الرد.",
+        content=f"تم إنشاء حزمة المشروع «{original_filename}» ويمكن تنزيلها من قسم الملفات أو من المصادر أسفل الرد.{project_suffix}",
         sources=[{
             "id": "P1",
             "filename": original_filename,
