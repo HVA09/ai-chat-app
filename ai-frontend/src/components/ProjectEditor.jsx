@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   createProjectMemory,
@@ -15,6 +15,85 @@ import {
   updateProjectFile,
 } from "../lib/projectFilesApi";
 
+
+function buildProjectFileTree(files) {
+  const root = { type: "folder", name: "", children: [] };
+
+  files.forEach((projectFile) => {
+    const parts = projectFile.path.split("/").filter(Boolean);
+    let current = root;
+
+    parts.forEach((part, index) => {
+      const isFile = index === parts.length - 1;
+      let child = current.children.find(
+        (item) => item.name === part && item.type === (isFile ? "file" : "folder")
+      );
+
+      if (!child) {
+        child = isFile
+          ? { type: "file", name: part, path: projectFile.path, projectFile }
+          : { type: "folder", name: part, children: [] };
+        current.children.push(child);
+      }
+
+      current = child;
+    });
+  });
+
+  const sortTree = (node) => {
+    node.children.sort((a, b) => {
+      if (a.type !== b.type) return a.type === "folder" ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    node.children.filter((child) => child.type === "folder").forEach(sortTree);
+  };
+
+  sortTree(root);
+  return root.children;
+}
+
+function ProjectFileTreeNode({ node, depth, selectedFileId, onSelect }) {
+  if (node.type === "folder") {
+    return (
+      <div className="space-y-1">
+        <div
+          className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium text-slate-500 dark:text-slate-400"
+          style={{ paddingInlineStart: `${depth * 12 + 8}px` }}
+        >
+          <span aria-hidden="true">📁</span>
+          <span className="truncate">{node.name}</span>
+        </div>
+        {node.children.map((child) => (
+          <ProjectFileTreeNode
+            key={child.type === "file" ? child.projectFile.id : `folder:${child.name}`}
+            node={child}
+            depth={depth + 1}
+            selectedFileId={selectedFileId}
+            onSelect={onSelect}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(node.projectFile)}
+      title={node.path}
+      className={`flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-start text-xs ${
+        selectedFileId === node.projectFile.id
+          ? "bg-slate-900 text-white"
+          : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
+      }`}
+      style={{ paddingInlineStart: `${depth * 12 + 8}px` }}
+    >
+      <span aria-hidden="true">📄</span>
+      <span className="min-w-0 flex-1 truncate">{node.path}</span>
+      <span className="text-[10px] opacity-60">{node.projectFile.content_length}</span>
+    </button>
+  );
+}
 export default function ProjectEditor({
   project = null,
   assistants = [],
@@ -40,6 +119,7 @@ export default function ProjectEditor({
   const [fileLoading, setFileLoading] = useState(false);
   const [fileSaving, setFileSaving] = useState(false);
   const [fileDeleting, setFileDeleting] = useState(false);
+  const projectFileTree = useMemo(() => buildProjectFileTree(projectFiles), [projectFiles]);
 
   useEffect(() => {
     setName(project?.name ?? "");
@@ -480,22 +560,14 @@ export default function ProjectEditor({
                     </p>
                   ) : (
                     <div className="space-y-1">
-                      {projectFiles.map((projectFile) => (
-                        <button
-                          key={projectFile.id}
-                          type="button"
-                          onClick={() => handleSelectFile(projectFile)}
-                          className={`block w-full rounded-lg px-2.5 py-2 text-start text-xs ${
-                            selectedFileId === projectFile.id
-                              ? "bg-slate-900 text-white"
-                              : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
-                          }`}
-                        >
-                          <span className="block truncate">{projectFile.path}</span>
-                          <span className="mt-0.5 block text-[10px] opacity-60">
-                            {projectFile.content_length} chars
-                          </span>
-                        </button>
+                      {projectFileTree.map((node) => (
+                        <ProjectFileTreeNode
+                          key={node.type === "file" ? node.projectFile.id : `folder:${node.name}`}
+                          node={node}
+                          depth={0}
+                          selectedFileId={selectedFileId}
+                          onSelect={handleSelectFile}
+                        />
                       ))}
                     </div>
                   )}
