@@ -307,8 +307,9 @@ describe("ProjectEditor", () => {
     const fileContentEditor = await screen.findByDisplayValue("export default App;");
     expect(fileContentEditor).toBeInTheDocument();
 
-    await user.clear(screen.getByPlaceholderText("src/App.jsx"));
-    await user.type(screen.getByPlaceholderText("src/App.jsx"), "src/main.jsx");
+    const filePathEditor = screen.getByDisplayValue("src/App.jsx");
+    await user.clear(filePathEditor);
+    await user.type(filePathEditor, "src/main.jsx");
     await user.clear(fileContentEditor);
     await user.type(fileContentEditor, "export default Main;");
     await user.click(screen.getByRole("button", { name: "حفظ الملف" }));
