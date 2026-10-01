@@ -24,6 +24,7 @@ def test_builtin_tool_registry_has_expected_tools():
         "web_search",
         "analyze_data",
         "create_project_archive",
+        "edit_project_file",
     )
     assert [item["function"]["name"] for item in tool_registry.definitions()] == [
         "calculator",
@@ -31,6 +32,7 @@ def test_builtin_tool_registry_has_expected_tools():
         "web_search",
         "analyze_data",
         "create_project_archive",
+        "edit_project_file",
     ]
 
 
