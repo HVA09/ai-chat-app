@@ -29,6 +29,15 @@ class ProjectFileUpdate(ProjectFileCreate):
     pass
 
 
+class ProjectFileSummaryOut(BaseModel):
+    id: int
+    project_id: int
+    path: str
+    content_length: int
+    created_at: datetime
+    updated_at: datetime
+
+
 class ProjectFileOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
