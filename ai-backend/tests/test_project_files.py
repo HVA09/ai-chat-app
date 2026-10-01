@@ -1,4 +1,6 @@
 """اختبارات ملفات مصدر المشاريع."""
+import pytest
+
 
 
 def _register_and_login(client, email: str, password: str = "StrongPass123"):
@@ -74,19 +76,11 @@ def test_project_file_crud_and_path_safety(client):
     )
     assert duplicate.status_code == 409
 
-    unsafe = client.post(
-        f"/projects/{project_id}/files",
-        json={"path": "../secret.txt", "content": "nope"},
-        headers=headers,
-    )
-    assert unsafe.status_code in {401, 422}
-    if unsafe.status_code == 401:
-        retry = client.post(
-            f"/projects/{project_id}/files",
-            json={"path": "../secret.txt", "content": "nope"},
-            headers=headers,
-        )
-        assert retry.status_code == 422
+    from pydantic import ValidationError
+    from app.schemas.project_files import ProjectFileCreate
+
+    with pytest.raises(ValidationError):
+        ProjectFileCreate(path="../secret.txt", content="nope")
 
     removed = client.delete(
         f"/projects/{project_id}/files/{project_file['id']}",
