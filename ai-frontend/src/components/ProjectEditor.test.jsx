@@ -85,13 +85,13 @@ const { t } = vi.hoisted(() => ({
         "projectEditor.filePathRequired": "أدخل مسار الملف.",
         "projectEditor.fileLoadError": "تعذر تحميل ملفات المشروع.",
         "projectEditor.fileSaveError": "تعذر حفظ ملف المشروع.",
-        "projectEditor.fileDeleteError": "حذف الملف؟",
+        "projectEditor.fileDeleteError": "تعذر حذف ملف المشروع.",
         "projectEditor.fileDeleteConfirm": "حذف الملف؟",
         "projectEditor.cancel": "إلغاء",
         "projectEditor.saving": "جارٍ الحفظ...",
         "projectEditor.save": "حفظ",
       }[key] ?? key);
-    return value.replace(/{{\\s*(\\w+)\\s*}}/g, (_, name) =>
+    return value.replace(/{{\s*(\w+)\s*}}/g, (_, name) =>
       String(variables[name] ?? "")
     );
   },
