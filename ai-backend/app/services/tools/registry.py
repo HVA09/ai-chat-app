@@ -447,6 +447,159 @@ async def _create_project_archive(arguments: dict[str, Any], context: ToolContex
         succeeded=True,
     )
 
+def _current_project_id(context: ToolContext) -> int | None:
+    project_id = context.conversation.project_id
+    return int(project_id) if project_id is not None else None
+
+
+def _validated_project_path(raw_path: Any) -> str:
+    return ProjectFileCreate(path=str(raw_path or ""), content="").path
+
+
+async def _list_project_files(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
+    del arguments
+    project_id = _current_project_id(context)
+    if project_id is None:
+        return ToolResult(
+            content="لا يمكن استكشاف ملفات المشروع لأن المحادثة الحالية غير مرتبطة بمشروع.",
+            sources=[],
+            succeeded=False,
+        )
+
+    files = (
+        context.db.query(ProjectFile)
+        .filter(ProjectFile.project_id == project_id)
+        .order_by(ProjectFile.path.asc(), ProjectFile.id.asc())
+        .limit(200)
+        .all()
+    )
+    if not files:
+        return ToolResult(
+            content="المشروع لا يحتوي على ملفات مصدر بعد.",
+            sources=[],
+            succeeded=True,
+        )
+
+    lines = [
+        f"- {item.path} ({len(item.content)} حرف)"
+        for item in files
+    ]
+    return ToolResult(
+        content=f"ملفات المشروع ({len(files)}):\n" + "\n".join(lines),
+        sources=[],
+        succeeded=True,
+        untrusted=True,
+    )
+
+
+async def _read_project_file(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
+    project_id = _current_project_id(context)
+    if project_id is None:
+        return ToolResult(
+            content="لا يمكن قراءة ملف مشروع لأن المحادثة الحالية غير مرتبطة بمشروع.",
+            sources=[],
+            succeeded=False,
+        )
+
+    try:
+        path = _validated_project_path(arguments.get("path"))
+        max_chars = max(1000, min(int(arguments.get("max_chars") or 20_000), 20_000))
+    except (TypeError, ValueError) as exc:
+        return ToolResult(
+            content=f"مسار أو حد قراءة غير صالح: {exc}",
+            sources=[],
+            succeeded=False,
+        )
+
+    project_file = (
+        context.db.query(ProjectFile)
+        .filter(
+            ProjectFile.project_id == project_id,
+            ProjectFile.path == path,
+        )
+        .first()
+    )
+    if project_file is None:
+        return ToolResult(
+            content=f"لم أجد ملف المشروع: {path}",
+            sources=[],
+            succeeded=False,
+        )
+
+    content = project_file.content
+    truncated = len(content) > max_chars
+    body = content[:max_chars]
+    suffix = "\n... تم اختصار الملف ضمن حد القراءة الآمن." if truncated else ""
+    return ToolResult(
+        content=f"ملف: {path}\n\n{body}{suffix}",
+        sources=[{
+            "id": f"project-file:{project_file.id}",
+            "project_id": project_id,
+            "file_id": project_file.id,
+            "filename": path,
+            "kind": "project-file",
+        }],
+        succeeded=True,
+        untrusted=True,
+    )
+
+
+async def _search_project_files(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
+    project_id = _current_project_id(context)
+    if project_id is None:
+        return ToolResult(
+            content="لا يمكن البحث داخل ملفات المشروع لأن المحادثة الحالية غير مرتبطة بمشروع.",
+            sources=[],
+            succeeded=False,
+        )
+
+    query = str(arguments.get("query") or "").strip()
+    if not query:
+        return ToolResult(
+            content="اذكر نص البحث داخل ملفات المشروع.",
+            sources=[],
+            succeeded=False,
+        )
+    max_results = max(1, min(int(arguments.get("max_results") or 20), 20))
+    needle = query.casefold()
+    files = (
+        context.db.query(ProjectFile)
+        .filter(ProjectFile.project_id == project_id)
+        .order_by(ProjectFile.path.asc(), ProjectFile.id.asc())
+        .limit(200)
+        .all()
+    )
+
+    matches: list[str] = []
+    for item in files:
+        for line_number, line in enumerate(item.content.splitlines(), start=1):
+            if needle not in line.casefold():
+                continue
+            snippet = line.strip()
+            if len(snippet) > 500:
+                snippet = snippet[:500] + "…"
+            matches.append(f"{item.path}:{line_number}: {snippet}")
+            if len(matches) >= max_results:
+                break
+        if len(matches) >= max_results:
+            break
+
+    if not matches:
+        return ToolResult(
+            content=f"لم أجد «{query}» داخل ملفات المشروع.",
+            sources=[],
+            succeeded=True,
+            untrusted=True,
+        )
+
+    return ToolResult(
+        content=f"نتائج البحث عن «{query}»:\n" + "\n".join(matches),
+        sources=[],
+        succeeded=True,
+        untrusted=True,
+    )
+
+
 async def _edit_project_file(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
     """Safely create or update one source file inside the current project."""
     project_id = context.conversation.project_id
@@ -671,6 +824,74 @@ tool_registry.register(
             "additionalProperties": False,
         },
         handler=_create_project_archive,
+    )
+)
+
+tool_registry.register(
+    ToolSpec(
+        name="list_project_files",
+        description=(
+            "List the source files in the project attached to the current conversation. "
+            "Returns paths and bounded metadata only; never executes project code."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+        handler=_list_project_files,
+        output_trust="untrusted",
+    )
+)
+
+tool_registry.register(
+    ToolSpec(
+        name="read_project_file",
+        description=(
+            "Read one text source file from the project attached to the current conversation. "
+            "Use before editing so expected_content can protect against stale writes. Never execute project code."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Project-relative source path."},
+                "max_chars": {
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 20000,
+                    "description": "Maximum characters to return.",
+                },
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+        handler=_read_project_file,
+        output_trust="untrusted",
+    )
+)
+
+tool_registry.register(
+    ToolSpec(
+        name="search_project_files",
+        description=(
+            "Search text inside the source files of the current project. "
+            "Use it to locate relevant code before editing. Never execute project code."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "minLength": 1, "maxLength": 500},
+                "max_results": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20,
+                },
+            },
+            "required": ["query"],
+            "additionalProperties": False,
+        },
+        handler=_search_project_files,
+        output_trust="untrusted",
     )
 )
 
