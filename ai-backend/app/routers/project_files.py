@@ -142,15 +142,16 @@ def create_project_file(
         path=payload.path,
         content=payload.content,
     )
-    db.add(project_file)
     try:
-        db.commit()
+        with db.begin_nested():
+            db.add(project_file)
+            db.flush()
     except IntegrityError as exc:
-        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="يوجد ملف بهذا المسار داخل المشروع",
         ) from exc
+    db.commit()
     db.refresh(project_file)
     return project_file
 
@@ -168,16 +169,18 @@ def update_project_file(
     )
     _ensure_can_manage(project, membership)
 
-    project_file.path = payload.path
-    project_file.content = payload.content
     try:
-        db.commit()
+        with db.begin_nested():
+            project_file.path = payload.path
+            project_file.content = payload.content
+            db.flush()
     except IntegrityError as exc:
-        db.rollback()
+        db.expire(project_file)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="يوجد ملف آخر بهذا المسار داخل المشروع",
         ) from exc
+    db.commit()
     db.refresh(project_file)
     return project_file
 
