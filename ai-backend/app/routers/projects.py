@@ -291,7 +291,7 @@ def validate_project(
 
     for item in files:
         path_lower = item.path.lower()
-        if "\\x00" in item.content:
+        if "\x00" in item.content:
             add(
                 "error",
                 "binary_content",
