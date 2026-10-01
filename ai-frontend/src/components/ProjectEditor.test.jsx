@@ -8,11 +8,21 @@ const {
   createProjectMemory,
   updateProjectMemory,
   deleteProjectMemory,
+  listProjectFiles,
+  getProjectFile,
+  createProjectFile,
+  updateProjectFile,
+  deleteProjectFile,
 } = vi.hoisted(() => ({
   listProjectMemories: vi.fn(),
   createProjectMemory: vi.fn(),
   updateProjectMemory: vi.fn(),
   deleteProjectMemory: vi.fn(),
+  listProjectFiles: vi.fn().mockResolvedValue([]),
+  getProjectFile: vi.fn(),
+  createProjectFile: vi.fn(),
+  updateProjectFile: vi.fn(),
+  deleteProjectFile: vi.fn(),
 }));
 
 const { t } = vi.hoisted(() => ({
@@ -46,6 +56,44 @@ const { t } = vi.hoisted(() => ({
       "projectEditor.memoryLoadError": "تعذر تحميل ذاكرة المشروع",
       "projectEditor.memorySaveError": "تعذر حفظ ذاكرة المشروع",
       "projectEditor.memoryDeleteError": "تعذر حذف ذاكرة المشروع",
+      "projectEditor.filesTitle": "ملفات المشروع",
+      "projectEditor.filesDescription": "شجرة ملفات المصدر داخل المشروع.",
+      "projectEditor.filesEmpty": "لا توجد ملفات مصدر بعد.",
+      "projectEditor.fileNew": "ملف جديد",
+      "projectEditor.filePathLabel": "مسار الملف",
+      "projectEditor.filePathPlaceholder": "src/App.jsx",
+      "projectEditor.fileContentLabel": "محتوى الملف",
+      "projectEditor.fileContentPlaceholder": "اكتب كود أو نص الملف هنا...",
+      "projectEditor.fileLoading": "جارٍ تحميل الملف...",
+      "projectEditor.fileSaving": "جارٍ حفظ الملف...",
+      "projectEditor.fileCreate": "إنشاء الملف",
+      "projectEditor.fileSave": "حفظ الملف",
+      "projectEditor.fileDeleting": "جارٍ حذف الملف...",
+      "projectEditor.fileDelete": "حذف الملف",
+      "projectEditor.filePathRequired": "أدخل مسار الملف.",
+      "projectEditor.fileLoadError": "تعذر تحميل ملفات المشروع.",
+      "projectEditor.fileSaveError": "تعذر حفظ ملف المشروع.",
+      "projectEditor.fileDeleteError": "تعذر حذف ملف المشروع.",
+      "projectEditor.fileDeleteConfirm": "حذف الملف؟",
+      "projectEditor.filesTitle": "ملفات المشروع",
+      "projectEditor.filesDescription": "شجرة ملفات مصدر قابلة للتعديل مباشرة داخل المشروع.",
+      "projectEditor.filesEmpty": "لا توجد ملفات مصدر بعد.",
+      "projectEditor.fileNew": "ملف جديد",
+      "projectEditor.filePathLabel": "مسار الملف",
+      "projectEditor.filePathPlaceholder": "src/App.jsx",
+      "projectEditor.fileContentLabel": "محتوى الملف",
+      "projectEditor.fileContentPlaceholder": "اكتب كود أو نص الملف هنا...",
+      "projectEditor.fileLoading": "جارٍ تحميل الملف...",
+      "projectEditor.fileSaving": "جارٍ حفظ الملف...",
+      "projectEditor.fileCreate": "إنشاء الملف",
+      "projectEditor.fileSave": "حفظ الملف",
+      "projectEditor.fileDeleting": "جارٍ حذف الملف...",
+      "projectEditor.fileDelete": "حذف الملف",
+      "projectEditor.filePathRequired": "أدخل مسار الملف.",
+      "projectEditor.fileLoadError": "تعذر تحميل ملفات المشروع.",
+      "projectEditor.fileSaveError": "تعذر حفظ ملف المشروع.",
+      "projectEditor.fileDeleteError": "تعذر حذف ملف المشروع.",
+      "projectEditor.fileDeleteConfirm": "حذف الملف؟",
       "projectEditor.cancel": "إلغاء",
       "projectEditor.saving": "جارٍ الحفظ...",
       "projectEditor.save": "حفظ",
@@ -66,6 +114,14 @@ vi.mock("../lib/projectMemoriesApi", () => ({
   createProjectMemory,
   updateProjectMemory,
   deleteProjectMemory,
+}));
+
+vi.mock("../lib/projectFilesApi", () => ({
+  listProjectFiles,
+  getProjectFile,
+  createProjectFile,
+  updateProjectFile,
+  deleteProjectFile,
 }));
 
 describe("ProjectEditor", () => {
@@ -249,6 +305,85 @@ describe("ProjectEditor", () => {
       expect(screen.queryByText("الذاكرة الجديدة")).not.toBeInTheDocument()
     );
   });
+  it("loads, edits, creates, and deletes project source files", async () => {
+    listProjectMemories.mockResolvedValue([]);
+    listProjectFiles.mockImplementation(() => {
+      if (createProjectFile.mock.calls.length > 0) {
+        return Promise.resolve([
+          { id: 20, project_id: 3, path: "src/main.jsx", content_length: 19 },
+          { id: 21, project_id: 3, path: "README.md", content_length: 5 },
+        ]);
+      }
+      if (updateProjectFile.mock.calls.length > 0) {
+        return Promise.resolve([
+          { id: 20, project_id: 3, path: "src/main.jsx", content_length: 19 },
+        ]);
+      }
+      return Promise.resolve([
+        { id: 20, project_id: 3, path: "src/App.jsx", content_length: 22 },
+      ]);
+    });
+    getProjectFile.mockResolvedValue({
+      id: 20,
+      project_id: 3,
+      path: "src/App.jsx",
+      content: "export default App;",
+    });
+    updateProjectFile.mockResolvedValue({
+      id: 20,
+      project_id: 3,
+      path: "src/main.jsx",
+      content: "export default Main;",
+    });
+    createProjectFile.mockResolvedValue({
+      id: 21,
+      project_id: 3,
+      path: "README.md",
+      content: "# App",
+    });
+    deleteProjectFile.mockResolvedValue(undefined);
+
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    render(
+      <ProjectEditor
+        project={{ id: 3, name: "App", description: null, instructions: null }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText("src/App.jsx")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /src\/App\.jsx/ }));
+    const fileContentEditor = await screen.findByDisplayValue("export default App;");
+    expect(fileContentEditor).toBeInTheDocument();
+
+    const filePathEditor = screen.getByDisplayValue("src/App.jsx");
+    await user.clear(filePathEditor);
+    await user.type(filePathEditor, "src/main.jsx");
+    await user.clear(fileContentEditor);
+    await user.type(fileContentEditor, "export default Main;");
+    await user.click(screen.getByRole("button", { name: "حفظ الملف" }));
+
+    expect(updateProjectFile).toHaveBeenCalledWith(
+      3,
+      20,
+      "src/main.jsx",
+      "export default Main;"
+    );
+
+    await user.click(screen.getByRole("button", { name: "ملف جديد" }));
+    await user.type(screen.getByPlaceholderText("src/App.jsx"), "README.md");
+    await user.type(screen.getByPlaceholderText("اكتب كود أو نص الملف هنا..."), "# App");
+    await user.click(screen.getByRole("button", { name: "إنشاء الملف" }));
+
+    expect(createProjectFile).toHaveBeenCalledWith(3, "README.md", "# App");
+
+    await user.click(screen.getByRole("button", { name: "حذف الملف" }));
+    expect(deleteProjectFile).toHaveBeenCalledWith(3, 21);
+  });
+
   it("shows a global toast when project memory loading fails", async () => {
     listProjectMemories.mockRejectedValueOnce({
       response: { data: { detail: "Memory load denied" } },

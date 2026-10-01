@@ -7,6 +7,13 @@ import {
   updateProjectMemory,
 } from "../lib/projectMemoriesApi";
 import { getErrorMessage } from "../lib/errors";
+import {
+  createProjectFile,
+  deleteProjectFile,
+  getProjectFile,
+  listProjectFiles,
+  updateProjectFile,
+} from "../lib/projectFilesApi";
 
 export default function ProjectEditor({
   project = null,
@@ -26,6 +33,13 @@ export default function ProjectEditor({
   const [memoryDraft, setMemoryDraft] = useState("");
   const [memoryLoading, setMemoryLoading] = useState(false);
   const [memorySaving, setMemorySaving] = useState(false);
+  const [projectFiles, setProjectFiles] = useState([]);
+  const [selectedFileId, setSelectedFileId] = useState(null);
+  const [filePath, setFilePath] = useState("");
+  const [fileContent, setFileContent] = useState("");
+  const [fileLoading, setFileLoading] = useState(false);
+  const [fileSaving, setFileSaving] = useState(false);
+  const [fileDeleting, setFileDeleting] = useState(false);
 
   useEffect(() => {
     setName(project?.name ?? "");
@@ -34,6 +48,10 @@ export default function ProjectEditor({
     setAssistantId(project?.assistant_id ? String(project.assistant_id) : "");
     setValidationError("");
     setMemoryDraft("");
+    setProjectFiles([]);
+    setSelectedFileId(null);
+    setFilePath("");
+    setFileContent("");
 
     if (!project) {
       setMemories([]);
@@ -53,6 +71,16 @@ export default function ProjectEditor({
       })
       .finally(() => {
         if (!cancelled) setMemoryLoading(false);
+      });
+
+    listProjectFiles(project.id)
+      .then((items) => {
+        if (!cancelled) setProjectFiles(items);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          showErrorToast(error, "projectEditor.fileLoadError");
+        }
       });
 
     return () => {
@@ -134,6 +162,81 @@ export default function ProjectEditor({
     }
   };
 
+  const handleSelectFile = async (projectFile) => {
+    if (!project) return;
+    setFileLoading(true);
+    try {
+      const detail = await getProjectFile(project.id, projectFile.id);
+      setSelectedFileId(detail.id);
+      setFilePath(detail.path);
+      setFileContent(detail.content);
+    } catch (error) {
+      showErrorToast(error, "projectEditor.fileLoadError");
+    } finally {
+      setFileLoading(false);
+    }
+  };
+
+  const handleNewFile = () => {
+    setSelectedFileId(null);
+    setFilePath("");
+    setFileContent("");
+  };
+
+  const handleSaveFile = async () => {
+    if (!project) return;
+    const normalizedPath = filePath.trim();
+    if (!normalizedPath) {
+      showErrorToast(null, "projectEditor.filePathRequired");
+      return;
+    }
+
+    setFileSaving(true);
+    try {
+      const saved = selectedFileId
+        ? await updateProjectFile(
+            project.id,
+            selectedFileId,
+            normalizedPath,
+            fileContent
+          )
+        : await createProjectFile(project.id, normalizedPath, fileContent);
+      const items = await listProjectFiles(project.id);
+      setProjectFiles(items);
+      setSelectedFileId(saved.id);
+      setFilePath(saved.path);
+      setFileContent(saved.content);
+    } catch (error) {
+      showErrorToast(error, "projectEditor.fileSaveError");
+    } finally {
+      setFileSaving(false);
+    }
+  };
+
+  const handleDeleteFile = async () => {
+    if (!project || selectedFileId === null) return;
+    const projectFile = projectFiles.find((item) => item.id === selectedFileId);
+    if (!projectFile || !window.confirm(
+      t("projectEditor.fileDeleteConfirm", { path: projectFile.path })
+    )) {
+      return;
+    }
+
+    setFileDeleting(true);
+    try {
+      await deleteProjectFile(project.id, selectedFileId);
+      const items = await listProjectFiles(project.id);
+      setProjectFiles(items);
+      setSelectedFileId(null);
+      setFilePath("");
+      setFileContent("");
+    } catch (error) {
+      showErrorToast(error, "projectEditor.fileDeleteError");
+    } finally {
+      setFileDeleting(false);
+    }
+  };
+
   const handleDeleteMemory = async (memory) => {
     if (
       !isEditing ||
@@ -185,7 +288,7 @@ export default function ProjectEditor({
           <button
             type="button"
             onClick={onClose}
-            disabled={saving || memorySaving}
+            disabled={saving || memorySaving || fileSaving || fileDeleting}
             aria-label={t("projectEditor.close")}
             className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800"
           >
@@ -348,6 +451,119 @@ export default function ProjectEditor({
             </section>
           )}
 
+          {isEditing && (
+            <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {t("projectEditor.filesTitle")}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {t("projectEditor.filesDescription")}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleNewFile}
+                  disabled={fileSaving || fileDeleting}
+                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  {t("projectEditor.fileNew")}
+                </button>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)]">
+                <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 p-2 dark:border-slate-700">
+                  {projectFiles.length === 0 ? (
+                    <p className="px-2 py-6 text-center text-xs text-slate-400">
+                      {t("projectEditor.filesEmpty")}
+                    </p>
+                  ) : (
+                    <div className="space-y-1">
+                      {projectFiles.map((projectFile) => (
+                        <button
+                          key={projectFile.id}
+                          type="button"
+                          onClick={() => handleSelectFile(projectFile)}
+                          className={`block w-full rounded-lg px-2.5 py-2 text-start text-xs ${
+                            selectedFileId === projectFile.id
+                              ? "bg-slate-900 text-white"
+                              : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
+                          }`}
+                        >
+                          <span className="block truncate">{projectFile.path}</span>
+                          <span className="mt-0.5 block text-[10px] opacity-60">
+                            {projectFile.content_length} chars
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                      {t("projectEditor.filePathLabel")}
+                    </span>
+                    <input
+                      value={filePath}
+                      onChange={(event) => setFilePath(event.target.value)}
+                      maxLength={512}
+                      placeholder={t("projectEditor.filePathPlaceholder")}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-800"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                      {t("projectEditor.fileContentLabel")}
+                    </span>
+                    <textarea
+                      value={fileContent}
+                      onChange={(event) => setFileContent(event.target.value)}
+                      maxLength={50000}
+                      rows={14}
+                      disabled={fileLoading}
+                      placeholder={t("projectEditor.fileContentPlaceholder")}
+                      className="w-full resize-y rounded-xl border border-slate-200 bg-slate-950 px-3 py-2 font-mono text-xs leading-5 text-slate-100 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-700"
+                    />
+                  </label>
+                  {fileLoading && (
+                    <p className="text-xs text-slate-400">
+                      {t("projectEditor.fileLoading")}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveFile}
+                      disabled={fileSaving || fileDeleting || fileLoading}
+                      className="rounded-xl bg-slate-900 px-3 py-2 text-xs text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {fileSaving
+                        ? t("projectEditor.fileSaving")
+                        : selectedFileId === null
+                          ? t("projectEditor.fileCreate")
+                          : t("projectEditor.fileSave")}
+                    </button>
+                    {selectedFileId !== null && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteFile}
+                        disabled={fileSaving || fileDeleting || fileLoading}
+                        className="rounded-xl border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {fileDeleting
+                          ? t("projectEditor.fileDeleting")
+                          : t("projectEditor.fileDelete")}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
           {validationError && (
             <div
               role="alert"
@@ -362,14 +578,14 @@ export default function ProjectEditor({
           <button
             type="button"
             onClick={onClose}
-            disabled={saving || memorySaving}
+            disabled={saving || memorySaving || fileSaving || fileDeleting}
             className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             {t("projectEditor.cancel")}
           </button>
           <button
             type="submit"
-            disabled={saving || memorySaving}
+            disabled={saving || memorySaving || fileSaving || fileDeleting}
             className="rounded-xl bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? t("projectEditor.saving") : t("projectEditor.save")}

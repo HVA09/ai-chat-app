@@ -41,6 +41,7 @@ from app.routers.agent_jobs import router as agent_jobs_router
 from app.routers.projects import router as projects_router
 from app.routers.public_assistants import router as public_assistants_router
 from app.routers.project_memories import router as project_memories_router
+from app.routers.project_files import router as project_files_router
 from app.routers.saved_prompts import router as saved_prompts_router
 from app.routers.memories import router as memories_router
 from app.routers.shared_conversations import router as shared_conversations_router
@@ -200,6 +201,7 @@ app.include_router(agent_jobs_router)
 app.include_router(projects_router)
 app.include_router(public_assistants_router)
 app.include_router(project_memories_router)
+app.include_router(project_files_router)
 app.include_router(saved_prompts_router)
 app.include_router(memories_router)
 app.include_router(shared_conversations_router)
