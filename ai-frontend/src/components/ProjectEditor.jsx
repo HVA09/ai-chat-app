@@ -122,6 +122,8 @@ export default function ProjectEditor({
   const [fileDeleting, setFileDeleting] = useState(false);
   const [projectValidation, setProjectValidation] = useState(null);
   const [projectValidationLoading, setProjectValidationLoading] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
   const projectFileTree = useMemo(() => buildProjectFileTree(projectFiles), [projectFiles]);
 
   useEffect(() => {
@@ -136,6 +138,7 @@ export default function ProjectEditor({
     setFilePath("");
     setFileContent("");
     setProjectValidation(null);
+    setPreviewHtml("");
 
     if (!project) {
       setMemories([]);
@@ -265,6 +268,24 @@ export default function ProjectEditor({
     setSelectedFileId(null);
     setFilePath("");
     setFileContent("");
+  };
+
+  const handlePreviewProject = async () => {
+    if (!project) return;
+    const indexFile = projectFiles.find(
+      (item) => item.path.toLowerCase() === "index.html"
+    );
+    if (!indexFile) return;
+
+    setPreviewLoading(true);
+    try {
+      const detail = await getProjectFile(project.id, indexFile.id);
+      setPreviewHtml(detail.content);
+    } catch (error) {
+      showErrorToast(error, "projectEditor.previewLoadError");
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
   const handleValidateProject = async () => {
@@ -560,6 +581,22 @@ export default function ProjectEditor({
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
+                  {projectFiles.some(
+                    (item) => item.path.toLowerCase() === "index.html"
+                  ) && (
+                    <button
+                      type="button"
+                      onClick={handlePreviewProject}
+                      disabled={
+                        previewLoading || projectValidationLoading || fileSaving || fileDeleting
+                      }
+                      className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      {previewLoading
+                        ? t("projectEditor.previewing")
+                        : t("projectEditor.preview")}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={handleValidateProject}
@@ -723,6 +760,43 @@ export default function ProjectEditor({
               {validationError}
             </div>
           )}
+        {previewHtml && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+            <div
+              className="flex h-[90dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="project-preview-title"
+            >
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+                <h3
+                  id="project-preview-title"
+                  className="text-sm font-semibold text-slate-900 dark:text-slate-100"
+                >
+                  {t("projectEditor.previewTitle")}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setPreviewHtml("")}
+                  className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
+                  aria-label={t("projectEditor.closePreview")}
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 bg-white p-2 dark:bg-slate-950">
+                <iframe
+                  title={t("projectEditor.previewTitle")}
+                  srcDoc={previewHtml}
+                  sandbox=""
+                  referrerPolicy="no-referrer"
+                  className="h-full w-full rounded-xl border border-slate-200 bg-white dark:border-slate-700"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         </div>
 
         <div className="mt-6 flex justify-end gap-2">
