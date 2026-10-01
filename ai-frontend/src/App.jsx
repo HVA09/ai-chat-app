@@ -1474,8 +1474,11 @@ export default function App() {
     try {
       const user = await getCurrentUser();
       setCurrentUser(user);
-    } catch {
-      // تجاهل بصمت — لوحة الحساب تبقى غير محدّثة لو فشل التحميل فقط
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.currentUserLoadError")),
+        type: "error",
+      });
     }
   };
 
@@ -2671,8 +2674,11 @@ export default function App() {
     try {
       await markNotificationRead(id);
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
-    } catch {
-      // تجاهل بصمت — مو حرج
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.notificationReadError")),
+        type: "error",
+      });
     }
   };
 
@@ -2680,8 +2686,11 @@ export default function App() {
     try {
       await markAllNotificationsRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-    } catch {
-      // تجاهل بصمت — مو حرج
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.notificationsReadAllError")),
+        type: "error",
+      });
     }
   };
 
