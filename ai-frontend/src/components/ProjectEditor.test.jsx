@@ -13,6 +13,7 @@ const {
   createProjectFile,
   updateProjectFile,
   deleteProjectFile,
+  validateProject,
 } = vi.hoisted(() => ({
   listProjectMemories: vi.fn(),
   createProjectMemory: vi.fn(),
@@ -23,6 +24,7 @@ const {
   createProjectFile: vi.fn(),
   updateProjectFile: vi.fn(),
   deleteProjectFile: vi.fn(),
+  validateProject: vi.fn(),
 }));
 
 const { t } = vi.hoisted(() => ({
@@ -58,6 +60,15 @@ const { t } = vi.hoisted(() => ({
       "projectEditor.memoryDeleteError": "تعذر حذف ذاكرة المشروع",
       "projectEditor.filesTitle": "ملفات المشروع",
       "projectEditor.filesDescription": "شجرة ملفات المصدر داخل المشروع.",
+      "projectEditor.validate": "فحص المشروع",
+      "projectEditor.validating": "جارٍ فحص المشروع...",
+      "projectEditor.validationReady": "نتيجة الفحص",
+      "projectEditor.validationClean": "لا توجد أخطاء في الفحص.",
+      "projectEditor.validationSummary": "{{errors}} أخطاء، {{warnings}} تحذيرات — {{count}} ملف",
+      "projectEditor.validationLoadError": "تعذر فحص المشروع.",
+      "projectEditor.validationError": "خطأ",
+      "projectEditor.validationWarning": "تحذير",
+      "projectEditor.validationInfo": "معلومة",
       "projectEditor.filesEmpty": "لا توجد ملفات مصدر بعد.",
       "projectEditor.fileNew": "ملف جديد",
       "projectEditor.filePathLabel": "مسار الملف",
@@ -122,6 +133,10 @@ vi.mock("../lib/projectFilesApi", () => ({
   createProjectFile,
   updateProjectFile,
   deleteProjectFile,
+}));
+
+vi.mock("../lib/projectValidationApi", () => ({
+  validateProject,
 }));
 
 describe("ProjectEditor", () => {
