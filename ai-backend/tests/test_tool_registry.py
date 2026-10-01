@@ -24,6 +24,9 @@ def test_builtin_tool_registry_has_expected_tools():
         "web_search",
         "analyze_data",
         "create_project_archive",
+        "list_project_files",
+        "read_project_file",
+        "search_project_files",
         "edit_project_file",
     )
     assert [item["function"]["name"] for item in tool_registry.definitions()] == [
@@ -32,6 +35,9 @@ def test_builtin_tool_registry_has_expected_tools():
         "web_search",
         "analyze_data",
         "create_project_archive",
+        "list_project_files",
+        "read_project_file",
+        "search_project_files",
         "edit_project_file",
     ]
 
