@@ -2409,6 +2409,7 @@ export default function App() {
     clearChatDraft(currentUser?.id, conversationId);
     setError("");
     setRetryableUserMessage(null);
+    setToolActivity(null);
     messageCountRef.current += 2;
     setMessages((prev) => [
       ...prev,
@@ -2473,7 +2474,6 @@ export default function App() {
       onDone: async () => {
         streamAbortRef.current = null;
         setLoading(false);
-        setToolActivity(null);
         setRetryableUserMessage(null);
         setChatAttachments([]);
         if (isNewConversation) {
