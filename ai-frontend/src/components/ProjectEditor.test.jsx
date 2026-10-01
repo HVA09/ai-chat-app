@@ -303,13 +303,14 @@ describe("ProjectEditor", () => {
 
     expect(await screen.findByText("src/App.jsx")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "src/App.jsx" }));
-    expect(await screen.findByDisplayValue("export default App;")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /src\/App\.jsx/ }));
+    const fileContentEditor = await screen.findByDisplayValue("export default App;");
+    expect(fileContentEditor).toBeInTheDocument();
 
     await user.clear(screen.getByPlaceholderText("src/App.jsx"));
     await user.type(screen.getByPlaceholderText("src/App.jsx"), "src/main.jsx");
-    await user.clear(screen.getByDisplayValue("export default App;"));
-    await user.type(screen.getByDisplayValue("export default App;"), "export default Main;");
+    await user.clear(fileContentEditor);
+    await user.type(fileContentEditor, "export default Main;");
     await user.click(screen.getByRole("button", { name: "حفظ الملف" }));
 
     expect(updateProjectFile).toHaveBeenCalledWith(
