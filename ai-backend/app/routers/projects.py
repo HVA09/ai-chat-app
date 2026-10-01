@@ -291,14 +291,14 @@ def validate_project(
 
     for item in files:
         path_lower = item.path.lower()
-        if " " in item.content:
+        if "\\x00" in item.content:
             add(
                 "error",
                 "binary_content",
                 "يحتوي الملف على NUL bytes؛ احفظ ملفات المصدر كنص فقط.",
                 item.path,
             )
-        if re.search(r"(^|/).env(.[^./]+)?$", path_lower) and path_lower != ".env.example":
+        if re.search(r"(^|/)\\.env(\\.[^./]+)?$", path_lower) and path_lower != ".env.example":
             add(
                 "warning",
                 "secret_file_name",
