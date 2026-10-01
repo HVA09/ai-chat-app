@@ -63,6 +63,11 @@ const { t } = vi.hoisted(() => ({
         "projectEditor.filesDescription": "شجرة ملفات المصدر داخل المشروع.",
         "projectEditor.validate": "فحص المشروع",
         "projectEditor.validating": "جارٍ فحص المشروع...",
+      "projectEditor.preview": "معاينة آمنة",
+      "projectEditor.previewing": "جارٍ فتح المعاينة...",
+      "projectEditor.previewTitle": "معاينة المشروع",
+      "projectEditor.closePreview": "إغلاق المعاينة",
+      "projectEditor.previewLoadError": "تعذر فتح معاينة المشروع.",
         "projectEditor.validationReady": "نتيجة الفحص",
         "projectEditor.validationClean": "لا توجد أخطاء في الفحص.",
         "projectEditor.validationSummary": "{{errors}} أخطاء، {{warnings}} تحذيرات — {{count}} ملف",
@@ -219,6 +224,80 @@ describe("ProjectEditor", () => {
     expect(screen.getByDisplayValue("تعلم البرمجة")).toBeInTheDocument();
     expect(screen.getByDisplayValue("استخدم أمثلة عملية.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "تعديل المشروع" })).toBeInTheDocument();
+  });
+
+  it("runs read-only project validation and shows issues", async () => {
+    listProjectMemories.mockResolvedValue([]);
+    listProjectFiles.mockResolvedValue([]);
+    validateProject.mockResolvedValue({
+      project_id: 3,
+      project_kind: "javascript",
+      files_count: 2,
+      errors: 1,
+      warnings: 1,
+      checks: [
+        {
+          level: "error",
+          code: "invalid_package_json",
+          message: "package.json غير صالح",
+          path: "package.json",
+        },
+        {
+          level: "warning",
+          code: "secret_file_name",
+          message: "لا تضع أسرارًا حقيقية",
+          path: ".env",
+        },
+      ],
+    });
+
+    const user = userEvent.setup();
+    render(
+      <ProjectEditor
+        project={{ id: 3, name: "Demo", description: null, instructions: null }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "فحص المشروع" }));
+
+    expect(validateProject).toHaveBeenCalledWith(3);
+    expect(await screen.findByText("package.json غير صالح")).toBeInTheDocument();
+    expect(screen.getByText("لا تضع أسرارًا حقيقية")).toBeInTheDocument();
+    expect(screen.getByText(/1 أخطاء، 1 تحذيرات/)).toBeInTheDocument();
+  });
+
+  it("opens index.html in a sandboxed preview without script permission", async () => {
+    listProjectMemories.mockResolvedValue([]);
+    listProjectFiles.mockResolvedValue([
+      { id: 20, project_id: 3, path: "index.html", content_length: 34 },
+    ]);
+    getProjectFile.mockResolvedValue({
+      id: 20,
+      project_id: 3,
+      path: "index.html",
+      content: "<html><body><h1>Hello</h1></body></html>",
+    });
+
+    const user = userEvent.setup();
+    render(
+      <ProjectEditor
+        project={{ id: 3, name: "Demo", description: null, instructions: null }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "معاينة آمنة" }));
+
+    const frame = await screen.findByTitle("معاينة المشروع");
+    expect(getProjectFile).toHaveBeenCalledWith(3, 20);
+    expect(frame).toHaveAttribute("sandbox", "");
+    expect(frame).toHaveAttribute(
+      "srcdoc",
+      "<html><body><h1>Hello</h1></body></html>"
+    );
   });
 
   it("loads and creates project memory", async () => {
