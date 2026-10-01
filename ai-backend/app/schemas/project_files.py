@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 def _normalize_path(value: str) -> str:
     value = value.replace("\\", "/").strip()
-    if not value or "\x00" in value:
+    if not value or "\u0000" in value:
         raise ValueError("مسار الملف غير صالح")
     if value.startswith("/") or any(part == ".." for part in value.split("/")):
         raise ValueError("مسار الملف غير آمن")
