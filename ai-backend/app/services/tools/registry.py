@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import difflib
 import re
 import uuid
 import zipfile
@@ -24,6 +25,7 @@ from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.project_file import ProjectFile
 from app.models.user import User
+from app.schemas.project_files import ProjectFileCreate
 from app.services.tools.calculator import CalculatorError, calculate_expression
 from app.services.tools.code_execution import CodeExecutionError, execute_python_code
 from app.services.tools.data_analysis import DataAnalysisError, DataFile, analyze_file
@@ -445,6 +447,130 @@ async def _create_project_archive(arguments: dict[str, Any], context: ToolContex
         succeeded=True,
     )
 
+async def _edit_project_file(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
+    """Safely create or update one source file inside the current project."""
+    project_id = context.conversation.project_id
+    if project_id is None:
+        return ToolResult(
+            content="لا يمكن تعديل ملف مشروع لأن المحادثة الحالية غير مرتبطة بمشروع.",
+            sources=[],
+            succeeded=False,
+        )
+
+    try:
+        payload = ProjectFileCreate(
+            path=str(arguments.get("path") or ""),
+            content=str(arguments.get("content") or ""),
+        )
+    except Exception as exc:
+        return ToolResult(
+            content=f"تم رفض تعديل ملف المشروع: {exc}",
+            sources=[],
+            succeeded=False,
+        )
+
+    expected_content = arguments.get("expected_content")
+    if expected_content is not None and not isinstance(expected_content, str):
+        return ToolResult(
+            content="expected_content يجب أن يكون نصًا عندما يتم تمريره.",
+            sources=[],
+            succeeded=False,
+        )
+
+    project_file = (
+        context.db.query(ProjectFile)
+        .filter(
+            ProjectFile.project_id == project_id,
+            ProjectFile.path == payload.path,
+        )
+        .first()
+    )
+
+    if expected_content is not None:
+        current = project_file.content if project_file is not None else ""
+        if current != expected_content:
+            return ToolResult(
+                content=(f"لم يتم تعديل {payload.path}: الملف تغيّر منذ آخر قراءة. "
+                         "أعد قراءة الملف قبل محاولة التعديل مرة أخرى."),
+                sources=[],
+                succeeded=False,
+            )
+
+    if project_file is None:
+        count = (
+            context.db.query(func.count(ProjectFile.id))
+            .filter(ProjectFile.project_id == project_id)
+            .scalar()
+            or 0
+        )
+        if count >= 200:
+            return ToolResult(
+                content="لا يمكن إنشاء ملف جديد: وصل المشروع إلى الحد الأقصى 200 ملف مصدر.",
+                sources=[],
+                succeeded=False,
+            )
+        project_file = ProjectFile(
+            project_id=project_id,
+            path=payload.path,
+            content=payload.content,
+        )
+        old_content = ""
+    else:
+        old_content = project_file.content
+        if old_content == payload.content:
+            return ToolResult(
+                content=f"لم يتغير محتوى {payload.path}.",
+                sources=[{
+                    "id": f"project-file:{project_file.id}",
+                    "project_id": project_id,
+                    "file_id": project_file.id,
+                    "filename": payload.path,
+                    "kind": "project-file",
+                }],
+                succeeded=True,
+            )
+        project_file.content = payload.content
+
+    diff = "\n".join(
+        difflib.unified_diff(
+            old_content.splitlines(),
+            payload.content.splitlines(),
+            fromfile=f"a/{payload.path}",
+            tofile=f"b/{payload.path}",
+            lineterm="",
+            n=3,
+        )
+    )
+    try:
+        if project_file.id is None:
+            context.db.add(project_file)
+        context.db.commit()
+        context.db.refresh(project_file)
+    except Exception as exc:
+        context.db.rollback()
+        return ToolResult(
+            content=f"تعذر حفظ تعديل {payload.path}: {exc}",
+            sources=[],
+            succeeded=False,
+        )
+
+    diff_preview = diff[:6000]
+    if len(diff) > 6000:
+        diff_preview += "\n... تم اختصار الـdiff لحد العرض الآمن."
+
+    return ToolResult(
+        content=f"تم تعديل ملف المشروع {payload.path}.\n\nDiff:\n{diff_preview}",
+        sources=[{
+            "id": f"project-file:{project_file.id}",
+            "project_id": project_id,
+            "file_id": project_file.id,
+            "filename": payload.path,
+            "kind": "project-file",
+        }],
+        succeeded=True,
+    )
+
+
 tool_registry = ToolRegistry()
 
 tool_registry.register(
@@ -545,5 +671,31 @@ tool_registry.register(
             "additionalProperties": False,
         },
         handler=_create_project_archive,
+    )
+)
+
+tool_registry.register(
+    ToolSpec(
+        name="edit_project_file",
+        description=(
+            "Create or update one text source file inside the project attached to the current conversation. "
+            "Use expected_content for safe optimistic concurrency. Returns a bounded unified diff. "
+            "Never execute project code."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Project-relative source path."},
+                "content": {"type": "string", "description": "Complete replacement text for the file."},
+                "expected_content": {
+                    "type": "string",
+                    "description": "Optional exact previous content. Prevents overwriting a newer edit.",
+                },
+            },
+            "required": ["path", "content"],
+            "additionalProperties": False,
+        },
+        handler=_edit_project_file,
+        output_trust="untrusted",
     )
 )
