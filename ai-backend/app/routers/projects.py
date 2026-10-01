@@ -298,7 +298,7 @@ def validate_project(
                 "يحتوي الملف على NUL bytes؛ احفظ ملفات المصدر كنص فقط.",
                 item.path,
             )
-        if re.search(r"(^|/)\\.env(\\.[^./]+)?$", path_lower) and path_lower != ".env.example":
+        if re.search(r"(^|/)\.env(\.[^./]+)?$", path_lower) and path_lower != ".env.example":
             add(
                 "warning",
                 "secret_file_name",
