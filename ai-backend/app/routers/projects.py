@@ -1,4 +1,8 @@
 """مسارات المشاريع داخل مساحات العمل."""
+import json
+import re
+import tomllib
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -10,9 +14,11 @@ from app.dependencies import get_current_user
 from app.models.conversation import Conversation
 from app.models.file_attachment import FileAttachment
 from app.models.project import WorkspaceProject
+from app.models.project_file import ProjectFile
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
+from app.schemas.project_validation import ProjectValidationItem, ProjectValidationOut
 
 router = APIRouter(prefix="/projects", tags=["Workspace Projects"])
 
@@ -161,6 +167,167 @@ def update_project(
     db.commit()
     db.refresh(project)
     return project
+
+
+
+@router.get("/{project_id}/validate", response_model=ProjectValidationOut)
+def validate_project(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_project(project_id, current_user, db)
+    files = (
+        db.query(ProjectFile)
+        .filter(ProjectFile.project_id == project.id)
+        .order_by(ProjectFile.path.asc(), ProjectFile.id.asc())
+        .all()
+    )
+
+    checks: list[ProjectValidationItem] = []
+
+    def add(level: str, code: str, message: str, path: str | None = None):
+        checks.append(
+            ProjectValidationItem(
+                level=level, code=code, message=message, path=path
+            )
+        )
+
+    if not files:
+        add("error", "project_empty", "المشروع لا يحتوي على ملفات مصدر.")
+        return ProjectValidationOut(
+            project_id=project.id,
+            project_kind="unknown",
+            files_count=0,
+            errors=1,
+            warnings=0,
+            checks=checks,
+        )
+
+    lowered = {item.path.lower(): item for item in files}
+    kind = "generic"
+
+    package_file = lowered.get("package.json")
+    pyproject_file = lowered.get("pyproject.toml")
+    requirements_file = lowered.get("requirements.txt")
+    html_file = lowered.get("index.html")
+
+    if package_file:
+        kind = "javascript"
+        try:
+            package_data = json.loads(package_file.content)
+            if not isinstance(package_data, dict):
+                add(
+                    "error",
+                    "invalid_package_json",
+                    "package.json يجب أن يحتوي على كائن JSON.",
+                    package_file.path,
+                )
+            elif not package_data.get("name"):
+                add(
+                    "warning",
+                    "package_name_missing",
+                    "package.json لا يحتوي على name.",
+                    package_file.path,
+                )
+        except json.JSONDecodeError as exc:
+            add(
+                "error",
+                "invalid_package_json",
+                f"package.json يحتوي JSON غير صالح: {exc.msg}.",
+                package_file.path,
+            )
+
+    if lowered.get("package-lock.json") and not package_file:
+        lockfile = lowered["package-lock.json"]
+        add(
+            "error",
+            "lockfile_without_manifest",
+            "وجد package-lock.json بدون package.json.",
+            lockfile.path,
+        )
+
+    if pyproject_file or requirements_file:
+        kind = "python"
+
+    if pyproject_file:
+        try:
+            parsed = tomllib.loads(pyproject_file.content)
+            if not isinstance(parsed, dict):
+                add("error", "invalid_pyproject", "pyproject.toml غير صالح.", pyproject_file.path)
+        except tomllib.TOMLDecodeError as exc:
+            add(
+                "error",
+                "invalid_pyproject",
+                f"pyproject.toml غير صالح: {exc.msg}.",
+                pyproject_file.path,
+            )
+    elif requirements_file:
+        add(
+            "warning",
+            "requirements_without_pyproject",
+            "للمشروع Python لا يوجد pyproject.toml؛ هذا ليس خطأ لكنه يقلل وضوح إعداد المشروع.",
+            requirements_file.path,
+        )
+
+    if html_file:
+        if kind == "generic":
+            kind = "web"
+        html_lower = html_file.content.lower()
+        if "<html" not in html_lower:
+            add(
+                "warning",
+                "html_root_missing",
+                "index.html لا يحتوي على عنصر html واضح.",
+                html_file.path,
+            )
+        if "<body" not in html_lower:
+            add(
+                "warning",
+                "html_body_missing",
+                "index.html لا يحتوي على عنصر body واضح.",
+                html_file.path,
+            )
+
+    for item in files:
+        path_lower = item.path.lower()
+        if " " in item.content:
+            add(
+                "error",
+                "binary_content",
+                "يحتوي الملف على NUL bytes؛ احفظ ملفات المصدر كنص فقط.",
+                item.path,
+            )
+        if re.search(r"(^|/).env(.[^./]+)?$", path_lower) and path_lower != ".env.example":
+            add(
+                "warning",
+                "secret_file_name",
+                "اسم الملف يبدو ملف أسرار بيئيًا؛ لا تضع مفاتيح أو كلمات مرور حقيقية داخل المشروع.",
+                item.path,
+            )
+        if path_lower.endswith((".pem", ".key", ".p12", ".pfx")):
+            add(
+                "warning",
+                "private_key_file",
+                "الملف يبدو مادة مفاتيح/شهادة خاصة؛ لا ترفعه بمحتوى سري حقيقي.",
+                item.path,
+            )
+
+    if kind == "generic":
+        add(
+            "warning",
+            "project_type_unknown",
+            "تعذر تحديد نوع المشروع من الملفات الحالية؛ يمكنك الاستمرار، لكن التحقق المتخصص محدود.",
+        )
+
+    return ProjectValidationOut(
+        project_id=project.id,
+        project_kind=kind,
+        files_count=len(files),
+        errors=sum(1 for item in checks if item.level == "error"),
+        warnings=sum(1 for item in checks if item.level == "warning"),
+        checks=checks,
+    )
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
