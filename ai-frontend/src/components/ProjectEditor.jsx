@@ -14,6 +14,7 @@ import {
   listProjectFiles,
   updateProjectFile,
 } from "../lib/projectFilesApi";
+import { validateProject } from "../lib/projectValidationApi";
 
 
 function buildProjectFileTree(files) {
@@ -119,6 +120,8 @@ export default function ProjectEditor({
   const [fileLoading, setFileLoading] = useState(false);
   const [fileSaving, setFileSaving] = useState(false);
   const [fileDeleting, setFileDeleting] = useState(false);
+  const [projectValidation, setProjectValidation] = useState(null);
+  const [projectValidationLoading, setProjectValidationLoading] = useState(false);
   const projectFileTree = useMemo(() => buildProjectFileTree(projectFiles), [projectFiles]);
 
   useEffect(() => {
@@ -132,6 +135,7 @@ export default function ProjectEditor({
     setSelectedFileId(null);
     setFilePath("");
     setFileContent("");
+    setProjectValidation(null);
 
     if (!project) {
       setMemories([]);
@@ -261,6 +265,19 @@ export default function ProjectEditor({
     setSelectedFileId(null);
     setFilePath("");
     setFileContent("");
+  };
+
+  const handleValidateProject = async () => {
+    if (!project) return;
+    setProjectValidationLoading(true);
+    try {
+      const result = await validateProject(project.id);
+      setProjectValidation(result);
+    } catch (error) {
+      showErrorToast(error, "projectEditor.validationLoadError");
+    } finally {
+      setProjectValidationLoading(false);
+    }
   };
 
   const handleSaveFile = async () => {
@@ -542,15 +559,77 @@ export default function ProjectEditor({
                     {t("projectEditor.filesDescription")}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleNewFile}
-                  disabled={fileSaving || fileDeleting}
-                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                >
-                  {t("projectEditor.fileNew")}
-                </button>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleValidateProject}
+                    disabled={projectValidationLoading || fileSaving || fileDeleting}
+                    className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    {projectValidationLoading
+                      ? t("projectEditor.validating")
+                      : t("projectEditor.validate")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNewFile}
+                    disabled={fileSaving || fileDeleting}
+                    className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    {t("projectEditor.fileNew")}
+                  </button>
+                </div>
               </div>
+
+              {projectValidation && (
+                <div className="mb-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                        {t("projectEditor.validationReady")}
+                      </h4>
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        {t("projectEditor.validationSummary", {
+                          errors: projectValidation.errors,
+                          warnings: projectValidation.warnings,
+                          count: projectValidation.files_count,
+                        })}
+                      </p>
+                    </div>
+                    {projectValidation.errors === 0 ? (
+                      <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                        {t("projectEditor.validationClean")}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-medium text-red-600 dark:text-red-400">
+                        {projectValidation.errors} {t("projectEditor.validationError")}
+                      </span>
+                    )}
+                  </div>
+                  {projectValidation.checks.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {projectValidation.checks.map((item, index) => (
+                        <div
+                          key={`${item.code}-${item.path ?? "project"}-${index}`}
+                          className="rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2 text-xs dark:border-slate-800 dark:bg-slate-950"
+                        >
+                          <div className="font-medium text-slate-700 dark:text-slate-200">
+                            {item.level === "error"
+                              ? t("projectEditor.validationError")
+                              : item.level === "warning"
+                                ? t("projectEditor.validationWarning")
+                                : t("projectEditor.validationInfo")}
+                            {item.path ? ` — ${item.path}` : ""}
+                          </div>
+                          <div className="mt-1 text-slate-500 dark:text-slate-400">
+                            {item.message}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="grid gap-3 md:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)]">
                 <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 p-2 dark:border-slate-700">
