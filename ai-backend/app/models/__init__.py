@@ -3,6 +3,7 @@ from app.models.api_key import APIKey
 from app.models.user_memory import UserMemory
 from app.models.user_session import UserSession
 from app.models.project_memory import ProjectMemory
+from app.models.project_file import ProjectFile
 from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
 from app.models.workspace_invitation import WorkspaceInvitation
 from app.models.assistant import Assistant
@@ -41,6 +42,7 @@ __all__ = [
     "UserMemory",
     "UserSession",
     "ProjectMemory",
+    "ProjectFile",
     "Workspace",
     "WorkspaceMember",
     "WorkspaceRole",
