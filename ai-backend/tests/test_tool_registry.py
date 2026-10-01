@@ -2,7 +2,14 @@ import asyncio
 
 import pytest
 
-from app.services.tools.registry import ToolContext, ToolRegistry, ToolResult, ToolSpec, tool_registry
+from app.services.tools.registry import (
+    ToolContext,
+    ToolRegistry,
+    ToolResult,
+    ToolSpec,
+    _create_project_archive,
+    tool_registry,
+)
 
 
 async def _ok_handler(arguments, context):
@@ -171,3 +178,37 @@ def test_registry_rejects_invalid_or_oversized_tool_arguments(monkeypatch):
     )
     assert too_long.succeeded is False
     assert "maxLength" in too_long.content
+
+
+@pytest.mark.parametrize(
+    ("files", "expected"),
+    [
+        ([{"path": "../escape.txt", "content": "x"}], "مسار ملف غير آمن"),
+        ([{"path": "/absolute.txt", "content": "x"}], "مسار ملف غير آمن"),
+        ([{"path": "app.txt", "content": "x"}, {"path": "app.txt", "content": "y"}], "المسار مكرر"),
+    ],
+)
+def test_project_archive_rejects_unsafe_or_duplicate_paths(files, expected):
+    result = asyncio.run(
+        _create_project_archive(
+            {"project_name": "demo", "files": files},
+            ToolContext(conversation=None, current_user=None, db=None),
+        )
+    )
+
+    assert result.succeeded is False
+    assert expected in result.content
+
+
+def test_project_archive_rejects_more_than_50_files():
+    files = [{"path": f"file-{index}.txt", "content": "x"} for index in range(51)]
+
+    result = asyncio.run(
+        _create_project_archive(
+            {"project_name": "demo", "files": files},
+            ToolContext(conversation=None, current_user=None, db=None),
+        )
+    )
+
+    assert result.succeeded is False
+    assert "50" in result.content
