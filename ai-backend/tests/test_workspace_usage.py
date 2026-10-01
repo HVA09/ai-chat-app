@@ -267,7 +267,7 @@ def test_workspace_usage_reports_monthly_cost_budget(client, db_session, monkeyp
             model="test-model",
             input_tokens=100_000,
             output_tokens=100_000,
-            created_at=datetime.now(timezone.utc) - timedelta(days=2),
+            created_at=datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0),
         )
     )
     db_session.commit()
