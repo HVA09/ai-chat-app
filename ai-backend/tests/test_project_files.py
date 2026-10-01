@@ -175,6 +175,50 @@ def test_agent_can_edit_project_file_with_bounded_diff(client, db_session, monke
 
     current_user = db_session.query(User).filter(User.email == "project-agent-edit@example.com").one()
     conversation = db_session.get(Conversation, conversation_id)
+
+    listed = asyncio.run(
+        tool_registry.execute(
+            "list_project_files",
+            {},
+            ToolContext(
+                conversation=conversation,
+                current_user=current_user,
+                db=db_session,
+            ),
+        )
+    )
+    assert listed.succeeded is True
+    assert "src/App.jsx" in listed.content
+
+    read = asyncio.run(
+        tool_registry.execute(
+            "read_project_file",
+            {"path": "src/App.jsx"},
+            ToolContext(
+                conversation=conversation,
+                current_user=current_user,
+                db=db_session,
+            ),
+        )
+    )
+    assert read.succeeded is True
+    assert "export default function App() { return null; }" in read.content
+
+    searched = asyncio.run(
+        tool_registry.execute(
+            "search_project_files",
+            {"query": "return null"},
+            ToolContext(
+                conversation=conversation,
+                current_user=current_user,
+                db=db_session,
+            ),
+        )
+    )
+    assert searched.succeeded is True
+    assert "src/App.jsx:1" in searched.content
+
+    conversation = db_session.get(Conversation, conversation_id)
     result = asyncio.run(
         tool_registry.execute(
             "edit_project_file",
