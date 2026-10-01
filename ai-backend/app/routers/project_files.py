@@ -137,21 +137,34 @@ def create_project_file(
             detail="وصل المشروع إلى الحد الأقصى من 200 ملف مصدر",
         )
 
+    duplicate = (
+        db.query(ProjectFile)
+        .filter(
+            ProjectFile.project_id == project.id,
+            ProjectFile.path == payload.path,
+        )
+        .first()
+    )
+    if duplicate:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="يوجد ملف بهذا المسار داخل المشروع",
+        )
+
     project_file = ProjectFile(
         project_id=project.id,
         path=payload.path,
         content=payload.content,
     )
+    db.add(project_file)
     try:
-        with db.begin_nested():
-            db.add(project_file)
-            db.flush()
+        db.commit()
     except IntegrityError as exc:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="يوجد ملف بهذا المسار داخل المشروع",
         ) from exc
-    db.commit()
     db.refresh(project_file)
     return project_file
 
@@ -169,18 +182,31 @@ def update_project_file(
     )
     _ensure_can_manage(project, membership)
 
+    duplicate = (
+        db.query(ProjectFile)
+        .filter(
+            ProjectFile.project_id == project.id,
+            ProjectFile.path == payload.path,
+            ProjectFile.id != project_file.id,
+        )
+        .first()
+    )
+    if duplicate:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="يوجد ملف آخر بهذا المسار داخل المشروع",
+        )
+
+    project_file.path = payload.path
+    project_file.content = payload.content
     try:
-        with db.begin_nested():
-            project_file.path = payload.path
-            project_file.content = payload.content
-            db.flush()
+        db.commit()
     except IntegrityError as exc:
-        db.expire(project_file)
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="يوجد ملف آخر بهذا المسار داخل المشروع",
         ) from exc
-    db.commit()
     db.refresh(project_file)
     return project_file
 
