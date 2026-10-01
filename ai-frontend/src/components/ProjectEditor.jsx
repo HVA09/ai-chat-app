@@ -89,7 +89,7 @@ function ProjectFileTreeNode({ node, depth, selectedFileId, onSelect }) {
       style={{ paddingInlineStart: `${depth * 12 + 8}px` }}
     >
       <span aria-hidden="true">📄</span>
-      <span className="min-w-0 flex-1 truncate">{node.name}</span>
+      <span className="min-w-0 flex-1 truncate">{node.path}</span>
       <span className="text-[10px] opacity-60">{node.projectFile.content_length}</span>
     </button>
   );
