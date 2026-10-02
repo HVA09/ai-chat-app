@@ -18,7 +18,9 @@ from app.models.project_file import ProjectFile
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
+from app.schemas.project_preview import PreviewBuildFile, PreviewBuildResponse
 from app.schemas.project_validation import ProjectPreviewPlanOut, ProjectValidationItem, ProjectValidationOut
+from app.services.project_preview_builder import PreviewBuilderError, build_javascript_preview
 
 router = APIRouter(prefix="/projects", tags=["Workspace Projects"])
 
@@ -433,6 +435,44 @@ def project_preview_plan(
     )
 
 
+
+
+@router.post("/{project_id}/preview-build", response_model=PreviewBuildResponse)
+async def build_project_preview(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_project(project_id, current_user, db)
+    validation = validate_project(project_id, current_user, db)
+    if validation.errors > 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="أصلح أخطاء التحقق قبل إنشاء المعاينة.",
+        )
+    if validation.project_kind != "javascript":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="المعاينة التنفيذية متاحة حاليًا لمشاريع JavaScript فقط.",
+        )
+
+    files = (
+        db.query(ProjectFile)
+        .filter(ProjectFile.project_id == project.id)
+        .order_by(ProjectFile.path.asc(), ProjectFile.id.asc())
+        .all()
+    )
+    payload_files = [
+        PreviewBuildFile(path=item.path, content=item.content)
+        for item in files
+    ]
+    try:
+        return await build_javascript_preview(project.id, payload_files)
+    except PreviewBuilderError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="خدمة بناء المعاينة غير متاحة أو رفضت الطلب.",
+        ) from exc
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project(
     project_id: int,
