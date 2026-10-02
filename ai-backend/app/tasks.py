@@ -100,6 +100,12 @@ def _verify_agent_result(result) -> bool:
     return result.status == "completed" and bool((result.text or "").strip())
 
 
+def _is_retryable_agent_result(result) -> bool:
+    return result.status == "failed" or (
+        result.status == "completed" and not bool((result.text or "").strip())
+    )
+
+
 def _execute_agent_job(job_id: int, db=None) -> None:
     owns_session = db is None
     if db is None:
@@ -325,7 +331,7 @@ def _execute_agent_job(job_id: int, db=None) -> None:
                 db.commit()
                 return
 
-            if attempt <= job.max_retries:
+            if attempt <= job.max_retries and _is_retryable_agent_result(result):
                 refreshed_job.status = "running"
                 refreshed_job.error = "المحاولة لم تجتز التحقق؛ سيتم إعادة المحاولة."
                 _save_agent_job_checkpoint(
@@ -334,13 +340,17 @@ def _execute_agent_job(job_id: int, db=None) -> None:
                     phase="retrying",
                     attempt=attempt,
                     status=result.status,
-                    detail="فشلت محاولة التحقق وسيتم إنشاء checkpoint للمحاولة التالية.",
+                    detail="فشلت محاولة قابلة لإعادة المحاولة وسيتم إنشاء checkpoint للمحاولة التالية.",
                 )
                 db.commit()
                 continue
 
             refreshed_job.status = "failed"
-            refreshed_job.error = "توقف تشغيل الوكيل بعد استنفاد محاولات التحقق."
+            refreshed_job.error = (
+                "توقف تشغيل الوكيل بسبب حالة غير قابلة لإعادة المحاولة."
+                if result.status == "stopped"
+                else "توقف تشغيل الوكيل بعد استنفاد محاولات التحقق."
+            )
             refreshed_job.finished_at = datetime.now(timezone.utc)
             _save_agent_job_checkpoint(
                 db,
