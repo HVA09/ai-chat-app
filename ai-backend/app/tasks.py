@@ -35,6 +35,10 @@ class AgentJobCancelled(Exception):
     """Raised when a persistent Agent job is cancelled cooperatively."""
 
 
+class AgentJobPaused(Exception):
+    """Raised when a persistent Agent job is paused cooperatively."""
+
+
 async def _agent_job_event_sink(db, job_id: int, event: dict) -> None:
     if event.get("type") not in {
         "runtime_round_start",
@@ -45,7 +49,11 @@ async def _agent_job_event_sink(db, job_id: int, event: dict) -> None:
         return
 
     job = db.get(AgentJob, job_id)
-    if job is None or job.cancel_requested or job.status == "cancelled":
+    if job is None:
+        return
+    if job.pause_requested or job.status == "paused":
+        raise AgentJobPaused("تم إيقاف مهمة الوكيل مؤقتًا.")
+    if job.cancel_requested or job.status == "cancelled":
         raise AgentJobCancelled("تم إلغاء مهمة الوكيل.")
 
 
@@ -144,6 +152,20 @@ def _execute_agent_workflow(db, job, user, workspace, conversation, provider, ev
         refreshed = db.get(AgentJob, job.id)
         if refreshed is None:
             raise RuntimeError("مهمة الوكيل غير موجودة.")
+        if refreshed.pause_requested or refreshed.status == "paused":
+            if step.status == "running":
+                step.status = "paused"
+            _save_agent_job_checkpoint(
+                db,
+                refreshed,
+                phase="paused",
+                attempt=step.attempt_count,
+                step_sequence=step.sequence,
+                status="paused",
+                detail="تم إيقاف المهمة مؤقتًا قبل بدء/استكمال الخطوة.",
+            )
+            db.commit()
+            raise AgentJobPaused("تم إيقاف مهمة الوكيل مؤقتًا.")
         if refreshed.cancel_requested:
             if step.status == "running":
                 step.status = "cancelled"
@@ -173,6 +195,19 @@ def _execute_agent_workflow(db, job, user, workspace, conversation, provider, ev
             refreshed_job = db.get(AgentJob, job.id)
             if refreshed_job is None:
                 raise RuntimeError("مهمة الوكيل غير موجودة.")
+            if refreshed_job.pause_requested or refreshed_job.status == "paused":
+                step.status = "paused"
+                _save_agent_job_checkpoint(
+                    db,
+                    refreshed_job,
+                    phase="paused",
+                    attempt=step.attempt_count,
+                    step_sequence=step.sequence,
+                    status="paused",
+                    detail="تم إيقاف المهمة مؤقتًا بين محاولات الخطوة.",
+                )
+                db.commit()
+                raise AgentJobPaused("تم إيقاف مهمة الوكيل مؤقتًا.")
             if refreshed_job.cancel_requested:
                 step.status = "cancelled"
                 step.finished_at = datetime.now(timezone.utc)
@@ -243,6 +278,20 @@ def _execute_agent_workflow(db, job, user, workspace, conversation, provider, ev
             sources.extend(result.sources or [])
             last_run_id = result.run_id
             final_text = result.text
+
+            if refreshed_job.pause_requested or refreshed_job.status == "paused":
+                step.status = "paused"
+                _save_agent_job_checkpoint(
+                    db,
+                    refreshed_job,
+                    phase="paused",
+                    attempt=step.attempt_count,
+                    step_sequence=step.sequence,
+                    status="paused",
+                    detail="تم إيقاف المهمة مؤقتًا أثناء/بعد تشغيل AgentRuntime.",
+                )
+                db.commit()
+                raise AgentJobPaused("تم إيقاف مهمة الوكيل مؤقتًا.")
 
             step.run_id = result.run_id
             step.result_text = result.text
@@ -362,6 +411,18 @@ def _execute_agent_job(job_id: int, db=None) -> None:
             return
         if job.status in {"succeeded", "failed", "cancelled"}:
             return
+        if job.pause_requested:
+            job.status = "paused"
+            _save_agent_job_checkpoint(
+                db,
+                job,
+                phase="paused",
+                attempt=job.retry_count,
+                detail="تم إيقاف المهمة قبل بدء التنفيذ.",
+            )
+            db.commit()
+            return
+
         if job.cancel_requested:
             job.status = "cancelled"
             job.finished_at = now
@@ -519,6 +580,20 @@ def _execute_agent_job(job_id: int, db=None) -> None:
         )
         db.commit()
 
+    except AgentJobPaused:
+        job = db.get(AgentJob, job_id)
+        if job is not None:
+            job.status = "paused"
+            job.finished_at = None
+            _save_agent_job_checkpoint(
+                db,
+                job,
+                phase="paused",
+                attempt=job.retry_count,
+                detail="تم إيقاف مهمة الوكيل مؤقتًا ويمكن استئنافها من checkpoint.",
+            )
+            db.commit()
+    
     except AgentJobCancelled:
         job = db.get(AgentJob, job_id)
         if job is not None:
