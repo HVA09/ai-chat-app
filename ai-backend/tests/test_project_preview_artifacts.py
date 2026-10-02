@@ -78,6 +78,8 @@ def test_preview_csp_blocks_network_api_access():
     assert "frame-ancestors https://frontend.example;" in csp
 
 
+
+def test_preview_route_sets_csp_sandbox_without_x_frame_deny(client, db_session, monkeypatch):
     from app.routers import projects as projects_router
 
     registered = client.post(
@@ -116,7 +118,6 @@ def test_preview_csp_blocks_network_api_access():
     )
     db_session.commit()
 
-    from app.routers import projects as projects_router
 
     monkeypatch.setattr(projects_router, "verify_preview_token", lambda *args, **kwargs: "dist")
     monkeypatch.setattr(
