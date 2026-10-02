@@ -690,6 +690,47 @@ def validate_project(
 
 
 
+MAX_PREVIEW_ARTIFACT_HISTORY = 5
+
+
+def _ensure_project_edit_access(
+    project: WorkspaceProject,
+    membership: WorkspaceMember,
+    db: Session,
+) -> None:
+    if not can_edit_project(project, membership.user, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="تعديل artifacts المشروع يتطلب دور محرر أو مدير المشروع.",
+        )
+
+
+def _cleanup_project_artifacts(db: Session, project_id: int) -> int:
+    artifacts = (
+        db.query(ProjectArtifact)
+        .filter(ProjectArtifact.project_id == project_id)
+        .order_by(ProjectArtifact.created_at.desc(), ProjectArtifact.id.desc())
+        .all()
+    )
+    now = int(time.time())
+    candidates = [
+        artifact
+        for index, artifact in enumerate(artifacts)
+        if artifact.expires_at <= now or index >= MAX_PREVIEW_ARTIFACT_HISTORY
+    ]
+    removed = 0
+    for artifact in candidates:
+        try:
+            delete_preview_artifact(project_id, artifact.artifact_id)
+        except PreviewArtifactError:
+            continue
+        db.delete(artifact)
+        removed += 1
+    if removed:
+        db.commit()
+    return removed
+
+
 @router.get("/{project_id}/preview-plan", response_model=ProjectPreviewPlanOut)
 def project_preview_plan(
     project_id: int,
