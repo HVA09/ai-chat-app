@@ -156,6 +156,8 @@ describe("ProjectEditor", () => {
   });
 
   it("exports an existing project", async () => {
+    listProjectMemories.mockResolvedValue([]);
+    listProjectFiles.mockResolvedValue([]);
     const user = userEvent.setup();
     const onExport = vi.fn();
     render(
