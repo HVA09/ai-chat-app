@@ -116,3 +116,20 @@ jobs:
       - name: Build backend image
         working-directory: ai-backend
         run: docker build --tag ai-chat-backend:test .
+
+
+  preview-builder:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: preview-builder
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.txt pytest
+      - run: python -m compileall -q .
+      - run: pytest -q
+      - run: docker build --tag ai-chat-preview-builder:test .
