@@ -64,3 +64,9 @@ class WorkspaceProject(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    preview_artifacts = relationship(
+        "ProjectPreviewArtifact",
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )

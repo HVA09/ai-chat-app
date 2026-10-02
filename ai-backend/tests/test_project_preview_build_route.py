@@ -60,6 +60,8 @@ def test_project_preview_build_delegates_to_isolated_builder(client, monkeypatch
             token="v1.token",
             expires_at=9999999999,
             entrypoint=build.entrypoint,
+            file_paths=("dist/index.html",),
+            size_bytes=1,
         ),
     )
 

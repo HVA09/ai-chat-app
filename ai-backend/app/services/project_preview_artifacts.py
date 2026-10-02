@@ -41,6 +41,8 @@ class PublishedPreview:
     token: str
     expires_at: int
     entrypoint: str
+    file_paths: tuple[str, ...]
+    size_bytes: int
 
 
 def _safe_zip_path(name: str) -> str:
@@ -132,6 +134,8 @@ def publish_preview_artifact(
                 if _is_symlink(info):
                     raise PreviewArtifactError("artifact يحتوي رابطًا رمزيًا غير مسموح.")
                 path = _safe_zip_path(info.filename)
+                if path in files:
+                    raise PreviewArtifactError("artifact يحتوي مسار ملف مكررًا.")
                 total_bytes += info.file_size
                 if total_bytes > settings.PREVIEW_MAX_ARTIFACT_BYTES:
                     raise PreviewArtifactError("الحجم الإجمالي للملفات يتجاوز الحد المسموح.")
@@ -169,6 +173,8 @@ def publish_preview_artifact(
         token=token,
         expires_at=expires_at,
         entrypoint=entrypoint,
+        file_paths=tuple(sorted(files)),
+        size_bytes=len(artifact),
     )
 
 

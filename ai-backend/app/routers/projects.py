@@ -2,6 +2,7 @@
 import json
 import re
 import tomllib
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -19,12 +20,14 @@ from app.models.project import WorkspaceProject
 from app.models.project_file import ProjectFile
 from app.models.project_memory import ProjectMemory
 from app.models.project_member import ProjectMember, ProjectMemberRole
+from app.models.project_preview_artifact import ProjectPreviewArtifact
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
 from app.schemas.project_members import ProjectMemberCreate, ProjectMemberOut, ProjectMemberUpdate
 from app.schemas.project_archive import ProjectImportResult, ProjectImportConflict
 from app.schemas.project_preview import PreviewBuildFile, PreviewBuildResponse
+from app.schemas.project_preview_artifacts import ProjectPreviewArtifactOut
 from app.schemas.project_validation import ProjectPreviewPlanOut, ProjectValidationItem, ProjectValidationOut
 from app.services.project_preview_artifacts import (
     PreviewArtifactError,
@@ -37,6 +40,11 @@ from app.services.project_preview_artifacts import (
 )
 from app.services.project_access import can_manage_project, can_read_project
 from app.services.project_preview_builder import PreviewBuilderError, build_javascript_preview
+from app.services.project_preview_artifact_registry import (
+    cleanup_preview_artifact_objects,
+    delete_preview_artifact as delete_registered_preview_artifact,
+    register_preview_artifact,
+)
 from app.services.project_archive import ProjectArchiveError, build_project_export, parse_project_import
 from app.audit import log_event
 
@@ -824,6 +832,13 @@ async def build_project_preview(
     try:
         build = await build_javascript_preview(project.id, payload_files)
         published = publish_preview_artifact(project.id, build)
+        register_preview_artifact(
+            db,
+            project.id,
+            published,
+            published.size_bytes,
+            list(published.file_paths),
+        )
     except (PreviewBuilderError, PreviewArtifactError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -842,6 +857,55 @@ async def build_project_preview(
             "preview_expires_at": published.expires_at,
         }
     )
+@router.get("/{project_id}/preview-artifacts", response_model=list[ProjectPreviewArtifactOut])
+def list_preview_artifacts(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_project(project_id, current_user, db)
+    return (
+        db.query(ProjectPreviewArtifact)
+        .filter(ProjectPreviewArtifact.project_id == project.id)
+        .order_by(
+            ProjectPreviewArtifact.created_at.desc(),
+            ProjectPreviewArtifact.id.desc(),
+        )
+        .limit(20)
+        .all()
+    )
+
+@router.delete("/{project_id}/preview-artifacts/{artifact_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_preview_artifact(
+    project_id: int,
+    artifact_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_project(project_id, current_user, db)
+    membership = _get_membership(project.workspace_id, current_user, db)
+    _can_manage(project, membership, db)
+    artifact = (
+        db.query(ProjectPreviewArtifact)
+        .filter(
+            ProjectPreviewArtifact.project_id == project.id,
+            ProjectPreviewArtifact.artifact_id == artifact_id,
+        )
+        .first()
+    )
+    if not artifact:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="artifact المعاينة غير موجود.",
+        )
+    try:
+        delete_registered_preview_artifact(db, artifact)
+    except PreviewArtifactError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="تعذر تنظيف artifact المعاينة.",
+        ) from exc
+
 @router.get(
     "/{project_id}/preview-artifacts/{artifact_id}/{token}/{path:path}",
     name="serve_preview_artifact",
@@ -851,9 +915,22 @@ def serve_preview_artifact(
     artifact_id: str,
     token: str,
     path: str,
+    db: Session = Depends(get_db),
 ):
     try:
         artifact_root = verify_preview_token(project_id, artifact_id, token)
+        artifact = (
+            db.query(ProjectPreviewArtifact)
+            .filter(
+                ProjectPreviewArtifact.project_id == project_id,
+                ProjectPreviewArtifact.artifact_id == artifact_id,
+                ProjectPreviewArtifact.status == "active",
+                ProjectPreviewArtifact.expires_at > datetime.now(timezone.utc),
+            )
+            .first()
+        )
+        if not artifact or path not in (artifact.files_manifest or []):
+            raise PreviewArtifactError("artifact المعاينة غير متاح أو انتهت صلاحيته.")
         content, content_type = read_preview_file(project_id, artifact_id, path)
     except PreviewArtifactError as exc:
         raise HTTPException(
@@ -887,6 +964,20 @@ def delete_project(
     project = _get_project(project_id, current_user, db)
     membership = _get_membership(project.workspace_id, current_user, db)
     _can_manage(project, membership, db)
+
+    preview_artifacts = (
+        db.query(ProjectPreviewArtifact)
+        .filter(ProjectPreviewArtifact.project_id == project.id)
+        .all()
+    )
+    cleanup_errors = []
+    for artifact in preview_artifacts:
+        cleanup_errors.extend(cleanup_preview_artifact_objects(project.id, artifact))
+    if cleanup_errors:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="تعذر تنظيف artifacts الخاصة بالمشروع.",
+        )
 
     db.query(Conversation).filter(
         Conversation.project_id == project.id
