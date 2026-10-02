@@ -543,7 +543,7 @@
 - لم تتم إضافة أو ترقية أي موارد Render مدفوعة ضمن F3.3.
 
 ### F4 — Project Collaboration / Import-Export Improvements
-الحالة: **F4.1 وF4.2 مكتملتان ومتحققتان على `main`**
+الحالة: **مكتملة ومتحققة — F4.1 وF4.2 وF4.3 على `main`**
 
 #### F4.1 — Project Collaboration / Membership: **مكتمل ومتحقق**
 - أضيفت عضوية المشروع بأدوار `viewer` و`editor` و`manager`.
@@ -561,33 +561,39 @@
 - تم تسجيل نجاح الاستيراد في audit log.
 - أضيفت واجهات Frontend لتصدير المشروع واستيراده، مع معالجة تعارض الاسم.
 - تم الحفاظ على فحوصات project access وعزل المحادثات حسب المشروع.
-- PR #370 تم دمجه بنجاح بعد إصلاح اختبارات authentication وarchive وCSV.
+- PR #370 تم دمجه بنجاح.
 - CI #4008: **نجح بالكامل** — Backend، Frontend، SDK، Production Compose، Preview Builder.
 - CodeQL #645: **نجح بالكامل** لـPython وJavaScript/TypeScript.
 - merge commit: `a12ee1a863640fbcb9bbdff3ed8a72c4a0de40eb`.
 - لم تتم إضافة أو ترقية أي موارد Render مدفوعة ضمن F4.
 
-#### تحقق تشغيلي بعد F4.2
-- Production Smoke #174 سبق أن سجل فشلًا في `/health` بسبب timeout متكرر، بينما نجح `/ready` وباقي فحوص smoke؛ التشغيل السابق #173 كان ناجحًا.
-- هذا ليس فشلًا في CI أو في اختبارات F4.2، لكنه يبقى نقطة متابعة تشغيلية على Render Free.
+#### F4.3 — Artifact Management / Conflict Improvements: **مكتمل ومتحقق**
+- تم حفظ lifecycle metadata للـproject preview artifacts داخل PostgreSQL.
+- أصبحت artifacts السابقة تُعلَّم `superseded` عند نشر artifact أحدث.
+- تم رفض duplicate normalized ZIP paths أثناء نشر artifact.
+- أصبح عرض preview artifact يتطلب artifact مسجلًا وحالته `active` وضمن مدة الصلاحية.
+- أضيفت مسارات project-scoped لعرض وحذف artifacts مع فحوص ownership/membership.
+- تمت إضافة تنظيف ملفات artifacts عند الاستبدال وحذف المشروع.
+- أضيفت اختبارات lifecycle والعزل والتعارض.
+- migration: `0075_project_preview_artifacts`.
+- PR #374 تم دمجه بنجاح.
+- CI #4040: **نجح بالكامل**.
+- CodeQL #653: **نجح بالكامل** لـPython وJavaScript/TypeScript.
+- merge commit: `1e3cc0ec2adf1dd2bd234a9e27e4fdcfd11a8e66`.
+- لا توجد موارد مدفوعة جديدة ضمن F4.
 
-### F4.3 — Artifact Management / Conflict Improvements
-الحالة: **لم تبدأ بعد**
+#### التحقق التشغيلي بعد F4
+- لا نعتبر F4 مرادفًا لـProduction-ready؛ يبقى Production Smoke على Render Free نقطة تحقق تشغيلية مستقلة.
+- Production Smoke #174 سبق أن سجل timeout متكررًا في `/health` مع نجاح `/ready` وباقي الفحوص، بينما كان التشغيل #173 ناجحًا.
 
-المجال المحدد من خارطة F4:
-- تحسين إدارة artifacts المرتبطة بالمشاريع.
-- توحيد حالات التعارض وسلوكها بين المسارات.
-- مراجعة ownership/membership/isolation لأي مسار جديد قبل الدمج.
-- الحفاظ على الحدود الحالية للحجم والمسارات والعزل وعدم إضافة موارد مدفوعة.
+## قاعدة العمل بعد F4
+**F4 مغلقة بالكامل.** لا توجد بنود F4 متبقية. المرحلة التالية هي F5 بعد مراجعة سلامة الانتقال والتأكد من بقاء CI/CodeQL الأخضرين على `main`.
+
+ترتيب التنفيذ الحالي:
+1. F5 — Advanced Agent Project Workflows
 
 ### F5 — Advanced Agent Project Workflows
 - Agent workflows متعددة الخطوات للعمل على المشروع.
 - التخطيط والتنفيذ والتحقق وإعادة المحاولة مع checkpoints.
 - تشغيل مهام طويلة ومتابعة حالة العمل مع حدود الموارد والسياسات الأمنية.
 
-## قاعدة العمل بعد F4.2
-F4.1 وF4.2 مغلقتان ومتحققتان، بينما F4.3 ما زالت البند المتبقي من نطاق F4. لا نبدأ F5 قبل إكمال F4.3 ومراجعة العزل وإدارة artifacts وحالات التعارض.
-
-ترتيب التنفيذ الحالي:
-1. F4.3 — Artifact Management / Conflict Improvements
-2. F5 — Advanced Agent Project Workflows
