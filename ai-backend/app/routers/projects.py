@@ -16,9 +16,11 @@ from app.models.conversation import Conversation
 from app.models.file_attachment import FileAttachment
 from app.models.project import WorkspaceProject
 from app.models.project_file import ProjectFile
+from app.models.project_member import ProjectMember, ProjectMemberRole
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
+from app.schemas.project_members import ProjectMemberCreate, ProjectMemberOut, ProjectMemberUpdate
 from app.schemas.project_preview import PreviewBuildFile, PreviewBuildResponse
 from app.schemas.project_validation import ProjectPreviewPlanOut, ProjectValidationItem, ProjectValidationOut
 from app.services.project_preview_artifacts import (
@@ -30,7 +32,9 @@ from app.services.project_preview_artifacts import (
     rewrite_absolute_preview_urls,
     verify_preview_token,
 )
+from app.services.project_access import can_manage_project, can_read_project
 from app.services.project_preview_builder import PreviewBuilderError, build_javascript_preview
+from app.audit import log_event
 
 router = APIRouter(prefix="/projects", tags=["Workspace Projects"])
 
@@ -60,6 +64,11 @@ def _get_project(project_id: int, current_user: User, db: Session) -> WorkspaceP
             detail="المشروع غير موجود",
         )
     _get_membership(project.workspace_id, current_user, db)
+    if not can_read_project(project, current_user, db):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المشروع غير موجود",
+        )
     return project
 
 
@@ -124,11 +133,22 @@ def list_projects(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _get_membership(workspace_id, current_user, db)
+    membership = _get_membership(workspace_id, current_user, db)
+    query = db.query(WorkspaceProject).filter(
+        WorkspaceProject.workspace_id == workspace_id
+    )
+    from app.services.workspace_rbac import has_workspace_permission
+    if not has_workspace_permission(db, membership, "projects.manage"):
+        query = (
+            query.outerjoin(ProjectMember, ProjectMember.project_id == WorkspaceProject.id)
+            .filter(
+                (WorkspaceProject.owner_id == current_user.id)
+                | (ProjectMember.user_id == current_user.id)
+            )
+        )
     return (
-        db.query(WorkspaceProject)
-        .filter(WorkspaceProject.workspace_id == workspace_id)
-        .order_by(WorkspaceProject.created_at.asc(), WorkspaceProject.id.asc())
+        query.order_by(WorkspaceProject.created_at.asc(), WorkspaceProject.id.asc())
+        .distinct()
         .all()
     )
 
