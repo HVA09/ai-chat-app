@@ -898,7 +898,13 @@ def delete_preview_artifact(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="artifact المعاينة غير موجود.",
         )
-    delete_registered_preview_artifact(db, artifact)
+    try:
+        delete_registered_preview_artifact(db, artifact)
+    except PreviewArtifactError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="تعذر تنظيف artifact المعاينة.",
+        ) from exc
 
 @router.get(
     "/{project_id}/preview-artifacts/{artifact_id}/{token}/{path:path}",
@@ -964,8 +970,14 @@ def delete_project(
         .filter(ProjectPreviewArtifact.project_id == project.id)
         .all()
     )
+    cleanup_errors = []
     for artifact in preview_artifacts:
-        cleanup_preview_artifact_objects(project.id, artifact)
+        cleanup_errors.extend(cleanup_preview_artifact_objects(project.id, artifact))
+    if cleanup_errors:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="تعذر تنظيف artifacts الخاصة بالمشروع.",
+        )
 
     db.query(Conversation).filter(
         Conversation.project_id == project.id
