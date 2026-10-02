@@ -14,7 +14,7 @@ import {
   listProjectFiles,
   updateProjectFile,
 } from "../lib/projectFilesApi";
-import { validateProject } from "../lib/projectValidationApi";
+import { getProjectPreviewPlan, validateProject } from "../lib/projectValidationApi";
 
 
 function buildProjectFileTree(files) {
@@ -124,6 +124,8 @@ export default function ProjectEditor({
   const [projectValidationLoading, setProjectValidationLoading] = useState(false);
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewPlan, setPreviewPlan] = useState(null);
+  const [previewPlanLoading, setPreviewPlanLoading] = useState(false);
   const projectFileTree = useMemo(() => buildProjectFileTree(projectFiles), [projectFiles]);
 
   useEffect(() => {
@@ -139,6 +141,7 @@ export default function ProjectEditor({
     setFileContent("");
     setProjectValidation(null);
     setPreviewHtml("");
+    setPreviewPlan(null);
 
     if (!project) {
       setMemories([]);
@@ -268,6 +271,19 @@ export default function ProjectEditor({
     setSelectedFileId(null);
     setFilePath("");
     setFileContent("");
+  };
+
+  const handlePreviewPlan = async () => {
+    if (!project) return;
+    setPreviewPlanLoading(true);
+    try {
+      const result = await getProjectPreviewPlan(project.id);
+      setPreviewPlan(result);
+    } catch (error) {
+      showErrorToast(error, "projectEditor.previewPlanLoadError");
+    } finally {
+      setPreviewPlanLoading(false);
+    }
   };
 
   const handlePreviewProject = async () => {
@@ -599,6 +615,16 @@ export default function ProjectEditor({
                   )}
                   <button
                     type="button"
+                    onClick={handlePreviewPlan}
+                    disabled={previewPlanLoading || projectValidationLoading || fileSaving || fileDeleting}
+                    className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    {previewPlanLoading
+                      ? t("projectEditor.previewPlanLoading")
+                      : t("projectEditor.previewPlan")}
+                  </button>
+                  <button
+                    type="button"
                     onClick={handleValidateProject}
                     disabled={projectValidationLoading || fileSaving || fileDeleting}
                     className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -617,6 +643,36 @@ export default function ProjectEditor({
                   </button>
                 </div>
               </div>
+
+              {previewPlan && (
+                <div className="mb-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                        {t("projectEditor.previewPlanTitle")}
+                      </h4>
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        {previewPlan.message}
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-slate-200 px-2 py-1 text-[10px] font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300">
+                      {previewPlan.strategy}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid gap-2 text-[11px] text-slate-500 dark:text-slate-400 sm:grid-cols-2">
+                    <div>{t("projectEditor.previewPlanStatus")}: {previewPlan.status}</div>
+                    <div>
+                      {t("projectEditor.previewPlanEntrypoint")}:{" "}
+                      {previewPlan.entrypoint ?? t("projectEditor.previewPlanNone")}
+                    </div>
+                    {previewPlan.build_command_detected && (
+                      <div className="sm:col-span-2">
+                        {t("projectEditor.previewPlanBuildDetected")}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {projectValidation && (
                 <div className="mb-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">

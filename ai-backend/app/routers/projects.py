@@ -18,7 +18,7 @@ from app.models.project_file import ProjectFile
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
-from app.schemas.project_validation import ProjectValidationItem, ProjectValidationOut
+from app.schemas.project_validation import ProjectPreviewPlanOut, ProjectValidationItem, ProjectValidationOut
 
 router = APIRouter(prefix="/projects", tags=["Workspace Projects"])
 
@@ -327,6 +327,109 @@ def validate_project(
         errors=sum(1 for item in checks if item.level == "error"),
         warnings=sum(1 for item in checks if item.level == "warning"),
         checks=checks,
+    )
+
+
+
+@router.get("/{project_id}/preview-plan", response_model=ProjectPreviewPlanOut)
+def project_preview_plan(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_project(project_id, current_user, db)
+    files = (
+        db.query(ProjectFile)
+        .filter(ProjectFile.project_id == project.id)
+        .order_by(ProjectFile.path.asc(), ProjectFile.id.asc())
+        .all()
+    )
+
+    if not files:
+        return ProjectPreviewPlanOut(
+            project_id=project.id,
+            project_kind="unknown",
+            strategy="none",
+            status="blocked",
+            message="لا توجد ملفات مصدر لبناء معاينة.",
+        )
+
+    lowered = {item.path.lower(): item for item in files}
+    package_file = lowered.get("package.json")
+    validation = validate_project(project_id, current_user, db)
+
+    if validation.errors > 0:
+        return ProjectPreviewPlanOut(
+            project_id=project.id,
+            project_kind=validation.project_kind,
+            strategy="none",
+            status="blocked",
+            message="أصلح أخطاء التحقق قبل إنشاء معاينة.",
+        )
+
+    static_candidates = ("dist/index.html", "build/index.html", "public/index.html")
+    for candidate in static_candidates:
+        if candidate in lowered:
+            return ProjectPreviewPlanOut(
+                project_id=project.id,
+                project_kind=validation.project_kind,
+                strategy="static-artifact",
+                status="ready",
+                entrypoint=candidate,
+                artifact_root=candidate.rsplit("/", 1)[0],
+                message="يوجد artifact ثابت جاهز للعرض بدون build.",
+            )
+
+    if "index.html" in lowered and package_file is None:
+        return ProjectPreviewPlanOut(
+            project_id=project.id,
+            project_kind=validation.project_kind,
+            strategy="static-html",
+            status="ready",
+            entrypoint="index.html",
+            artifact_root=".",
+            message="المشروع يمكن عرضه مباشرة كـHTML ثابت داخل sandbox.",
+        )
+
+    if package_file is not None:
+        package_data = {}
+        try:
+            package_data = json.loads(package_file.content)
+        except json.JSONDecodeError:
+            pass
+        scripts = package_data.get("scripts") if isinstance(package_data, dict) else {}
+        has_build = isinstance(scripts, dict) and isinstance(scripts.get("build"), str) and bool(
+            scripts.get("build", "").strip()
+        )
+        return ProjectPreviewPlanOut(
+            project_id=project.id,
+            project_kind="javascript",
+            strategy="javascript-build",
+            status="build-required",
+            entrypoint="package.json",
+            build_command_detected=has_build,
+            message=(
+                "المشروع يحتاج build معزول قبل المعاينة."
+                if has_build
+                else "المشروع يحتاج build strategy، لكن package.json لا يعرّف script باسم build."
+            ),
+        )
+
+    if validation.project_kind == "python":
+        return ProjectPreviewPlanOut(
+            project_id=project.id,
+            project_kind="python",
+            strategy="none",
+            status="unsupported",
+            message="معاينة Python تتطلب runtime معزولًا مستقلًا؛ لا يتم تشغيله داخل خدمة الويب.",
+        )
+
+    return ProjectPreviewPlanOut(
+        project_id=project.id,
+        project_kind=validation.project_kind,
+        strategy="none",
+        status="unsupported",
+        message="لم يتم العثور على artifact ثابت أو استراتيجية build مدعومة لهذا المشروع.",
     )
 
 
