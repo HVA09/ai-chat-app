@@ -97,7 +97,7 @@ def _ensure_agent_workflow_steps(db, job: AgentJob) -> list[AgentWorkflowStep]:
     return [step]
 
 
-def _execute_agent_workflow(db, job, user, workspace, conversation, provider) -> dict:
+def _execute_agent_workflow(db, job, user, workspace, conversation, provider, event_sink=None) -> dict:
     steps = _ensure_agent_workflow_steps(db, job)
     previous_results: list[dict[str, str]] = []
     total_input_tokens = 0
@@ -153,7 +153,7 @@ def _execute_agent_workflow(db, job, user, workspace, conversation, provider) ->
         result = asyncio.run(
             AgentRuntime(
                 provider=provider,
-                event_sink=None,
+                event_sink=event_sink,
             ).run(
                 task=step.prompt,
                 history=history,
@@ -287,6 +287,9 @@ def _execute_agent_job(job_id: int, db=None) -> None:
         job.error = None
         db.commit()
 
+        async def event_sink(event: dict) -> None:
+            await _agent_job_event_sink(db, job.id, event)
+
         workflow_result = _execute_agent_workflow(
             db,
             job,
@@ -294,6 +297,7 @@ def _execute_agent_job(job_id: int, db=None) -> None:
             workspace,
             conversation,
             provider,
+            event_sink,
         )
 
         refreshed_job = db.get(AgentJob, job.id)
