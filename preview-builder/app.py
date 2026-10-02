@@ -150,8 +150,8 @@ async def _run_command(
 
 def _find_artifact(workdir: Path) -> tuple[Path, str]:
     candidates = [
-        (workdir / "dist", "dist/index.html"),
-        (workdir / "build", "build/index.html"),
+        (workdir / "dist", "index.html"),
+        (workdir / "build", "index.html"),
         (workdir, "index.html"),
     ]
     for root, entrypoint in candidates:
