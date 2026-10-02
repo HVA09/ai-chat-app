@@ -21,7 +21,7 @@ from urllib.parse import quote
 
 from app.config import settings
 from app.schemas.project_preview import PreviewBuildResponse
-from app.services.storage import StorageError, get_bytes, put_bytes
+from app.services.storage import StorageError, delete_prefix, get_bytes, put_bytes
 
 _MAX_PATH_LENGTH = 512
 _TOKEN_VERSION = "v1"
@@ -99,8 +99,21 @@ def verify_preview_token(project_id: int, artifact_id: str, token: str) -> str:
         raise PreviewArtifactError("رمز المعاينة يحتوي مجلدًا غير صالح.") from exc
 
 
+def artifact_storage_prefix(project_id: int, artifact_id: str) -> str:
+    if not artifact_id or not re.fullmatch(r"[0-9a-f]{32}", artifact_id):
+        raise PreviewArtifactError("معرّف artifact غير صالح.")
+    return f"previews/{project_id}/{artifact_id}"
+
+
 def _object_key(project_id: int, artifact_id: str, path: str) -> str:
-    return f"previews/{project_id}/{artifact_id}/{path}"
+    return f"{artifact_storage_prefix(project_id, artifact_id)}/{path}"
+
+
+def delete_preview_artifact(project_id: int, artifact_id: str) -> None:
+    try:
+        delete_prefix(artifact_storage_prefix(project_id, artifact_id))
+    except StorageError as exc:
+        raise PreviewArtifactError("تعذر حذف artifact المعاينة.") from exc
 
 
 def publish_preview_artifact(
