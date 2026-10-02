@@ -543,13 +543,17 @@
 - لم تتم إضافة أو ترقية أي موارد Render مدفوعة ضمن F3.3.
 
 ### F4 — Project Collaboration / Import-Export Improvements
-الحالة: **المرحلة التالية**
+الحالة: **قيد التنفيذ — F4.1 وF4.2 مكتملتان، وF4.3 هي الخطوة التالية**
 
-النطاق:
-- مشاركة المشاريع وأعضاء المشروع وصلاحياتهم.
-- استيراد/تصدير مشروع بشكل موثوق مع validation وسجل واضح.
-- تحسين إدارة artifacts وحالات التعارض.
-- مراجعة ownership/membership والعزل في كل مسار جديد قبل الدمج.
+الإنجازات:
+- **F4.1 — Project Collaboration:** مشاركة المشاريع، أعضاء المشروع، الأدوار والصلاحيات، وعزل الوصول في المشروع والمحادثات والملفات والذاكرة. تم الدمج عبر PR #368.
+- **F4.2 — Project Import / Export:** تنسيق ZIP versioned canonical، validation صارم للمسارات والحجم والملفات وUTF-8 وchecksums، استيراد مع fail-by-default أو rename، audit log، وواجهات frontend للاستيراد/التصدير. تم الدمج عبر PR #370 بالـmerge commit `a12ee1a863640fbcb9bbdff3ed8a72c4a0de40eb`.
+- **التحقق:** CI #4008 نجح بالكامل، وCodeQL #645 نجح بالكامل.
+- لم تتم إضافة أو ترقية أي موارد Render مدفوعة ضمن F4.2.
+
+الخطوة التالية داخل F4:
+- **F4.3 — تحسين إدارة artifacts وحالات التعارض.**
+- الحفاظ على مراجعة ownership/membership والعزل لكل مسار جديد قبل الدمج.
 
 ### F5 — Advanced Agent Project Workflows
 - Agent workflows متعددة الخطوات للعمل على المشروع.
