@@ -17,6 +17,7 @@ from app.models.conversation import Conversation
 from app.models.file_attachment import FileAttachment
 from app.models.project import WorkspaceProject
 from app.models.project_file import ProjectFile
+from app.models.project_memory import ProjectMemory
 from app.models.project_member import ProjectMember, ProjectMemberRole
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
