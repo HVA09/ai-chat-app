@@ -73,3 +73,24 @@ def test_preview_csp_blocks_network_api_access():
     assert "sandbox allow-scripts" in csp
     assert "connect-src 'none'" in csp
     assert "frame-ancestors https://frontend.example;" in csp
+
+
+def test_preview_route_sets_csp_sandbox_without_x_frame_deny(client, monkeypatch):
+    from app.routers import projects as projects_router
+
+    monkeypatch.setattr(projects_router, "verify_preview_token", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        projects_router,
+        "read_preview_file",
+        lambda *args, **kwargs: (b"<html><script src=\"/assets/app.js\"></script></html>", "text/html"),
+    )
+
+    response = client.get(
+        "/projects/1/preview-artifacts/artifact/v1.token/dist/index.html"
+    )
+
+    assert response.status_code == 200
+    assert "sandbox allow-scripts" in response.headers["content-security-policy"]
+    assert "connect-src 'none'" in response.headers["content-security-policy"]
+    assert "X-Frame-Options" not in response.headers
+    assert "/projects/1/preview-artifacts/artifact/v1.token/assets/app.js" in response.text
