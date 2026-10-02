@@ -100,6 +100,7 @@ export default function ProjectEditor({
   assistants = [],
   onClose,
   onSave,
+  onExport = null,
 }) {
   const { t } = useTranslation();
   const isEditing = Boolean(project);
@@ -441,6 +442,17 @@ export default function ProjectEditor({
               {t("projectEditor.subtitle")}
             </p>
           </div>
+          {isEditing && onExport ? (
+            <button
+              type="button"
+              onClick={() => onExport(project.id)}
+              disabled={saving || memorySaving || fileSaving || fileDeleting}
+              title={t("projectEditor.exportTitle")}
+              className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800"
+            >
+              {t("projectEditor.export")}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}

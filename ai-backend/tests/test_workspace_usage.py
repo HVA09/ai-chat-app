@@ -231,7 +231,7 @@ def test_workspace_usage_csv_requires_manager_and_scopes_workspace(client, db_se
     assert "timestamp,user_id,email,full_name,endpoint,input_tokens,output_tokens,total_tokens" in body
     assert "usage-csv-owner@example.com" in body
     assert "usage-csv-member@example.com" in body
-    assert "999" not in body
+    assert "usage-csv-other@example.com" not in body
 
 
 def test_workspace_usage_reports_monthly_cost_budget(client, db_session, monkeypatch):

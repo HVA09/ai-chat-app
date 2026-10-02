@@ -282,3 +282,51 @@ def test_revoked_project_member_cannot_continue_existing_project_chat(
         headers=member_headers,
     )
     assert continued.status_code == 404
+
+
+def test_project_conversation_filter_requires_explicit_project_access(
+    client, db_session, monkeypatch
+):
+    owner_token = _register_and_login(client, "project-filter-owner-f4@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace = _workspace(client, owner_token, "Conversation Filter")
+
+    member_token = _register_and_login(client, "project-filter-member-f4@example.com")
+    member_headers = {"Authorization": f"Bearer {member_token}"}
+    _add_workspace_member(
+        db_session,
+        workspace["id"],
+        "project-filter-member-f4@example.com",
+    )
+
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Private Filter"},
+        headers=owner_headers,
+    ).json()
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="reply")),
+    )
+    created = client.post(
+        "/chat",
+        json={
+            "message": "private",
+            "workspace_id": workspace["id"],
+            "project_id": project["id"],
+        },
+        headers=owner_headers,
+    )
+    assert created.status_code == 200
+
+    response = client.get(
+        "/conversations",
+        params={
+            "workspace_id": workspace["id"],
+            "project_id": project["id"],
+        },
+        headers=member_headers,
+    )
+    assert response.status_code == 404

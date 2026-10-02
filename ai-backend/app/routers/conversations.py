@@ -19,6 +19,7 @@ from app.models.conversation_tag import conversation_tag_links
 from app.models.conversation_folder import ConversationFolder
 from app.models.conversation_tag import ConversationTag
 from app.models.project import WorkspaceProject
+from app.services.project_access import can_read_project
 from app.models.user import User
 from app.models.usage_log import UsageLog
 from app.models.workspace import Workspace, WorkspaceMember
@@ -162,15 +163,9 @@ def list_conversations(
                 detail="المشروع غير موجود",
             )
 
-        project_membership = (
-            db.query(WorkspaceMember)
-            .filter(
-                WorkspaceMember.workspace_id == project.workspace_id,
-                WorkspaceMember.user_id == current_user.id,
-            )
-            .first()
-        )
-        if not project_membership or workspace_id != project.workspace_id:
+        if workspace_id != project.workspace_id or not can_read_project(
+            project, current_user, db
+        ):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="المشروع غير موجود",

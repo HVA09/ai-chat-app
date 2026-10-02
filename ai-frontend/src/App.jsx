@@ -78,6 +78,8 @@ import {
   updateProject,
   deleteProject,
   moveConversationToProject,
+  exportProject,
+  importProject,
 } from "./lib/projectsApi";
 import {
   listWorkspaces,
@@ -1000,6 +1002,61 @@ export default function App() {
         type: "error",
       });
       throw err;
+    }
+  };
+
+  const handleExportProject = async (projectId) => {
+    try {
+      const project = projects.find((item) => item.id === Number(projectId));
+      const blob = await exportProject(Number(projectId));
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `project-${projectId}-${(project?.name || "export").replace(/[^a-zA-Z0-9_-]+/g, "-")}.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setToast({ message: t("app.projectExportSuccess"), type: "success" });
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.projectExportError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleImportProject = async (file) => {
+    if (!selectedWorkspaceId || !file) return;
+    try {
+      let result;
+      try {
+        result = await importProject(selectedWorkspaceId, file, "fail");
+      } catch (err) {
+        if (err?.response?.status !== 409) throw err;
+        const rename = window.confirm(t("app.projectImportRenameConfirm"));
+        if (!rename) return;
+        result = await importProject(selectedWorkspaceId, file, "rename");
+      }
+      await refreshProjects(selectedWorkspaceId);
+      setSelectedProjectId(result.project_id);
+      setSelectedFolderId(null);
+      startNewChat();
+      await refreshConversations(
+        showArchivedConversations,
+        null,
+        selectedWorkspaceId,
+        result.project_id
+      );
+      setToast({
+        message: t("app.projectImportSuccess", { name: result.name }),
+        type: "success",
+      });
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("app.projectImportError"),
+        type: "error",
+      });
     }
   };
 
@@ -2924,6 +2981,8 @@ export default function App() {
         selectedProjectId={selectedProjectId}
         onSelectProject={handleSelectProject}
         onCreateProject={handleCreateProject}
+        onImportProject={handleImportProject}
+        onExportProject={handleExportProject}
         onRenameProject={handleRenameProject}
         onDeleteProject={handleDeleteProject}
         onMoveConversationToProject={handleMoveConversationToProject}
@@ -3362,6 +3421,7 @@ export default function App() {
             setEditingProjectId(null);
           }}
           onSave={handleSaveProject}
+          onExport={editingProjectId === null ? null : handleExportProject}
         />
       )}
 

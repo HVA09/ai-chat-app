@@ -50,3 +50,22 @@ export async function moveConversationToProject(conversationId, projectId) {
   });
   return data;
 }
+
+
+export async function exportProject(id) {
+  const { data } = await api.get(`/projects/${id}/export`, {
+    responseType: "blob",
+  });
+  return data;
+}
+
+export async function importProject(workspaceId, file, onConflict = "fail") {
+  const formData = new FormData();
+  formData.append("workspace_id", String(workspaceId));
+  formData.append("on_conflict", onConflict);
+  formData.append("archive", file);
+  const { data } = await api.post("/projects/import", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
