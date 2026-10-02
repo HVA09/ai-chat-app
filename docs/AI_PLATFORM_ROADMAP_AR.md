@@ -470,15 +470,14 @@
 
 ## المرحلة F — Agent Product & Project Workspace
 
-الحالة الحالية: **F1 وF2 مكتملتان على main — نبدأ F3 بعد توثيق الحالة والتحقق النهائي**
+الحالة الحالية: **F1 وF2 وF3 مكتملة ومتحققة على `main`**.
 
 ### F1 — Agent UX / Runtime Activity: مكتمل
 - تم ربط تشغيل Agent داخل المحادثة بأحداث runtime واضحة للجولات، الأدوات، الميزانية، الإلغاء، والتحذيرات والإكمال.
 - تم إبقاء حالة الإكمال ظاهرة بعد انتهاء البث، ثم مسحها عند بدء رسالة جديدة.
-- الهدف: جعل نشاط Agent مفهومًا للمستخدم بدل اختفائه مباشرة بعد انتهاء الرد.
 - PR #354 وPR #355 تم دمجهما في `main`.
 
-### F2 — Project Workspace: مكتمل على مرحلتين
+### F2 — Project Workspace: مكتمل ومتحقق
 #### F2.1 — Persistent Project Files
 - أضيفت ملفات مصدر دائمة للمشروع مع CRUD محمي بعزل المشروع والـworkspace.
 - أضيفت شجرة ملفات ومحرر داخل `ProjectEditor`.
@@ -489,28 +488,54 @@
 - أضيفت أدوات Agent: `list_project_files`, `read_project_file`, `search_project_files`, `edit_project_file`.
 - الأدوات مقيدة بالمشروع الحالي، مع حدود للحجم والمسارات، وoptimistic concurrency عبر `expected_content`، وإظهار unified diff محدود.
 - محتوى المشروع الخارج من الأدوات يُعامل كـuntrusted data حتى لا يتحول إلى تعليمات للنموذج.
-- تم توسيع allowlist للأدوات مع الحفاظ على ضوابط Agent الحالية.
 - PR #357 وPR #358 تم دمجهما في `main`.
+- commit المرحلة قبل F3: `75f12a5485134a9cf4eebffa536a61dd1e99baaa`.
 
-### F2 — تحقق الحالة الحالية
-- آخر commit على `main`: `75f12a5485134a9cf4eebffa536a61dd1e99baaa` بتاريخ 2026-10-01.
-- أحدث تغييرات F2 وصلت إلى `main` عبر PRs #356 و#357 و#358.
-- اختبار الميزانية الشهري القديم الذي ظهر فيه `0.0 != 0.4` تم تعديل تاريخ سجل الاختبار ليبقى داخل الشهر الحالي في commit `f827e4ad7e51557a05a87c91c57093127571ebc0` قبل سلسلة F1/F2.
+### F3 — Project Validation & Preview: مكتملة ومتحققة
+تم إغلاق F3 عبر PR #360 ودمجه إلى `main` في commit:
+`05cdd9f3d556b3c6863f96cbfc3cc5b0d7420068`.
 
-### المرحلة F3 — Project Validation & Preview: التالية
-الهدف: الانتقال من مجرد إنشاء/قراءة/تعديل ملفات المشروع إلى دورة تحقق واضحة قبل اعتبار المشروع جاهزًا.
+#### F3.1 — Read-only Project Validation
+- أضيف `GET /projects/{project_id}/validate` مع عزل كامل حسب عضوية المشروع.
+- يفحص نوع المشروع، `package.json`، `pyproject.toml`، `requirements.txt`، بنية `index.html`، NUL bytes، وأسماء الملفات التي تبدو أسرارًا أو مفاتيح خاصة.
+- يعيد أخطاء وتحذيرات مرتبطة بالملف مع ملخص counts.
+- تمت إضافة اختبارات backend للعزل ونتائج التحقق.
 
-النطاق المقترح:
-- فحص بنية المشروع والملفات الأساسية قبل التصدير.
-- نتائج Validation ظاهرة للمستخدم مع أخطاء قابلة للتحديد إلى الملف/السطر عند الإمكان.
-- Preview آمن ومقيد للمشروع دون تنفيذ كود مولد داخل بيئة التطبيق الرئيسية.
-- الاستفادة من sandbox الحالي حيث يكون مناسبًا، مع عدم اعتبار Python process sandbox الحالي عزلًا container/kernel كاملًا.
-- اختبارات backend/frontend وsecurity regression لكل مسار جديد.
-- لا ننتقل إلى F4 قبل نجاح الاختبارات والتحقق التشغيلي.
+#### F3.2 — Safe Static Preview
+- أضيفت معاينة `index.html` من داخل `ProjectEditor`.
+- المعاينة تستخدم `iframe sandbox=""` بدون `allow-scripts` أو `allow-same-origin` أو `allow-forms`.
+- لا يتم تشغيل JavaScript المولّد داخل بيئة التطبيق الرئيسية.
+- تمت إضافة اختبارات frontend للتأكد من وجود الـsandbox وعدم منح صلاحية تشغيل السكربتات.
 
-## قاعدة العمل الجديدة بعد F2
-لا نضيف ميزات Agent أو Project جديدة عشوائيًا قبل إغلاق F3. ترتيب التنفيذ الحالي هو:
-1. F3 — Validation & Preview
+#### تحقق F3
+- CI run #3831: **نجح بالكامل** — Backend، Frontend، SDK، Production Compose.
+- CodeQL run #596: **نجح بالكامل** لـPython وJavaScript/TypeScript.
+- PR #360: **Merged**.
+- لا توجد موارد مدفوعة جديدة مطلوبة لـF3.
+
+### الخطوة التالية — F3.3 — Advanced Preview Architecture
+الهدف التالي ليس تشغيل الكود غير الموثوق داخل التطبيق الرئيسي، بل بناء عقد آمن لمعاينة المشاريع التي تحتاج build/runtime.
+
+النطاق:
+- تحليل نوع المشروع وتحديد preview strategy.
+- إنشاء preview artifact ثابت في بيئة تنفيذ منفصلة عن واجهة التطبيق.
+- دعم مشاريع JavaScript/React بعد build مع فصل صارم بين artifact والمستخدم.
+- تقديم preview عبر أصل/مسار منفصل مع CSP وsandbox مناسبين.
+- عدم اعتبار Python process sandbox الحالي عزلًا container/kernel كاملًا.
+- اختبارات أمنية تمنع تنفيذ كود المستخدم المولّد داخل origin التطبيق الرئيسي.
+
+### F4 — Project Collaboration / Import-Export Improvements
+- مشاركة المشاريع وأعضاء المشروع وصلاحياتهم.
+- استيراد/تصدير مشروع بشكل موثوق مع validation وسجل واضح.
+- تحسين إدارة artifacts وحالات التعارض.
+
+### F5 — Advanced Agent Project Workflows
+- Agent workflows متعددة الخطوات للعمل على المشروع.
+- التخطيط والتنفيذ والتحقق وإعادة المحاولة مع checkpoints.
+- تشغيل مهام طويلة ومتابعة حالة العمل مع حدود الموارد والسياسات الأمنية.
+
+## قاعدة العمل الجديدة بعد F3
+لا ننتقل إلى F4 قبل إغلاق F3.3 والتحقق الأمني والتشغيلي المناسب. ترتيب التنفيذ الحالي:
+1. F3.3 — Advanced Preview Architecture
 2. F4 — Project Collaboration / Import-Export Improvements
 3. F5 — Advanced Agent Project Workflows
-
