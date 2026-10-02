@@ -631,10 +631,63 @@
 - تم إغلاق PR #381 القديم لأنه أصبح تنفيذًا متجاوزًا بعد اكتمال F5.1 واعتماد تنفيذ F5.2 الجديد.
 - لا توجد موارد بنية تحتية جديدة مطلوبة؛ يعتمد التنفيذ على PostgreSQL/Celery/Redis الموجودة.
 
-## قاعدة العمل بعد F5.2
-F5.1 وF5.2 مغلقتان ومتحققتان على `main`.
-لا يوجد تعريف تنفيذي لـF5.3 في roadmap الحالية، لذلك لا ينبغي افتراض متطلبات أو تنفيذها قبل تحديد نطاقها.
-الأولوية التالية هي تحديد F5.3 وتوثيق متطلباته ومعايير التحقق، مع الحفاظ على حدود AgentRuntime الحالية، عزل المشروع، وسلامة التكلفة وعدم إضافة موارد مدفوعة دون حاجة.
+## F5.3 — Agent Job Lifecycle Control: **مكتمل ومتحقق — 2026-10-02**
 
-ترتيب التنفيذ الحالي:
-1. تحديد F5.3 — نطاق واضح ومتطلبات قابلة للاختبار.
+- أضيفت حالة persistent باسم `pause_requested` إلى `AgentJob`.
+- أضيفت حالة lifecycle جديدة `paused` مع إيقاف تعاوني عند نقاط checkpoint/event الآمنة، دون قتل تنفيذ المزوّد الجاري.
+- يمكن إيقاف المهمة وهي `queued` أو أثناء التنفيذ، ثم استئنافها من checkpoint الموجود مع الحفاظ على attempt/retry semantics الخاصة بـF5.1 وF5.2.
+- يمكن إلغاء المهمة وهي `paused` مباشرة، وتبقى حالات الـworkflow والـcheckpoint متسقة.
+- تم كشف حالة الإيقاف داخل AgentJob API وإضافة endpoints للإيقاف والاستئناف.
+- migration: `0079_agent_pause`.
+- PR #388 تم دمجه بنجاح.
+- commit الدمج بعد squash: `f165c4944ff9c90345947be60f5d40d046381456`.
+- CI على آخر commit `da9c26006ea204320dfda5a2df8f9a4686fb3cb2`: **نجح بالكامل** — Backend، Frontend، SDK، Production Compose، Preview Builder.
+- CodeQL على آخر commit: **نجح**.
+- لا توجد موارد بنية تحتية جديدة أو موارد مدفوعة مطلوبة لـF5.3.
+
+## قاعدة العمل بعد F5.3
+
+F5.1 وF5.2 وF5.3 مغلقة ومتحققة على `main`.
+لا توجد حاليًا مواصفة سابقة محفوظة داخل المستودع لمرحلة G، لذلك لا ننسب لها متطلبات تاريخية غير موثقة.
+لأغراض الإغلاق العملي للمشروع، يتم تعريف G التالية كمرحلة **Final Productization & Production Acceptance**، وتُنفذ فقط عبر PRs مستقلة وCI/CodeQL والتحقق التشغيلي.
+
+### المرحلة G — Final Productization & Production Acceptance
+
+#### G1 — UI / Mobile Acceptance
+- التحقق الفعلي على الشاشات الصغيرة من Sidebar/Hamburger، Composer، رفع الملفات، زر الإرسال، أداة الصوت، Settings، والقوائم السياقية.
+- مراجعة ChatGPT-style shell الحالية والتأكد من عدم وجود عناصر مكررة أو قوائم غير مرتبطة بسياق المحادثة.
+- اختبار keyboard/touch/focus/scroll وسلوك الـsafe-area على الهاتف.
+- توثيق أي regression وتصحيحها قبل الإغلاق.
+
+#### G2 — Agent / Project End-to-End Acceptance
+- التحقق من المسار الكامل: إنشاء مشروع → تعديل الملفات → validation → build/preview → artifact serving.
+- اختبار Agent project-building flow بحيث يستخدم قدرات المشروع الفعلية ولا يعود إلى رسالة "text-only" عند توفر أدوات البناء.
+- اختبار workflow من عدة خطوات مع verification/retry/pause/resume/cancel.
+- التحقق من ownership وworkspace/project isolation خلال المسار الكامل.
+
+#### G3 — Security / Reliability / Cost Acceptance
+- إعادة تشغيل الاختبارات الأمنية وعزل الموارد على آخر `main`.
+- فحص Alembic head واحد، migrations، CodeQL، dependency audit، وحدود الملفات/artifacts/tools.
+- مراجعة cost/quota controls وعدم إنشاء موارد مدفوعة جديدة.
+- معالجة أي تحذير أمني أو regression فعلي، مع إبقاء التحذيرات غير الحرجة موثقة.
+
+#### G4 — Production Acceptance
+- Production Smoke على النسخة النهائية للـbackend والfrontend.
+- التحقق من `/health` و`/ready` وauth وchat وfile upload وproject preview وAgent jobs في بيئة الإنتاج.
+- التحقق من logs/request IDs وRedis/DB والنسخ الاحتياطية.
+- مراجعة Render/Supabase وعدم ترك مورد PostgreSQL القديم بعد انتهاء نافذة الرجوع في **2026-10-10**.
+
+#### G5 — Release & Closure
+- تحديث roadmap والوثائق النهائية.
+- تسجيل commits/PRs/CI/CodeQL/Production Smoke النهائية.
+- إنشاء release/tag فقط بعد نجاح G4.
+- اعتبار المشروع مغلقًا تشغيليًا عندما تنجح G1–G4 ولا يبقى blocker معروف.
+- أي تحسينات مستقبلية بعد ذلك تُعامل كـpost-release enhancements وليست ضمن مراحل الإغلاق الحالية.
+
+### ترتيب التنفيذ بعد F5.3
+
+1. G1 — UI / Mobile Acceptance
+2. G2 — Agent / Project End-to-End Acceptance
+3. G3 — Security / Reliability / Cost Acceptance
+4. G4 — Production Acceptance
+5. G5 — Release & Closure
