@@ -23,8 +23,8 @@ def _build_response(files: dict[str, bytes], entrypoint: str = "dist/index.html"
 
 def test_preview_token_is_project_and_artifact_scoped(monkeypatch):
     monkeypatch.setattr(artifacts.settings, "JWT_SECRET_KEY", "test-secret")
-    token, _ = artifacts.issue_preview_token(10, "artifact")
-    artifacts.verify_preview_token(10, "artifact", token)
+    token, _ = artifacts.issue_preview_token(10, "artifact", "dist")
+    assert artifacts.verify_preview_token(10, "artifact", token) == "dist"
 
     with pytest.raises(artifacts.PreviewArtifactError):
         artifacts.verify_preview_token(11, "artifact", token)
@@ -63,8 +63,8 @@ def test_publish_preview_stores_only_regular_files(monkeypatch):
 
 def test_preview_absolute_urls_are_rewritten_inside_artifact_route():
     html = '<script src="/assets/app.js"></script><link href="https://cdn.example/app.css">'
-    rewritten = artifacts.rewrite_absolute_preview_urls(html, 1, "abc", "token")
-    assert "/projects/1/preview-artifacts/abc/token/assets/app.js" in rewritten
+    rewritten = artifacts.rewrite_absolute_preview_urls(html, 1, "abc", "token", "dist")
+    assert "/projects/1/preview-artifacts/abc/token/dist/assets/app.js" in rewritten
     assert "https://cdn.example/app.css" in rewritten
 
 
@@ -78,7 +78,7 @@ def test_preview_csp_blocks_network_api_access():
 def test_preview_route_sets_csp_sandbox_without_x_frame_deny(client, monkeypatch):
     from app.routers import projects as projects_router
 
-    monkeypatch.setattr(projects_router, "verify_preview_token", lambda *args, **kwargs: None)
+    monkeypatch.setattr(projects_router, "verify_preview_token", lambda *args, **kwargs: "dist")
     monkeypatch.setattr(
         projects_router,
         "read_preview_file",
@@ -93,4 +93,4 @@ def test_preview_route_sets_csp_sandbox_without_x_frame_deny(client, monkeypatch
     assert "sandbox allow-scripts" in response.headers["content-security-policy"]
     assert "connect-src 'none'" in response.headers["content-security-policy"]
     assert "X-Frame-Options" not in response.headers
-    assert "/projects/1/preview-artifacts/artifact/v1.token/assets/app.js" in response.text
+    assert "/projects/1/preview-artifacts/artifact/v1.token/dist/assets/app.js" in response.text
