@@ -73,7 +73,7 @@ def test_create_and_list_workflow_with_steps(client, monkeypatch):
     assert listed.json()[0]["id"] == payload["id"]
 
 
-def test_workflow_isolation_and_resume_from_failed_step(client, monkeypatch):
+def test_workflow_isolation_and_resume_from_failed_step(client, db_session, monkeypatch):
     token = _register_and_login(client, "workflow-resume@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     workspace, project = _workspace_and_project(client, token)
@@ -107,25 +107,15 @@ def test_workflow_isolation_and_resume_from_failed_step(client, monkeypatch):
     assert client.get(f"/agent-workflows/{workflow_id}", headers=other_headers).status_code == 404
 
     workflow = owner.json()
-    workflow["status"] = "failed"
-    # Update through the session to simulate a checkpointed failure.
-    db = router_module.get_db
-    assert db is not None
+    assert workflow["status"] == "queued"
 
-    import app.database as database
-    from app.models.agent_workflow import AgentWorkflowStep
-
-    session = database.SessionLocal()
-    try:
-        stored = session.get(AgentWorkflow, workflow_id)
-        stored.status = "failed"
-        stored.current_step_position = 2
-        stored.steps[0].status = "succeeded"
-        stored.steps[0].result_text = "خطة محفوظة"
-        stored.steps[1].status = "failed"
-        session.commit()
-    finally:
-        session.close()
+    stored = db_session.get(AgentWorkflow, workflow_id)
+    stored.status = "failed"
+    stored.current_step_position = 2
+    stored.steps[0].status = "succeeded"
+    stored.steps[0].result_text = "خطة محفوظة"
+    stored.steps[1].status = "failed"
+    db_session.commit()
 
     resumed = client.post(f"/agent-workflows/{workflow_id}/resume", headers=headers)
     assert resumed.status_code == 200
