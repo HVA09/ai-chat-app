@@ -470,7 +470,7 @@
 
 ## المرحلة F — Agent Product & Project Workspace
 
-الحالة الحالية: **F1 وF2 وF3 مكتملة ومتحققة على `main`**.
+الحالة الحالية: **F1 وF2 وF3 وF4 وF5.1 مكتملة ومتحققة على `main`**.
 
 ### F1 — Agent UX / Runtime Activity: مكتمل
 - تم ربط تشغيل Agent داخل المحادثة بأحداث runtime واضحة للجولات، الأدوات، الميزانية، الإلغاء، والتحذيرات والإكمال.
@@ -593,6 +593,22 @@
 1. F5 — Advanced Agent Project Workflows
 
 ### F5 — Advanced Agent Project Workflows
+
+الحالة الحالية: **F5.1 مكتمل ومتحقق؛ المرحلة F5 مستمرة**.
+
+#### F5.1 — Multi-step Agent Workflow Checkpoints: مكتمل ومتحقق
+- تم دعم خطوات متعددة مرتبة لكل `AgentJob` بحد أقصى 6 خطوات.
+- تم حفظ حالة كل خطوة، عدد المحاولات، `run_id`، النتيجة، وبيانات الـcheckpoint في PostgreSQL.
+- التنفيذ يمر عبر `AgentRuntime` الحالي ويحفظ checkpoint بعد نجاح كل خطوة.
+- إعادة الاستئناف تبدأ من أول خطوة غير مكتملة مع الحفاظ على الخطوات المكتملة.
+- كل خطوة محدودة بثلاث محاولات كحد أقصى.
+- بقي إنشاء وتشغيل `AgentJob` القديم متوافقًا، مع اختبارات عزل ومسار checkpoint/resume.
+- PR #379 تم دمجه بنجاح.
+- CI #4096: **نجح بالكامل** — Backend، Frontend، SDK، Production Compose، Preview Builder.
+- CodeQL #662: **نجح بالكامل** لـPython وJavaScript/TypeScript.
+- merge commit: `1c0cb1efeb9ef78a36bbb68e01cdeaf1c47e5385`.
+- لا توجد موارد مدفوعة جديدة ضمن F5.1.
+
 - Agent workflows متعددة الخطوات للعمل على المشروع.
 - التخطيط والتنفيذ والتحقق وإعادة المحاولة مع checkpoints.
 - تشغيل مهام طويلة ومتابعة حالة العمل مع حدود الموارد والسياسات الأمنية.
