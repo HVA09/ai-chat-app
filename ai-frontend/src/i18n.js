@@ -1005,6 +1005,8 @@ const resources = {
         previewBuildDescription: "The build ran in an isolated Builder. Files are not executed directly in this page.",
         previewBuildSize: "Artifact size: {{size}} bytes",
         previewBuildError: "Couldn’t build the project preview.",
+        previewBuildOpen: "Open executable preview",
+        previewBuildSecurity: "The executable preview runs inside an isolated iframe with CSP and no access to the application session.",
         validationReady: "Validation result",
         validationClean: "No validation errors found.",
         validationSummary: "{{errors}} errors, {{warnings}} warnings — {{count}} files",
