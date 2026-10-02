@@ -22,6 +22,7 @@ from app.models.user import User, UserRole
 from app.models.workspace import Workspace, WorkspaceMember
 from app.notifications import notify
 from app.services.agent_runtime import AgentRuntime, get_agent_configuration_version, get_agent_tool_policy_snapshot
+from app.services.agent_workflow import execute_agent_workflow
 from app.services.ai_providers.factory import get_provider
 from app.services.ai_service import get_ai_reply
 from app.services.email_service import send_email
@@ -641,6 +642,10 @@ try:
     @celery_app.task(name="execute_agent_job")
     def execute_agent_job(job_id: int) -> None:
         _execute_agent_job(job_id)
+
+    @celery_app.task(name="execute_agent_workflow")
+    def execute_agent_workflow_task(workflow_id: int) -> None:
+        execute_agent_workflow(workflow_id)
 
     @celery_app.task(name="deliver_webhook_task")
     def deliver_webhook_task(delivery_id: int) -> None:
