@@ -7,7 +7,8 @@ from app.dependencies import get_current_user
 from app.models.project import WorkspaceProject
 from app.models.project_memory import ProjectMemory
 from app.models.user import User
-from app.models.workspace import WorkspaceMember, WorkspaceRole
+from app.models.workspace import WorkspaceMember
+from app.services.project_access import can_edit_project, can_read_project
 from app.schemas.project_memories import (
     ProjectMemoryCreate,
     ProjectMemoryOut,
@@ -35,7 +36,7 @@ def _get_project_and_membership(
         )
         .first()
     )
-    if not membership:
+    if not membership or not can_read_project(project, current_user, db):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="المشروع غير موجود",
@@ -46,14 +47,11 @@ def _get_project_and_membership(
 def _ensure_can_manage_memory(
     project: WorkspaceProject, membership: WorkspaceMember
 ) -> None:
-    if membership.role in {WorkspaceRole.owner, WorkspaceRole.admin}:
-        return
-    if project.owner_id == membership.user_id:
-        return
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="إدارة ذاكرة المشروع تتطلب صلاحية مدير المشروع أو مساحة العمل",
-    )
+    if not can_edit_project(project, membership.user, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="إدارة ذاكرة المشروع تتطلب دور محرر أو مدير المشروع.",
+        )
 
 
 def _get_memory(
