@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app.database import SessionLocal
 from app.logging_config import get_logger
 from app.models.agent_job import AgentJob
+from app.models.agent_workflow_step import AgentWorkflowStep
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.scheduled_task import (
     ScheduledTask,
@@ -72,6 +73,148 @@ def _sync_scheduled_agent_run(
     if conversation_id is not None:
         run.conversation_id = conversation_id
     run.error = error
+
+
+def _ensure_agent_workflow_steps(db, job: AgentJob) -> list[AgentWorkflowStep]:
+    steps = (
+        db.query(AgentWorkflowStep)
+        .filter(AgentWorkflowStep.agent_job_id == job.id)
+        .order_by(AgentWorkflowStep.sequence.asc())
+        .all()
+    )
+    if steps:
+        return steps
+    step = AgentWorkflowStep(
+        agent_job_id=job.id,
+        sequence=1,
+        title="تنفيذ المهمة",
+        prompt=job.task,
+        status="queued",
+    )
+    db.add(step)
+    db.flush()
+    db.commit()
+    return [step]
+
+
+def _execute_agent_workflow(db, job, user, workspace, conversation, provider) -> dict:
+    steps = _ensure_agent_workflow_steps(db, job)
+    previous_results: list[dict[str, str]] = []
+    total_input_tokens = 0
+    total_output_tokens = 0
+    sources: list[dict] = []
+    final_text = ""
+    last_run_id = None
+
+    for step in steps:
+        refreshed = db.get(AgentJob, job.id)
+        if refreshed is None:
+            raise RuntimeError("مهمة الوكيل غير موجودة.")
+        if refreshed.cancel_requested:
+            if step.status == "running":
+                step.status = "cancelled"
+            db.commit()
+            raise AgentJobCancelled("تم إلغاء مهمة الوكيل.")
+        if step.status == "succeeded":
+            previous_results.append(
+                {
+                    "title": step.title,
+                    "content": (step.result_text or "")[-8000:],
+                }
+            )
+            if step.result_text:
+                final_text = step.result_text
+            if step.run_id:
+                last_run_id = step.run_id
+            sources.extend(step.result_sources or [])
+            continue
+        if step.attempt_count >= 3:
+            step.status = "failed"
+            step.error = "تم بلوغ الحد الأقصى لمحاولات الخطوة."
+            step.finished_at = datetime.now(timezone.utc)
+            db.commit()
+            raise RuntimeError(f"الخطوة {step.sequence} تجاوزت الحد الأقصى للمحاولات.")
+
+        step.status = "running"
+        step.attempt_count += 1
+        step.started_at = datetime.now(timezone.utc)
+        step.error = None
+        db.commit()
+
+        history = []
+        for previous in previous_results[-3:]:
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": f"Checkpoint من خطوة سابقة ({previous['title']}): {previous['content']}",
+                }
+            )
+
+        result = asyncio.run(
+            AgentRuntime(
+                provider=provider,
+                event_sink=None,
+            ).run(
+                task=step.prompt,
+                history=history,
+                conversation=conversation,
+                current_user=user,
+                db=db,
+            )
+        )
+        total_input_tokens += result.input_tokens or 0
+        total_output_tokens += result.output_tokens or 0
+        sources.extend(result.sources or [])
+        last_run_id = result.run_id
+        final_text = result.text
+
+        step.run_id = result.run_id
+        step.result_text = result.text
+        step.result_sources = result.sources
+        step.finished_at = datetime.now(timezone.utc)
+        if result.status == "completed":
+            step.status = "succeeded"
+            step.checkpoint = {
+                "sequence": step.sequence,
+                "status": "succeeded",
+                "run_id": result.run_id,
+                "result_chars": len(result.text or ""),
+                "completed_at": step.finished_at.isoformat(),
+            }
+            db.commit()
+            previous_results.append(
+                {
+                    "title": step.title,
+                    "content": (result.text or "")[-8000:],
+                }
+            )
+        else:
+            step.status = "failed"
+            step.error = "توقفت الخطوة عند حد أمان الوكيل."
+            step.checkpoint = {
+                "sequence": step.sequence,
+                "status": "failed",
+                "run_id": result.run_id,
+                "completed_at": step.finished_at.isoformat(),
+            }
+            db.commit()
+            return {
+                "status": "failed",
+                "run_id": last_run_id,
+                "text": final_text,
+                "sources": sources,
+                "input_tokens": total_input_tokens or None,
+                "output_tokens": total_output_tokens or None,
+            }
+
+    return {
+        "status": "completed",
+        "run_id": last_run_id,
+        "text": final_text or "اكتملت جميع خطوات سير العمل.",
+        "sources": sources,
+        "input_tokens": total_input_tokens or None,
+        "output_tokens": total_output_tokens or None,
+    }
 
 
 def _execute_agent_job(job_id: int, db=None) -> None:
@@ -144,20 +287,13 @@ def _execute_agent_job(job_id: int, db=None) -> None:
         job.error = None
         db.commit()
 
-        async def event_sink(event: dict) -> None:
-            await _agent_job_event_sink(db, job.id, event)
-
-        result = asyncio.run(
-            AgentRuntime(
-                provider=provider,
-                event_sink=event_sink,
-            ).run(
-                task=job.task,
-                history=[],
-                conversation=conversation,
-                current_user=user,
-                db=db,
-            )
+        workflow_result = _execute_agent_workflow(
+            db,
+            job,
+            user,
+            workspace,
+            conversation,
+            provider,
         )
 
         refreshed_job = db.get(AgentJob, job.id)
@@ -166,36 +302,24 @@ def _execute_agent_job(job_id: int, db=None) -> None:
         if refreshed_job.cancel_requested:
             refreshed_job.status = "cancelled"
             refreshed_job.finished_at = datetime.now(timezone.utc)
-            refreshed_job.run_id = result.run_id
-            refreshed_job.result_text = result.text
-            refreshed_job.result_sources = result.sources
-            refreshed_job.input_tokens = result.input_tokens
-            refreshed_job.output_tokens = result.output_tokens
-            _sync_scheduled_agent_run(
-                db,
-                refreshed_job,
-                succeeded=False,
-                conversation_id=conversation.id,
-                error="تم إلغاء المهمة المجدولة.",
-            )
             db.commit()
             return
 
-        refreshed_job.run_id = result.run_id
-        refreshed_job.result_text = result.text
-        refreshed_job.result_sources = result.sources
-        refreshed_job.input_tokens = result.input_tokens
-        refreshed_job.output_tokens = result.output_tokens
+        refreshed_job.run_id = workflow_result["run_id"]
+        refreshed_job.result_text = workflow_result["text"]
+        refreshed_job.result_sources = workflow_result["sources"]
+        refreshed_job.input_tokens = workflow_result["input_tokens"]
+        refreshed_job.output_tokens = workflow_result["output_tokens"]
         refreshed_job.finished_at = datetime.now(timezone.utc)
 
-        if result.status == "completed":
+        if workflow_result["status"] == "completed":
             refreshed_job.status = "succeeded"
             db.add(
                 Message(
                     conversation_id=conversation.id,
                     role=MessageRole.assistant,
-                    content=result.text,
-                    sources=result.sources or None,
+                    content=workflow_result["text"],
+                    sources=workflow_result["sources"] or None,
                 )
             )
             _sync_scheduled_agent_run(
@@ -206,9 +330,7 @@ def _execute_agent_job(job_id: int, db=None) -> None:
             )
         else:
             refreshed_job.status = "failed"
-            refreshed_job.error = (
-                "توقف تشغيل الوكيل عند حد الأمان قبل إكمال المهمة."
-            )
+            refreshed_job.error = "فشل تنفيذ إحدى خطوات سير العمل."
             _sync_scheduled_agent_run(
                 db,
                 refreshed_job,
