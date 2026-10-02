@@ -3,7 +3,8 @@ import json
 import re
 import tomllib
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,7 @@ from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
 from app.schemas.project_members import ProjectMemberCreate, ProjectMemberOut, ProjectMemberUpdate
+from app.schemas.project_archive import ProjectImportResult, ProjectImportConflict
 from app.schemas.project_preview import PreviewBuildFile, PreviewBuildResponse
 from app.schemas.project_validation import ProjectPreviewPlanOut, ProjectValidationItem, ProjectValidationOut
 from app.services.project_preview_artifacts import (
@@ -34,6 +36,7 @@ from app.services.project_preview_artifacts import (
 )
 from app.services.project_access import can_manage_project, can_read_project
 from app.services.project_preview_builder import PreviewBuilderError, build_javascript_preview
+from app.services.project_archive import ProjectArchiveError, build_project_export, parse_project_import
 from app.audit import log_event
 
 router = APIRouter(prefix="/projects", tags=["Workspace Projects"])
@@ -151,6 +154,99 @@ def list_projects(
     )
 
 
+@router.post("/import", response_model=ProjectImportResult, status_code=status.HTTP_201_CREATED)
+async def import_project(
+    workspace_id: int = Form(...),
+    on_conflict: ProjectImportConflict = Form("fail"),
+    archive: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _get_membership(workspace_id, current_user, db)
+    try:
+        imported = parse_project_import(archive.file)
+    except ProjectArchiveError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    requested_name = imported.manifest.project["name"]
+    name = requested_name
+    if db.query(WorkspaceProject).filter(
+        WorkspaceProject.workspace_id == workspace_id,
+        func.lower(WorkspaceProject.name) == name.lower(),
+    ).first():
+        if on_conflict == "fail":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="يوجد مشروع بنفس الاسم داخل مساحة العمل.",
+            )
+        base = f"{requested_name} (imported)"
+        name = base[:120]
+        index = 2
+        while db.query(WorkspaceProject).filter(
+            WorkspaceProject.workspace_id == workspace_id,
+            func.lower(WorkspaceProject.name) == name.lower(),
+        ).first():
+            suffix = f" ({index})"
+            name = f"{requested_name[: max(1, 120 - len(suffix))]}{suffix}"
+            index += 1
+
+    project = WorkspaceProject(
+        workspace_id=workspace_id,
+        owner_id=current_user.id,
+        name=name,
+        description=imported.manifest.project.get("description"),
+        instructions=imported.manifest.project.get("instructions"),
+    )
+    db.add(project)
+    db.flush()
+
+    for path, content in imported.files:
+        db.add(
+            ProjectFile(
+                project_id=project.id,
+                path=path,
+                content=content,
+            )
+        )
+    for content in imported.memories:
+        db.add(
+            ProjectMemory(
+                project_id=project.id,
+                created_by_user_id=current_user.id,
+                content=content,
+            )
+        )
+
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="تعذر إنشاء المشروع المستورد بسبب تعارض بيانات.",
+        ) from exc
+
+    db.refresh(project)
+    log_event(
+        db,
+        "project_imported",
+        f"استيراد المشروع {project.name} من حزمة version {imported.manifest.schema_version}",
+        current_user.id,
+        workspace_id,
+    )
+    return ProjectImportResult(
+        project_id=project.id,
+        workspace_id=workspace_id,
+        name=project.name,
+        files_imported=len(imported.files),
+        memories_imported=len(imported.memories),
+        conflict_policy=on_conflict,
+    )
+
+
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
 def create_project(
     payload: ProjectCreate,
@@ -174,6 +270,45 @@ def create_project(
     db.commit()
     db.refresh(project)
     return project
+
+
+@router.get("/{project_id}/export")
+def export_project(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_project(project_id, current_user, db)
+    files = (
+        db.query(ProjectFile)
+        .filter(ProjectFile.project_id == project.id)
+        .order_by(ProjectFile.path.asc(), ProjectFile.id.asc())
+        .all()
+    )
+    memories = (
+        db.query(ProjectMemory)
+        .filter(ProjectMemory.project_id == project.id)
+        .order_by(ProjectMemory.id.asc())
+        .all()
+    )
+    try:
+        payload = build_project_export(project, files, memories)
+    except ProjectArchiveError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    filename = f"project-{project.id}-export.zip"
+    return StreamingResponse(
+        iter([payload]),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Project-Archive-Schema": "1",
+            "Content-Length": str(len(payload)),
+        },
+    )
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)
