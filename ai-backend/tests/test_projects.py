@@ -454,3 +454,91 @@ def test_project_validation_isolated_to_workspace_members(client):
     )
     assert response.status_code == 404
 
+
+
+
+def test_project_preview_plan_selects_static_html(client):
+    token = _register_and_login(client, "project-preview-static@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = _create_workspace(client, headers, "Preview Static")
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Static"},
+        headers=headers,
+    ).json()
+
+    response = client.post(
+        f"/projects/{project['id']}/files",
+        json={
+            "path": "index.html",
+            "content": "<html><body><h1>Preview</h1></body></html>",
+        },
+        headers=headers,
+    )
+    assert response.status_code == 201
+
+    plan = client.get(
+        f"/projects/{project['id']}/preview-plan",
+        headers=headers,
+    )
+    assert plan.status_code == 200
+    data = plan.json()
+    assert data["strategy"] == "static-html"
+    assert data["status"] == "ready"
+    assert data["entrypoint"] == "index.html"
+
+
+def test_project_preview_plan_never_executes_javascript_build(client):
+    token = _register_and_login(client, "project-preview-js@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = _create_workspace(client, headers, "Preview JS")
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "React App"},
+        headers=headers,
+    ).json()
+
+    for path, content in (
+        (
+            "package.json",
+            '{"name":"demo","scripts":{"build":"node malicious-build.js"}}',
+        ),
+        ("src/main.jsx", "console.log('hello');"),
+    ):
+        response = client.post(
+            f"/projects/{project['id']}/files",
+            json={"path": path, "content": content},
+            headers=headers,
+        )
+        assert response.status_code == 201
+
+    plan = client.get(
+        f"/projects/{project['id']}/preview-plan",
+        headers=headers,
+    )
+    assert plan.status_code == 200
+    data = plan.json()
+    assert data["strategy"] == "javascript-build"
+    assert data["status"] == "build-required"
+    assert data["build_command_detected"] is True
+    assert data["entrypoint"] == "package.json"
+
+
+def test_project_preview_plan_isolated_from_other_workspace(client):
+    owner_token = _register_and_login(client, "project-preview-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace = _create_workspace(client, owner_headers, "Preview Owner")
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Private"},
+        headers=owner_headers,
+    ).json()
+
+    outsider_token = _register_and_login(client, "project-preview-outsider@example.com")
+    outsider_headers = {"Authorization": f"Bearer {outsider_token}"}
+
+    response = client.get(
+        f"/projects/{project['id']}/preview-plan",
+        headers=outsider_headers,
+    )
+    assert response.status_code == 404
