@@ -69,3 +69,20 @@ export async function importProject(workspaceId, file, onConflict = "fail") {
   });
   return data;
 }
+
+
+export async function listProjectArtifacts(projectId) {
+  const { data } = await api.get(`/projects/${projectId}/preview-artifacts`);
+  return data;
+}
+
+export async function deleteProjectArtifact(projectId, artifactId) {
+  await api.delete(`/projects/${projectId}/preview-artifacts/${artifactId}`);
+}
+
+export async function cleanupProjectArtifacts(projectId) {
+  const { data } = await api.post(
+    `/projects/${projectId}/preview-artifacts/cleanup`
+  );
+  return data;
+}
