@@ -120,7 +120,11 @@ async def build_javascript_preview(
     except ValueError as exc:
         raise PreviewBuilderError("أعاد builder استجابة غير صالحة.") from exc
 
-    if not result.entrypoint.startswith(("index.html", "dist/", "build/")):
+    allowed_entrypoint = (
+        result.entrypoint == "index.html"
+        or result.entrypoint.startswith(("dist/", "build/"))
+    )
+    if not allowed_entrypoint:
         raise PreviewBuilderError("نقطة دخول artifact غير مسموحة.")
     try:
         artifact_size = len(result.artifact_base64.encode("ascii"))
