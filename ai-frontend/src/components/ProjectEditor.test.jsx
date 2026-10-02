@@ -13,6 +13,7 @@ const {
   createProjectFile,
   updateProjectFile,
   deleteProjectFile,
+  validateProject,
 } = vi.hoisted(() => ({
   listProjectMemories: vi.fn(),
   createProjectMemory: vi.fn(),
@@ -23,81 +24,82 @@ const {
   createProjectFile: vi.fn(),
   updateProjectFile: vi.fn(),
   deleteProjectFile: vi.fn(),
+  validateProject: vi.fn(),
 }));
 
 const { t } = vi.hoisted(() => ({
-  t: (key) =>
-    ({
-      "projectEditor.createTitle": "إنشاء مشروع",
-      "projectEditor.editTitle": "تعديل المشروع",
-      "projectEditor.subtitle": "نظّم المشروع وحدد سلوكه الدائم للمساعد",
-      "projectEditor.close": "إغلاق",
-      "projectEditor.nameLabel": "الاسم",
-      "projectEditor.namePlaceholder": "اسم المشروع",
-      "projectEditor.descriptionLabel": "الوصف",
-      "projectEditor.descriptionPlaceholder": "وصف اختياري",
-      "projectEditor.instructionsLabel": "تعليمات المشروع",
-      "projectEditor.instructionsPlaceholder": "كيف يجب أن يتعامل المساعد مع هذا المشروع؟",
-      "projectEditor.assistantLabel": "المساعد الافتراضي",
-      "projectEditor.noDefaultAssistant": "بدون مساعد افتراضي",
-      "projectEditor.assistantHint": "سيُستخدم تلقائيًا للمحادثات الجديدة داخل المشروع.",
-      "projectEditor.requiredError": "أدخل اسم المشروع",
-      "projectEditor.memoryTitle": "ذاكرة المشروع",
-      "projectEditor.memoryDescription": "ذاكرة مشتركة",
-      "projectEditor.memoryPlaceholder": "ذاكرة",
-      "projectEditor.memoryAdd": "إضافة ذاكرة",
-      "projectEditor.memorySaving": "جارٍ الحفظ...",
-      "projectEditor.memoryLoading": "جارٍ تحميل الذاكرة...",
-      "projectEditor.memoryEmpty": "لا توجد ذكريات محفوظة لهذا المشروع.",
-      "projectEditor.memoryEdit": "تعديل",
-      "projectEditor.memoryDelete": "حذف",
-      "projectEditor.memoryEditPrompt": "عدّل ذاكرة المشروع:",
-      "projectEditor.memoryDeleteConfirm": "حذف ذاكرة المشروع؟",
-      "projectEditor.memoryLoadError": "تعذر تحميل ذاكرة المشروع",
-      "projectEditor.memorySaveError": "تعذر حفظ ذاكرة المشروع",
-      "projectEditor.memoryDeleteError": "تعذر حذف ذاكرة المشروع",
-      "projectEditor.filesTitle": "ملفات المشروع",
-      "projectEditor.filesDescription": "شجرة ملفات المصدر داخل المشروع.",
-      "projectEditor.filesEmpty": "لا توجد ملفات مصدر بعد.",
-      "projectEditor.fileNew": "ملف جديد",
-      "projectEditor.filePathLabel": "مسار الملف",
-      "projectEditor.filePathPlaceholder": "src/App.jsx",
-      "projectEditor.fileContentLabel": "محتوى الملف",
-      "projectEditor.fileContentPlaceholder": "اكتب كود أو نص الملف هنا...",
-      "projectEditor.fileLoading": "جارٍ تحميل الملف...",
-      "projectEditor.fileSaving": "جارٍ حفظ الملف...",
-      "projectEditor.fileCreate": "إنشاء الملف",
-      "projectEditor.fileSave": "حفظ الملف",
-      "projectEditor.fileDeleting": "جارٍ حذف الملف...",
-      "projectEditor.fileDelete": "حذف الملف",
-      "projectEditor.filePathRequired": "أدخل مسار الملف.",
-      "projectEditor.fileLoadError": "تعذر تحميل ملفات المشروع.",
-      "projectEditor.fileSaveError": "تعذر حفظ ملف المشروع.",
-      "projectEditor.fileDeleteError": "تعذر حذف ملف المشروع.",
-      "projectEditor.fileDeleteConfirm": "حذف الملف؟",
-      "projectEditor.filesTitle": "ملفات المشروع",
-      "projectEditor.filesDescription": "شجرة ملفات مصدر قابلة للتعديل مباشرة داخل المشروع.",
-      "projectEditor.filesEmpty": "لا توجد ملفات مصدر بعد.",
-      "projectEditor.fileNew": "ملف جديد",
-      "projectEditor.filePathLabel": "مسار الملف",
-      "projectEditor.filePathPlaceholder": "src/App.jsx",
-      "projectEditor.fileContentLabel": "محتوى الملف",
-      "projectEditor.fileContentPlaceholder": "اكتب كود أو نص الملف هنا...",
-      "projectEditor.fileLoading": "جارٍ تحميل الملف...",
-      "projectEditor.fileSaving": "جارٍ حفظ الملف...",
-      "projectEditor.fileCreate": "إنشاء الملف",
-      "projectEditor.fileSave": "حفظ الملف",
-      "projectEditor.fileDeleting": "جارٍ حذف الملف...",
-      "projectEditor.fileDelete": "حذف الملف",
-      "projectEditor.filePathRequired": "أدخل مسار الملف.",
-      "projectEditor.fileLoadError": "تعذر تحميل ملفات المشروع.",
-      "projectEditor.fileSaveError": "تعذر حفظ ملف المشروع.",
-      "projectEditor.fileDeleteError": "تعذر حذف ملف المشروع.",
-      "projectEditor.fileDeleteConfirm": "حذف الملف؟",
-      "projectEditor.cancel": "إلغاء",
-      "projectEditor.saving": "جارٍ الحفظ...",
-      "projectEditor.save": "حفظ",
-    }[key] ?? key),
+  t: (key, variables = {}) => {
+    const value =
+      ({
+        "projectEditor.createTitle": "إنشاء مشروع",
+        "projectEditor.editTitle": "تعديل المشروع",
+        "projectEditor.subtitle": "نظّم المشروع وحدد سلوكه الدائم للمساعد",
+        "projectEditor.close": "إغلاق",
+        "projectEditor.nameLabel": "الاسم",
+        "projectEditor.namePlaceholder": "اسم المشروع",
+        "projectEditor.descriptionLabel": "الوصف",
+        "projectEditor.descriptionPlaceholder": "وصف اختياري",
+        "projectEditor.instructionsLabel": "تعليمات المشروع",
+        "projectEditor.instructionsPlaceholder": "كيف يجب أن يتعامل المساعد مع هذا المشروع؟",
+        "projectEditor.assistantLabel": "المساعد الافتراضي",
+        "projectEditor.noDefaultAssistant": "بدون مساعد افتراضي",
+        "projectEditor.assistantHint": "سيُستخدم تلقائيًا للمحادثات الجديدة داخل المشروع.",
+        "projectEditor.requiredError": "أدخل اسم المشروع",
+        "projectEditor.memoryTitle": "ذاكرة المشروع",
+        "projectEditor.memoryDescription": "ذاكرة مشتركة",
+        "projectEditor.memoryPlaceholder": "ذاكرة",
+        "projectEditor.memoryAdd": "إضافة ذاكرة",
+        "projectEditor.memorySaving": "جارٍ الحفظ...",
+        "projectEditor.memoryLoading": "جارٍ تحميل الذاكرة...",
+        "projectEditor.memoryEmpty": "لا توجد ذكريات محفوظة لهذا المشروع.",
+        "projectEditor.memoryEdit": "تعديل",
+        "projectEditor.memoryDelete": "حذف",
+        "projectEditor.memoryEditPrompt": "عدّل ذاكرة المشروع:",
+        "projectEditor.memoryDeleteConfirm": "حذف ذاكرة المشروع؟",
+        "projectEditor.memoryLoadError": "تعذر تحميل ذاكرة المشروع",
+        "projectEditor.memorySaveError": "تعذر حفظ ذاكرة المشروع",
+        "projectEditor.memoryDeleteError": "تعذر حذف ذاكرة المشروع",
+        "projectEditor.filesTitle": "ملفات المشروع",
+        "projectEditor.filesDescription": "شجرة ملفات المصدر داخل المشروع.",
+        "projectEditor.validate": "فحص المشروع",
+        "projectEditor.validating": "جارٍ فحص المشروع...",
+      "projectEditor.preview": "معاينة آمنة",
+      "projectEditor.previewing": "جارٍ فتح المعاينة...",
+      "projectEditor.previewTitle": "معاينة المشروع",
+      "projectEditor.closePreview": "إغلاق المعاينة",
+      "projectEditor.previewLoadError": "تعذر فتح معاينة المشروع.",
+        "projectEditor.validationReady": "نتيجة الفحص",
+        "projectEditor.validationClean": "لا توجد أخطاء في الفحص.",
+        "projectEditor.validationSummary": "{{errors}} أخطاء، {{warnings}} تحذيرات — {{count}} ملف",
+        "projectEditor.validationLoadError": "تعذر فحص المشروع.",
+        "projectEditor.validationError": "خطأ",
+        "projectEditor.validationWarning": "تحذير",
+        "projectEditor.validationInfo": "معلومة",
+        "projectEditor.filesEmpty": "لا توجد ملفات مصدر بعد.",
+        "projectEditor.fileNew": "ملف جديد",
+        "projectEditor.filePathLabel": "مسار الملف",
+        "projectEditor.filePathPlaceholder": "src/App.jsx",
+        "projectEditor.fileContentLabel": "محتوى الملف",
+        "projectEditor.fileContentPlaceholder": "اكتب كود أو نص الملف هنا...",
+        "projectEditor.fileLoading": "جارٍ تحميل الملف...",
+        "projectEditor.fileSaving": "جارٍ حفظ الملف...",
+        "projectEditor.fileCreate": "إنشاء الملف",
+        "projectEditor.fileSave": "حفظ الملف",
+        "projectEditor.fileDeleting": "جارٍ حذف الملف...",
+        "projectEditor.fileDelete": "حذف الملف",
+        "projectEditor.filePathRequired": "أدخل مسار الملف.",
+        "projectEditor.fileLoadError": "تعذر تحميل ملفات المشروع.",
+        "projectEditor.fileSaveError": "تعذر حفظ ملف المشروع.",
+        "projectEditor.fileDeleteError": "تعذر حذف ملف المشروع.",
+        "projectEditor.fileDeleteConfirm": "حذف الملف؟",
+        "projectEditor.cancel": "إلغاء",
+        "projectEditor.saving": "جارٍ الحفظ...",
+        "projectEditor.save": "حفظ",
+      }[key] ?? key);
+    return value.replace(/{{\s*(\w+)\s*}}/g, (_, name) =>
+      String(variables[name] ?? "")
+    );
+  },
 }));
 
 
@@ -122,6 +124,10 @@ vi.mock("../lib/projectFilesApi", () => ({
   createProjectFile,
   updateProjectFile,
   deleteProjectFile,
+}));
+
+vi.mock("../lib/projectValidationApi", () => ({
+  validateProject,
 }));
 
 describe("ProjectEditor", () => {
@@ -218,6 +224,80 @@ describe("ProjectEditor", () => {
     expect(screen.getByDisplayValue("تعلم البرمجة")).toBeInTheDocument();
     expect(screen.getByDisplayValue("استخدم أمثلة عملية.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "تعديل المشروع" })).toBeInTheDocument();
+  });
+
+  it("runs read-only project validation and shows issues", async () => {
+    listProjectMemories.mockResolvedValue([]);
+    listProjectFiles.mockResolvedValue([]);
+    validateProject.mockResolvedValue({
+      project_id: 3,
+      project_kind: "javascript",
+      files_count: 2,
+      errors: 1,
+      warnings: 1,
+      checks: [
+        {
+          level: "error",
+          code: "invalid_package_json",
+          message: "package.json غير صالح",
+          path: "package.json",
+        },
+        {
+          level: "warning",
+          code: "secret_file_name",
+          message: "لا تضع أسرارًا حقيقية",
+          path: ".env",
+        },
+      ],
+    });
+
+    const user = userEvent.setup();
+    render(
+      <ProjectEditor
+        project={{ id: 3, name: "Demo", description: null, instructions: null }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "فحص المشروع" }));
+
+    expect(validateProject).toHaveBeenCalledWith(3);
+    expect(await screen.findByText("package.json غير صالح")).toBeInTheDocument();
+    expect(screen.getByText("لا تضع أسرارًا حقيقية")).toBeInTheDocument();
+    expect(screen.getByText(/1 أخطاء، 1 تحذيرات/)).toBeInTheDocument();
+  });
+
+  it("opens index.html in a sandboxed preview without script permission", async () => {
+    listProjectMemories.mockResolvedValue([]);
+    listProjectFiles.mockResolvedValue([
+      { id: 20, project_id: 3, path: "index.html", content_length: 34 },
+    ]);
+    getProjectFile.mockResolvedValue({
+      id: 20,
+      project_id: 3,
+      path: "index.html",
+      content: "<html><body><h1>Hello</h1></body></html>",
+    });
+
+    const user = userEvent.setup();
+    render(
+      <ProjectEditor
+        project={{ id: 3, name: "Demo", description: null, instructions: null }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "معاينة آمنة" }));
+
+    const frame = await screen.findByTitle("معاينة المشروع");
+    expect(getProjectFile).toHaveBeenCalledWith(3, 20);
+    expect(frame).toHaveAttribute("sandbox", "");
+    expect(frame).toHaveAttribute(
+      "srcdoc",
+      "<html><body><h1>Hello</h1></body></html>"
+    );
   });
 
   it("loads and creates project memory", async () => {

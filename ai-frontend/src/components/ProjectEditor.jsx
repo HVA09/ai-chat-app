@@ -14,6 +14,7 @@ import {
   listProjectFiles,
   updateProjectFile,
 } from "../lib/projectFilesApi";
+import { validateProject } from "../lib/projectValidationApi";
 
 
 function buildProjectFileTree(files) {
@@ -119,6 +120,10 @@ export default function ProjectEditor({
   const [fileLoading, setFileLoading] = useState(false);
   const [fileSaving, setFileSaving] = useState(false);
   const [fileDeleting, setFileDeleting] = useState(false);
+  const [projectValidation, setProjectValidation] = useState(null);
+  const [projectValidationLoading, setProjectValidationLoading] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
   const projectFileTree = useMemo(() => buildProjectFileTree(projectFiles), [projectFiles]);
 
   useEffect(() => {
@@ -132,6 +137,8 @@ export default function ProjectEditor({
     setSelectedFileId(null);
     setFilePath("");
     setFileContent("");
+    setProjectValidation(null);
+    setPreviewHtml("");
 
     if (!project) {
       setMemories([]);
@@ -261,6 +268,37 @@ export default function ProjectEditor({
     setSelectedFileId(null);
     setFilePath("");
     setFileContent("");
+  };
+
+  const handlePreviewProject = async () => {
+    if (!project) return;
+    const indexFile = projectFiles.find(
+      (item) => item.path.toLowerCase() === "index.html"
+    );
+    if (!indexFile) return;
+
+    setPreviewLoading(true);
+    try {
+      const detail = await getProjectFile(project.id, indexFile.id);
+      setPreviewHtml(detail.content);
+    } catch (error) {
+      showErrorToast(error, "projectEditor.previewLoadError");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleValidateProject = async () => {
+    if (!project) return;
+    setProjectValidationLoading(true);
+    try {
+      const result = await validateProject(project.id);
+      setProjectValidation(result);
+    } catch (error) {
+      showErrorToast(error, "projectEditor.validationLoadError");
+    } finally {
+      setProjectValidationLoading(false);
+    }
   };
 
   const handleSaveFile = async () => {
@@ -542,15 +580,93 @@ export default function ProjectEditor({
                     {t("projectEditor.filesDescription")}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleNewFile}
-                  disabled={fileSaving || fileDeleting}
-                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                >
-                  {t("projectEditor.fileNew")}
-                </button>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {projectFiles.some(
+                    (item) => item.path.toLowerCase() === "index.html"
+                  ) && (
+                    <button
+                      type="button"
+                      onClick={handlePreviewProject}
+                      disabled={
+                        previewLoading || projectValidationLoading || fileSaving || fileDeleting
+                      }
+                      className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      {previewLoading
+                        ? t("projectEditor.previewing")
+                        : t("projectEditor.preview")}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleValidateProject}
+                    disabled={projectValidationLoading || fileSaving || fileDeleting}
+                    className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    {projectValidationLoading
+                      ? t("projectEditor.validating")
+                      : t("projectEditor.validate")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNewFile}
+                    disabled={fileSaving || fileDeleting}
+                    className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    {t("projectEditor.fileNew")}
+                  </button>
+                </div>
               </div>
+
+              {projectValidation && (
+                <div className="mb-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                        {t("projectEditor.validationReady")}
+                      </h4>
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        {t("projectEditor.validationSummary", {
+                          errors: projectValidation.errors,
+                          warnings: projectValidation.warnings,
+                          count: projectValidation.files_count,
+                        })}
+                      </p>
+                    </div>
+                    {projectValidation.errors === 0 ? (
+                      <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                        {t("projectEditor.validationClean")}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-medium text-red-600 dark:text-red-400">
+                        {projectValidation.errors} {t("projectEditor.validationError")}
+                      </span>
+                    )}
+                  </div>
+                  {projectValidation.checks.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {projectValidation.checks.map((item, index) => (
+                        <div
+                          key={`${item.code}-${item.path ?? "project"}-${index}`}
+                          className="rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2 text-xs dark:border-slate-800 dark:bg-slate-950"
+                        >
+                          <div className="font-medium text-slate-700 dark:text-slate-200">
+                            {item.level === "error"
+                              ? t("projectEditor.validationError")
+                              : item.level === "warning"
+                                ? t("projectEditor.validationWarning")
+                                : t("projectEditor.validationInfo")}
+                            {item.path ? ` — ${item.path}` : ""}
+                          </div>
+                          <div className="mt-1 text-slate-500 dark:text-slate-400">
+                            {item.message}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="grid gap-3 md:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)]">
                 <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200 p-2 dark:border-slate-700">
@@ -644,6 +760,43 @@ export default function ProjectEditor({
               {validationError}
             </div>
           )}
+        {previewHtml && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+            <div
+              className="flex h-[90dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="project-preview-title"
+            >
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+                <h3
+                  id="project-preview-title"
+                  className="text-sm font-semibold text-slate-900 dark:text-slate-100"
+                >
+                  {t("projectEditor.previewTitle")}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setPreviewHtml("")}
+                  className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
+                  aria-label={t("projectEditor.closePreview")}
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 bg-white p-2 dark:bg-slate-950">
+                <iframe
+                  title={t("projectEditor.previewTitle")}
+                  srcDoc={previewHtml}
+                  sandbox=""
+                  referrerPolicy="no-referrer"
+                  className="h-full w-full rounded-xl border border-slate-200 bg-white dark:border-slate-700"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         </div>
 
         <div className="mt-6 flex justify-end gap-2">

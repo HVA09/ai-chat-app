@@ -395,4 +395,62 @@ def test_project_rejects_inaccessible_default_assistant(client):
     )
     assert response.status_code == 404
 
+def test_project_validation_reports_manifest_errors_and_secret_warnings(client):
+    token = _register_and_login(client, "project-validation@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = _create_workspace(client, headers, "Validation")
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Broken App"},
+        headers=headers,
+    ).json()
+
+    files = [
+        ("package.json", '{"name":'),
+        (".env", "API_KEY=secret"),
+        ("index.html", "<div>missing roots</div>"),
+    ]
+    for path, content in files:
+        response = client.post(
+            f"/projects/{project['id']}/files",
+            json={"path": path, "content": content},
+            headers=headers,
+        )
+        assert response.status_code == 201
+
+    response = client.get(
+        f"/projects/{project['id']}/validate",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["project_kind"] == "javascript"
+    assert data["files_count"] == 3
+    assert data["errors"] == 1
+    assert data["warnings"] >= 3
+    codes = {item["code"] for item in data["checks"]}
+    assert "invalid_package_json" in codes
+    assert "secret_file_name" in codes
+    assert "html_root_missing" in codes
+
+
+def test_project_validation_isolated_to_workspace_members(client):
+    owner_token = _register_and_login(client, "project-validation-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    owner_workspace = _create_workspace(client, owner_headers, "Owner")
+    project = client.post(
+        "/projects",
+        json={"workspace_id": owner_workspace["id"], "name": "Private"},
+        headers=owner_headers,
+    ).json()
+
+    outsider_token = _register_and_login(client, "project-validation-outsider@example.com")
+    outsider_headers = {"Authorization": f"Bearer {outsider_token}"}
+
+    response = client.get(
+        f"/projects/{project['id']}/validate",
+        headers=outsider_headers,
+    )
+    assert response.status_code == 404
 
