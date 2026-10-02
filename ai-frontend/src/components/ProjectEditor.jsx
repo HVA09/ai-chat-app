@@ -14,7 +14,7 @@ import {
   listProjectFiles,
   updateProjectFile,
 } from "../lib/projectFilesApi";
-import { getProjectPreviewPlan, validateProject } from "../lib/projectValidationApi";
+import { buildProjectPreview, getProjectPreviewPlan, validateProject } from "../lib/projectValidationApi";
 
 
 function buildProjectFileTree(files) {
@@ -126,6 +126,8 @@ export default function ProjectEditor({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewPlan, setPreviewPlan] = useState(null);
   const [previewPlanLoading, setPreviewPlanLoading] = useState(false);
+  const [previewBuild, setPreviewBuild] = useState(null);
+  const [previewBuildLoading, setPreviewBuildLoading] = useState(false);
   const projectFileTree = useMemo(() => buildProjectFileTree(projectFiles), [projectFiles]);
 
   useEffect(() => {
@@ -142,6 +144,7 @@ export default function ProjectEditor({
     setProjectValidation(null);
     setPreviewHtml("");
     setPreviewPlan(null);
+    setPreviewBuild(null);
 
     if (!project) {
       setMemories([]);
@@ -301,6 +304,20 @@ export default function ProjectEditor({
       showErrorToast(error, "projectEditor.previewLoadError");
     } finally {
       setPreviewLoading(false);
+    }
+  };
+
+
+  const handleBuildPreview = async () => {
+    if (!project) return;
+    setPreviewBuildLoading(true);
+    try {
+      const result = await buildProjectPreview(project.id);
+      setPreviewBuild(result);
+    } catch (error) {
+      showErrorToast(error, "projectEditor.previewBuildError");
+    } finally {
+      setPreviewBuildLoading(false);
     }
   };
 
@@ -623,6 +640,19 @@ export default function ProjectEditor({
                       ? t("projectEditor.previewPlanLoading")
                       : t("projectEditor.previewPlan")}
                   </button>
+
+                  {previewPlan?.strategy === "javascript-build" && previewPlan?.status === "build-required" && (
+                    <button
+                      type="button"
+                      onClick={handleBuildPreview}
+                      disabled={previewBuildLoading || previewPlanLoading || projectValidationLoading || fileSaving || fileDeleting}
+                      className="rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+                    >
+                      {previewBuildLoading
+                        ? t("projectEditor.previewBuildLoading")
+                        : t("projectEditor.previewBuild")}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={handleValidateProject}
@@ -670,6 +700,30 @@ export default function ProjectEditor({
                         {t("projectEditor.previewPlanBuildDetected")}
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+
+              {previewBuild && (
+                <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900/60 dark:bg-emerald-950/20">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                        {t("projectEditor.previewBuildReady")}
+                      </h4>
+                      <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-400">
+                        {t("projectEditor.previewBuildDescription")}
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-emerald-300 px-2 py-1 text-[10px] font-medium text-emerald-700 dark:border-emerald-800 dark:text-emerald-300">
+                      {previewBuild.entrypoint}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-[11px] text-emerald-700 dark:text-emerald-400">
+                    {t("projectEditor.previewBuildSize", {
+                      size: previewBuild.artifact_size_bytes,
+                    })}
                   </div>
                 </div>
               )}
