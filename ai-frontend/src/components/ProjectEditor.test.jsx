@@ -85,6 +85,8 @@ const { t } = vi.hoisted(() => ({
       "projectEditor.previewBuildDescription": "تم البناء داخل Builder معزول. لن يتم تشغيل الملفات داخل هذه الصفحة مباشرة.",
       "projectEditor.previewBuildSize": "حجم artifact: {{size}} بايت",
       "projectEditor.previewBuildError": "تعذر بناء معاينة المشروع.",
+      "projectEditor.exportTitle": "تصدير المشروع",
+      "projectEditor.export": "تصدير",
         "projectEditor.validationReady": "نتيجة الفحص",
         "projectEditor.validationClean": "لا توجد أخطاء في الفحص.",
         "projectEditor.validationSummary": "{{errors}} أخطاء، {{warnings}} تحذيرات — {{count}} ملف",
