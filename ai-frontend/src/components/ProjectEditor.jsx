@@ -15,6 +15,13 @@ import {
   updateProjectFile,
 } from "../lib/projectFilesApi";
 import { buildProjectPreview, getProjectPreviewPlan, validateProject } from "../lib/projectValidationApi";
+import { listWorkspaceMembers } from "../lib/workspaceMembersApi";
+import {
+  addProjectMember,
+  listProjectMembers,
+  removeProjectMember,
+  updateProjectMember,
+} from "../lib/projectMembersApi";
 
 
 function buildProjectFileTree(files) {
@@ -98,6 +105,8 @@ function ProjectFileTreeNode({ node, depth, selectedFileId, onSelect }) {
 export default function ProjectEditor({
   project = null,
   assistants = [],
+  currentUserId = null,
+  workspaceRole = "member",
   onClose,
   onSave,
 }) {
@@ -130,6 +139,12 @@ export default function ProjectEditor({
   const [previewBuildLoading, setPreviewBuildLoading] = useState(false);
   const [previewBuildUrl, setPreviewBuildUrl] = useState("");
   const [previewExecutionUrl, setPreviewExecutionUrl] = useState("");
+  const [projectMembers, setProjectMembers] = useState([]);
+  const [workspaceMembers, setWorkspaceMembers] = useState([]);
+  const [projectMembersLoading, setProjectMembersLoading] = useState(false);
+  const [projectMemberSaving, setProjectMemberSaving] = useState(false);
+  const [selectedProjectMemberId, setSelectedProjectMemberId] = useState("");
+  const [selectedProjectMemberRole, setSelectedProjectMemberRole] = useState("viewer");
   const projectFileTree = useMemo(() => buildProjectFileTree(projectFiles), [projectFiles]);
 
   useEffect(() => {
@@ -180,6 +195,26 @@ export default function ProjectEditor({
         }
       });
 
+    setProjectMembersLoading(true);
+    Promise.all([
+      listProjectMembers(project.id),
+      listWorkspaceMembers(project.workspace_id),
+    ])
+      .then(([memberList, workspaceMemberList]) => {
+        if (!cancelled) {
+          setProjectMembers(memberList);
+          setWorkspaceMembers(workspaceMemberList);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          showErrorToast(error, "projectEditor.membersLoadError");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setProjectMembersLoading(false);
+      });
+
     return () => {
       cancelled = true;
     };
@@ -216,6 +251,86 @@ export default function ProjectEditor({
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const currentProjectMembership = projectMembers.find(
+    (member) => member.user_id === currentUserId
+  );
+  const canManageProjectMembers =
+    isEditing &&
+    (project?.owner_id === currentUserId ||
+      workspaceRole === "owner" ||
+      workspaceRole === "admin" ||
+      currentProjectMembership?.role === "manager");
+  const existingProjectUserIds = new Set(
+    projectMembers.map((member) => member.user_id)
+  );
+  const availableWorkspaceMembers = workspaceMembers.filter(
+    (member) =>
+      member.user_id !== project?.owner_id &&
+      !existingProjectUserIds.has(member.user_id)
+  );
+
+  const refreshProjectMembers = async () => {
+    if (!project) return;
+    const [memberList, workspaceMemberList] = await Promise.all([
+      listProjectMembers(project.id),
+      listWorkspaceMembers(project.workspace_id),
+    ]);
+    setProjectMembers(memberList);
+    setWorkspaceMembers(workspaceMemberList);
+  };
+
+  const handleAddProjectMember = async () => {
+    if (!project || !selectedProjectMemberId) return;
+    setProjectMemberSaving(true);
+    try {
+      await addProjectMember(
+        project.id,
+        selectedProjectMemberId,
+        selectedProjectMemberRole
+      );
+      setSelectedProjectMemberId("");
+      setSelectedProjectMemberRole("viewer");
+      await refreshProjectMembers();
+    } catch (error) {
+      showErrorToast(error, "projectEditor.memberSaveError");
+    } finally {
+      setProjectMemberSaving(false);
+    }
+  };
+
+  const handleUpdateProjectMember = async (member, role) => {
+    if (!project || member.id == null) return;
+    setProjectMemberSaving(true);
+    try {
+      await updateProjectMember(project.id, member.id, role);
+      await refreshProjectMembers();
+    } catch (error) {
+      showErrorToast(error, "projectEditor.memberSaveError");
+    } finally {
+      setProjectMemberSaving(false);
+    }
+  };
+
+  const handleRemoveProjectMember = async (member) => {
+    if (!project || member.id == null) return;
+    if (
+      !window.confirm(
+        t("projectEditor.memberRemoveConfirm", { email: member.email })
+      )
+    ) {
+      return;
+    }
+    setProjectMemberSaving(true);
+    try {
+      await removeProjectMember(project.id, member.id);
+      await refreshProjectMembers();
+    } catch (error) {
+      showErrorToast(error, "projectEditor.memberDeleteError");
+    } finally {
+      setProjectMemberSaving(false);
     }
   };
 
@@ -522,6 +637,125 @@ export default function ProjectEditor({
             </span>
           </label>
 
+          {isEditing && (
+            <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {t("projectEditor.membersTitle")}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {t("projectEditor.membersDescription")}
+                  </p>
+                </div>
+                <span className="rounded-full border border-slate-200 px-2 py-1 text-[10px] font-medium text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                  {projectMembers.length}
+                </span>
+              </div>
+
+              {projectMembersLoading ? (
+                <p className="mt-3 text-xs text-slate-400">{t("projectEditor.membersLoading")}</p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {projectMembers.map((member) => {
+                    const roleLabel = member.is_owner
+                      ? t("projectEditor.roleOwner")
+                      : t("projectEditor.role" + member.role.charAt(0).toUpperCase() + member.role.slice(1));
+                    return (
+                      <div
+                        key={member.id ?? `owner-${member.user_id}`}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                            {member.full_name || member.email}
+                            {member.user_id === currentUserId && (
+                              <span className="ms-2 text-[10px] text-slate-400">{t("projectEditor.membersYou")}</span>
+                            )}
+                          </div>
+                          <div className="truncate text-xs text-slate-500 dark:text-slate-400">{member.email}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {canManageProjectMembers && !member.is_owner ? (
+                            <select
+                              value={member.role}
+                              disabled={projectMemberSaving}
+                              onChange={(event) => handleUpdateProjectMember(member, event.target.value)}
+                              className="rounded-lg border border-slate-200 px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-900"
+                              aria-label={t("projectEditor.memberRoleLabel", { email: member.email })}
+                            >
+                              <option value="viewer">{t("projectEditor.roleViewer")}</option>
+                              <option value="editor">{t("projectEditor.roleEditor")}</option>
+                              <option value="manager">{t("projectEditor.roleManager")}</option>
+                            </select>
+                          ) : (
+                            <span className="rounded-full bg-white px-2 py-1 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                              {roleLabel}
+                            </span>
+                          )}
+                          {canManageProjectMembers && !member.is_owner && (
+                            <button
+                              type="button"
+                              disabled={projectMemberSaving}
+                              onClick={() => handleRemoveProjectMember(member)}
+                              className="rounded-lg px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              {t("projectEditor.memberRemove")}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {projectMembers.length === 0 && (
+                    <p className="text-xs text-slate-400">{t("projectEditor.membersEmpty")}</p>
+                  )}
+
+                  {canManageProjectMembers && (
+                    <div className="mt-3 rounded-xl border border-dashed border-slate-300 p-3 dark:border-slate-700">
+                      <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+                        <select
+                          aria-label={t("projectEditor.memberSelectPlaceholder")}
+                          value={selectedProjectMemberId}
+                          disabled={projectMemberSaving}
+                          onChange={(event) => setSelectedProjectMemberId(event.target.value)}
+                          className="rounded-xl border border-slate-200 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900"
+                        >
+                          <option value="">{t("projectEditor.memberSelectPlaceholder")}</option>
+                          {availableWorkspaceMembers.map((member) => (
+                            <option key={member.user_id} value={member.user_id}>
+                              {member.full_name || member.email} · {member.email}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          aria-label={t("projectEditor.memberRoleAddLabel")}
+                          value={selectedProjectMemberRole}
+                          disabled={projectMemberSaving}
+                          onChange={(event) => setSelectedProjectMemberRole(event.target.value)}
+                          className="rounded-xl border border-slate-200 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900"
+                        >
+                          <option value="viewer">{t("projectEditor.roleViewer")}</option>
+                          <option value="editor">{t("projectEditor.roleEditor")}</option>
+                          <option value="manager">{t("projectEditor.roleManager")}</option>
+                        </select>
+                        <button
+                          type="button"
+                          disabled={projectMemberSaving || !selectedProjectMemberId}
+                          onClick={handleAddProjectMember}
+                          className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
+                        >
+                          {projectMemberSaving ? t("projectEditor.memberSaving") : t("projectEditor.memberAdd")}
+                        </button>
+                      </div>
+                      <p className="mt-2 text-[11px] text-slate-400">{t("projectEditor.membersWorkspaceOnly")}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
           {isEditing && (
             <section className="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
               <div className="mb-3 flex items-center justify-between gap-3">
