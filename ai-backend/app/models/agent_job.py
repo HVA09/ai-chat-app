@@ -55,3 +55,9 @@ class AgentJob(Base):
     owner = relationship("User")
     workspace = relationship("Workspace")
     conversation = relationship("Conversation")
+    workflow_steps = relationship(
+        "AgentWorkflowStep",
+        back_populates="job",
+        cascade="all, delete-orphan",
+        order_by="AgentWorkflowStep.sequence",
+    )
