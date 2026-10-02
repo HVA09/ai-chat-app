@@ -3,6 +3,15 @@ from fastapi.testclient import TestClient
 import app as builder
 
 
+def test_root_health(monkeypatch):
+    monkeypatch.setattr(builder, "ENABLE_BUILDS", True)
+    client = TestClient(builder.app)
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert response.json()["enabled"] is True
+
+
 def test_health_is_disabled_by_default(monkeypatch):
     monkeypatch.setattr(builder, "ENABLE_BUILDS", False)
     client = TestClient(builder.app)
