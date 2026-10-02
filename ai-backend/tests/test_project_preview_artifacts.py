@@ -5,6 +5,7 @@ import zipfile
 import pytest
 
 from app.schemas.project_preview import PreviewBuildResponse
+from app.models.project_artifact import ProjectArtifact
 from app.services import project_preview_artifacts as artifacts
 
 
@@ -75,8 +76,19 @@ def test_preview_csp_blocks_network_api_access():
     assert "frame-ancestors https://frontend.example;" in csp
 
 
-def test_preview_route_sets_csp_sandbox_without_x_frame_deny(client, monkeypatch):
+def test_preview_route_sets_csp_sandbox_without_x_frame_deny(client, db_session, monkeypatch):
     from app.routers import projects as projects_router
+
+    db_session.add(
+        ProjectArtifact(
+            project_id=1,
+            artifact_id="artifact",
+            entrypoint="dist/index.html",
+            artifact_size_bytes=1,
+            expires_at=9999999999,
+        )
+    )
+    db_session.commit()
 
     monkeypatch.setattr(projects_router, "verify_preview_token", lambda *args, **kwargs: "dist")
     monkeypatch.setattr(
