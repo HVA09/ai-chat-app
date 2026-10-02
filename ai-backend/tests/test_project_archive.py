@@ -179,8 +179,7 @@ def test_import_project_resolves_name_conflict_without_overwrite(client):
     archive = _make_archive()
     conflict = client.post(
         "/projects/import",
-        params={"workspace_id": workspace["id"]},
-        data={"on_conflict": "fail"},
+        data={"workspace_id": str(workspace["id"]), "on_conflict": "fail"},
         files={"archive": ("project.zip", archive, "application/zip")},
         headers=headers,
     )
@@ -188,8 +187,7 @@ def test_import_project_resolves_name_conflict_without_overwrite(client):
 
     renamed = client.post(
         "/projects/import",
-        params={"workspace_id": workspace["id"]},
-        data={"on_conflict": "rename"},
+        data={"workspace_id": str(workspace["id"]), "on_conflict": "rename"},
         files={"archive": ("project.zip", archive, "application/zip")},
         headers=headers,
     )
