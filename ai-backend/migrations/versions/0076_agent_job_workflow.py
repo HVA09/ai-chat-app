@@ -1,6 +1,6 @@
 """Persist AgentJob workflow checkpoints and retry state.
 
-Revision ID: 0076_agent_job_workflow
+Revision ID: 0078_agent_job_workflow
 Revises: 0075_project_preview_artifacts
 """
 
@@ -10,8 +10,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "0076_agent_job_workflow"
-down_revision: Union[str, None] = "0075_project_preview_artifacts"
+revision: str = "0078_agent_job_workflow"
+down_revision: Union[str, None] = "0077_merge_f4_f5_heads"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
