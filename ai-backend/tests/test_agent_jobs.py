@@ -278,4 +278,4 @@ def test_agent_workflow_persists_checkpoints_and_resume_skips_completed_steps(
     assert steps[0].attempt_count == 1
     assert steps[1].attempt_count == 2
     assert steps[2].attempt_count == 1
-    assert calls == ["نفذ الأولى", "نفذ الثانية", "نفذ الثالثة"]
+    assert calls == ["نفذ الأولى", "نفذ الثانية", "نفذ الثانية", "نفذ الثالثة"]
