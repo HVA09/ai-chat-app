@@ -14,6 +14,7 @@ const {
   updateProjectFile,
   deleteProjectFile,
   validateProject,
+  getProjectPreviewPlan,
 } = vi.hoisted(() => ({
   listProjectMemories: vi.fn(),
   createProjectMemory: vi.fn(),
@@ -25,6 +26,7 @@ const {
   updateProjectFile: vi.fn(),
   deleteProjectFile: vi.fn(),
   validateProject: vi.fn(),
+  getProjectPreviewPlan: vi.fn(),
 }));
 
 const { t } = vi.hoisted(() => ({
@@ -68,6 +70,13 @@ const { t } = vi.hoisted(() => ({
       "projectEditor.previewTitle": "معاينة المشروع",
       "projectEditor.closePreview": "إغلاق المعاينة",
       "projectEditor.previewLoadError": "تعذر فتح معاينة المشروع.",
+      "projectEditor.previewPlan": "خطة المعاينة",
+      "projectEditor.previewPlanLoading": "جارٍ تحليل المعاينة...",
+      "projectEditor.previewPlanTitle": "خطة المعاينة",
+      "projectEditor.previewPlanStatus": "الحالة",
+      "projectEditor.previewPlanEntrypoint": "نقطة الدخول",
+      "projectEditor.previewPlanNone": "غير محددة",
+      "projectEditor.previewPlanBuildDetected": "تم اكتشاف script للـbuild؛ التنفيذ يحتاج بيئة build معزولة.",
         "projectEditor.validationReady": "نتيجة الفحص",
         "projectEditor.validationClean": "لا توجد أخطاء في الفحص.",
         "projectEditor.validationSummary": "{{errors}} أخطاء، {{warnings}} تحذيرات — {{count}} ملف",
@@ -128,6 +137,7 @@ vi.mock("../lib/projectFilesApi", () => ({
 
 vi.mock("../lib/projectValidationApi", () => ({
   validateProject,
+  getProjectPreviewPlan,
 }));
 
 describe("ProjectEditor", () => {
@@ -298,6 +308,41 @@ describe("ProjectEditor", () => {
       "srcdoc",
       "<html><body><h1>Hello</h1></body></html>"
     );
+  });
+
+
+
+  it("loads and shows the isolated preview strategy plan", async () => {
+    listProjectMemories.mockResolvedValue([]);
+    listProjectFiles.mockResolvedValue([
+      { id: 30, project_id: 3, path: "package.json", content_length: 80 },
+    ]);
+    getProjectPreviewPlan.mockResolvedValue({
+      project_id: 3,
+      project_kind: "javascript",
+      strategy: "javascript-build",
+      status: "build-required",
+      entrypoint: "package.json",
+      build_command_detected: true,
+      artifact_root: null,
+      message: "المشروع يحتاج build معزول قبل المعاينة.",
+    });
+
+    const user = userEvent.setup();
+    render(
+      <ProjectEditor
+        project={{ id: 3, name: "Demo", description: null, instructions: null }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "خطة المعاينة" }));
+
+    expect(getProjectPreviewPlan).toHaveBeenCalledWith(3);
+    expect(await screen.findByText("المشروع يحتاج build معزول قبل المعاينة.")).toBeInTheDocument();
+    expect(screen.getByText("javascript-build")).toBeInTheDocument();
+    expect(screen.getByText("تم اكتشاف script للـbuild؛ التنفيذ يحتاج بيئة build معزولة.")).toBeInTheDocument();
   });
 
   it("loads and creates project memory", async () => {
