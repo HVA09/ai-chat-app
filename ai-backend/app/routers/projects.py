@@ -2,6 +2,7 @@
 import json
 import re
 import tomllib
+import time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -19,11 +20,13 @@ from app.models.project import WorkspaceProject
 from app.models.project_file import ProjectFile
 from app.models.project_memory import ProjectMemory
 from app.models.project_member import ProjectMember, ProjectMemberRole
+from app.models.project_artifact import ProjectArtifact
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
 from app.schemas.project_members import ProjectMemberCreate, ProjectMemberOut, ProjectMemberUpdate
 from app.schemas.project_archive import ProjectImportResult, ProjectImportConflict
+from app.schemas.project_artifacts import ProjectArtifactCleanupResult, ProjectArtifactOut
 from app.schemas.project_preview import PreviewBuildFile, PreviewBuildResponse
 from app.schemas.project_validation import ProjectPreviewPlanOut, ProjectValidationItem, ProjectValidationOut
 from app.services.project_preview_artifacts import (
@@ -35,7 +38,7 @@ from app.services.project_preview_artifacts import (
     rewrite_absolute_preview_urls,
     verify_preview_token,
 )
-from app.services.project_access import can_manage_project, can_read_project
+from app.services.project_access import can_edit_project, can_manage_project, can_read_project
 from app.services.project_preview_builder import PreviewBuilderError, build_javascript_preview
 from app.services.project_archive import ProjectArchiveError, build_project_export, parse_project_import
 from app.audit import log_event
