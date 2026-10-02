@@ -80,6 +80,7 @@ const { t } = vi.hoisted(() => ({
         "projectEditor.membersYou": "أنت",
         "projectEditor.memberSelectPlaceholder": "اختر عضوًا من مساحة العمل",
         "projectEditor.memberRoleLabel": "دور {{email}}",
+        "projectEditor.memberRoleAddLabel": "دور العضو الجديد",
         "projectEditor.memberAdd": "إضافة عضو",
         "projectEditor.memberSaving": "جارٍ الحفظ...",
         "projectEditor.memberRemove": "إزالة",
@@ -292,9 +293,7 @@ describe("ProjectEditor", () => {
       "3"
     );
     await user.selectOptions(
-      screen.getAllByRole("combobox").find((element) =>
-        Array.from(element.options).some((option) => option.value === "manager")
-      ),
+      screen.getByRole("combobox", { name: "دور العضو الجديد" }),
       "editor"
     );
     await user.click(screen.getByRole("button", { name: "إضافة عضو" }));
