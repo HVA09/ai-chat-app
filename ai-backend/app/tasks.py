@@ -279,20 +279,6 @@ def _execute_agent_workflow(db, job, user, workspace, conversation, provider, ev
             last_run_id = result.run_id
             final_text = result.text
 
-            if refreshed_job.pause_requested or refreshed_job.status == "paused":
-                step.status = "paused"
-                _save_agent_job_checkpoint(
-                    db,
-                    refreshed_job,
-                    phase="paused",
-                    attempt=step.attempt_count,
-                    step_sequence=step.sequence,
-                    status="paused",
-                    detail="تم إيقاف المهمة مؤقتًا أثناء/بعد تشغيل AgentRuntime.",
-                )
-                db.commit()
-                raise AgentJobPaused("تم إيقاف مهمة الوكيل مؤقتًا.")
-
             step.run_id = result.run_id
             step.result_text = result.text
             step.result_sources = result.sources
