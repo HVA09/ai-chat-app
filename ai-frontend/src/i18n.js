@@ -855,6 +855,8 @@ const resources = {
         previewBuildDescription: "تم البناء داخل Builder معزول. لن يتم تشغيل الملفات داخل هذه الصفحة مباشرة.",
         previewBuildSize: "حجم artifact: {{size}} بايت",
         previewBuildError: "تعذر بناء معاينة المشروع.",
+        previewBuildOpen: "فتح المعاينة التنفيذية",
+        previewBuildSecurity: "تُعرض المعاينة التنفيذية داخل iframe معزول مع CSP وبدون صلاحية الوصول إلى جلسة التطبيق.",
         validationReady: "نتيجة الفحص",
         validationClean: "لا توجد أخطاء في الفحص.",
         validationSummary: "{{errors}} أخطاء، {{warnings}} تحذيرات — {{count}} ملف",
