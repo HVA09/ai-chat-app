@@ -293,6 +293,8 @@ def _execute_agent_workflow(db, job, user, workspace, conversation, provider, ev
                 and refreshed_job.retry_count < refreshed_job.max_retries
                 and step.attempt_count < 3
             ):
+                _ensure_ai_quota(user, workspace, db)
+                enforce_ai_cost_budget(user, db)
                 step.status = "queued"
                 step.error = "لم تجتز الخطوة التحقق؛ ستتم إعادة المحاولة."
                 _save_agent_job_checkpoint(
