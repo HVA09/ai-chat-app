@@ -638,12 +638,23 @@ def _build_assistant_context(
 
 
 def _build_project_context(conversation: Conversation, db: Session) -> str:
-    """Build shared instructions for the project selected by the conversation."""
+    """Build shared instructions only when the conversation owner still has project access."""
     if conversation.project_id is None:
         return ""
 
     project = db.get(WorkspaceProject, conversation.project_id)
-    if project is None or not project.instructions:
+    if project is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المشروع غير موجود",
+        )
+    current_user = db.get(User, conversation.user_id)
+    if current_user is None or not can_read_project(project, current_user, db):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المشروع غير متاح لهذه المحادثة",
+        )
+    if not project.instructions:
         return ""
 
     return (
