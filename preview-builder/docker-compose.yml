@@ -1,0 +1,26 @@
+services:
+  preview-builder:
+    build:
+      context: .
+    environment:
+      BUILDER_TOKEN: \${BUILDER_TOKEN:?BUILDER_TOKEN is required}
+      BUILDER_ENABLE_BUILDS: "true"
+      BUILDER_MAX_FILES: "200"
+      BUILDER_MAX_TOTAL_CHARS: "450000"
+      BUILDER_MAX_FILE_BYTES: "10485760"
+      BUILDER_MAX_ARTIFACT_BYTES: "10485760"
+      BUILDER_MAX_BUILD_SECONDS: "120"
+      BUILDER_SANDBOX_BIN: bwrap
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: "1.0"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=1g
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
