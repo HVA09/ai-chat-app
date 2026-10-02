@@ -220,3 +220,65 @@ def test_project_member_access_isolated_from_workspace_and_chat(client, db_sessi
         headers=member_headers,
     )
     assert direct.status_code == 404
+
+
+def test_revoked_project_member_cannot_continue_existing_project_chat(
+    client, db_session, monkeypatch
+):
+    owner_token = _register_and_login(client, "project-revoke-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace = _workspace(client, owner_token, "Revoke")
+
+    member_token = _register_and_login(client, "project-revoke-member@example.com")
+    member_headers = {"Authorization": f"Bearer {member_token}"}
+    member = _add_workspace_member(
+        db_session,
+        workspace["id"],
+        "project-revoke-member@example.com",
+    )
+
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Restricted"},
+        headers=owner_headers,
+    ).json()
+    added = client.post(
+        f"/projects/{project['id']}/members",
+        json={"user_id": member.id, "role": "viewer"},
+        headers=owner_headers,
+    )
+    assert added.status_code == 201
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="reply")),
+    )
+    created = client.post(
+        "/chat",
+        json={
+            "message": "first",
+            "workspace_id": workspace["id"],
+            "project_id": project["id"],
+        },
+        headers=member_headers,
+    )
+    assert created.status_code == 200
+    conversation_id = created.json()["conversation_id"]
+
+    removed = client.delete(
+        f"/projects/{project['id']}/members/{added.json()['id']}",
+        headers=owner_headers,
+    )
+    assert removed.status_code == 204
+
+    continued = client.post(
+        "/chat",
+        json={
+            "message": "second",
+            "conversation_id": conversation_id,
+            "workspace_id": workspace["id"],
+        },
+        headers=member_headers,
+    )
+    assert continued.status_code == 404
