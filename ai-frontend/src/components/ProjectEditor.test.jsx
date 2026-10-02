@@ -16,6 +16,9 @@ const {
   validateProject,
   getProjectPreviewPlan,
   buildProjectPreview,
+  listProjectArtifacts,
+  deleteProjectArtifact,
+  cleanupProjectArtifacts,
 } = vi.hoisted(() => ({
   listProjectMemories: vi.fn(),
   createProjectMemory: vi.fn(),
@@ -29,6 +32,9 @@ const {
   validateProject: vi.fn(),
   getProjectPreviewPlan: vi.fn(),
   buildProjectPreview: vi.fn(),
+  listProjectArtifacts: vi.fn(),
+  deleteProjectArtifact: vi.fn(),
+  cleanupProjectArtifacts: vi.fn(),
 }));
 
 const { t } = vi.hoisted(() => ({
@@ -151,6 +157,12 @@ vi.mock("../lib/projectValidationApi", () => ({
   buildProjectPreview,
 }));
 
+vi.mock("../lib/projectsApi", () => ({
+  listProjectArtifacts,
+  deleteProjectArtifact,
+  cleanupProjectArtifacts,
+}));
+
 describe("ProjectEditor", () => {
   afterEach(() => {
     vi.clearAllMocks();
@@ -173,6 +185,44 @@ describe("ProjectEditor", () => {
 
     await user.click(screen.getByRole("button", { name: "تصدير" }));
     expect(onExport).toHaveBeenCalledWith(9);
+  });
+
+  it("loads and manages project preview artifacts", async () => {
+    listProjectMemories.mockResolvedValue([]);
+    listProjectFiles.mockResolvedValue([]);
+    listProjectArtifacts.mockResolvedValue([
+      {
+        id: 4,
+        project_id: 9,
+        artifact_id: "abc123",
+        entrypoint: "dist/index.html",
+        artifact_size_bytes: 123,
+        expires_at: 9999999999,
+        created_at: "2026-10-02T14:00:00Z",
+      },
+    ]);
+    deleteProjectArtifact.mockResolvedValue(undefined);
+    cleanupProjectArtifacts.mockResolvedValue({ removed: 1, remaining: 0 });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    const user = userEvent.setup();
+    render(
+      <ProjectEditor
+        project={{ id: 9, name: "Demo", description: null, instructions: null }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "إدارة artifacts" }));
+    expect(await screen.findByText("dist/index.html")).toBeInTheDocument();
+    expect(screen.getByText("الحجم: 123 بايت")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "حذف" }));
+    expect(deleteProjectArtifact).toHaveBeenCalledWith(9, "abc123");
+
+    await user.click(screen.getByRole("button", { name: "تنظيف" }));
+    expect(cleanupProjectArtifacts).toHaveBeenCalledWith(9);
   });
 
   it("validates the project name", async () => {
