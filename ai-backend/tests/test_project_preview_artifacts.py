@@ -94,3 +94,24 @@ def test_preview_route_sets_csp_sandbox_without_x_frame_deny(client, monkeypatch
     assert "connect-src 'none'" in response.headers["content-security-policy"]
     assert "X-Frame-Options" not in response.headers
     assert "/projects/1/preview-artifacts/artifact/v1.token/dist/assets/app.js" in response.text
+
+
+def test_publish_preview_rejects_duplicate_normalized_paths(monkeypatch):
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("dist/index.html", b"<html></html>")
+        archive.writestr("dist/./index.html", b"<html>second</html>")
+    payload = buffer.getvalue()
+
+    build = PreviewBuildResponse(
+        entrypoint="dist/index.html",
+        artifact_base64=base64.b64encode(payload).decode("ascii"),
+        artifact_size_bytes=len(payload),
+    )
+    monkeypatch.setattr(artifacts, "put_bytes", lambda *args, **kwargs: None)
+
+    with pytest.raises(artifacts.PreviewArtifactError):
+        artifacts.publish_preview_artifact(1, build)
