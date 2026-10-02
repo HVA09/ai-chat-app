@@ -199,7 +199,7 @@ def rewrite_absolute_preview_urls(
         path = match.group("path")
         if _EXTERNAL_URL_RE.match(path):
             return match.group(0)
-        return f"{match.group('prefix')}{prefix}/{quote(path.lstrip('/'), safe='/:?&=#%')}"
+        return f"{match.group('prefix')}{prefix}/{quote(path.lstrip('/'), safe='/%:@-._~!quote(path.lstrip('/'), safe='/:?&=#%')\'()*+,;=')}"
 
     return _ABSOLUTE_URL_RE.sub(replace, html)
 
