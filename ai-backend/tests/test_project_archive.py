@@ -117,3 +117,91 @@ def test_project_archive_rejects_undeclared_files():
     })
     with pytest.raises(ProjectArchiveError):
         parse_project_import(payload)
+
+
+def _login(client, email):
+    registered = client.post(
+        "/auth/register",
+        json={"email": email, "password": "StrongPass123"},
+    )
+    assert registered.status_code == 201
+    logged = client.post(
+        "/auth/login",
+        json={"email": email, "password": "StrongPass123"},
+    )
+    assert logged.status_code == 200
+    return {"Authorization": f"Bearer {logged.json()['access_token']}"}
+
+
+def _make_archive(name="Imported"):
+    content = b"hello"
+    manifest = {
+        "schema_version": 1,
+        "project": {
+            "name": name,
+            "description": "Imported project",
+            "instructions": "Keep tests deterministic.",
+        },
+        "files": [
+            {
+                "path": "README.md",
+                "sha256": __import__("hashlib").sha256(content).hexdigest(),
+                "content_size": len(content),
+            }
+        ],
+        "memories": [{"content": "Remember the archive format."}],
+    }
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "project.json",
+            json.dumps(manifest, ensure_ascii=False),
+        )
+        archive.writestr("files/README.md", content)
+    return buffer.getvalue()
+
+
+def test_import_project_resolves_name_conflict_without_overwrite(client):
+    headers = _login(client, "archive-import@example.com")
+    workspace = client.post(
+        "/workspaces",
+        json={"name": "Import Workspace"},
+        headers=headers,
+    ).json()
+
+    created = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Imported"},
+        headers=headers,
+    )
+    assert created.status_code == 201
+
+    archive = _make_archive()
+    conflict = client.post(
+        "/projects/import",
+        params={"workspace_id": workspace["id"]},
+        data={"on_conflict": "fail"},
+        files={"archive": ("project.zip", archive, "application/zip")},
+        headers=headers,
+    )
+    assert conflict.status_code == 409
+
+    renamed = client.post(
+        "/projects/import",
+        params={"workspace_id": workspace["id"]},
+        data={"on_conflict": "rename"},
+        files={"archive": ("project.zip", archive, "application/zip")},
+        headers=headers,
+    )
+    assert renamed.status_code == 201
+    data = renamed.json()
+    assert data["name"] != "Imported"
+    assert data["files_imported"] == 1
+    assert data["memories_imported"] == 1
+
+    files = client.get(
+        f"/projects/{data['project_id']}/files",
+        headers=headers,
+    )
+    assert files.status_code == 200
+    assert files.json()[0]["path"] == "README.md"
