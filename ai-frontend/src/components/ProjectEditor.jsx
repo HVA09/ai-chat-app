@@ -716,6 +716,7 @@ export default function ProjectEditor({
                     <div className="mt-3 rounded-xl border border-dashed border-slate-300 p-3 dark:border-slate-700">
                       <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
                         <select
+                          aria-label={t("projectEditor.memberSelectPlaceholder")}
                           value={selectedProjectMemberId}
                           disabled={projectMemberSaving}
                           onChange={(event) => setSelectedProjectMemberId(event.target.value)}
