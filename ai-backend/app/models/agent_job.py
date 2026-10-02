@@ -33,6 +33,17 @@ class AgentJob(Base):
     cancel_requested: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false", index=True
     )
+    workflow_phase: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="queued", server_default="queued", index=True
+    )
+    retry_count: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default="0"
+    )
+    max_retries: Mapped[int] = mapped_column(
+        nullable=False, default=2, server_default="2"
+    )
+    checkpoint: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    checkpoint_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     celery_task_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True, unique=True, index=True
     )
