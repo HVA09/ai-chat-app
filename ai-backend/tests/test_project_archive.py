@@ -161,6 +161,10 @@ def _make_archive(name="Imported"):
             json.dumps(manifest, ensure_ascii=False),
         )
         archive.writestr("files/README.md", content)
+        archive.writestr(
+            "memories.json",
+            json.dumps([{"content": "Remember the archive format."}], ensure_ascii=False),
+        )
     return buffer.getvalue()
 
 
