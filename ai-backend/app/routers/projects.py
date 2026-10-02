@@ -509,7 +509,7 @@ def serve_preview_artifact(
     path: str,
 ):
     try:
-        verify_preview_token(project_id, artifact_id, token)
+        artifact_root = verify_preview_token(project_id, artifact_id, token)
         content, content_type = read_preview_file(project_id, artifact_id, path)
     except PreviewArtifactError as exc:
         raise HTTPException(
@@ -523,6 +523,7 @@ def serve_preview_artifact(
             project_id,
             artifact_id,
             token,
+            artifact_root,
         ).encode("utf-8")
 
     headers = {
