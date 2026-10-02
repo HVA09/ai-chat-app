@@ -44,6 +44,8 @@ __all__ = [
     "UserSession",
     "ProjectMemory",
     "ProjectFile",
+    "ProjectMember",
+    "ProjectMemberRole",
     "Workspace",
     "WorkspaceMember",
     "WorkspaceRole",
