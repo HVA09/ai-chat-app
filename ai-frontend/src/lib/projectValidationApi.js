@@ -4,3 +4,9 @@ export async function validateProject(projectId) {
   const { data } = await api.get(`/projects/${projectId}/validate`);
   return data;
 }
+
+
+export async function getProjectPreviewPlan(projectId) {
+  const { data } = await api.get(`/projects/${projectId}/preview-plan`);
+  return data;
+}
