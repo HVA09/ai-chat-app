@@ -1,8 +1,11 @@
 import base64
 import io
 import zipfile
+from datetime import datetime, timedelta, timezone
 
 import pytest
+
+from app.models.project_preview_artifact import ProjectPreviewArtifact
 
 from app.schemas.project_preview import PreviewBuildResponse
 from app.services import project_preview_artifacts as artifacts
@@ -75,7 +78,44 @@ def test_preview_csp_blocks_network_api_access():
     assert "frame-ancestors https://frontend.example;" in csp
 
 
-def test_preview_route_sets_csp_sandbox_without_x_frame_deny(client, monkeypatch):
+    from app.routers import projects as projects_router
+
+    registered = client.post(
+        "/auth/register",
+        json={"email": "preview-route@example.com", "password": "StrongPass123"},
+    )
+    assert registered.status_code == 201
+    client.post(
+        "/auth/login",
+        json={"email": "preview-route@example.com", "password": "StrongPass123"},
+    )
+    access_token = client.cookies.get("access_token")
+    headers = {"Authorization": f"Bearer {access_token}"}
+    workspace = client.post(
+        "/workspaces",
+        json={"name": "Preview Route"},
+        headers=headers,
+    ).json()
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Preview"},
+        headers=headers,
+    ).json()
+    db_session.add(
+        ProjectPreviewArtifact(
+            project_id=project["id"],
+            artifact_id="artifact",
+            entrypoint="dist/index.html",
+            artifact_root="dist",
+            size_bytes=1,
+            file_count=1,
+            files_manifest=["dist/index.html"],
+            status="active",
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+    )
+    db_session.commit()
+
     from app.routers import projects as projects_router
 
     monkeypatch.setattr(projects_router, "verify_preview_token", lambda *args, **kwargs: "dist")
@@ -86,14 +126,14 @@ def test_preview_route_sets_csp_sandbox_without_x_frame_deny(client, monkeypatch
     )
 
     response = client.get(
-        "/projects/1/preview-artifacts/artifact/v1.token/dist/index.html"
+        f"/projects/{project['id']}/preview-artifacts/artifact/v1.token/dist/index.html"
     )
 
     assert response.status_code == 200
     assert "sandbox allow-scripts" in response.headers["content-security-policy"]
     assert "connect-src 'none'" in response.headers["content-security-policy"]
     assert "X-Frame-Options" not in response.headers
-    assert "/projects/1/preview-artifacts/artifact/v1.token/dist/assets/app.js" in response.text
+    assert f"/projects/{project['id']}/preview-artifacts/artifact/v1.token/dist/assets/app.js" in response.text
 
 
 def test_publish_preview_rejects_duplicate_normalized_paths(monkeypatch):
