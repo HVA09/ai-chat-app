@@ -1,0 +1,75 @@
+import base64
+import io
+import zipfile
+
+import pytest
+
+from app.schemas.project_preview import PreviewBuildResponse
+from app.services import project_preview_artifacts as artifacts
+
+
+def _build_response(files: dict[str, bytes], entrypoint: str = "dist/index.html") -> PreviewBuildResponse:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for path, data in files.items():
+            archive.writestr(path, data)
+    payload = buffer.getvalue()
+    return PreviewBuildResponse(
+        entrypoint=entrypoint,
+        artifact_base64=base64.b64encode(payload).decode("ascii"),
+        artifact_size_bytes=len(payload),
+    )
+
+
+def test_preview_token_is_project_and_artifact_scoped(monkeypatch):
+    monkeypatch.setattr(artifacts.settings, "JWT_SECRET_KEY", "test-secret")
+    token, _ = artifacts.issue_preview_token(10, "artifact")
+    artifacts.verify_preview_token(10, "artifact", token)
+
+    with pytest.raises(artifacts.PreviewArtifactError):
+        artifacts.verify_preview_token(11, "artifact", token)
+
+
+def test_publish_preview_rejects_zip_path_traversal(monkeypatch):
+    monkeypatch.setattr(artifacts, "put_bytes", lambda *args, **kwargs: None)
+    build = _build_response({"../index.html": b"<html></html>"})
+
+    with pytest.raises(artifacts.PreviewArtifactError):
+        artifacts.publish_preview_artifact(1, build)
+
+
+def test_publish_preview_stores_only_regular_files(monkeypatch):
+    stored = {}
+
+    def fake_put(content, key, content_type):
+        stored[key] = (content, content_type)
+
+    monkeypatch.setattr(artifacts, "put_bytes", fake_put)
+    monkeypatch.setattr(artifacts.settings, "JWT_SECRET_KEY", "test-secret")
+    build = _build_response(
+        {
+            "dist/index.html": b"<html><script src=\"/assets/app.js\"></script></html>",
+            "dist/assets/app.js": b"console.log(1);",
+        }
+    )
+
+    published = artifacts.publish_preview_artifact(1, build)
+
+    assert published.artifact_id
+    assert published.entrypoint == "dist/index.html"
+    assert any(key.endswith("/dist/index.html") for key in stored)
+    assert any(key.endswith("/dist/assets/app.js") for key in stored)
+
+
+def test_preview_absolute_urls_are_rewritten_inside_artifact_route():
+    html = '<script src="/assets/app.js"></script><link href="https://cdn.example/app.css">'
+    rewritten = artifacts.rewrite_absolute_preview_urls(html, 1, "abc", "token")
+    assert "/projects/1/preview-artifacts/abc/token/assets/app.js" in rewritten
+    assert "https://cdn.example/app.css" in rewritten
+
+
+def test_preview_csp_blocks_network_api_access():
+    csp = artifacts.preview_csp(["https://frontend.example"])
+    assert "sandbox allow-scripts" in csp
+    assert "connect-src 'none'" in csp
+    assert "frame-ancestors https://frontend.example;" in csp
