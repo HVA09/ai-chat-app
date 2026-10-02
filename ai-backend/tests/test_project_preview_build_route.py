@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from app.schemas.project_preview import PreviewBuildResponse
+from app.models.project_artifact import ProjectArtifact
 
 
 def _register_and_login(client, email: str):
@@ -75,6 +76,13 @@ def test_project_preview_build_delegates_to_isolated_builder(client, monkeypatch
     args = mocked.await_args.args
     assert args[0] == project["id"]
     assert [item.path for item in args[1]] == ["package.json", "src/main.jsx"]
+
+    artifact = db_session.query(ProjectArtifact).filter(
+        ProjectArtifact.project_id == project["id"],
+        ProjectArtifact.artifact_id == "artifact123",
+    ).one()
+    assert artifact.entrypoint == "dist/index.html"
+    assert artifact.artifact_size_bytes == 1
 
 
 def test_project_preview_build_remains_workspace_isolated(client, monkeypatch):
