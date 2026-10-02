@@ -43,6 +43,7 @@ from app.services.project_preview_builder import PreviewBuilderError, build_java
 from app.services.project_preview_artifact_registry import (
     cleanup_preview_artifact_objects,
     delete_preview_artifact as delete_registered_preview_artifact,
+    expire_preview_artifacts,
     register_preview_artifact,
 )
 from app.services.project_archive import ProjectArchiveError, build_project_export, parse_project_import
@@ -189,7 +190,7 @@ async def import_project(
         if on_conflict == "fail":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="يوجد مشروع بنفس الاسم داخل مساحة العمل.",
+                detail="يوجد مشروع بهذا الاسم في مساحة العمل",
             )
         base = f"{requested_name} (imported)"
         name = base[:120]
@@ -864,6 +865,7 @@ def list_preview_artifacts(
     db: Session = Depends(get_db),
 ):
     project = _get_project(project_id, current_user, db)
+    expire_preview_artifacts(db, project.id)
     return (
         db.query(ProjectPreviewArtifact)
         .filter(ProjectPreviewArtifact.project_id == project.id)
