@@ -155,6 +155,22 @@ describe("ProjectEditor", () => {
     vi.restoreAllMocks();
   });
 
+  it("exports an existing project", async () => {
+    const user = userEvent.setup();
+    const onExport = vi.fn();
+    render(
+      <ProjectEditor
+        project={{ id: 9, name: "Demo", description: null, instructions: null }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onExport={onExport}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "تصدير" }));
+    expect(onExport).toHaveBeenCalledWith(9);
+  });
+
   it("validates the project name", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn();
