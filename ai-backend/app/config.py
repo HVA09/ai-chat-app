@@ -109,6 +109,14 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://redis:6379/1"
     CACHE_TTL_SECONDS: int = 60
 
+    # Preview builds stay disabled unless an explicitly configured isolated builder exists.
+    PREVIEW_BUILDER_URL: str = ""
+    PREVIEW_BUILDER_TOKEN: str = ""
+    PREVIEW_BUILD_TIMEOUT_SECONDS: float = 120.0
+    PREVIEW_MAX_FILES: int = 200
+    PREVIEW_MAX_TOTAL_CHARS: int = 450_000
+    PREVIEW_MAX_ARTIFACT_BYTES: int = 10 * 1024 * 1024
+
     CLINICALTRIALS_BASE_URL: str = "https://clinicaltrials.gov/api/v2"
     RXNORM_BASE_URL: str = "https://rxnav.nlm.nih.gov/REST"
     PUBMED_BASE_URL: str = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
@@ -120,6 +128,20 @@ class Settings(BaseSettings):
     CMS_COVERAGE_BASE_URL: str = "https://api.coverage.cms.gov"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("PREVIEW_BUILD_TIMEOUT_SECONDS")
+    @classmethod
+    def validate_preview_build_timeout(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("PREVIEW_BUILD_TIMEOUT_SECONDS must be greater than 0")
+        return value
+
+    @field_validator("PREVIEW_MAX_FILES", "PREVIEW_MAX_TOTAL_CHARS", "PREVIEW_MAX_ARTIFACT_BYTES")
+    @classmethod
+    def validate_preview_limits(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("Preview security limits must be greater than 0")
+        return value
 
     @field_validator("AI_MONTHLY_BUDGET_USD")
     @classmethod
@@ -239,6 +261,10 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "OAUTH_CALLBACK_BASE_URL must be HTTPS when OAuth connectors are configured in production"
                 )
+            if self.PREVIEW_BUILDER_URL and not self.PREVIEW_BUILDER_URL.startswith("https://"):
+                raise ValueError("PREVIEW_BUILDER_URL must use HTTPS in production")
+            if self.PREVIEW_BUILDER_URL and not self.PREVIEW_BUILDER_TOKEN:
+                raise ValueError("PREVIEW_BUILDER_TOKEN is required when PREVIEW_BUILDER_URL is configured")
             if any("localhost" in origin or "127.0.0.1" in origin for origin in self.CORS_ORIGINS):
                 raise ValueError("Production CORS_ORIGINS cannot contain localhost")
         return self
