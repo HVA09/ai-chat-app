@@ -874,6 +874,30 @@ async def build_project_preview(
             detail="خدمة بناء أو نشر المعاينة غير متاحة أو رفضت الطلب.",
         ) from exc
 
+    artifact = (
+        db.query(ProjectArtifact)
+        .filter(
+            ProjectArtifact.project_id == project.id,
+            ProjectArtifact.artifact_id == published.artifact_id,
+        )
+        .first()
+    )
+    if artifact is None:
+        artifact = ProjectArtifact(
+            project_id=project.id,
+            artifact_id=published.artifact_id,
+            entrypoint=published.entrypoint,
+            artifact_size_bytes=build.artifact_size_bytes,
+            expires_at=published.expires_at,
+        )
+        db.add(artifact)
+    else:
+        artifact.entrypoint = published.entrypoint
+        artifact.artifact_size_bytes = build.artifact_size_bytes
+        artifact.expires_at = published.expires_at
+    db.commit()
+    _cleanup_project_artifacts(db, project.id)
+
     preview_path = preview_url_path(
         project.id,
         published.artifact_id,
