@@ -543,22 +543,45 @@
 - لم تتم إضافة أو ترقية أي موارد Render مدفوعة ضمن F3.3.
 
 ### F4 — Project Collaboration / Import-Export Improvements
-الحالة: **المرحلة التالية**
+الحالة: **مكتملة ومتحققة — F4.1 وF4.2**
 
-النطاق:
-- مشاركة المشاريع وأعضاء المشروع وصلاحياتهم.
-- استيراد/تصدير مشروع بشكل موثوق مع validation وسجل واضح.
-- تحسين إدارة artifacts وحالات التعارض.
-- مراجعة ownership/membership والعزل في كل مسار جديد قبل الدمج.
+#### F4.1 — Project Collaboration / Membership: **مكتمل ومتحقق**
+- تمت إضافة أعضاء المشروع والأدوار viewer وeditor وmanager.
+- تم تطبيق فحوصات القراءة والتعديل والإدارة على مسارات المشروع والملفات والذاكرة والمحادثة.
+- تم تشديد عزل المشاريع والمحادثات المرتبطة بالمشروع ومنع الاستمرار بعد سحب الصلاحية.
+- migration الخاصة بعضوية المشروع أضيفت مع اختبارات cross-workspace/cross-project.
+- PR #368 تم دمجه بنجاح.
+- commit الدمج بعد squash: 325fab92b8e0f6f7fcbbab4cba4e764748fe4976.
+- CI #3961: **نجح بالكامل**.
+- CodeQL #634: **نجح**.
+
+#### F4.2 — Project Import / Export: **مكتمل ومتحقق**
+- أضيفت صيغة ZIP versioned/canonical للمشروع تشمل metadata وsource files وproject memories.
+- تم تطبيق validation صارم للحجم، عدد الملفات، المسارات، UTF-8، checksums، والملفات غير المعلنة.
+- الاستيراد يدعم fail افتراضيًا عند تعارض الاسم، مع سياسة rename صريحة عند الحاجة.
+- تمت إضافة audit event للاستيراد الناجح.
+- تمت إضافة export/import controls إلى واجهة Projects.
+- تم الحفاظ على فحوصات access عند التصدير وعند تصفية المحادثات حسب المشروع.
+- PR #370 تم دمجه بنجاح بعد عدة جولات CI لإصلاح اختبارات الاختبار فقط.
+- commit F4.2 بعد squash: a12ee1a863640fbcb9bbdff3ed8a72c4a0de40eb.
+- CI #4008: **نجح بالكامل** — Backend، Frontend، SDK، Production Compose، Preview Builder.
+- CodeQL #645: **نجح**.
+- لم تتم إضافة أو ترقية أي موارد Render مدفوعة ضمن F4.1/F4.2.
+
+#### F4.3 — Artifacts & Conflict Management: **التالي**
+- تحسين دورة حياة artifacts وإدارتها داخل المشروع.
+- توحيد حالات التعارض وتجربة التعامل معها.
+- مراجعة ownership/membership والعزل بعد إضافة إدارة artifacts.
+- لا يبدأ F4.3 حتى تكون تغييرات F4.2 موثقة في main، وهو متحقق الآن.
 
 ### F5 — Advanced Agent Project Workflows
 - Agent workflows متعددة الخطوات للعمل على المشروع.
 - التخطيط والتنفيذ والتحقق وإعادة المحاولة مع checkpoints.
 - تشغيل مهام طويلة ومتابعة حالة العمل مع حدود الموارد والسياسات الأمنية.
 
-## قاعدة العمل بعد F3.3
-F3.3 مغلقة. الخطوة التالية هي F4، ولا نبدأ F5 قبل إغلاق F4 والتحقق من اختبارات العزل والاستيراد/التصدير وحالات التعارض.
+## قاعدة العمل بعد F4.2
+F4.2 مغلقة ومتحققة. الخطوة التالية هي F4.3 — Artifacts & Conflict Management، ولا نبدأ F5 قبل إغلاق F4 بالكامل والتحقق من إدارة artifacts وحالات التعارض والعزل.
 
 ترتيب التنفيذ الحالي:
-1. F4 — Project Collaboration / Import-Export Improvements
+1. F4.3 — Artifacts & Conflict Management
 2. F5 — Advanced Agent Project Workflows
