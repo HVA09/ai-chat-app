@@ -116,6 +116,7 @@ class Settings(BaseSettings):
     PREVIEW_MAX_FILES: int = 200
     PREVIEW_MAX_TOTAL_CHARS: int = 450_000
     PREVIEW_MAX_ARTIFACT_BYTES: int = 10 * 1024 * 1024
+    PREVIEW_TOKEN_TTL_SECONDS: int = 900
 
     CLINICALTRIALS_BASE_URL: str = "https://clinicaltrials.gov/api/v2"
     RXNORM_BASE_URL: str = "https://rxnav.nlm.nih.gov/REST"
@@ -134,6 +135,13 @@ class Settings(BaseSettings):
     def validate_preview_build_timeout(cls, value: float) -> float:
         if value <= 0:
             raise ValueError("PREVIEW_BUILD_TIMEOUT_SECONDS must be greater than 0")
+        return value
+
+    @field_validator("PREVIEW_TOKEN_TTL_SECONDS")
+    @classmethod
+    def validate_preview_token_ttl(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("PREVIEW_TOKEN_TTL_SECONDS must be greater than 0")
         return value
 
     @field_validator("PREVIEW_MAX_FILES", "PREVIEW_MAX_TOTAL_CHARS", "PREVIEW_MAX_ARTIFACT_BYTES")
