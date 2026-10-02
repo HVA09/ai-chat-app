@@ -361,7 +361,8 @@ describe("ProjectEditor", () => {
     expect(screen.getByText("index.html")).toBeInTheDocument();
     expect(screen.getByText("حجم artifact: 1 بايت")).toBeInTheDocument();
   });
-\n  it("loads and shows the isolated preview strategy plan", async () => {
+
+  it("loads and shows the isolated preview strategy plan", async () => {
     listProjectMemories.mockResolvedValue([]);
     listProjectFiles.mockResolvedValue([
       { id: 30, project_id: 3, path: "package.json", content_length: 80 },
