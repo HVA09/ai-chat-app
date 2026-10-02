@@ -1,6 +1,6 @@
 """Add AgentJob verification and retry checkpoints.
 
-Revision ID: 0078_agent_job_verification_retry
+Revision ID: 0078_agent_verify_retry
 Revises: 0077_merge_f4_f5_heads
 """
 
@@ -10,7 +10,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "0078_agent_job_verification_retry"
+revision: str = "0078_agent_verify_retry"
 down_revision: Union[str, None] = "0077_merge_f4_f5_heads"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
