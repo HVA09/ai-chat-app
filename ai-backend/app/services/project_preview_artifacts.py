@@ -180,7 +180,7 @@ def preview_url_path(project_id: int, artifact_id: str, token: str, entrypoint: 
     safe_entrypoint = _safe_zip_path(entrypoint)
     return (
         f"/projects/{project_id}/preview-artifacts/"
-        f"{artifact_id}/{quote(token, safe="")}/{quote(safe_entrypoint, safe="/")}"
+        f"{artifact_id}/{quote(token, safe='')}/{quote(safe_entrypoint, safe='/')}"
     )
 
 
