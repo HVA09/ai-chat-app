@@ -79,9 +79,22 @@ def test_preview_csp_blocks_network_api_access():
 def test_preview_route_sets_csp_sandbox_without_x_frame_deny(client, db_session, monkeypatch):
     from app.routers import projects as projects_router
 
+    token = _register_and_login(client, "preview-route-owner@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = client.post(
+        "/workspaces",
+        json={"name": "Preview Route"},
+        headers=headers,
+    ).json()
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Preview"},
+        headers=headers,
+    ).json()
+
     db_session.add(
         ProjectArtifact(
-            project_id=1,
+            project_id=project["id"],
             artifact_id="artifact",
             entrypoint="dist/index.html",
             artifact_size_bytes=1,
