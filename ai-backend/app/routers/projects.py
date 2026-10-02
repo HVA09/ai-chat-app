@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -232,11 +233,11 @@ async def import_project(
 
     try:
         db.commit()
-    except Exception as exc:
+    except IntegrityError as exc:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="تعذر إنشاء المشروع المستورد بسبب تعارض بيانات.",
+            detail="يوجد مشروع بهذا الاسم في مساحة العمل",
         ) from exc
 
     db.refresh(project)
@@ -277,7 +278,14 @@ def create_project(
         _get_accessible_assistant(payload.assistant_id, payload.workspace_id, current_user, db)
         project.assistant_id = payload.assistant_id
     db.add(project)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="يوجد مشروع بهذا الاسم في مساحة العمل",
+        ) from exc
     db.refresh(project)
     return project
 
@@ -339,7 +347,14 @@ def update_project(
     if payload.assistant_id is not None:
         _get_accessible_assistant(payload.assistant_id, project.workspace_id, current_user, db)
     project.assistant_id = payload.assistant_id
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="يوجد مشروع بهذا الاسم في مساحة العمل",
+        ) from exc
     db.refresh(project)
     return project
 
