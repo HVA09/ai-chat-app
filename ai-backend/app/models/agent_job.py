@@ -34,6 +34,9 @@ class AgentJob(Base):
     cancel_requested: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false", index=True
     )
+    pause_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false", index=True
+    )
     workflow_phase: Mapped[str] = mapped_column(
         String(20), nullable=False, default="queued", server_default="queued", index=True
     )

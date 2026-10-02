@@ -60,6 +60,7 @@ def test_create_agent_job_returns_accepted_without_running_inline(client, monkey
     assert response.status_code == 202
     payload = response.json()
     assert payload["status"] == "queued"
+    assert payload["pause_requested"] is False
     assert payload["celery_task_id"] == "celery-" + str(payload["id"])
     assert payload["agent_version"].startswith("agent-1-")
     assert payload["tool_policy_snapshot"]["allowed_tools"]
@@ -427,3 +428,156 @@ def test_execute_agent_job_does_not_retry_security_stop(client, db_session, monk
     assert job.checkpoint["phase"] == "failed"
     assert steps[0].status == "failed"
     assert steps[0].attempt_count == 1
+
+
+def test_pause_and_resume_queued_agent_job(client, monkeypatch):
+    token = _register_and_login(client, "agent-job-pause-queued@example.com")
+    workspace = _create_workspace(client, token)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    import app.routers.agent_jobs as agent_jobs_router
+
+    fake_task = _FakeAgentTask()
+    monkeypatch.setattr(agent_jobs_router, "execute_agent_job", fake_task)
+    monkeypatch.setattr(agent_jobs_router, "celery_app", object())
+
+    created = client.post(
+        "/agent-jobs",
+        json={"workspace_id": workspace["id"], "task": "مهمة قابلة للإيقاف"},
+        headers=headers,
+    )
+    assert created.status_code == 202
+    job_id = created.json()["id"]
+
+    paused = client.post(f"/agent-jobs/{job_id}/pause", headers=headers)
+    assert paused.status_code == 200
+    assert paused.json()["status"] == "paused"
+    assert paused.json()["pause_requested"] is True
+    assert paused.json()["workflow_phase"] == "paused"
+
+    resumed = client.post(f"/agent-jobs/{job_id}/resume", headers=headers)
+    assert resumed.status_code == 202
+    assert resumed.json()["status"] == "queued"
+    assert resumed.json()["pause_requested"] is False
+    assert fake_task.calls[-1] == job_id
+
+
+def test_execute_agent_job_pauses_during_runtime_and_resumes_from_checkpoint(
+    client, db_session, monkeypatch
+):
+    token = _register_and_login(client, "agent-job-pause-running@example.com")
+    workspace = _create_workspace(client, token)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    import app.routers.agent_jobs as agent_jobs_router
+
+    fake_task = _FakeAgentTask()
+    monkeypatch.setattr(agent_jobs_router, "execute_agent_job", fake_task)
+    monkeypatch.setattr(agent_jobs_router, "celery_app", object())
+
+    created = client.post(
+        "/agent-jobs",
+        json={"workspace_id": workspace["id"], "task": "إيقاف أثناء التنفيذ"},
+        headers=headers,
+    )
+    assert created.status_code == 202
+    job_id = created.json()["id"]
+
+    class FakeProvider:
+        name = "fake"
+
+    class FakeResult:
+        run_id = "run-after-pause"
+        status = "completed"
+        text = "تمت المتابعة بعد الإيقاف"
+        sources = [{"id": "pause"}]
+        input_tokens = 4
+        output_tokens = 5
+
+    class FakeRuntime:
+        calls = 0
+
+        def __init__(self, provider, event_sink):
+            self.provider = provider
+            self.event_sink = event_sink
+
+        async def run(self, **kwargs):
+            type(self).calls += 1
+            if type(self).calls == 1:
+                job = db_session.get(AgentJob, job_id)
+                job.pause_requested = True
+                db_session.commit()
+            await self.event_sink({"type": "runtime_start"})
+            return FakeResult()
+
+    monkeypatch.setattr(tasks_module, "get_provider", lambda model: FakeProvider())
+    monkeypatch.setattr(tasks_module, "AgentRuntime", FakeRuntime)
+    monkeypatch.setattr(tasks_module, "get_daily_ai_limit", lambda user, db: 100)
+
+    tasks_module._execute_agent_job(job_id, db=db_session)
+
+    db_session.expire_all()
+    job = db_session.get(AgentJob, job_id)
+    step = (
+        db_session.query(AgentWorkflowStep)
+        .filter(AgentWorkflowStep.agent_job_id == job_id)
+        .order_by(AgentWorkflowStep.sequence.asc())
+        .first()
+    )
+    assert job.status == "paused"
+    assert job.pause_requested is True
+    assert job.workflow_phase == "paused"
+    assert step.status == "paused"
+    assert step.attempt_count == 1
+    assert job.checkpoint["phase"] == "paused"
+
+    resumed = client.post(f"/agent-jobs/{job_id}/resume", headers=headers)
+    assert resumed.status_code == 202
+
+    # The resumed execution should clear the pause flag and run the step again.
+    job.pause_requested = False
+    db_session.commit()
+    tasks_module._execute_agent_job(job_id, db=db_session)
+
+    db_session.expire_all()
+    job = db_session.get(AgentJob, job_id)
+    step = (
+        db_session.query(AgentWorkflowStep)
+        .filter(AgentWorkflowStep.agent_job_id == job_id)
+        .order_by(AgentWorkflowStep.sequence.asc())
+        .first()
+    )
+    assert job.status == "succeeded"
+    assert job.pause_requested is False
+    assert step.status == "succeeded"
+    assert step.attempt_count == 2
+    assert FakeRuntime.calls == 2
+
+
+def test_cancel_paused_agent_job_transitions_to_cancelled(client, monkeypatch):
+    token = _register_and_login(client, "agent-job-cancel-paused@example.com")
+    workspace = _create_workspace(client, token)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    import app.routers.agent_jobs as agent_jobs_router
+
+    fake_task = _FakeAgentTask()
+    monkeypatch.setattr(agent_jobs_router, "execute_agent_job", fake_task)
+    monkeypatch.setattr(agent_jobs_router, "celery_app", object())
+
+    created = client.post(
+        "/agent-jobs",
+        json={"workspace_id": workspace["id"], "task": "إيقاف ثم إلغاء"},
+        headers=headers,
+    )
+    assert created.status_code == 202
+    job_id = created.json()["id"]
+
+    paused = client.post(f"/agent-jobs/{job_id}/pause", headers=headers)
+    assert paused.status_code == 200
+    assert paused.json()["status"] == "paused"
+
+    cancelled = client.post(f"/agent-jobs/{job_id}/cancel", headers=headers)
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert cancelled.json()["cancel_requested"] is True
