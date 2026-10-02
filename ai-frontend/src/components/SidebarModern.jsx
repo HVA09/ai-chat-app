@@ -57,6 +57,7 @@ export default function SidebarModern({
   selectedProjectId = null,
   onSelectProject = () => {},
   onCreateProject = () => {},
+  onImportProject = () => {},
   onRenameProject = () => {},
   onDeleteProject = () => {},
   tags = [],
@@ -99,6 +100,7 @@ export default function SidebarModern({
   const [openSection, setOpenSection] = useState(null);
   const [contextOpenId, setContextOpenId] = useState(null);
   const importRef = useRef(null);
+  const projectImportRef = useRef(null);
 
   useEffect(() => {
     const handleOpen = () => setMobileOpen(true);
@@ -301,7 +303,7 @@ export default function SidebarModern({
 
           {libraryOpen ? (
             <div className="modern-library-scroll">
-              <Section title={t("sidebar.projectsTitle")} icon="project" open={openSection === "projects"} onToggle={() => toggleSection("projects")} action={<button type="button" className="modern-section-add" onClick={onCreateProject}>+</button>}>
+              <Section title={t("sidebar.projectsTitle")} icon="project" open={openSection === "projects"} onToggle={() => toggleSection("projects")} action={<div className="flex items-center gap-1"><label className="modern-section-add cursor-pointer" title={t("sidebar.importProjectTitle")}><Icon name="upload" size={13} /><input ref={projectImportRef} type="file" accept=".zip,application/zip" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onImportProject(file); }} /></label><button type="button" className="modern-section-add" onClick={onCreateProject} title={t("sidebar.projectCreateTitle")}>+</button></div>}>
                 <button type="button" onClick={() => { closeMobile(); onSelectProject(null); }} className={`modern-library-item ${selectedProjectId === null ? "active" : ""}`}><Icon name="project" size={14} /><span>{t("sidebar.allProjects")}</span></button>
                 {visibleProjects.map((project) => (
                   <div key={project.id} className="modern-library-item-group">
