@@ -14,6 +14,7 @@ class AgentJob(Base):
         Index("ix_agent_jobs_user_created_at", "user_id", "created_at"),
         Index("ix_agent_jobs_workspace_created_at", "workspace_id", "created_at"),
         Index("ix_agent_jobs_status_created_at", "status", "created_at"),
+        Index("ix_agent_jobs_workflow_phase_created_at", "workflow_phase", "created_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -33,6 +34,17 @@ class AgentJob(Base):
     cancel_requested: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false", index=True
     )
+    workflow_phase: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="queued", server_default="queued", index=True
+    )
+    retry_count: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default="0"
+    )
+    max_retries: Mapped[int] = mapped_column(
+        nullable=False, default=2, server_default="2"
+    )
+    checkpoint: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    checkpoint_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     celery_task_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True, unique=True, index=True
     )

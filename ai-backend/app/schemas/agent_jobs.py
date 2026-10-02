@@ -34,6 +34,11 @@ class AgentJobOut(BaseModel):
     task: str
     status: str
     cancel_requested: bool
+    workflow_phase: str
+    retry_count: int
+    max_retries: int
+    checkpoint: dict | None
+    checkpoint_at: datetime | None
     agent_version: str
     tool_policy_snapshot: dict | None
     celery_task_id: str | None

@@ -155,6 +155,10 @@ def test_execute_agent_job_persists_success(client, db_session, monkeypatch):
     assert job.input_tokens == 12
     assert job.output_tokens == 8
     assert job.finished_at is not None
+    assert job.workflow_phase == "completed"
+    assert job.retry_count == 0
+    assert job.max_retries == 2
+    assert job.checkpoint["phase"] == "completed"
 
 
 def test_create_agent_job_persists_workflow_steps(client, monkeypatch):
@@ -279,3 +283,147 @@ def test_agent_workflow_persists_checkpoints_and_resume_skips_completed_steps(
     assert steps[1].attempt_count == 2
     assert steps[2].attempt_count == 1
     assert calls == ["نفذ الأولى", "نفذ الثانية", "نفذ الثانية", "نفذ الثالثة"]
+
+
+def test_execute_agent_job_retries_step_after_verification_failure(client, db_session, monkeypatch):
+    token = _register_and_login(client, "agent-job-f5-2-retry@example.com")
+    workspace = _create_workspace(client, token)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    import app.routers.agent_jobs as agent_jobs_router
+
+    fake_task = _FakeAgentTask()
+    monkeypatch.setattr(agent_jobs_router, "execute_agent_job", fake_task)
+    monkeypatch.setattr(agent_jobs_router, "celery_app", object())
+
+    created = client.post(
+        "/agent-jobs",
+        json={"workspace_id": workspace["id"], "task": "أعد المحاولة بعد فشل التحقق"},
+        headers=headers,
+    )
+    assert created.status_code == 202
+    job_id = created.json()["id"]
+
+    job = db_session.get(AgentJob, job_id)
+    job.max_retries = 1
+    db_session.commit()
+
+    class FakeProvider:
+        name = "fake"
+
+    class FakeResult:
+        def __init__(self, run_id, status, text):
+            self.run_id = run_id
+            self.status = status
+            self.text = text
+            self.sources = [{"id": run_id}]
+            self.input_tokens = 4
+            self.output_tokens = 6
+
+    class FakeRuntime:
+        calls = 0
+
+        def __init__(self, provider, event_sink):
+            self.provider = provider
+            self.event_sink = event_sink
+
+        async def run(self, **kwargs):
+            type(self).calls += 1
+            await self.event_sink({"type": "runtime_start"})
+            if type(self).calls == 1:
+                return FakeResult("run-failed", "failed", "")
+            return FakeResult("run-success", "completed", "تم التنفيذ بعد إعادة المحاولة")
+
+    monkeypatch.setattr(tasks_module, "get_provider", lambda model: FakeProvider())
+    monkeypatch.setattr(tasks_module, "AgentRuntime", FakeRuntime)
+    monkeypatch.setattr(tasks_module, "get_daily_ai_limit", lambda user, db: 100)
+
+    tasks_module._execute_agent_job(job_id, db=db_session)
+
+    db_session.expire_all()
+    job = db_session.get(AgentJob, job_id)
+    steps = (
+        db_session.query(AgentWorkflowStep)
+        .filter(AgentWorkflowStep.agent_job_id == job_id)
+        .order_by(AgentWorkflowStep.sequence.asc())
+        .all()
+    )
+    assert job.status == "succeeded"
+    assert FakeRuntime.calls == 2
+    assert job.retry_count == 1
+    assert job.input_tokens == 8
+    assert job.output_tokens == 12
+    assert job.workflow_phase == "completed"
+    assert job.checkpoint["phase"] == "completed"
+    assert job.checkpoint["retry_count"] == 1
+    assert steps[0].status == "succeeded"
+    assert steps[0].attempt_count == 2
+
+
+def test_execute_agent_job_does_not_retry_security_stop(client, db_session, monkeypatch):
+    token = _register_and_login(client, "agent-job-f5-2-stop@example.com")
+    workspace = _create_workspace(client, token)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    import app.routers.agent_jobs as agent_jobs_router
+
+    fake_task = _FakeAgentTask()
+    monkeypatch.setattr(agent_jobs_router, "execute_agent_job", fake_task)
+    monkeypatch.setattr(agent_jobs_router, "celery_app", object())
+
+    created = client.post(
+        "/agent-jobs",
+        json={"workspace_id": workspace["id"], "task": "لا تعاود بعد توقف أمني"},
+        headers=headers,
+    )
+    assert created.status_code == 202
+    job_id = created.json()["id"]
+
+    job = db_session.get(AgentJob, job_id)
+    job.max_retries = 2
+    db_session.commit()
+
+    class FakeProvider:
+        name = "fake"
+
+    class FakeResult:
+        run_id = "run-stop"
+        status = "stopped"
+        text = "تم إيقاف التشغيل بسبب حاجز أمني"
+        sources = [{"id": "security-stop"}]
+        input_tokens = 3
+        output_tokens = 5
+
+    class FakeRuntime:
+        calls = 0
+
+        def __init__(self, provider, event_sink):
+            self.provider = provider
+            self.event_sink = event_sink
+
+        async def run(self, **kwargs):
+            type(self).calls += 1
+            await self.event_sink({"type": "runtime_start"})
+            return FakeResult()
+
+    monkeypatch.setattr(tasks_module, "get_provider", lambda model: FakeProvider())
+    monkeypatch.setattr(tasks_module, "AgentRuntime", FakeRuntime)
+    monkeypatch.setattr(tasks_module, "get_daily_ai_limit", lambda user, db: 100)
+
+    tasks_module._execute_agent_job(job_id, db=db_session)
+
+    db_session.expire_all()
+    job = db_session.get(AgentJob, job_id)
+    steps = (
+        db_session.query(AgentWorkflowStep)
+        .filter(AgentWorkflowStep.agent_job_id == job_id)
+        .order_by(AgentWorkflowStep.sequence.asc())
+        .all()
+    )
+    assert job.status == "failed"
+    assert FakeRuntime.calls == 1
+    assert job.retry_count == 0
+    assert job.workflow_phase == "failed"
+    assert job.checkpoint["phase"] == "failed"
+    assert steps[0].status == "failed"
+    assert steps[0].attempt_count == 1

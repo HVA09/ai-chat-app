@@ -49,6 +49,40 @@ async def _agent_job_event_sink(db, job_id: int, event: dict) -> None:
         raise AgentJobCancelled("تم إلغاء مهمة الوكيل.")
 
 
+def _save_agent_job_checkpoint(
+    db,
+    job: AgentJob,
+    *,
+    phase: str,
+    attempt: int,
+    step_sequence: int | None = None,
+    status: str | None = None,
+    detail: str | None = None,
+) -> None:
+    now = datetime.now(timezone.utc)
+    job.workflow_phase = phase
+    job.checkpoint_at = now
+    job.checkpoint = {
+        "phase": phase,
+        "attempt": attempt,
+        "retry_count": job.retry_count,
+        "step_sequence": step_sequence,
+        "status": status,
+        "detail": detail,
+        "updated_at": now.isoformat(),
+    }
+
+
+def _verify_agent_result(result) -> bool:
+    return result.status == "completed" and bool((result.text or "").strip())
+
+
+def _is_retryable_agent_result(result) -> bool:
+    return result.status == "failed" or (
+        result.status == "completed" and not bool((result.text or "").strip())
+    )
+
+
 def _sync_scheduled_agent_run(
     db,
     job: AgentJob,
@@ -135,68 +169,168 @@ def _execute_agent_workflow(db, job, user, workspace, conversation, provider, ev
             db.commit()
             raise RuntimeError(f"الخطوة {step.sequence} تجاوزت الحد الأقصى للمحاولات.")
 
-        step.status = "running"
-        step.attempt_count += 1
-        step.started_at = datetime.now(timezone.utc)
-        step.error = None
-        db.commit()
+        while True:
+            refreshed_job = db.get(AgentJob, job.id)
+            if refreshed_job is None:
+                raise RuntimeError("مهمة الوكيل غير موجودة.")
+            if refreshed_job.cancel_requested:
+                step.status = "cancelled"
+                step.finished_at = datetime.now(timezone.utc)
+                db.commit()
+                raise AgentJobCancelled("تم إلغاء مهمة الوكيل.")
 
-        history = []
-        for previous in previous_results[-3:]:
-            history.append(
-                {
-                    "role": "assistant",
-                    "content": f"Checkpoint من خطوة سابقة ({previous['title']}): {previous['content']}",
+            if step.attempt_count >= 3:
+                step.status = "failed"
+                step.error = "تم بلوغ الحد الأقصى لمحاولات الخطوة."
+                step.finished_at = datetime.now(timezone.utc)
+                _save_agent_job_checkpoint(
+                    db,
+                    refreshed_job,
+                    phase="failed",
+                    attempt=step.attempt_count,
+                    step_sequence=step.sequence,
+                    detail=step.error,
+                )
+                db.commit()
+                return {
+                    "status": "failed",
+                    "run_id": last_run_id,
+                    "text": final_text,
+                    "sources": sources,
+                    "input_tokens": total_input_tokens or None,
+                    "output_tokens": total_output_tokens or None,
                 }
-            )
 
-        result = asyncio.run(
-            AgentRuntime(
-                provider=provider,
-                event_sink=event_sink,
-            ).run(
-                task=step.prompt,
-                history=history,
-                conversation=conversation,
-                current_user=user,
-                db=db,
+            step.status = "running"
+            step.attempt_count += 1
+            step.started_at = datetime.now(timezone.utc)
+            step.error = None
+            if step.attempt_count > 1:
+                refreshed_job.retry_count += 1
+            _save_agent_job_checkpoint(
+                db,
+                refreshed_job,
+                phase="executing",
+                attempt=step.attempt_count,
+                step_sequence=step.sequence,
+                detail="بدأ تنفيذ محاولة الخطوة.",
             )
-        )
-        total_input_tokens += result.input_tokens or 0
-        total_output_tokens += result.output_tokens or 0
-        sources.extend(result.sources or [])
-        last_run_id = result.run_id
-        final_text = result.text
-
-        step.run_id = result.run_id
-        step.result_text = result.text
-        step.result_sources = result.sources
-        step.finished_at = datetime.now(timezone.utc)
-        if result.status == "completed":
-            step.status = "succeeded"
-            step.checkpoint = {
-                "sequence": step.sequence,
-                "status": "succeeded",
-                "run_id": result.run_id,
-                "result_chars": len(result.text or ""),
-                "completed_at": step.finished_at.isoformat(),
-            }
             db.commit()
-            previous_results.append(
-                {
-                    "title": step.title,
-                    "content": (result.text or "")[-8000:],
-                }
+
+            history = []
+            for previous in previous_results[-3:]:
+                history.append(
+                    {
+                        "role": "assistant",
+                        "content": f"Checkpoint من خطوة سابقة ({previous['title']}): {previous['content']}",
+                    }
+                )
+
+            result = asyncio.run(
+                AgentRuntime(
+                    provider=provider,
+                    event_sink=event_sink,
+                ).run(
+                    task=step.prompt,
+                    history=history,
+                    conversation=conversation,
+                    current_user=user,
+                    db=db,
+                )
             )
-        else:
+            total_input_tokens += result.input_tokens or 0
+            total_output_tokens += result.output_tokens or 0
+            sources.extend(result.sources or [])
+            last_run_id = result.run_id
+            final_text = result.text
+
+            step.run_id = result.run_id
+            step.result_text = result.text
+            step.result_sources = result.sources
+            step.finished_at = datetime.now(timezone.utc)
+            _save_agent_job_checkpoint(
+                db,
+                refreshed_job,
+                phase="verifying",
+                attempt=step.attempt_count,
+                step_sequence=step.sequence,
+                status=result.status,
+                detail="التحقق من نتيجة الخطوة.",
+            )
+            db.commit()
+
+            if _verify_agent_result(result):
+                step.status = "succeeded"
+                step.error = None
+                step.checkpoint = {
+                    "sequence": step.sequence,
+                    "status": "succeeded",
+                    "run_id": result.run_id,
+                    "result_chars": len(result.text or ""),
+                    "attempt": step.attempt_count,
+                    "completed_at": step.finished_at.isoformat(),
+                }
+                _save_agent_job_checkpoint(
+                    db,
+                    refreshed_job,
+                    phase="step_completed",
+                    attempt=step.attempt_count,
+                    step_sequence=step.sequence,
+                    status=result.status,
+                    detail="اجتازت الخطوة التحقق.",
+                )
+                db.commit()
+                previous_results.append(
+                    {
+                        "title": step.title,
+                        "content": (result.text or "")[-8000:],
+                    }
+                )
+                break
+
+            if (
+                _is_retryable_agent_result(result)
+                and refreshed_job.retry_count < refreshed_job.max_retries
+                and step.attempt_count < 3
+            ):
+                _ensure_ai_quota(user, workspace, db)
+                enforce_ai_cost_budget(user, db)
+                step.status = "queued"
+                step.error = "لم تجتز الخطوة التحقق؛ ستتم إعادة المحاولة."
+                _save_agent_job_checkpoint(
+                    db,
+                    refreshed_job,
+                    phase="retrying",
+                    attempt=step.attempt_count,
+                    step_sequence=step.sequence,
+                    status=result.status,
+                    detail="سيتم إعادة المحاولة مع الاحتفاظ بالـcheckpoint.",
+                )
+                db.commit()
+                continue
+
             step.status = "failed"
-            step.error = "توقفت الخطوة عند حد أمان الوكيل."
+            step.error = (
+                "توقفت الخطوة عند حاجز أمان غير قابل لإعادة المحاولة."
+                if result.status == "stopped"
+                else "استُنفدت محاولات التحقق المسموح بها."
+            )
             step.checkpoint = {
                 "sequence": step.sequence,
                 "status": "failed",
                 "run_id": result.run_id,
+                "attempt": step.attempt_count,
                 "completed_at": step.finished_at.isoformat(),
             }
+            _save_agent_job_checkpoint(
+                db,
+                refreshed_job,
+                phase="failed",
+                attempt=step.attempt_count,
+                step_sequence=step.sequence,
+                status=result.status,
+                detail=step.error,
+            )
             db.commit()
             return {
                 "status": "failed",
@@ -231,6 +365,13 @@ def _execute_agent_job(job_id: int, db=None) -> None:
         if job.cancel_requested:
             job.status = "cancelled"
             job.finished_at = now
+            _save_agent_job_checkpoint(
+                db,
+                job,
+                phase="cancelled",
+                attempt=job.retry_count,
+                detail="تم إلغاء المهمة المجدولة.",
+            )
             _sync_scheduled_agent_run(
                 db,
                 job,
@@ -284,7 +425,15 @@ def _execute_agent_job(job_id: int, db=None) -> None:
         provider = get_provider(model)
         job.status = "running"
         job.started_at = now
+        job.finished_at = None
         job.error = None
+        _save_agent_job_checkpoint(
+            db,
+            job,
+            phase="executing",
+            attempt=0,
+            detail="بدأ تنفيذ Agent workflow.",
+        )
         db.commit()
 
         async def event_sink(event: dict) -> None:
@@ -318,6 +467,13 @@ def _execute_agent_job(job_id: int, db=None) -> None:
 
         if workflow_result["status"] == "completed":
             refreshed_job.status = "succeeded"
+            _save_agent_job_checkpoint(
+                db,
+                refreshed_job,
+                phase="completed",
+                attempt=refreshed_job.retry_count,
+                detail="اكتمل workflow واجتازت خطواته التحقق.",
+            )
             db.add(
                 Message(
                     conversation_id=conversation.id,
@@ -335,6 +491,13 @@ def _execute_agent_job(job_id: int, db=None) -> None:
         else:
             refreshed_job.status = "failed"
             refreshed_job.error = "فشل تنفيذ إحدى خطوات سير العمل."
+            _save_agent_job_checkpoint(
+                db,
+                refreshed_job,
+                phase="failed",
+                attempt=refreshed_job.retry_count,
+                detail=refreshed_job.error,
+            )
             _sync_scheduled_agent_run(
                 db,
                 refreshed_job,
@@ -361,6 +524,13 @@ def _execute_agent_job(job_id: int, db=None) -> None:
         if job is not None:
             job.status = "cancelled"
             job.finished_at = datetime.now(timezone.utc)
+            _save_agent_job_checkpoint(
+                db,
+                job,
+                phase="cancelled",
+                attempt=job.retry_count,
+                detail="تم إلغاء مهمة الوكيل.",
+            )
             _sync_scheduled_agent_run(
                 db,
                 job,
@@ -376,6 +546,13 @@ def _execute_agent_job(job_id: int, db=None) -> None:
             job.status = "failed"
             job.error = str(exc)[:1000]
             job.finished_at = datetime.now(timezone.utc)
+            _save_agent_job_checkpoint(
+                db,
+                job,
+                phase="failed",
+                attempt=job.retry_count,
+                detail=job.error,
+            )
             _sync_scheduled_agent_run(
                 db,
                 job,
