@@ -26,6 +26,7 @@ from app.models.usage_log import UsageLog
 from app.models.scheduled_task import ScheduledTask
 from app.models.scheduled_task_run import ScheduledTaskRun, ScheduledTaskRunStatus
 from app.models.agent_job import AgentJob
+from app.models.agent_workflow_step import AgentWorkflowStep
 from app.models.file_attachment import FileAttachment
 from app.models.file_chunk import FileChunk
 from app.models.conversation_file_link import ConversationFileLink
@@ -73,6 +74,7 @@ __all__ = [
     "ScheduledTaskRun",
     "ScheduledTaskRunStatus",
     "AgentJob",
+    "AgentWorkflowStep",
     "FileAttachment",
     "FileChunk",
     "ConversationFileLink",

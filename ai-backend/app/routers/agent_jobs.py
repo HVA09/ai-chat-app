@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.agent_job import AgentJob
+from app.models.agent_workflow_step import AgentWorkflowStep
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
@@ -83,6 +84,14 @@ def create_agent_job(
         )
     )
 
+    try:
+        normalized_steps = payload.normalized_steps()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
     job = AgentJob(
         user_id=current_user.id,
         workspace_id=payload.workspace_id,
@@ -93,6 +102,17 @@ def create_agent_job(
         tool_policy_snapshot=get_agent_tool_policy_snapshot(),
     )
     db.add(job)
+    db.flush()
+    for sequence, (title, prompt) in enumerate(normalized_steps, start=1):
+        db.add(
+            AgentWorkflowStep(
+                agent_job_id=job.id,
+                sequence=sequence,
+                title=title,
+                prompt=prompt,
+                status="queued",
+            )
+        )
     db.commit()
     db.refresh(job)
 
@@ -146,6 +166,71 @@ def get_agent_job(
     db: Session = Depends(get_db),
 ):
     return _get_owned_job(job_id, current_user, db)
+
+
+@router.post("/{job_id}/resume", response_model=AgentJobOut, status_code=status.HTTP_202_ACCEPTED)
+def resume_agent_job(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    job = _get_owned_job(job_id, current_user, db)
+    if job.status not in {"failed", "cancelled"}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="لا يمكن استئناف مهمة ما لم تكن متوقفة بسبب فشل أو إلغاء.",
+        )
+    pending = (
+        db.query(AgentWorkflowStep)
+        .filter(
+            AgentWorkflowStep.agent_job_id == job.id,
+            AgentWorkflowStep.status != "succeeded",
+        )
+        .order_by(AgentWorkflowStep.sequence.asc())
+        .first()
+    )
+    if pending is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="اكتملت جميع خطوات سير العمل بالفعل.",
+        )
+    if pending.attempt_count >= 3:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="تم بلوغ الحد الأقصى لمحاولات هذه الخطوة.",
+        )
+    pending.status = "queued"
+    pending.error = None
+    job.cancel_requested = False
+    job.status = "queued"
+    job.error = None
+    job.finished_at = None
+    db.commit()
+
+    if execute_agent_job is None or celery_app is None:
+        job.status = "failed"
+        job.error = "خدمة المهام الخلفية غير متاحة حاليًا."
+        job.finished_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="خدمة المهام الخلفية غير متاحة حاليًا",
+        )
+    try:
+        async_result = execute_agent_job.delay(job.id)
+        job.celery_task_id = async_result.id
+        db.commit()
+        db.refresh(job)
+    except Exception as exc:
+        job.status = "failed"
+        job.error = "تعذر إعادة جدولة مهمة الوكيل."
+        job.finished_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="تعذر استئناف مهمة الوكيل حاليًا",
+        ) from exc
+    return job
 
 
 @router.post("/{job_id}/cancel", response_model=AgentJobCancelOut)
