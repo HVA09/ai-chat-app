@@ -32,7 +32,8 @@ def test_project_archive_round_trip_is_canonical(db_session, client):
         "/auth/login",
         json={"email": "archive-roundtrip@example.com", "password": "StrongPass123"},
     )
-    access_token = login.json()["access_token"]
+    access_token = client.cookies.get("access_token")
+    assert access_token
     headers = {"Authorization": f"Bearer {access_token}"}
     workspace = client.post(
         "/workspaces",
@@ -130,7 +131,9 @@ def _login(client, email):
         json={"email": email, "password": "StrongPass123"},
     )
     assert logged.status_code == 200
-    return {"Authorization": f"Bearer {logged.json()['access_token']}"}
+    access_token = client.cookies.get("access_token")
+    assert access_token
+    return {"Authorization": f"Bearer {access_token}"}
 
 
 def _make_archive(name="Imported"):
