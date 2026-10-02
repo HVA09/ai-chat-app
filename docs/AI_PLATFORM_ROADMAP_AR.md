@@ -513,29 +513,52 @@
 - PR #360: **Merged**.
 - لا توجد موارد مدفوعة جديدة مطلوبة لـF3.
 
-### الخطوة التالية — F3.3 — Advanced Preview Architecture
-الهدف التالي ليس تشغيل الكود غير الموثوق داخل التطبيق الرئيسي، بل بناء عقد آمن لمعاينة المشاريع التي تحتاج build/runtime.
+### F3.3 — Advanced Preview Architecture: **مكتملة ومتحققة — 2026-10-02**
+الهدف كان بناء عقد آمن لمعاينة المشاريع التي تحتاج build/runtime بدون تشغيل كود المستخدم داخل origin التطبيق الرئيسي.
 
-النطاق:
-- تحليل نوع المشروع وتحديد preview strategy.
-- إنشاء preview artifact ثابت في بيئة تنفيذ منفصلة عن واجهة التطبيق.
-- دعم مشاريع JavaScript/React بعد build مع فصل صارم بين artifact والمستخدم.
-- تقديم preview عبر أصل/مسار منفصل مع CSP وsandbox مناسبين.
-- عدم اعتبار Python process sandbox الحالي عزلًا container/kernel كاملًا.
-- اختبارات أمنية تمنع تنفيذ كود المستخدم المولّد داخل origin التطبيق الرئيسي.
+ما تم:
+- تحليل نوع المشروع وتحديد استراتيجية المعاينة.
+- بناء JavaScript/React داخل خدمة Builder منفصلة عن Backend.
+- منع Node/npm من الدخول إلى صورة Backend.
+- تشغيل build عبر Builder معزول مع bubblewrap وتعطيل الشبكة أثناء خطوة build.
+- إخراج artifact محدود الحجم والملفات، مع رفض symlinks ومسارات ZIP غير الآمنة.
+- نشر artifact كملفات منفصلة تحت مسار مشروع محدد بدل تنفيذ ZIP داخل Backend.
+- توكن معاينة موقّع ومؤقت ومقيد بالمشروع وartifact.
+- تقديم ملفات المعاينة عبر مسار مخصص مع CSP وsandbox وconnect-src 'none'.
+- عرض المعاينة التنفيذية داخل iframe sandbox="allow-scripts" بدون allow-same-origin.
+- الحفاظ على المعاينة الثابتة السابقة باستخدام sandbox="".
+- إضافة اختبارات أمنية لمسارات ZIP، توكن المعاينة، CSP، عزل workspace، ونشر artifact.
+- عدم تشغيل artifact أو JavaScript المشروع داخل خدمة Backend نفسها.
+
+### تحقق F3.3 النهائي — 2026-10-02
+- PR #362: **Merged** — أساس preview-plan.
+- PR #363: **Merged** — عقد Builder المعزول.
+- PR #364: **Merged** — خدمة Preview Builder مستقلة.
+- PR #365: **Merged** — ربط نتائج build بواجهة ProjectEditor.
+- PR #366: **Merged** — Secure Preview Origin/CSP/artifact serving.
+- CI #3924 على commit c6be6165611b8380849dab2901f39b2f0a505637: **نجح بالكامل** — Backend، Frontend، SDK، Production Compose، Preview Builder.
+- CodeQL #623: **نجح**.
+- Production Smoke #171: **نجح** بعد الدمج.
+- Publish backend image #355: **نجح** بعد الدمج.
+- لم تتم إضافة أو ترقية أي موارد Render مدفوعة ضمن F3.3.
 
 ### F4 — Project Collaboration / Import-Export Improvements
+الحالة: **المرحلة التالية**
+
+النطاق:
 - مشاركة المشاريع وأعضاء المشروع وصلاحياتهم.
 - استيراد/تصدير مشروع بشكل موثوق مع validation وسجل واضح.
 - تحسين إدارة artifacts وحالات التعارض.
+- مراجعة ownership/membership والعزل في كل مسار جديد قبل الدمج.
 
 ### F5 — Advanced Agent Project Workflows
 - Agent workflows متعددة الخطوات للعمل على المشروع.
 - التخطيط والتنفيذ والتحقق وإعادة المحاولة مع checkpoints.
 - تشغيل مهام طويلة ومتابعة حالة العمل مع حدود الموارد والسياسات الأمنية.
 
-## قاعدة العمل الجديدة بعد F3
-لا ننتقل إلى F4 قبل إغلاق F3.3 والتحقق الأمني والتشغيلي المناسب. ترتيب التنفيذ الحالي:
-1. F3.3 — Advanced Preview Architecture
-2. F4 — Project Collaboration / Import-Export Improvements
-3. F5 — Advanced Agent Project Workflows
+## قاعدة العمل بعد F3.3
+F3.3 مغلقة. الخطوة التالية هي F4، ولا نبدأ F5 قبل إغلاق F4 والتحقق من اختبارات العزل والاستيراد/التصدير وحالات التعارض.
+
+ترتيب التنفيذ الحالي:
+1. F4 — Project Collaboration / Import-Export Improvements
+2. F5 — Advanced Agent Project Workflows
