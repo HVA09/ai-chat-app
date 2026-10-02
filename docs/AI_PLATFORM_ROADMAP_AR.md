@@ -543,22 +543,51 @@
 - لم تتم إضافة أو ترقية أي موارد Render مدفوعة ضمن F3.3.
 
 ### F4 — Project Collaboration / Import-Export Improvements
-الحالة: **المرحلة التالية**
+الحالة: **F4.1 وF4.2 مكتملتان ومتحققتان على `main`**
 
-النطاق:
-- مشاركة المشاريع وأعضاء المشروع وصلاحياتهم.
-- استيراد/تصدير مشروع بشكل موثوق مع validation وسجل واضح.
-- تحسين إدارة artifacts وحالات التعارض.
-- مراجعة ownership/membership والعزل في كل مسار جديد قبل الدمج.
+#### F4.1 — Project Collaboration / Membership: **مكتمل ومتحقق**
+- أضيفت عضوية المشروع بأدوار `viewer` و`editor` و`manager`.
+- أضيفت فحوصات موحدة للوصول إلى المشروع والقراءة والتعديل وإدارة الأعضاء.
+- تمت حماية Project Files وProject Memories وChat وسياق المحادثات المرتبط بالمشروع من الوصول بعد سحب العضوية.
+- أضيفت اختبارات للعزل بين المستخدمين ومساحات العمل، وصلاحيات viewer/editor/manager، وسحب الوصول.
+- migration: `0074_project_collaboration`.
+- PR #368 تم دمجه بنجاح.
+- merge commit: `325fab92b8e0f6f7fcbbab4cba4e764748fe4976`.
+
+#### F4.2 — Project Import / Export: **مكتمل ومتحقق**
+- أضيف archive ZIP canonical بإصدار schema واضح للـmetadata والملفات والذكريات.
+- تمت إضافة validation صارمة للحجم، عدد الملفات، المسارات، UTF-8، checksums، والملفات غير المعلنة.
+- الاستيراد يدعم fail-by-default عند تعارض الاسم و`rename` صريحًا دون overwrite.
+- تم تسجيل نجاح الاستيراد في audit log.
+- أضيفت واجهات Frontend لتصدير المشروع واستيراده، مع معالجة تعارض الاسم.
+- تم الحفاظ على فحوصات project access وعزل المحادثات حسب المشروع.
+- PR #370 تم دمجه بنجاح بعد إصلاح اختبارات authentication وarchive وCSV.
+- CI #4008: **نجح بالكامل** — Backend، Frontend، SDK، Production Compose، Preview Builder.
+- CodeQL #645: **نجح بالكامل** لـPython وJavaScript/TypeScript.
+- merge commit: `a12ee1a863640fbcb9bbdff3ed8a72c4a0de40eb`.
+- لم تتم إضافة أو ترقية أي موارد Render مدفوعة ضمن F4.
+
+#### تحقق تشغيلي بعد F4.2
+- Production Smoke #174 سبق أن سجل فشلًا في `/health` بسبب timeout متكرر، بينما نجح `/ready` وباقي فحوص smoke؛ التشغيل السابق #173 كان ناجحًا.
+- هذا ليس فشلًا في CI أو في اختبارات F4.2، لكنه يبقى نقطة متابعة تشغيلية على Render Free.
+
+### F4.3 — Artifact Management / Conflict Improvements
+الحالة: **لم تبدأ بعد**
+
+المجال المحدد من خارطة F4:
+- تحسين إدارة artifacts المرتبطة بالمشاريع.
+- توحيد حالات التعارض وسلوكها بين المسارات.
+- مراجعة ownership/membership/isolation لأي مسار جديد قبل الدمج.
+- الحفاظ على الحدود الحالية للحجم والمسارات والعزل وعدم إضافة موارد مدفوعة.
 
 ### F5 — Advanced Agent Project Workflows
 - Agent workflows متعددة الخطوات للعمل على المشروع.
 - التخطيط والتنفيذ والتحقق وإعادة المحاولة مع checkpoints.
 - تشغيل مهام طويلة ومتابعة حالة العمل مع حدود الموارد والسياسات الأمنية.
 
-## قاعدة العمل بعد F3.3
-F3.3 مغلقة. الخطوة التالية هي F4، ولا نبدأ F5 قبل إغلاق F4 والتحقق من اختبارات العزل والاستيراد/التصدير وحالات التعارض.
+## قاعدة العمل بعد F4
+F4 مغلقة بعد تحقق F4.1 وF4.2. لا نبدأ F5 قبل إكمال F4.3 ومراجعة العزل وإدارة artifacts وحالات التعارض.
 
 ترتيب التنفيذ الحالي:
-1. F4 — Project Collaboration / Import-Export Improvements
+1. F4.3 — Artifact Management / Conflict Improvements
 2. F5 — Advanced Agent Project Workflows
