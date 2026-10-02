@@ -116,6 +116,15 @@ def build_project_export(
             MANIFEST_PATH,
             json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
         )
+        write_text(
+            MEMORIES_PATH,
+            json.dumps(
+                [{"content": memory.content} for memory in memories],
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        )
         for path, content in file_payloads:
             info = zipfile.ZipInfo(path, (1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
