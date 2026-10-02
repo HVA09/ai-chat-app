@@ -178,6 +178,9 @@ def parse_project_import(payload: BinaryIO | bytes) -> ImportedArchive:
         if len(manifest.files) > MAX_FILES or len(manifest.memories) > MAX_MEMORIES:
             raise ProjectArchiveError("الـmanifest يتجاوز حدود المشروع.")
 
+        manifest_paths = [item.path for item in manifest.files]
+        if len(manifest_paths) != len(set(manifest_paths)):
+            raise ProjectArchiveError("manifest يحتوي مسارات ملفات مكررة.")
         expected_paths = {f"files/{item.path}" for item in manifest.files}
         actual_paths = {path for path in by_name if path.startswith("files/")}
         if expected_paths != actual_paths:
