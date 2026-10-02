@@ -15,6 +15,7 @@ const {
   deleteProjectFile,
   validateProject,
   getProjectPreviewPlan,
+  buildProjectPreview,
 } = vi.hoisted(() => ({
   listProjectMemories: vi.fn(),
   createProjectMemory: vi.fn(),
@@ -27,6 +28,7 @@ const {
   deleteProjectFile: vi.fn(),
   validateProject: vi.fn(),
   getProjectPreviewPlan: vi.fn(),
+  buildProjectPreview: vi.fn(),
 }));
 
 const { t } = vi.hoisted(() => ({
@@ -77,6 +79,12 @@ const { t } = vi.hoisted(() => ({
       "projectEditor.previewPlanEntrypoint": "نقطة الدخول",
       "projectEditor.previewPlanNone": "غير محددة",
       "projectEditor.previewPlanBuildDetected": "تم اكتشاف script للـbuild؛ التنفيذ يحتاج بيئة build معزولة.",
+      "projectEditor.previewBuild": "بناء المعاينة",
+      "projectEditor.previewBuildLoading": "جارٍ بناء المعاينة...",
+      "projectEditor.previewBuildReady": "تم تجهيز artifact المعاينة",
+      "projectEditor.previewBuildDescription": "تم البناء داخل Builder معزول. لن يتم تشغيل الملفات داخل هذه الصفحة مباشرة.",
+      "projectEditor.previewBuildSize": "حجم artifact: {{size}} بايت",
+      "projectEditor.previewBuildError": "تعذر بناء معاينة المشروع.",
         "projectEditor.validationReady": "نتيجة الفحص",
         "projectEditor.validationClean": "لا توجد أخطاء في الفحص.",
         "projectEditor.validationSummary": "{{errors}} أخطاء، {{warnings}} تحذيرات — {{count}} ملف",
@@ -138,6 +146,7 @@ vi.mock("../lib/projectFilesApi", () => ({
 vi.mock("../lib/projectValidationApi", () => ({
   validateProject,
   getProjectPreviewPlan,
+  buildProjectPreview,
 }));
 
 describe("ProjectEditor", () => {
@@ -312,7 +321,47 @@ describe("ProjectEditor", () => {
 
 
 
-  it("loads and shows the isolated preview strategy plan", async () => {
+
+
+  it("builds a JavaScript project preview and shows artifact metadata", async () => {
+    listProjectMemories.mockResolvedValue([]);
+    listProjectFiles.mockResolvedValue([
+      { id: 30, project_id: 3, path: "package.json", content_length: 80 },
+    ]);
+    getProjectPreviewPlan.mockResolvedValue({
+      project_id: 3,
+      project_kind: "javascript",
+      strategy: "javascript-build",
+      status: "build-required",
+      entrypoint: "package.json",
+      build_command_detected: true,
+      artifact_root: null,
+      message: "المشروع يحتاج build معزول قبل المعاينة.",
+    });
+    buildProjectPreview.mockResolvedValue({
+      entrypoint: "index.html",
+      artifact_base64: "YQ==",
+      artifact_size_bytes: 1,
+    });
+
+    const user = userEvent.setup();
+    render(
+      <ProjectEditor
+        project={{ id: 3, name: "Demo", description: null, instructions: null }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "خطة المعاينة" }));
+    await user.click(await screen.findByRole("button", { name: "بناء المعاينة" }));
+
+    expect(buildProjectPreview).toHaveBeenCalledWith(3);
+    expect(await screen.findByText("تم تجهيز artifact المعاينة")).toBeInTheDocument();
+    expect(screen.getByText("index.html")).toBeInTheDocument();
+    expect(screen.getByText("حجم artifact: 1 بايت")).toBeInTheDocument();
+  });
+\n  it("loads and shows the isolated preview strategy plan", async () => {
     listProjectMemories.mockResolvedValue([]);
     listProjectFiles.mockResolvedValue([
       { id: 30, project_id: 3, path: "package.json", content_length: 80 },
