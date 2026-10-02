@@ -750,7 +750,7 @@ def delete_project(
 ):
     project = _get_project(project_id, current_user, db)
     membership = _get_membership(project.workspace_id, current_user, db)
-    _can_manage(project, membership)
+    _can_manage(project, membership, db)
 
     db.query(Conversation).filter(
         Conversation.project_id == project.id
