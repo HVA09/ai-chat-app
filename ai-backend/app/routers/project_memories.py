@@ -131,7 +131,7 @@ def update_project_memory(
     db: Session = Depends(get_db),
 ):
     memory, project, membership = _get_memory(project_id, memory_id, current_user, db)
-    _ensure_can_manage_memory(project, membership)
+    _ensure_can_manage_memory(project, membership, db)
     memory.content = payload.content
     db.commit()
     db.refresh(memory)
@@ -146,6 +146,6 @@ def delete_project_memory(
     db: Session = Depends(get_db),
 ):
     memory, project, membership = _get_memory(project_id, memory_id, current_user, db)
-    _ensure_can_manage_memory(project, membership)
+    _ensure_can_manage_memory(project, membership, db)
     db.delete(memory)
     db.commit()
