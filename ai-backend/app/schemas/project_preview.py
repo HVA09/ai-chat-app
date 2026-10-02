@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PreviewBuildFile(BaseModel):
@@ -16,3 +16,4 @@ class PreviewBuildRequest(BaseModel):
 class PreviewBuildResponse(BaseModel):
     entrypoint: str
     artifact_base64: str
+    artifact_size_bytes: int = Field(ge=0)
