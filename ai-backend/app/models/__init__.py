@@ -4,6 +4,7 @@ from app.models.user_memory import UserMemory
 from app.models.user_session import UserSession
 from app.models.project_memory import ProjectMemory
 from app.models.project_file import ProjectFile
+from app.models.project_member import ProjectMember, ProjectMemberRole
 from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
 from app.models.workspace_invitation import WorkspaceInvitation
 from app.models.assistant import Assistant
@@ -43,6 +44,8 @@ __all__ = [
     "UserSession",
     "ProjectMemory",
     "ProjectFile",
+    "ProjectMember",
+    "ProjectMemberRole",
     "Workspace",
     "WorkspaceMember",
     "WorkspaceRole",

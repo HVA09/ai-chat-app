@@ -16,9 +16,11 @@ from app.models.conversation import Conversation
 from app.models.file_attachment import FileAttachment
 from app.models.project import WorkspaceProject
 from app.models.project_file import ProjectFile
+from app.models.project_member import ProjectMember, ProjectMemberRole
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
+from app.schemas.project_members import ProjectMemberCreate, ProjectMemberOut, ProjectMemberUpdate
 from app.schemas.project_preview import PreviewBuildFile, PreviewBuildResponse
 from app.schemas.project_validation import ProjectPreviewPlanOut, ProjectValidationItem, ProjectValidationOut
 from app.services.project_preview_artifacts import (
@@ -30,7 +32,9 @@ from app.services.project_preview_artifacts import (
     rewrite_absolute_preview_urls,
     verify_preview_token,
 )
+from app.services.project_access import can_manage_project, can_read_project
 from app.services.project_preview_builder import PreviewBuilderError, build_javascript_preview
+from app.audit import log_event
 
 router = APIRouter(prefix="/projects", tags=["Workspace Projects"])
 
@@ -60,6 +64,11 @@ def _get_project(project_id: int, current_user: User, db: Session) -> WorkspaceP
             detail="المشروع غير موجود",
         )
     _get_membership(project.workspace_id, current_user, db)
+    if not can_read_project(project, current_user, db):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المشروع غير موجود",
+        )
     return project
 
 
@@ -108,14 +117,12 @@ def _get_accessible_assistant(
     return assistant
 
 
-def _can_manage(project: WorkspaceProject, membership: WorkspaceMember) -> None:
-    if membership.role not in {WorkspaceRole.owner, WorkspaceRole.admin}:
-        # منشئ المشروع يستطيع إدارة مشروعه.
-        if project.owner_id != membership.user_id:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="هذه العملية تتطلب صلاحية مدير المشروع أو مساحة العمل",
-            )
+def _can_manage(project: WorkspaceProject, membership: WorkspaceMember, db: Session) -> None:
+    if not can_manage_project(project, membership.user, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="هذه العملية تتطلب مدير المشروع أو صلاحية إدارة المشاريع.",
+        )
 
 
 @router.get("", response_model=list[ProjectOut])
@@ -124,11 +131,22 @@ def list_projects(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _get_membership(workspace_id, current_user, db)
+    membership = _get_membership(workspace_id, current_user, db)
+    query = db.query(WorkspaceProject).filter(
+        WorkspaceProject.workspace_id == workspace_id
+    )
+    from app.services.workspace_rbac import has_workspace_permission
+    if not has_workspace_permission(db, membership, "projects.manage"):
+        query = (
+            query.outerjoin(ProjectMember, ProjectMember.project_id == WorkspaceProject.id)
+            .filter(
+                (WorkspaceProject.owner_id == current_user.id)
+                | (ProjectMember.user_id == current_user.id)
+            )
+        )
     return (
-        db.query(WorkspaceProject)
-        .filter(WorkspaceProject.workspace_id == workspace_id)
-        .order_by(WorkspaceProject.created_at.asc(), WorkspaceProject.id.asc())
+        query.order_by(WorkspaceProject.created_at.asc(), WorkspaceProject.id.asc())
+        .distinct()
         .all()
     )
 
@@ -167,7 +185,7 @@ def update_project(
 ):
     project = _get_project(project_id, current_user, db)
     membership = _get_membership(project.workspace_id, current_user, db)
-    _can_manage(project, membership)
+    _can_manage(project, membership, db)
     _ensure_unique_name(project.workspace_id, payload.name, db, exclude_id=project.id)
 
     project.name = payload.name
@@ -180,6 +198,196 @@ def update_project(
     db.refresh(project)
     return project
 
+
+
+@router.get("/{project_id}/members", response_model=list[ProjectMemberOut])
+def list_project_members(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_project(project_id, current_user, db)
+    owner = db.get(User, project.owner_id)
+    rows = (
+        db.query(ProjectMember, User)
+        .join(User, User.id == ProjectMember.user_id)
+        .filter(ProjectMember.project_id == project.id)
+        .order_by(ProjectMember.created_at.asc(), ProjectMember.id.asc())
+        .all()
+    )
+    result = []
+    if owner is not None:
+        result.append(
+            ProjectMemberOut(
+                id=None,
+                project_id=project.id,
+                user_id=owner.id,
+                email=owner.email,
+                full_name=owner.full_name,
+                role=ProjectMemberRole.manager,
+                created_at=project.created_at,
+                is_owner=True,
+            )
+        )
+    result.extend(
+        ProjectMemberOut(
+            id=member.id,
+            project_id=project.id,
+            user_id=user.id,
+            email=user.email,
+            full_name=user.full_name,
+            role=member.role,
+            created_at=member.created_at,
+            is_owner=False,
+        )
+        for member, user in rows
+    )
+    return result
+
+
+@router.post("/{project_id}/members", response_model=ProjectMemberOut, status_code=status.HTTP_201_CREATED)
+def add_project_member(
+    project_id: int,
+    payload: ProjectMemberCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_project(project_id, current_user, db)
+    membership = _get_membership(project.workspace_id, current_user, db)
+    _can_manage(project, membership, db)
+
+    target_membership = (
+        db.query(WorkspaceMember)
+        .filter(
+            WorkspaceMember.workspace_id == project.workspace_id,
+            WorkspaceMember.user_id == payload.user_id,
+        )
+        .first()
+    )
+    if target_membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المستخدم ليس عضوًا في مساحة العمل.",
+        )
+    if payload.user_id == project.owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="مالك المشروع عضو ضمني ولا يحتاج إضافة.",
+        )
+    existing = (
+        db.query(ProjectMember)
+        .filter(
+            ProjectMember.project_id == project.id,
+            ProjectMember.user_id == payload.user_id,
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="المستخدم عضو بالفعل في المشروع.",
+        )
+
+    target = db.get(User, payload.user_id)
+    member = ProjectMember(
+        project_id=project.id,
+        user_id=payload.user_id,
+        role=payload.role,
+    )
+    db.add(member)
+    db.commit()
+    db.refresh(member)
+    log_event(
+        db,
+        "project_member_added",
+        f"إضافة {target.email if target else payload.user_id} إلى المشروع {project.id} بدور {payload.role.value}",
+        current_user.id,
+        project.workspace_id,
+    )
+    return ProjectMemberOut(
+        id=member.id,
+        project_id=project.id,
+        user_id=target.id,
+        email=target.email,
+        full_name=target.full_name,
+        role=member.role,
+        created_at=member.created_at,
+        is_owner=False,
+    )
+
+
+@router.patch("/{project_id}/members/{member_id}", response_model=ProjectMemberOut)
+def update_project_member(
+    project_id: int,
+    member_id: int,
+    payload: ProjectMemberUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_project(project_id, current_user, db)
+    membership = _get_membership(project.workspace_id, current_user, db)
+    _can_manage(project, membership, db)
+    member = (
+        db.query(ProjectMember)
+        .filter(
+            ProjectMember.id == member_id,
+            ProjectMember.project_id == project.id,
+        )
+        .first()
+    )
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="عضو المشروع غير موجود",
+        )
+    member.role = payload.role
+    db.commit()
+    db.refresh(member)
+    target = db.get(User, member.user_id)
+    return ProjectMemberOut(
+        id=member.id,
+        project_id=project.id,
+        user_id=member.user_id,
+        email=target.email,
+        full_name=target.full_name,
+        role=member.role,
+        created_at=member.created_at,
+        is_owner=False,
+    )
+
+
+@router.delete("/{project_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_project_member(
+    project_id: int,
+    member_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_project(project_id, current_user, db)
+    membership = _get_membership(project.workspace_id, current_user, db)
+    _can_manage(project, membership, db)
+    member = (
+        db.query(ProjectMember)
+        .filter(
+            ProjectMember.id == member_id,
+            ProjectMember.project_id == project.id,
+        )
+        .first()
+    )
+    if member is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="عضو المشروع غير موجود",
+        )
+    db.delete(member)
+    db.commit()
+    log_event(
+        db,
+        "project_member_removed",
+        f"إزالة المستخدم {member.user_id} من المشروع {project.id}",
+        current_user.id,
+        project.workspace_id,
+    )
 
 
 @router.get("/{project_id}/validate", response_model=ProjectValidationOut)
@@ -542,7 +750,7 @@ def delete_project(
 ):
     project = _get_project(project_id, current_user, db)
     membership = _get_membership(project.workspace_id, current_user, db)
-    _can_manage(project, membership)
+    _can_manage(project, membership, db)
 
     db.query(Conversation).filter(
         Conversation.project_id == project.id

@@ -62,7 +62,7 @@ def test_other_user_cannot_read_or_manage_project_memory(client):
     ).status_code == 404
 
 
-def test_project_memory_is_shared_with_workspace_member_but_not_external_user(client, monkeypatch):
+def test_project_memory_is_shared_with_project_member_but_not_external_user(client, monkeypatch):
     owner_token = _register_and_login(client, "project-memory-shared-owner@example.com")
     owner_headers = {"Authorization": f"Bearer {owner_token}"}
     workspace = _create_workspace(client, owner_headers, "Shared")
@@ -99,6 +99,22 @@ def test_project_memory_is_shared_with_workspace_member_but_not_external_user(cl
         headers=member_headers,
     )
     assert accepted.status_code == 200
+
+    workspace_members = client.get(
+        f"/workspaces/{workspace['id']}/members",
+        headers=owner_headers,
+    )
+    assert workspace_members.status_code == 200
+    member_row = next(
+        item for item in workspace_members.json()
+        if item["email"] == "project-memory-member@example.com"
+    )
+    shared = client.post(
+        f"/projects/{project['id']}/members",
+        json={"user_id": member_row["user_id"], "role": "viewer"},
+        headers=owner_headers,
+    )
+    assert shared.status_code == 201
 
     listed = client.get(
         f"/projects/{project['id']}/memories",
