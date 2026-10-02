@@ -15,6 +15,7 @@ from app.services.storage import StorageError, delete_file
 
 ACTIVE = "active"
 SUPERSEDED = "superseded"
+EXPIRED = "expired"
 
 
 def register_preview_artifact(
@@ -79,6 +80,34 @@ def register_preview_artifact(
     db.commit()
 
     for artifact in superseded:
+        cleanup_preview_artifact_objects(artifact.project_id, artifact)
+
+
+def expire_preview_artifacts(
+    db: Session,
+    project_id: int,
+    now: datetime | None = None,
+) -> None:
+    """Mark expired active artifacts and remove their stored objects opportunistically."""
+    now = now or datetime.now(timezone.utc)
+    expired = (
+        db.query(ProjectPreviewArtifact)
+        .filter(
+            ProjectPreviewArtifact.project_id == project_id,
+            ProjectPreviewArtifact.status == ACTIVE,
+            ProjectPreviewArtifact.expires_at <= now,
+        )
+        .all()
+    )
+    if not expired:
+        return
+
+    for artifact in expired:
+        artifact.status = EXPIRED
+    db.commit()
+
+    # Storage cleanup is best-effort after the DB state has become authoritative.
+    for artifact in expired:
         cleanup_preview_artifact_objects(artifact.project_id, artifact)
 
 

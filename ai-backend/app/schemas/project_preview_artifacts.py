@@ -12,6 +12,6 @@ class ProjectPreviewArtifactOut(BaseModel):
     artifact_root: str
     size_bytes: int = Field(ge=0)
     file_count: int = Field(ge=0)
-    status: Literal["active", "superseded"]
+    status: Literal["active", "superseded", "expired"]
     expires_at: datetime
     created_at: datetime

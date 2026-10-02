@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -43,6 +44,7 @@ from app.services.project_preview_builder import PreviewBuilderError, build_java
 from app.services.project_preview_artifact_registry import (
     cleanup_preview_artifact_objects,
     delete_preview_artifact as delete_registered_preview_artifact,
+    expire_preview_artifacts,
     register_preview_artifact,
 )
 from app.services.project_archive import ProjectArchiveError, build_project_export, parse_project_import
@@ -189,7 +191,7 @@ async def import_project(
         if on_conflict == "fail":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="يوجد مشروع بنفس الاسم داخل مساحة العمل.",
+                detail="يوجد مشروع بهذا الاسم في مساحة العمل",
             )
         base = f"{requested_name} (imported)"
         name = base[:120]
@@ -231,11 +233,11 @@ async def import_project(
 
     try:
         db.commit()
-    except Exception as exc:
+    except IntegrityError as exc:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="تعذر إنشاء المشروع المستورد بسبب تعارض بيانات.",
+            detail="يوجد مشروع بهذا الاسم في مساحة العمل",
         ) from exc
 
     db.refresh(project)
@@ -276,7 +278,14 @@ def create_project(
         _get_accessible_assistant(payload.assistant_id, payload.workspace_id, current_user, db)
         project.assistant_id = payload.assistant_id
     db.add(project)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="يوجد مشروع بهذا الاسم في مساحة العمل",
+        ) from exc
     db.refresh(project)
     return project
 
@@ -338,7 +347,14 @@ def update_project(
     if payload.assistant_id is not None:
         _get_accessible_assistant(payload.assistant_id, project.workspace_id, current_user, db)
     project.assistant_id = payload.assistant_id
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="يوجد مشروع بهذا الاسم في مساحة العمل",
+        ) from exc
     db.refresh(project)
     return project
 
@@ -864,6 +880,7 @@ def list_preview_artifacts(
     db: Session = Depends(get_db),
 ):
     project = _get_project(project_id, current_user, db)
+    expire_preview_artifacts(db, project.id)
     return (
         db.query(ProjectPreviewArtifact)
         .filter(ProjectPreviewArtifact.project_id == project.id)

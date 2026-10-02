@@ -178,3 +178,50 @@ def test_preview_artifact_routes_are_managed_and_isolated(client, monkeypatch):
 
     revoked = client.get(f"/projects/{project['id']}/preview-artifacts/{preview_path}")
     assert revoked.status_code == 404
+
+
+def test_preview_artifact_expires_and_is_cleaned(client, db_session, monkeypatch):
+    token = _register_and_login(client, "artifact-expiry@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = client.post(
+        "/workspaces",
+        json={"name": "Expiry Workspace"},
+        headers=headers,
+    ).json()
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Expiry"},
+        headers=headers,
+    ).json()
+
+    expired = ProjectPreviewArtifact(
+        project_id=project["id"],
+        artifact_id="expired-artifact",
+        entrypoint="dist/index.html",
+        artifact_root="dist",
+        size_bytes=10,
+        file_count=1,
+        files_manifest=["dist/index.html"],
+        status="active",
+        expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+    )
+    db_session.add(expired)
+    db_session.commit()
+
+    cleaned = []
+    from app.services import project_preview_artifact_registry as registry
+    monkeypatch.setattr(
+        registry,
+        "cleanup_preview_artifact_objects",
+        lambda project_id, artifact: cleaned.append((project_id, artifact.artifact_id)),
+    )
+    response = client.get(
+        f"/projects/{project['id']}/preview-artifacts",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.json()[0]["status"] == "expired"
+    assert cleaned == [(project["id"], "expired-artifact")]
+
+    row = db_session.get(ProjectPreviewArtifact, expired.id)
+    assert row.status == "expired"

@@ -542,3 +542,24 @@ def test_project_preview_plan_isolated_from_other_workspace(client):
         headers=outsider_headers,
     )
     assert response.status_code == 404
+
+
+def test_project_name_conflicts_are_case_insensitive(client):
+    token = _register_and_login(client, "project-name-conflict@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = _create_workspace(client, headers, "Conflict Workspace")
+
+    first = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Portable"},
+        headers=headers,
+    )
+    assert first.status_code == 201
+
+    duplicate = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": " portable "},
+        headers=headers,
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"] == "يوجد مشروع بهذا الاسم في مساحة العمل"
