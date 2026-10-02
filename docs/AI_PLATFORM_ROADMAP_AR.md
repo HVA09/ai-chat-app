@@ -580,6 +580,14 @@
 - CI #4040: **نجح بالكامل**.
 - CodeQL #653: **نجح بالكامل** لـPython وJavaScript/TypeScript.
 - merge commit: `1e3cc0ec2adf1dd2bd234a9e27e4fdcfd11a8e66`.
+- PR #378 تم دمجه بنجاح كتحسين لاحق لـF4.3.
+- تمت إضافة حالة `expired` للـpreview artifacts وتنظيف التخزين بشكل opportunistic.
+- تم تشديد عزل تاريخ الـartifacts حسب صلاحية المشروع.
+- فُرضت uniqueness غير حساسة لحالة الأحرف لأسماء المشاريع داخل كل Workspace، مع توحيد استجابات تعارض الاسم في create/update/import.
+- أضيفت اختبارات لانتهاء الـartifacts وتعارضات أسماء المشاريع.
+- CI #4080: **نجح بالكامل**.
+- CodeQL #659: **نجح بالكامل** لـPython وJavaScript/TypeScript.
+- merge commit النهائي: `952f7c9aa0991fca7d03a46eec81b4ea67920fac`.
 - لا توجد موارد مدفوعة جديدة ضمن F4.
 
 #### التحقق التشغيلي بعد F4
