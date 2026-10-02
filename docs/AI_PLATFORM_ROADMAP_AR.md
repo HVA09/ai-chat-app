@@ -577,23 +577,55 @@
 - أضيفت اختبارات lifecycle والعزل والتعارض.
 - migration: `0075_project_preview_artifacts`.
 - PR #374 تم دمجه بنجاح.
-- CI #4040: **نجح بالكامل**.
-- CodeQL #653: **نجح بالكامل** لـPython وJavaScript/TypeScript.
-- merge commit: `1e3cc0ec2adf1dd2bd234a9e27e4fdcfd11a8e66`.
+- PR #378 أضاف انتهاء صلاحية artifacts بحالة `expired` وتنظيفًا opportunistic للتخزين، وشدّد عزل تاريخ artifacts، وفرض uniqueness غير حساسة لحالة الأحرف لأسماء المشاريع داخل الـWorkspace.
+- CI #4040: **نجح بالكامل** لـPR #374.
+- CodeQL #653: **نجح بالكامل** لـPR #374.
+- CI #4080: **نجح بالكامل** لـPR #378.
+- CodeQL #659: **نجح بالكامل** لـPR #378.
+- merge commit لPR #378: `952f7c9aa0991fca7d03a46eec81b4ea67920fac`.
 - لا توجد موارد مدفوعة جديدة ضمن F4.
+
+#### إصلاح سلسلة Alembic بعد F4/F5.1: **مكتمل ومتحقق**
+- نتج رأسان مستقلان على `0075_project_preview_artifacts`: `0076_project_name_conflict_index` و`0076_agent_workflow_checkpoints`.
+- أضيف merge migration `0077_merge_f4_f5_heads` لدمج الرأسين دون تغيير schema إضافي.
+- PR #385 تم دمجه بنجاح.
+- CI #4134: **نجح بالكامل**.
+- CodeQL #671: **نجح بالكامل**.
+- merge commit: `cde7d3c4c0045d36c15efd532e614e4a8b33cfc4`.
+- بعد الإصلاح أصبح `alembic upgrade head` يصل إلى head واحد في CI.
 
 #### التحقق التشغيلي بعد F4
 - لا نعتبر F4 مرادفًا لـProduction-ready؛ يبقى Production Smoke على Render Free نقطة تحقق تشغيلية مستقلة.
 - Production Smoke #174 سبق أن سجل timeout متكررًا في `/health` مع نجاح `/ready` وباقي الفحوص، بينما كان التشغيل #173 ناجحًا.
 
 ## قاعدة العمل بعد F4
-**F4 مغلقة بالكامل.** لا توجد بنود F4 متبقية. المرحلة التالية هي F5 بعد مراجعة سلامة الانتقال والتأكد من بقاء CI/CodeQL الأخضرين على `main`.
-
-ترتيب التنفيذ الحالي:
-1. F5 — Advanced Agent Project Workflows
+**F4 مغلقة بالكامل.** لا توجد بنود F4 متبقية.
 
 ### F5 — Advanced Agent Project Workflows
-- Agent workflows متعددة الخطوات للعمل على المشروع.
-- التخطيط والتنفيذ والتحقق وإعادة المحاولة مع checkpoints.
-- تشغيل مهام طويلة ومتابعة حالة العمل مع حدود الموارد والسياسات الأمنية.
 
+#### F5.1 — Multi-step Agent Workflow Checkpoints: **مكتمل ومتحقق**
+- تم دعم workflow منظم داخل AgentJob بحد أقصى 6 خطوات.
+- الخطوات تُنفّذ بالتتابع عبر AgentRuntime الحالي.
+- يتم حفظ حالة كل خطوة، عدد المحاولات، run ID، النتيجة، وcheckpoint metadata.
+- الخطوات المكتملة تبقى محفوظة عبر الإعادة، ويمكن استئناف المهمة من أول خطوة غير مكتملة.
+- الحد الأقصى لمحاولات الخطوة 3 محاولات، مع الحفاظ على توافق إنشاء AgentJob التقليدي.
+- أضيفت اختبارات للعزل، checkpoints، resume، وحالات الفشل.
+- PR #379 تم دمجه بنجاح.
+- CI #4096: **نجح بالكامل**.
+- CodeQL #662: **نجح بالكامل** لـPython وJavaScript/TypeScript.
+- merge commit: `1c0cb1efeb9ef78a36bbb68e01cdeaf1c47e5385`.
+- PR #382 أُغلق لأنه نسخة مكررة من F5.1 بعد دمج #379.
+
+#### F5.2 — Verification / Retry Enhancements: **الخطوة التالية**
+- مرحلة تحقق مستقلة للنتائج قبل الإكمال.
+- حالات checkpoint إضافية ومتابعة دورة المهمة طويلة المدى.
+- bounded retries مع الحفاظ على cumulative token usage.
+- كشف حالة checkpoint داخل AgentJob API.
+- PR #381 موجود كمرشح التنفيذ التالي؛ CI #4121 وCodeQL #665 نجحا على رأس الفرع الحالي.
+- لا توجد موارد بنية تحتية جديدة مطلوبة؛ يعتمد التنفيذ على PostgreSQL/Celery/Redis الموجودة.
+
+## قاعدة العمل بعد F5.1
+F5.1 مغلقة ومتحققة. الخطوة التالية هي F5.2 مع الحفاظ على حدود AgentRuntime الحالية، عزل المشروع، وسلامة التكلفة وعدم إضافة موارد مدفوعة دون حاجة.
+
+ترتيب التنفيذ الحالي:
+1. F5.2 — Verification / Retry Enhancements
