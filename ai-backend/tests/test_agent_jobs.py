@@ -551,3 +551,32 @@ def test_execute_agent_job_pauses_during_runtime_and_resumes_from_checkpoint(
     assert step.status == "succeeded"
     assert step.attempt_count == 2
     assert FakeRuntime.calls == 2
+
+
+def test_cancel_paused_agent_job_transitions_to_cancelled(client, monkeypatch):
+    token = _register_and_login(client, "agent-job-cancel-paused@example.com")
+    workspace = _create_workspace(client, token)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    import app.routers.agent_jobs as agent_jobs_router
+
+    fake_task = _FakeAgentTask()
+    monkeypatch.setattr(agent_jobs_router, "execute_agent_job", fake_task)
+    monkeypatch.setattr(agent_jobs_router, "celery_app", object())
+
+    created = client.post(
+        "/agent-jobs",
+        json={"workspace_id": workspace["id"], "task": "إيقاف ثم إلغاء"},
+        headers=headers,
+    )
+    assert created.status_code == 202
+    job_id = created.json()["id"]
+
+    paused = client.post(f"/agent-jobs/{job_id}/pause", headers=headers)
+    assert paused.status_code == 200
+    assert paused.json()["status"] == "paused"
+
+    cancelled = client.post(f"/agent-jobs/{job_id}/cancel", headers=headers)
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert cancelled.json()["cancel_requested"] is True
