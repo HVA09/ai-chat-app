@@ -919,7 +919,21 @@ def serve_preview_artifact(
     artifact_id: str,
     token: str,
     path: str,
+    db: Session = Depends(get_db),
 ):
+    tracked = (
+        db.query(ProjectArtifact)
+        .filter(
+            ProjectArtifact.project_id == project_id,
+            ProjectArtifact.artifact_id == artifact_id,
+        )
+        .first()
+    )
+    if not tracked:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المعاينة غير متاحة أو انتهت صلاحيتها.",
+        )
     try:
         artifact_root = verify_preview_token(project_id, artifact_id, token)
         content, content_type = read_preview_file(project_id, artifact_id, path)
