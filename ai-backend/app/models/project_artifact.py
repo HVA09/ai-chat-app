@@ -1,7 +1,7 @@
 """Persistent metadata for project preview artifacts."""
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -11,6 +11,11 @@ from app.database import Base
 class ProjectArtifact(Base):
     __tablename__ = "project_artifacts"
     __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "artifact_id",
+            name="uq_project_artifacts_project_artifact",
+        ),
         Index(
             "ix_project_artifacts_project_id_created_at",
             "project_id",
