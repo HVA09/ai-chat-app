@@ -730,6 +730,7 @@ export default function ProjectEditor({
                           ))}
                         </select>
                         <select
+                          aria-label={t("projectEditor.memberRoleAddLabel")}
                           value={selectedProjectMemberRole}
                           disabled={projectMemberSaving}
                           onChange={(event) => setSelectedProjectMemberRole(event.target.value)}
