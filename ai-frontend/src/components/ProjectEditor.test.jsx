@@ -342,6 +342,9 @@ describe("ProjectEditor", () => {
       entrypoint: "index.html",
       artifact_base64: "YQ==",
       artifact_size_bytes: 1,
+      preview_url:
+        "https://api.example.com/projects/3/preview-artifacts/abc/token/index.html",
+      preview_expires_at: 9999999999,
     });
 
     const user = userEvent.setup();
