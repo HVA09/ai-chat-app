@@ -47,6 +47,7 @@ def test_project_preview_build_delegates_to_isolated_builder(client, monkeypatch
         return_value=PreviewBuildResponse(
             entrypoint="dist/index.html",
             artifact_base64="YQ==",
+            artifact_size_bytes=1,
         )
     )
     monkeypatch.setattr(projects_router, "build_javascript_preview", mocked)
