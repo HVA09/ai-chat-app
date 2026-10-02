@@ -23,6 +23,7 @@ from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.file_chunk import FileChunk
 from app.models.project import WorkspaceProject
+from app.services.project_access import can_read_project
 from app.models.project_memory import ProjectMemory
 from app.models.usage_log import UsageLog
 from app.models.user import User
@@ -287,7 +288,11 @@ def _get_or_create_conversation(
     selected_project = None
     if payload.project_id is not None:
         selected_project = db.get(WorkspaceProject, payload.project_id)
-        if selected_project is None or selected_project.workspace_id != selected_workspace.id:
+        if (
+            selected_project is None
+            or selected_project.workspace_id != selected_workspace.id
+            or not can_read_project(selected_project, current_user, db)
+        ):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="المشروع غير موجود في مساحة العمل المحددة",
