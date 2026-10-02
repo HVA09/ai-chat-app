@@ -209,8 +209,9 @@ def test_preview_artifact_expires_and_is_cleaned(client, db_session, monkeypatch
     db_session.commit()
 
     cleaned = []
+    from app.services import project_preview_artifact_registry as registry
     monkeypatch.setattr(
-        projects_router,
+        registry,
         "cleanup_preview_artifact_objects",
         lambda project_id, artifact: cleaned.append((project_id, artifact.artifact_id)),
     )
