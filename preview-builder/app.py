@@ -200,6 +200,11 @@ def _authorized(authorization: str | None) -> bool:
     return scheme.lower() == "bearer" and hmac.compare_digest(token, BUILDER_TOKEN)
 
 
+@app.get("/")
+async def root():
+    return {"status": "ok", "enabled": ENABLE_BUILDS}
+
+
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok", "enabled": ENABLE_BUILDS}
