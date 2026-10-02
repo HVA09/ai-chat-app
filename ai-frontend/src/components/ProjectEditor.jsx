@@ -14,6 +14,11 @@ import {
   listProjectFiles,
   updateProjectFile,
 } from "../lib/projectFilesApi";
+import {
+  cleanupProjectArtifacts,
+  deleteProjectArtifact,
+  listProjectArtifacts,
+} from "../lib/projectsApi";
 import { buildProjectPreview, getProjectPreviewPlan, validateProject } from "../lib/projectValidationApi";
 
 
@@ -131,6 +136,10 @@ export default function ProjectEditor({
   const [previewBuildLoading, setPreviewBuildLoading] = useState(false);
   const [previewBuildUrl, setPreviewBuildUrl] = useState("");
   const [previewExecutionUrl, setPreviewExecutionUrl] = useState("");
+  const [projectArtifacts, setProjectArtifacts] = useState([]);
+  const [artifactsLoading, setArtifactsLoading] = useState(false);
+  const [artifactDeletingId, setArtifactDeletingId] = useState(null);
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
   const projectFileTree = useMemo(() => buildProjectFileTree(projectFiles), [projectFiles]);
 
   useEffect(() => {
@@ -150,6 +159,8 @@ export default function ProjectEditor({
     setPreviewBuild(null);
     setPreviewBuildUrl("");
     setPreviewExecutionUrl("");
+    setProjectArtifacts([]);
+    setArtifactsOpen(false);
 
     if (!project) {
       setMemories([]);
@@ -324,6 +335,60 @@ export default function ProjectEditor({
       showErrorToast(error, "projectEditor.previewBuildError");
     } finally {
       setPreviewBuildLoading(false);
+    }
+  };
+
+  const handleLoadArtifacts = async () => {
+    if (!project) return;
+    setArtifactsLoading(true);
+    try {
+      const items = await listProjectArtifacts(project.id);
+      setProjectArtifacts(items);
+      setArtifactsOpen(true);
+    } catch (error) {
+      showErrorToast(error, "projectEditor.artifactLoadError");
+    } finally {
+      setArtifactsLoading(false);
+    }
+  };
+
+  const handleDeleteArtifact = async (artifact) => {
+    if (!project) return;
+    if (!window.confirm(
+      t("projectEditor.artifactDeleteConfirm", { artifact: artifact.artifact_id })
+    )) {
+      return;
+    }
+    setArtifactDeletingId(artifact.id);
+    try {
+      await deleteProjectArtifact(project.id, artifact.artifact_id);
+      setProjectArtifacts((current) =>
+        current.filter((item) => item.id !== artifact.id)
+      );
+      if (previewBuild?.preview_url?.includes(artifact.artifact_id)) {
+        setPreviewBuild(null);
+        setPreviewBuildUrl("");
+        setPreviewExecutionUrl("");
+      }
+    } catch (error) {
+      showErrorToast(error, "projectEditor.artifactDeleteError");
+    } finally {
+      setArtifactDeletingId(null);
+    }
+  };
+
+  const handleCleanupArtifacts = async () => {
+    if (!project) return;
+    setArtifactsLoading(true);
+    try {
+      await cleanupProjectArtifacts(project.id);
+      const items = await listProjectArtifacts(project.id);
+      setProjectArtifacts(items);
+      setArtifactsOpen(true);
+    } catch (error) {
+      showErrorToast(error, "projectEditor.artifactCleanupError");
+    } finally {
+      setArtifactsLoading(false);
     }
   };
 
@@ -658,6 +723,16 @@ export default function ProjectEditor({
                       : t("projectEditor.previewPlan")}
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={handleLoadArtifacts}
+                    disabled={artifactsLoading || previewBuildLoading || fileSaving || fileDeleting}
+                    className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  >
+                    {artifactsLoading && !artifactsOpen
+                      ? t("projectEditor.artifactsLoading")
+                      : t("projectEditor.artifactsManage")}
+                  </button>
                   {previewPlan?.strategy === "javascript-build" && previewPlan?.status === "build-required" && (
                     <button
                       type="button"
@@ -721,6 +796,69 @@ export default function ProjectEditor({
                 </div>
               )}
 
+
+              {artifactsOpen && (
+                <div className="mb-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                        {t("projectEditor.artifactsTitle")}
+                      </h4>
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                        {t("projectEditor.artifactsDescription")}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCleanupArtifacts}
+                      disabled={artifactsLoading || artifactDeletingId !== null}
+                      className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      {artifactsLoading
+                        ? t("projectEditor.artifactCleanupLoading")
+                        : t("projectEditor.artifactCleanup")}
+                    </button>
+                  </div>
+
+                  {projectArtifacts.length === 0 ? (
+                    <p className="mt-3 text-xs text-slate-400">
+                      {t("projectEditor.artifactsEmpty")}
+                    </p>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      {projectArtifacts.map((artifact) => (
+                        <div
+                          key={artifact.id}
+                          className="rounded-lg border border-slate-100 bg-slate-50 p-2.5 dark:border-slate-800 dark:bg-slate-950"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate text-[11px] font-medium text-slate-700 dark:text-slate-200">
+                                {artifact.entrypoint}
+                              </div>
+                              <div className="mt-1 text-[10px] text-slate-400">
+                                {t("projectEditor.artifactSize", {
+                                  size: artifact.artifact_size_bytes,
+                                })}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteArtifact(artifact)}
+                              disabled={artifactsLoading || artifactDeletingId === artifact.id}
+                              className="rounded-lg border border-red-200 px-2 py-1 text-[10px] text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              {artifactDeletingId === artifact.id
+                                ? t("projectEditor.artifactDeleting")
+                                : t("projectEditor.artifactDelete")}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {previewBuild && (
                 <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900/60 dark:bg-emerald-950/20">
