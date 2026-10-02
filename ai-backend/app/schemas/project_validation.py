@@ -15,3 +15,14 @@ class ProjectValidationOut(BaseModel):
     errors: int
     warnings: int
     checks: list[ProjectValidationItem]
+
+
+class ProjectPreviewPlanOut(BaseModel):
+    project_id: int
+    project_kind: str
+    strategy: str
+    status: str
+    entrypoint: str | None = None
+    build_command_detected: bool = False
+    artifact_root: str | None = None
+    message: str
