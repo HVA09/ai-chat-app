@@ -22,7 +22,6 @@ def upgrade() -> None:
         "manager",
         name="projectmemberrole",
     )
-    role_enum.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "project_members",
