@@ -223,3 +223,60 @@ def test_execute_agent_job_retries_from_checkpoint_then_succeeds(client, db_sess
     assert job.workflow_phase == "completed"
     assert job.checkpoint["phase"] == "completed"
     assert job.checkpoint["attempt"] == 2
+
+
+def test_execute_agent_job_does_not_retry_security_stop(client, db_session, monkeypatch):
+    token = _register_and_login(client, "agent-job-stop@example.com")
+    workspace = _create_workspace(client, token)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    import app.routers.agent_jobs as agent_jobs_router
+
+    fake_task = _FakeAgentTask()
+    monkeypatch.setattr(agent_jobs_router, "execute_agent_job", fake_task)
+    monkeypatch.setattr(agent_jobs_router, "celery_app", object())
+
+    created = client.post(
+        "/agent-jobs",
+        json={"workspace_id": workspace["id"], "task": "لا تعاود بعد توقف أمني"},
+        headers=headers,
+    )
+    assert created.status_code == 202
+    job_id = created.json()["id"]
+
+    class FakeProvider:
+        name = "fake"
+
+    class FakeResult:
+        run_id = "run-stop"
+        status = "stopped"
+        text = "تم إيقاف التشغيل بسبب حاجز أمني"
+        sources = [{"id": "security-stop"}]
+        input_tokens = 3
+        output_tokens = 5
+
+    class FakeRuntime:
+        calls = 0
+
+        def __init__(self, provider, event_sink):
+            self.provider = provider
+            self.event_sink = event_sink
+
+        async def run(self, **kwargs):
+            type(self).calls += 1
+            await self.event_sink({"type": "runtime_start"})
+            return FakeResult()
+
+    monkeypatch.setattr(tasks_module, "get_provider", lambda model: FakeProvider())
+    monkeypatch.setattr(tasks_module, "AgentRuntime", FakeRuntime)
+    monkeypatch.setattr(tasks_module, "get_daily_ai_limit", lambda user, db: 100)
+
+    tasks_module._execute_agent_job(job_id, db=db_session)
+
+    db_session.expire_all()
+    job = db_session.get(AgentJob, job_id)
+    assert job.status == "failed"
+    assert FakeRuntime.calls == 1
+    assert job.retry_count == 0
+    assert job.workflow_phase == "failed"
+    assert job.checkpoint["phase"] == "failed"
