@@ -345,8 +345,8 @@ def _execute_agent_job(job_id: int, db=None) -> None:
                 workspace_id=workspace.id,
                 endpoint=f"/agent-jobs/{job.id}",
                 model=model,
-                input_tokens=result.input_tokens,
-                output_tokens=result.output_tokens,
+                input_tokens=workflow_result["input_tokens"],
+                output_tokens=workflow_result["output_tokens"],
                 provider=getattr(provider, "name", None) or settings.AI_PROVIDER,
             )
         )
