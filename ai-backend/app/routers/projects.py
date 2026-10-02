@@ -960,6 +960,96 @@ def serve_preview_artifact(
     return Response(content=content, media_type=content_type, headers=headers)
 
 
+@router.get(
+    "/{project_id}/preview-artifacts",
+    response_model=list[ProjectArtifactOut],
+)
+def list_preview_artifacts(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_project(project_id, current_user, db)
+    return (
+        db.query(ProjectArtifact)
+        .filter(ProjectArtifact.project_id == project.id)
+        .order_by(ProjectArtifact.created_at.desc(), ProjectArtifact.id.desc())
+        .limit(MAX_PREVIEW_ARTIFACT_HISTORY)
+        .all()
+    )
+
+
+@router.delete(
+    "/{project_id}/preview-artifacts/{artifact_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_preview_artifact_route(
+    project_id: int,
+    artifact_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_project(project_id, current_user, db)
+    membership = _get_membership(project.workspace_id, current_user, db)
+    _ensure_project_edit_access(project, membership, db)
+    artifact = (
+        db.query(ProjectArtifact)
+        .filter(
+            ProjectArtifact.project_id == project.id,
+            ProjectArtifact.artifact_id == artifact_id,
+        )
+        .first()
+    )
+    if not artifact:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="artifact المعاينة غير موجود.",
+        )
+    try:
+        delete_preview_artifact(project.id, artifact.artifact_id)
+    except PreviewArtifactError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="تعذر حذف artifact المعاينة.",
+        ) from exc
+    db.delete(artifact)
+    db.commit()
+    log_event(
+        db,
+        "project_preview_artifact_deleted",
+        f"حذف artifact {artifact_id} من المشروع {project.name}",
+        current_user.id,
+        project.workspace_id,
+    )
+
+
+@router.post(
+    "/{project_id}/preview-artifacts/cleanup",
+    response_model=ProjectArtifactCleanupResult,
+)
+def cleanup_preview_artifacts(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    project = _get_project(project_id, current_user, db)
+    membership = _get_membership(project.workspace_id, current_user, db)
+    _can_manage(project, membership, db)
+    removed = _cleanup_project_artifacts(db, project.id)
+    remaining = db.query(ProjectArtifact).filter(
+        ProjectArtifact.project_id == project.id
+    ).count()
+    if removed:
+        log_event(
+            db,
+            "project_preview_artifacts_cleaned",
+            f"تنظيف {removed} artifact من المشروع {project.name}",
+            current_user.id,
+            project.workspace_id,
+        )
+    return ProjectArtifactCleanupResult(removed=removed, remaining=remaining)
+
+
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project(
     project_id: int,
