@@ -128,6 +128,8 @@ export default function ProjectEditor({
   const [previewPlanLoading, setPreviewPlanLoading] = useState(false);
   const [previewBuild, setPreviewBuild] = useState(null);
   const [previewBuildLoading, setPreviewBuildLoading] = useState(false);
+  const [previewBuildUrl, setPreviewBuildUrl] = useState("");
+  const [previewExecutionUrl, setPreviewExecutionUrl] = useState("");
   const projectFileTree = useMemo(() => buildProjectFileTree(projectFiles), [projectFiles]);
 
   useEffect(() => {
@@ -145,6 +147,8 @@ export default function ProjectEditor({
     setPreviewHtml("");
     setPreviewPlan(null);
     setPreviewBuild(null);
+    setPreviewBuildUrl("");
+    setPreviewExecutionUrl("");
 
     if (!project) {
       setMemories([]);
@@ -314,6 +318,7 @@ export default function ProjectEditor({
     try {
       const result = await buildProjectPreview(project.id);
       setPreviewBuild(result);
+      setPreviewBuildUrl(result.preview_url ?? "");
     } catch (error) {
       showErrorToast(error, "projectEditor.previewBuildError");
     } finally {
@@ -725,6 +730,18 @@ export default function ProjectEditor({
                       size: previewBuild.artifact_size_bytes,
                     })}
                   </div>
+                  <p className="mt-2 text-[11px] text-emerald-700 dark:text-emerald-400">
+                    {t("projectEditor.previewBuildSecurity")}
+                  </p>
+                  {previewBuildUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewExecutionUrl(previewBuildUrl)}
+                      className="mt-3 rounded-lg bg-emerald-700 px-3 py-2 text-[11px] font-medium text-white hover:bg-emerald-800"
+                    >
+                      {t("projectEditor.previewBuildOpen")}
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -870,7 +887,7 @@ export default function ProjectEditor({
               {validationError}
             </div>
           )}
-        {previewHtml && (
+        {(previewHtml || previewExecutionUrl) && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
             <div
               className="flex h-[90dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
@@ -887,7 +904,10 @@ export default function ProjectEditor({
                 </h3>
                 <button
                   type="button"
-                  onClick={() => setPreviewHtml("")}
+                  onClick={() => {
+                    setPreviewHtml("");
+                    setPreviewExecutionUrl("");
+                  }}
                   className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800"
                   aria-label={t("projectEditor.closePreview")}
                 >
@@ -897,8 +917,9 @@ export default function ProjectEditor({
               <div className="min-h-0 flex-1 bg-white p-2 dark:bg-slate-950">
                 <iframe
                   title={t("projectEditor.previewTitle")}
-                  srcDoc={previewHtml}
-                  sandbox=""
+                  src={previewExecutionUrl || undefined}
+                  srcDoc={previewExecutionUrl ? undefined : previewHtml}
+                  sandbox={previewExecutionUrl ? "allow-scripts" : ""}
                   referrerPolicy="no-referrer"
                   className="h-full w-full rounded-xl border border-slate-200 bg-white dark:border-slate-700"
                 />

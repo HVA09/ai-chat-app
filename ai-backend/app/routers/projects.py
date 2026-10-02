@@ -3,11 +3,12 @@ import json
 import re
 import tomllib
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.config import settings
 from app.models.assistant import Assistant
 from app.models.assistant_workspace_share import AssistantWorkspaceShare
 from app.dependencies import get_current_user
@@ -20,6 +21,15 @@ from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.projects import ProjectCreate, ProjectOut, ProjectUpdate
 from app.schemas.project_preview import PreviewBuildFile, PreviewBuildResponse
 from app.schemas.project_validation import ProjectPreviewPlanOut, ProjectValidationItem, ProjectValidationOut
+from app.services.project_preview_artifacts import (
+    PreviewArtifactError,
+    preview_csp,
+    preview_url_path,
+    publish_preview_artifact,
+    read_preview_file,
+    rewrite_absolute_preview_urls,
+    verify_preview_token,
+)
 from app.services.project_preview_builder import PreviewBuilderError, build_javascript_preview
 
 router = APIRouter(prefix="/projects", tags=["Workspace Projects"])
@@ -440,6 +450,7 @@ def project_preview_plan(
 @router.post("/{project_id}/preview-build", response_model=PreviewBuildResponse)
 async def build_project_preview(
     project_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -467,12 +478,62 @@ async def build_project_preview(
         for item in files
     ]
     try:
-        return await build_javascript_preview(project.id, payload_files)
-    except PreviewBuilderError as exc:
+        build = await build_javascript_preview(project.id, payload_files)
+        published = publish_preview_artifact(project.id, build)
+    except (PreviewBuilderError, PreviewArtifactError) as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="خدمة بناء المعاينة غير متاحة أو رفضت الطلب.",
+            detail="خدمة بناء أو نشر المعاينة غير متاحة أو رفضت الطلب.",
         ) from exc
+
+    preview_path = preview_url_path(
+        project.id,
+        published.artifact_id,
+        published.token,
+        published.entrypoint,
+    )
+    return build.model_copy(
+        update={
+            "preview_url": str(request.base_url).rstrip("/") + preview_path,
+            "preview_expires_at": published.expires_at,
+        }
+    )
+@router.get(
+    "/{project_id}/preview-artifacts/{artifact_id}/{token}/{path:path}",
+    name="serve_preview_artifact",
+)
+def serve_preview_artifact(
+    project_id: int,
+    artifact_id: str,
+    token: str,
+    path: str,
+):
+    try:
+        artifact_root = verify_preview_token(project_id, artifact_id, token)
+        content, content_type = read_preview_file(project_id, artifact_id, path)
+    except PreviewArtifactError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المعاينة غير متاحة أو انتهت صلاحيتها.",
+        ) from exc
+
+    if content_type == "text/html":
+        content = rewrite_absolute_preview_urls(
+            content.decode("utf-8", errors="strict"),
+            project_id,
+            artifact_id,
+            token,
+            artifact_root,
+        ).encode("utf-8")
+
+    headers = {
+        "Content-Security-Policy": preview_csp(settings.CORS_ORIGINS),
+        "Cache-Control": "private, max-age=300",
+        "X-Content-Type-Options": "nosniff",
+    }
+    return Response(content=content, media_type=content_type, headers=headers)
+
+
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project(
     project_id: int,

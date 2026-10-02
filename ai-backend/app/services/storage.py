@@ -64,6 +64,45 @@ def put_file(path: Path, object_key: str, content_type: str) -> None:
         raise StorageError("فشل رفع الملف إلى Object Storage") from exc
 
 
+def put_bytes(content: bytes, object_key: str, content_type: str) -> None:
+    """Store small generated artifacts in object storage, with local fallback."""
+    if not object_key or object_key.startswith("/") or ".." in Path(object_key).parts:
+        raise StorageError("مسار التخزين غير صالح")
+    if not _s3_enabled():
+        target = Path(settings.UPLOAD_DIR) / object_key
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            target.write_bytes(content)
+        except OSError as exc:
+            raise StorageError("فشل حفظ الملف المولد") from exc
+        return
+    try:
+        _client().put_object(
+            Bucket=settings.S3_BUCKET,
+            Key=object_key,
+            Body=content,
+            ContentType=content_type,
+        )
+    except (BotoCoreError, ClientError) as exc:
+        raise StorageError("فشل رفع الملف المولد إلى Object Storage") from exc
+
+
+def get_bytes(object_key: str) -> bytes:
+    """Read generated artifacts from object storage or the local fallback."""
+    if not object_key or object_key.startswith("/") or ".." in Path(object_key).parts:
+        raise StorageError("مسار التخزين غير صالح")
+    if not _s3_enabled():
+        try:
+            return (Path(settings.UPLOAD_DIR) / object_key).read_bytes()
+        except OSError as exc:
+            raise StorageError("تعذر قراءة الملف المولد") from exc
+    try:
+        response = _client().get_object(Bucket=settings.S3_BUCKET, Key=object_key)
+        return response["Body"].read()
+    except (BotoCoreError, ClientError) as exc:
+        raise StorageError("تعذر قراءة الملف المولد من Object Storage") from exc
+
+
 def open_file(object_key: str, fallback_path: Path) -> BinaryIO:
     if not _s3_enabled():
         return fallback_path.open("rb")
