@@ -17,3 +17,5 @@ class PreviewBuildResponse(BaseModel):
     entrypoint: str
     artifact_base64: str
     artifact_size_bytes: int = Field(ge=0)
+    preview_url: str | None = None
+    preview_expires_at: int | None = Field(default=None, ge=0)
