@@ -909,6 +909,7 @@ def serve_preview_artifact(
     artifact_id: str,
     token: str,
     path: str,
+    db: Session = Depends(get_db),
 ):
     try:
         artifact_root = verify_preview_token(project_id, artifact_id, token)
