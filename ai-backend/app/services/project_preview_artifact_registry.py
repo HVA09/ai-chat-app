@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.project_preview_artifact import ProjectPreviewArtifact
+from app.services.project_preview_artifacts import PreviewArtifactError
 from app.services.project_preview_artifacts import _object_key, PublishedPreview
 from app.services.storage import StorageError, delete_file
 
@@ -84,7 +85,7 @@ def register_preview_artifact(
 def cleanup_preview_artifact_objects(
     project_id: int,
     artifact: ProjectPreviewArtifact,
-) -> None:
+) -> list[str]:
     errors: list[str] = []
     for path in artifact.files_manifest or []:
         try:
@@ -98,15 +99,15 @@ def cleanup_preview_artifact_objects(
             )
         except StorageError as exc:
             errors.append(str(exc))
-    if errors:
-        # Cleanup is best-effort after lifecycle state is persisted.
-        return
+    return errors
 
 
 def delete_preview_artifact(
     db: Session,
     artifact: ProjectPreviewArtifact,
 ) -> None:
-    cleanup_preview_artifact_objects(artifact.project_id, artifact)
+    errors = cleanup_preview_artifact_objects(artifact.project_id, artifact)
+    if errors:
+        raise PreviewArtifactError("تعذر تنظيف ملفات artifact المعاينة.")
     db.delete(artifact)
     db.commit()
