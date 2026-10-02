@@ -569,6 +569,18 @@ def _execute_agent_job(job_id: int, db=None) -> None:
     except AgentJobPaused:
         job = db.get(AgentJob, job_id)
         if job is not None:
+            active_step = (
+                db.query(AgentWorkflowStep)
+                .filter(
+                    AgentWorkflowStep.agent_job_id == job.id,
+                    AgentWorkflowStep.status == "running",
+                )
+                .order_by(AgentWorkflowStep.sequence.asc())
+                .first()
+            )
+            if active_step is not None:
+                active_step.status = "paused"
+                active_step.error = "تم إيقاف الخطوة مؤقتًا ويمكن استئنافها من checkpoint."
             job.status = "paused"
             job.finished_at = None
             _save_agent_job_checkpoint(
@@ -576,6 +588,8 @@ def _execute_agent_job(job_id: int, db=None) -> None:
                 job,
                 phase="paused",
                 attempt=job.retry_count,
+                step_sequence=active_step.sequence if active_step else None,
+                status="paused",
                 detail="تم إيقاف مهمة الوكيل مؤقتًا ويمكن استئنافها من checkpoint.",
             )
             db.commit()
