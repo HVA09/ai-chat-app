@@ -45,7 +45,7 @@ def _get_project_and_membership(
 
 
 def _ensure_can_manage_memory(
-    project: WorkspaceProject, membership: WorkspaceMember
+    project: WorkspaceProject, membership: WorkspaceMember, db: Session
 ) -> None:
     if not can_edit_project(project, membership.user, db):
         raise HTTPException(
@@ -98,7 +98,7 @@ def create_project_memory(
     db: Session = Depends(get_db),
 ):
     project, membership = _get_project_and_membership(project_id, current_user, db)
-    _ensure_can_manage_memory(project, membership)
+    _ensure_can_manage_memory(project, membership, db)
 
     memory_count = (
         db.query(ProjectMemory)
