@@ -17,7 +17,7 @@ class ProjectMemberUpdate(BaseModel):
 class ProjectMemberOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: int | None
     project_id: int
     user_id: int
     email: str
