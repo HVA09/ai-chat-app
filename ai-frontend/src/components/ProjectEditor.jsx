@@ -658,11 +658,6 @@ export default function ProjectEditor({
               ) : (
                 <div className="mt-3 space-y-2">
                   {projectMembers.map((member) => {
-                    const rowManager =
-                      member.is_owner ||
-                      member.role === "manager" ||
-                      workspaceRole === "owner" ||
-                      workspaceRole === "admin";
                     const roleLabel = member.is_owner
                       ? t("projectEditor.roleOwner")
                       : t("projectEditor.role" + member.role.charAt(0).toUpperCase() + member.role.slice(1));
@@ -681,7 +676,7 @@ export default function ProjectEditor({
                           <div className="truncate text-xs text-slate-500 dark:text-slate-400">{member.email}</div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {rowManager && canManageProjectMembers && !member.is_owner ? (
+                          {canManageProjectMembers && !member.is_owner ? (
                             <select
                               value={member.role}
                               disabled={projectMemberSaving}
