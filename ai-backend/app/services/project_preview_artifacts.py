@@ -66,17 +66,22 @@ def _sign(payload: str) -> str:
     return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
 
-def issue_preview_token(project_id: int, artifact_id: str) -> tuple[str, int]:
+def issue_preview_token(
+    project_id: int,
+    artifact_id: str,
+    artifact_root: str,
+) -> tuple[str, int]:
     expires_at = int(time.time()) + settings.PREVIEW_TOKEN_TTL_SECONDS
-    payload = f"{_TOKEN_VERSION}.{project_id}.{artifact_id}.{expires_at}"
+    root_token = base64.urlsafe_b64encode(artifact_root.encode("utf-8")).decode("ascii").rstrip("=")
+    payload = f"{_TOKEN_VERSION}.{project_id}.{artifact_id}.{expires_at}.{root_token}"
     return f"{payload}.{_sign(payload)}", expires_at
 
 
-def verify_preview_token(project_id: int, artifact_id: str, token: str) -> None:
+def verify_preview_token(project_id: int, artifact_id: str, token: str) -> str:
     parts = token.split(".")
-    if len(parts) != 5 or parts[0] != _TOKEN_VERSION:
+    if len(parts) != 6 or parts[0] != _TOKEN_VERSION:
         raise PreviewArtifactError("رمز المعاينة غير صالح.")
-    _, token_project, token_artifact, token_expiry, signature = parts
+    _, token_project, token_artifact, token_expiry, root_token, signature = parts
     if token_project != str(project_id) or token_artifact != artifact_id:
         raise PreviewArtifactError("رمز المعاينة لا يطابق المشروع.")
     try:
@@ -88,6 +93,10 @@ def verify_preview_token(project_id: int, artifact_id: str, token: str) -> None:
     payload = ".".join(parts[:-1])
     if not hmac.compare_digest(signature, _sign(payload)):
         raise PreviewArtifactError("توقيع المعاينة غير صالح.")
+    try:
+        return base64.urlsafe_b64decode(root_token + "=" * (-len(root_token) % 4)).decode("utf-8")
+    except Exception as exc:
+        raise PreviewArtifactError("رمز المعاينة يحتوي مجلدًا غير صالح.") from exc
 
 
 def _object_key(project_id: int, artifact_id: str, path: str) -> str:
@@ -150,7 +159,8 @@ def publish_preview_artifact(
             content_type,
         )
 
-    token, expires_at = issue_preview_token(project_id, artifact_id)
+    artifact_root = entrypoint.rsplit("/", 1)[0] if "/" in entrypoint else ""
+    token, expires_at = issue_preview_token(project_id, artifact_id, artifact_root)
     return PublishedPreview(
         artifact_id=artifact_id,
         token=token,
@@ -179,8 +189,11 @@ def rewrite_absolute_preview_urls(
     project_id: int,
     artifact_id: str,
     token: str,
+    artifact_root: str = "",
 ) -> str:
     prefix = f"/projects/{project_id}/preview-artifacts/{artifact_id}/{quote(token, safe='')}"
+    if artifact_root:
+        prefix += f"/{quote(artifact_root, safe='')}"
 
     def replace(match: re.Match[str]) -> str:
         path = match.group("path")
