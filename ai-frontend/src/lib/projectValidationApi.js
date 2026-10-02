@@ -10,3 +10,9 @@ export async function getProjectPreviewPlan(projectId) {
   const { data } = await api.get(`/projects/${projectId}/preview-plan`);
   return data;
 }
+
+
+export async function buildProjectPreview(projectId) {
+  const { data } = await api.post(`/projects/${projectId}/preview-build`);
+  return data;
+}
