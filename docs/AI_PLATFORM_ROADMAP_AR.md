@@ -616,16 +616,25 @@
 - merge commit: `1c0cb1efeb9ef78a36bbb68e01cdeaf1c47e5385`.
 - PR #382 أُغلق لأنه نسخة مكررة من F5.1 بعد دمج #379.
 
-#### F5.2 — Verification / Retry Enhancements: **الخطوة التالية**
-- مرحلة تحقق مستقلة للنتائج قبل الإكمال.
-- حالات checkpoint إضافية ومتابعة دورة المهمة طويلة المدى.
-- bounded retries مع الحفاظ على cumulative token usage.
-- كشف حالة checkpoint داخل AgentJob API.
-- PR #381 موجود كمرشح التنفيذ التالي؛ CI #4121 وCodeQL #665 نجحا على رأس الفرع الحالي.
+#### F5.2 — Verification / Retry Enhancements: **مكتمل ومتحقق — 2026-10-02**
+- أضيفت مرحلة تحقق مستقلة قبل اعتبار خطوة Agent ناجحة.
+- أضيفت حالات checkpoint إضافية: `executing` و`verifying` و`retrying` و`step_completed` و`completed` و`failed` و`cancelled`.
+- أضيفت bounded retries مع الحفاظ على cumulative input/output token usage.
+- تم كشف `workflow_phase` و`retry_count` و`max_retries` و`checkpoint` و`checkpoint_at` داخل AgentJob API.
+- تم منع إعادة المحاولة عند التوقف الأمني، مع إعادة تطبيق فحوصات quota وcost budget قبل كل retry.
+- migration: `0078_agent_verify_retry`.
+- اختبارات regression تغطي retry بعد فشل التحقق ومنع retry بعد security stop.
+- PR #387 تم دمجه بنجاح.
+- CI #37047362318: **نجح بالكامل** — Backend، Frontend، SDK، Production Compose، Preview Builder.
+- CodeQL #37047368789: **نجح**.
+- merge commit: `a2d0d7a2dd6d6da124cb7db8834bd8d1d4720780`.
+- تم إغلاق PR #381 القديم لأنه أصبح تنفيذًا متجاوزًا بعد اكتمال F5.1 واعتماد تنفيذ F5.2 الجديد.
 - لا توجد موارد بنية تحتية جديدة مطلوبة؛ يعتمد التنفيذ على PostgreSQL/Celery/Redis الموجودة.
 
-## قاعدة العمل بعد F5.1
-F5.1 مغلقة ومتحققة. الخطوة التالية هي F5.2 مع الحفاظ على حدود AgentRuntime الحالية، عزل المشروع، وسلامة التكلفة وعدم إضافة موارد مدفوعة دون حاجة.
+## قاعدة العمل بعد F5.2
+F5.1 وF5.2 مغلقتان ومتحققتان على `main`.
+لا يوجد تعريف تنفيذي لـF5.3 في roadmap الحالية، لذلك لا ينبغي افتراض متطلبات أو تنفيذها قبل تحديد نطاقها.
+الأولوية التالية هي تحديد F5.3 وتوثيق متطلباته ومعايير التحقق، مع الحفاظ على حدود AgentRuntime الحالية، عزل المشروع، وسلامة التكلفة وعدم إضافة موارد مدفوعة دون حاجة.
 
 ترتيب التنفيذ الحالي:
-1. F5.2 — Verification / Retry Enhancements
+1. تحديد F5.3 — نطاق واضح ومتطلبات قابلة للاختبار.
