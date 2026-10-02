@@ -592,13 +592,8 @@
 ترتيب التنفيذ الحالي:
 1. F5 — Advanced Agent Project Workflows
 
+### F5 — Advanced Agent Project Workflows
 - Agent workflows متعددة الخطوات للعمل على المشروع.
 - التخطيط والتنفيذ والتحقق وإعادة المحاولة مع checkpoints.
 - تشغيل مهام طويلة ومتابعة حالة العمل مع حدود الموارد والسياسات الأمنية.
 
-## قاعدة العمل بعد F4.2
-F4.1 وF4.2 مغلقتان ومتحققتان، بينما F4.3 ما زالت البند المتبقي من نطاق F4. لا نبدأ F5 قبل إكمال F4.3 ومراجعة العزل وإدارة artifacts وحالات التعارض.
-
-ترتيب التنفيذ الحالي:
-1. F4.3 — Artifact Management / Conflict Improvements
-2. F5 — Advanced Agent Project Workflows
