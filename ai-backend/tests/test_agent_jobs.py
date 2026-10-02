@@ -503,9 +503,10 @@ def test_execute_agent_job_pauses_during_runtime_and_resumes_from_checkpoint(
 
         async def run(self, **kwargs):
             type(self).calls += 1
-            job = db_session.get(AgentJob, job_id)
-            job.pause_requested = True
-            db_session.commit()
+            if type(self).calls == 1:
+                job = db_session.get(AgentJob, job_id)
+                job.pause_requested = True
+                db_session.commit()
             await self.event_sink({"type": "runtime_start"})
             return FakeResult()
 
