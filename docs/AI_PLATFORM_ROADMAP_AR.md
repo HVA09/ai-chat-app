@@ -653,41 +653,42 @@ F5.1 وF5.2 وF5.3 مغلقة ومتحققة على `main`.
 
 ### المرحلة G — Final Productization & Production Acceptance
 
-#### G1 — UI / Mobile Acceptance
-- التحقق الفعلي على الشاشات الصغيرة من Sidebar/Hamburger، Composer، رفع الملفات، زر الإرسال، أداة الصوت، Settings، والقوائم السياقية.
-- مراجعة ChatGPT-style shell الحالية والتأكد من عدم وجود عناصر مكررة أو قوائم غير مرتبطة بسياق المحادثة.
-- اختبار keyboard/touch/focus/scroll وسلوك الـsafe-area على الهاتف.
-- توثيق أي regression وتصحيحها قبل الإغلاق.
+#### حالة التقدم — 2026-10-02
 
-#### G2 — Agent / Project End-to-End Acceptance
-- التحقق من المسار الكامل: إنشاء مشروع → تعديل الملفات → validation → build/preview → artifact serving.
-- اختبار Agent project-building flow بحيث يستخدم قدرات المشروع الفعلية ولا يعود إلى رسالة "text-only" عند توفر أدوات البناء.
-- اختبار workflow من عدة خطوات مع verification/retry/pause/resume/cancel.
-- التحقق من ownership وworkspace/project isolation خلال المسار الكامل.
+- **G1 — UI / Mobile Acceptance: مغلقة على مستوى الكود والتحقق الآلي.**
+  - تم دمج PR #390.
+  - قائمة إجراءات المحادثة في رأس الصفحة أصبحت سياقية ولا تظهر عندما لا توجد إجراءات متاحة.
+  - اختبارات Frontend وCI وProduction Smoke بعد الدمج نجحت.
+  - يبقى التحقق اليدوي على جهاز هاتف فعلي جزءًا من الإغلاق النهائي الشامل.
 
-#### G3 — Security / Reliability / Cost Acceptance
-- إعادة تشغيل الاختبارات الأمنية وعزل الموارد على آخر `main`.
-- فحص Alembic head واحد، migrations، CodeQL، dependency audit، وحدود الملفات/artifacts/tools.
-- مراجعة cost/quota controls وعدم إنشاء موارد مدفوعة جديدة.
-- معالجة أي تحذير أمني أو regression فعلي، مع إبقاء التحذيرات غير الحرجة موثقة.
+- **G2 — Agent / Project End-to-End Acceptance: قيد التنفيذ.**
+  - PR #391 تم دمجه بالـcommit `51cb1bb80ee02878941a9941be5e17c1bea3c475`.
+  - أضيف Dockerfile مستقل لنشر Preview Builder، وتم الحفاظ على عزل bubblewrap ومنع الشبكة أثناء build.
+  - خدمة Render باسم `ai-chat-preview-builder` أُنشئت على خطة **Free** وأصبحت **live**، وسجلات Render أكدت `GET /` بنتيجة `200`.
+  - تم تجهيز `PREVIEW_BUILDER_URL` في الكود، لكن الإنتاج لا يحتفظ به حاليًا لأن إعدادات Backend تفرض وجود `PREVIEW_BUILDER_TOKEN` بمجرد ضبط URL، ومن غير الآمن وضع token في Git أو تمريره كمادة سرية غير محمية.
+  - **المتبقي في G2:** إنشاء token سري من Render وإدخاله في خدمة Builder، ثم إدخال نفس القيمة في `PREVIEW_BUILDER_TOKEN` للـBackend، وبعدها تشغيل build حقيقي لمشروع JavaScript والتحقق من artifact والـpreview.
 
-#### G4 — Production Acceptance
-- Production Smoke على النسخة النهائية للـbackend والfrontend.
-- التحقق من `/health` و`/ready` وauth وchat وfile upload وproject preview وAgent jobs في بيئة الإنتاج.
-- التحقق من logs/request IDs وRedis/DB والنسخ الاحتياطية.
-- مراجعة Render/Supabase وعدم ترك مورد PostgreSQL القديم بعد انتهاء نافذة الرجوع في **2026-10-10**.
+- **G3 — Security / Reliability / Cost Acceptance: متحققة آليًا حاليًا.**
+  - آخر CI على main: **نجح بالكامل** — run `37054617204`.
+  - CodeQL على main: **نجح** — run `37054617206`.
+  - Publish backend image: **نجح** — run `37054617159`.
+  - Production Smoke: **نجح** — run `37054617150`.
+  - Alembic chain الحالية تنتهي عند `0079_agent_pause` بعد `0078_agent_verify_retry` وmerge `0077`.
+  - لا توجد موارد مدفوعة جديدة؛ خدمات Render الحالية المستخدمة ضمن هذا التقدم بقيت على **Free**.
 
-#### G5 — Release & Closure
-- تحديث roadmap والوثائق النهائية.
-- تسجيل commits/PRs/CI/CodeQL/Production Smoke النهائية.
-- إنشاء release/tag فقط بعد نجاح G4.
-- اعتبار المشروع مغلقًا تشغيليًا عندما تنجح G1–G4 ولا يبقى blocker معروف.
-- أي تحسينات مستقبلية بعد ذلك تُعامل كـpost-release enhancements وليست ضمن مراحل الإغلاق الحالية.
+- **G4 — Production Acceptance: متقدمة وليست مغلقة.**
+  - Backend عاد إلى `live` بعد إزالة URL المؤقت الذي تسبب في startup fail-closed لغياب token.
+  - سجلات Render تؤكد `/health = 200` بعد الاستقرار.
+  - Frontend deployment الحالي للـG1 أصبح **live**.
+  - **المتبقي:** إعادة Production Smoke بعد تفعيل Builder فعليًا، ثم تحقق المسار الكامل chat/file/project/preview/Agent jobs في الإنتاج.
 
-### ترتيب التنفيذ بعد F5.3
+- **G5 — Release & Closure: لم تبدأ.**
+  - لا يتم إنشاء release/tag قبل إغلاق G1–G4.
 
-1. G1 — UI / Mobile Acceptance
-2. G2 — Agent / Project End-to-End Acceptance
-3. G3 — Security / Reliability / Cost Acceptance
-4. G4 — Production Acceptance
-5. G5 — Release & Closure
+### ترتيب التنفيذ الحالي بعد G1
+
+1. G2 — تفعيل Preview Builder بالـsecret وإجراء build/preview حقيقي.
+2. G3 — تثبيت نتائج الأمان/التكلفة بعد G2.
+3. G4 — Production Acceptance كامل بعد تفعيل Builder.
+4. G5 — Release & Closure.
+
