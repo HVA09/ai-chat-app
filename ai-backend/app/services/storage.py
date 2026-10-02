@@ -123,3 +123,35 @@ def delete_file(object_key: str, fallback_path: Path) -> None:
         except (BotoCoreError, ClientError) as exc:
             raise StorageError("فشل حذف الملف من Object Storage") from exc
     fallback_path.unlink(missing_ok=True)
+
+
+def delete_prefix(prefix: str) -> None:
+    """Delete all objects below a validated storage prefix."""
+    if not prefix or prefix.startswith("/") or ".." in Path(prefix).parts:
+        raise StorageError("مسار التخزين غير صالح")
+    if _s3_enabled():
+        client = _client()
+        try:
+            paginator = client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=settings.S3_BUCKET, Prefix=prefix.rstrip("/") + "/"):
+                keys = [item["Key"] for item in page.get("Contents", []) if item.get("Key")]
+                if keys:
+                    client.delete_objects(
+                        Bucket=settings.S3_BUCKET,
+                        Delete={"Objects": [{"Key": key} for key in keys], "Quiet": True},
+                    )
+        except (BotoCoreError, ClientError) as exc:
+            raise StorageError("فشل حذف مجموعة الملفات من Object Storage") from exc
+        return
+
+    root = Path(settings.UPLOAD_DIR) / prefix
+    if not root.exists():
+        return
+    try:
+        for path in sorted(root.rglob("*"), reverse=True):
+            if path.is_file() or path.is_symlink():
+                path.unlink(missing_ok=True)
+            elif path.is_dir():
+                path.rmdir()
+    except OSError as exc:
+        raise StorageError("فشل حذف مجموعة الملفات المولدة") from exc
