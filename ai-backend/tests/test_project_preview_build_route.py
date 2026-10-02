@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from app.schemas.project_preview import PreviewBuildResponse
@@ -51,6 +52,16 @@ def test_project_preview_build_delegates_to_isolated_builder(client, monkeypatch
         )
     )
     monkeypatch.setattr(projects_router, "build_javascript_preview", mocked)
+    monkeypatch.setattr(
+        projects_router,
+        "publish_preview_artifact",
+        lambda project_id, build: SimpleNamespace(
+            artifact_id="artifact123",
+            token="v1.token",
+            expires_at=9999999999,
+            entrypoint=build.entrypoint,
+        ),
+    )
 
     response = client.post(
         f"/projects/{project['id']}/preview-build",
@@ -59,6 +70,7 @@ def test_project_preview_build_delegates_to_isolated_builder(client, monkeypatch
     assert response.status_code == 200
     assert response.json()["entrypoint"] == "dist/index.html"
     assert response.json()["artifact_base64"] == "YQ=="
+    assert "/projects/" + str(project["id"]) + "/preview-artifacts/artifact123/v1.token/dist/index.html" in response.json()["preview_url"]
     mocked.assert_awaited_once()
     args = mocked.await_args.args
     assert args[0] == project["id"]
