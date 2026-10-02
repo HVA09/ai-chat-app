@@ -730,6 +730,9 @@ export default function ProjectEditor({
                       size: previewBuild.artifact_size_bytes,
                     })}
                   </div>
+                  <p className="mt-2 text-[11px] text-emerald-700 dark:text-emerald-400">
+                    {t("projectEditor.previewBuildSecurity")}
+                  </p>
                   {previewBuildUrl && (
                     <button
                       type="button"
