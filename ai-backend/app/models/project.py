@@ -58,3 +58,9 @@ class WorkspaceProject(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    members = relationship(
+        "ProjectMember",
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
