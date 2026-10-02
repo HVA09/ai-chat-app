@@ -543,7 +543,7 @@
 - لم تتم إضافة أو ترقية أي موارد Render مدفوعة ضمن F3.3.
 
 ### F4 — Project Collaboration / Import-Export Improvements
-الحالة: **المرحلة التالية**
+الحالة: **قيد التنفيذ — F4.1 وF4.2 مكتملتان، وF4.3 هي الخطوة التالية**
 
 النطاق:
 - مشاركة المشاريع وأعضاء المشروع وصلاحياتهم.
@@ -551,14 +551,45 @@
 - تحسين إدارة artifacts وحالات التعارض.
 - مراجعة ownership/membership والعزل في كل مسار جديد قبل الدمج.
 
+#### F4.1 — Project Collaboration / Membership: **مكتمل ومتحقق — 2026-10-02**
+- تمت إضافة نموذج ProjectMember وأدوار viewer وeditor وmanager.
+- تمت إضافة خدمة موحدة لفحص can_read_project وcan_edit_project وcan_manage_project.
+- تمت حماية Project Files وProject Memories وChat وConversation filtering بعزل المشروع والصلاحيات.
+- تمت إضافة اختبارات العزل عبر المستخدمين وworkspaces، واختبارات منع استمرار محادثة مشروع بعد سحب الوصول.
+- Migration 0074_project_collaboration.
+- PR #368: **Merged**.
+- merge commit: 325fab92b8e0f6f7fcbbab4e764748fe4976.
+- Main CI بعد الدمج: **نجح بالكامل**.
+
+#### F4.2 — Project Import / Export: **مكتمل ومتحقق — 2026-10-02**
+- تمت إضافة archive ZIP إصدارية canonical مع schema_version=1.
+- يشمل archive metadata المشروع والملفات المصدر وmemories.
+- validation صارم للحجم، وعدد الملفات، والمسارات الآمنة، وUTF-8، وchecksums، والملفات غير المعلنة، وsymlinks.
+- الاستيراد يستخدم fail-by-default عند تعارض الاسم، مع سياسة rename صريحة عند الحاجة.
+- تم تسجيل نجاح الاستيراد في audit log.
+- أضيفت واجهات Frontend للاستيراد والتصدير مع معالجة تعارض الاسم.
+- تمت المحافظة على ownership/membership checks في export والاستعلامات المرتبطة بالمشروع.
+- أضيفت اختبارات round-trip، checksum، traversal، undeclared files، وتعارضات الاستيراد.
+- PR #370: **Merged**.
+- merge commit: a12ee1a863640fbcb9bbdff3ed8a72c4a0de40eb.
+- CI #4008: **نجح بالكامل** — Backend، Frontend، SDK، Production Compose، Preview Builder.
+- CodeQL #645: **نجح بالكامل** لـPython وJavaScript/TypeScript.
+
+#### F4.3 — Artifact Management / Conflict Handling: **التالي**
+النطاق الأولي:
+- مراجعة دورة حياة artifacts الناتجة عن المشاريع ومعالجة حالات التكرار أو الاستبدال بشكل صريح.
+- تعريف سلوك متسق لحالات التعارض عبر project files وartifacts وعمليات الاستيراد/التصدير التي ستضاف لاحقًا.
+- الحفاظ على ownership/isolation وعدم السماح بالاستبدال غير المصرح به.
+- إضافة اختبارات backend/frontend للحالات الطبيعية وحالات التعارض والعزل.
+
 ### F5 — Advanced Agent Project Workflows
 - Agent workflows متعددة الخطوات للعمل على المشروع.
 - التخطيط والتنفيذ والتحقق وإعادة المحاولة مع checkpoints.
 - تشغيل مهام طويلة ومتابعة حالة العمل مع حدود الموارد والسياسات الأمنية.
 
-## قاعدة العمل بعد F3.3
-F3.3 مغلقة. الخطوة التالية هي F4، ولا نبدأ F5 قبل إغلاق F4 والتحقق من اختبارات العزل والاستيراد/التصدير وحالات التعارض.
+## قاعدة العمل بعد F4.2
+F4.1 وF4.2 مغلقتان ومتحققتان. لا نبدأ F5 قبل إغلاق F4 بالكامل، والتحقق من F4.3 واختبارات artifacts والتعارض والعزل.
 
 ترتيب التنفيذ الحالي:
-1. F4 — Project Collaboration / Import-Export Improvements
+1. F4.3 — Artifact Management / Conflict Handling
 2. F5 — Advanced Agent Project Workflows
