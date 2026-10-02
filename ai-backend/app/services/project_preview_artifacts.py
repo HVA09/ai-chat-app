@@ -152,12 +152,15 @@ def publish_preview_artifact(
     ):
         raise PreviewArtifactError("نقطة الدخول ليست ضمن المسارات المسموح بها.")
 
-    for path, (content, content_type) in files.items():
-        put_bytes(
-            content,
-            _object_key(project_id, artifact_id, path),
-            content_type,
-        )
+    try:
+        for path, (content, content_type) in files.items():
+            put_bytes(
+                content,
+                _object_key(project_id, artifact_id, path),
+                content_type,
+            )
+    except StorageError as exc:
+        raise PreviewArtifactError("تعذر نشر artifact المعاينة.") from exc
 
     artifact_root = entrypoint.rsplit("/", 1)[0] if "/" in entrypoint else ""
     token, expires_at = issue_preview_token(project_id, artifact_id, artifact_root)
@@ -171,7 +174,10 @@ def publish_preview_artifact(
 
 def read_preview_file(project_id: int, artifact_id: str, path: str) -> tuple[bytes, str]:
     safe_path = _safe_zip_path(path)
-    content = get_bytes(_object_key(project_id, artifact_id, safe_path))
+    try:
+        content = get_bytes(_object_key(project_id, artifact_id, safe_path))
+    except StorageError as exc:
+        raise PreviewArtifactError("تعذر قراءة artifact المعاينة.") from exc
     content_type = mimetypes.guess_type(safe_path)[0] or "application/octet-stream"
     return content, content_type
 
