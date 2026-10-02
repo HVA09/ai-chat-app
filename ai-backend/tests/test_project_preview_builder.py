@@ -51,6 +51,7 @@ async def test_preview_builder_posts_only_allowlisted_build_request(monkeypatch)
             return {
                 "entrypoint": "dist/index.html",
                 "artifact_base64": "YQ==",
+                "artifact_size_bytes": 1,
             }
 
     class FakeClient:
@@ -83,6 +84,7 @@ async def test_preview_builder_posts_only_allowlisted_build_request(monkeypatch)
     )
 
     assert result.entrypoint == "dist/index.html"
+    assert result.artifact_size_bytes == 1
     assert captured["url"] == "http://builder.test/v1/build"
     assert captured["headers"]["Authorization"] == "Bearer test-token"
     assert captured["headers"]["X-Preview-Protocol"] == "1"

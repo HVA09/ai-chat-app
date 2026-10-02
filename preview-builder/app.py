@@ -268,4 +268,5 @@ async def build_preview(
         return BuildResponse(
             entrypoint=entrypoint,
             artifact_base64=base64.b64encode(artifact).decode("ascii"),
+            artifact_size_bytes=len(artifact),
         )
