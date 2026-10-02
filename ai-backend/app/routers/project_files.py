@@ -49,7 +49,7 @@ def _get_project_and_membership(
 
 
 def _ensure_can_manage(
-    project: WorkspaceProject, membership: WorkspaceMember
+    project: WorkspaceProject, membership: WorkspaceMember, db: Session
 ) -> None:
     if not can_edit_project(project, membership.user, db):
         raise HTTPException(
@@ -126,7 +126,7 @@ def create_project_file(
     db: Session = Depends(get_db),
 ):
     project, membership = _get_project_and_membership(project_id, current_user, db)
-    _ensure_can_manage(project, membership)
+    _ensure_can_manage(project, membership, db)
 
     count = db.query(ProjectFile).filter(ProjectFile.project_id == project.id).count()
     if count >= MAX_PROJECT_FILES:
