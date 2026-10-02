@@ -34,6 +34,7 @@ class AgentJobOut(BaseModel):
     task: str
     status: str
     cancel_requested: bool
+    pause_requested: bool
     workflow_phase: str
     retry_count: int
     max_retries: int
@@ -60,3 +61,12 @@ class AgentJobCancelOut(BaseModel):
     id: int
     status: str
     cancel_requested: bool
+
+
+class AgentJobPauseOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    status: str
+    pause_requested: bool
+    workflow_phase: str
