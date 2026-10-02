@@ -178,7 +178,7 @@ def update_project_file(
     project_file, project, membership = _get_file(
         project_id, file_id, current_user, db
     )
-    _ensure_can_manage(project, membership)
+    _ensure_can_manage(project, membership, db)
 
     duplicate = (
         db.query(ProjectFile)
@@ -219,6 +219,6 @@ def delete_project_file(
     project_file, project, membership = _get_file(
         project_id, file_id, current_user, db
     )
-    _ensure_can_manage(project, membership)
+    _ensure_can_manage(project, membership, db)
     db.delete(project_file)
     db.commit()
