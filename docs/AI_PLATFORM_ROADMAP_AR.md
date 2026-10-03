@@ -677,14 +677,26 @@ F5.1 وF5.2 وF5.3 مغلقة ومتحققة على `main`.
   - Alembic chain الحالية تنتهي عند `0079_agent_pause` بعد `0078_agent_verify_retry` وmerge `0077`.
   - لا توجد موارد مدفوعة جديدة؛ خدمات Render الحالية المستخدمة ضمن هذا التقدم بقيت على **Free**.
 
-- **G4 — Production Acceptance: متقدمة وليست مغلقة.**
-  - Backend عاد إلى `live` بعد إزالة URL المؤقت الذي تسبب في startup fail-closed لغياب token.
-  - سجلات Render تؤكد `/health = 200` بعد الاستقرار.
-  - Frontend deployment الحالي للـG1 أصبح **live**.
-  - **المتبقي:** إعادة Production Smoke بعد تفعيل Builder فعليًا، ثم تحقق المسار الكامل chat/file/project/preview/Agent jobs في الإنتاج.
+- **G4 — Production Acceptance: مغلقة ومتحققة — 2026-10-03.**
+  - تم تثبيت Builder الإنتاجي المنفصل على Render Free، وأصبحت خدمة `ai-chat-preview-builder` في حالة `live`.
+  - Frontend وPreview Builder يعملان على أحدث commit من `main` (`e5265a5bd8916323acb2d672412600b0120969b7`) وحالتهما `live`.
+  - Production Smoke على أحدث commit `e5265a5bd8916323acb2d672412600b0120969b7`: **نجح بالكامل** — run `37146963584`، وكل خطوات `smoke` نجحت، بما فيها backend smoke، وصول الواجهة، وفحص `/health`.
+  - CI على أحدث commit: **نجح** — run `37146963588`.
+  - CodeQL على أحدث commit: **نجح** — run `37146963612`.
+  - Publish backend image على أحدث commit: **نجح** — run `37146963592`.
+  - Render backend سجّل طلبات `/health = 200` بصورة متكررة، كما أكد تشغيل Celery والمهام المجدولة بنجاح بعد الاستقرار.
+  - تم التحقق من أن Builder أصبح `live` ويستجيب عبر عنوانه العام بعد النشر.
+  - لا توجد موارد Render مدفوعة جديدة مطلوبة ضمن G4.
+  - النتيجة: **G4 مغلقة**. المتبقي الآن هو G5 الخاص بالإصدار والإغلاق النهائي.
 
-- **G5 — Release & Closure: لم تبدأ.**
-  - لا يتم إنشاء release/tag قبل إغلاق G1–G4.
+- **G5 — Release & Closure: قيد الإغلاق النهائي — 2026-10-03.**
+  - G1 وG2 وG3 وG4 مغلقة ومتحققة.
+  - المتبقي للإغلاق النهائي: إنشاء Release/Tag رسمي للمشروع وتسجيل نقطة الإغلاق النهائية بعد مراجعة حالة الخدمات.
+  - لا نضيف ميزة منتج جديدة قبل إتمام هذا الإغلاق.
+
+### قاعدة العمل بعد G4
+
+**الخطوة التالية الوحيدة هي G5 — Release & Closure.**
 
 ### ترتيب التنفيذ الحالي بعد G2
 
