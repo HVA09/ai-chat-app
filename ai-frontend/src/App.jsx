@@ -3064,12 +3064,21 @@ export default function App() {
           onOpenParentConversation={openConversation}
           isAdmin={currentUser?.role === "admin"}
           projectName={projects.find((project) => Number(project.id) === Number(selectedProjectId))?.name || ""}
-          canEditProject={
-            selectedProjectId !== null &&
-            ["owner", "admin"].includes(
-              workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.role
-            )
-          }
+          canEditProject={(() => {
+            const project = projects.find(
+              (item) => Number(item.id) === Number(selectedProjectId)
+            );
+            const workspaceRole = workspaces.find(
+              (workspace) => workspace.id === selectedWorkspaceId
+            )?.role;
+            return Boolean(
+              project &&
+              (
+                Number(project.owner_id) === Number(currentUser?.id) ||
+                ["owner", "admin"].includes(workspaceRole)
+              )
+            );
+          })()}
           onEditProject={() => {
             if (selectedProjectId !== null) handleRenameProject(selectedProjectId);
           }}
