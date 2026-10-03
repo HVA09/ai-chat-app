@@ -201,6 +201,7 @@ const resources = {
         admin: "الإدارة",
         billing: "الاشتراك",
         files: "الملفات",
+        editProject: "تعديل المشروع",
         account: "الحساب",
         settings: "الإعدادات",
         more: "المزيد",
@@ -1425,6 +1426,7 @@ const resources = {
         account: "Account",
         settings: "Settings",
         more: "More",
+        editProject: "Edit project",
         openNavigation: "Open navigation",
       },
 
