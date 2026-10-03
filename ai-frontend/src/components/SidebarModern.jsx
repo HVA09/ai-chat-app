@@ -54,6 +54,7 @@ export default function SidebarModern({
   onDeleteFolder = () => {},
   onMoveFolder = () => {},
   projects = [],
+  currentUserId = null,
   selectedProjectId = null,
   onSelectProject = () => {},
   onCreateProject = () => {},
@@ -308,7 +309,11 @@ export default function SidebarModern({
                 {visibleProjects.map((project) => (
                   <div key={project.id} className="modern-library-item-group">
                     <button type="button" onClick={() => onSelectProject(project.id)} className={`modern-library-item ${selectedProjectId === project.id ? "active" : ""}`}><Icon name="project" size={14} /><span className="truncate">{project.name}</span></button>
-                    {(selectedWorkspaceRole === "owner" || selectedWorkspaceRole === "admin") ? (
+                    {(
+                      Number(project.owner_id) === Number(currentUserId) ||
+                      selectedWorkspaceRole === "owner" ||
+                      selectedWorkspaceRole === "admin"
+                    ) ? (
                       <button type="button" className="modern-item-action" onClick={() => onRenameProject(project.id)} title={t("sidebar.renameProjectTitle")}><Icon name="edit" size={13} /></button>
                     ) : null}
                   </div>
