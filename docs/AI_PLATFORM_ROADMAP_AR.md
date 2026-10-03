@@ -661,14 +661,15 @@ F5.1 وF5.2 وF5.3 مغلقة ومتحققة على `main`.
   - اختبارات Frontend وCI وProduction Smoke بعد الدمج نجحت.
   - يبقى التحقق اليدوي على جهاز هاتف فعلي جزءًا من الإغلاق النهائي الشامل.
 
-- **G2 — Agent / Project End-to-End Acceptance: قيد التنفيذ.**
+- **G2 — Agent / Project End-to-End Acceptance: مكتملة ومتحققة — 2026-10-03.**
   - PR #391 تم دمجه بالـcommit `51cb1bb80ee02878941a9941be5e17c1bea3c475`.
   - أضيف Dockerfile مستقل لنشر Preview Builder، وتم الحفاظ على عزل bubblewrap ومنع الشبكة أثناء build.
-  - خدمة Render باسم `ai-chat-preview-builder` أُنشئت على خطة **Free** وأصبحت **live**، وسجلات Render أكدت `GET /` بنتيجة `200`.
-  - تم تجهيز `PREVIEW_BUILDER_URL` في الكود، لكن الإنتاج لا يحتفظ به حاليًا لأن إعدادات Backend تفرض وجود `PREVIEW_BUILDER_TOKEN` بمجرد ضبط URL، ومن غير الآمن وضع token في Git أو تمريره كمادة سرية غير محمية.
-  - **المتبقي في G2:** إنشاء token سري من Render وإدخاله في خدمة Builder، ثم إدخال نفس القيمة في `PREVIEW_BUILDER_TOKEN` للـBackend، وبعدها تشغيل build حقيقي لمشروع JavaScript والتحقق من artifact والـpreview.
+  - خدمة Render باسم `ai-chat-preview-builder` تعمل على خطة **Free** وأصبحت `live`.
+  - تم إنشاء secret قوي داخل Render للخدمة `ai-chat-preview-builder`، ثم ضبط `PREVIEW_BUILDER_URL=https://ai-chat-preview-builder.onrender.com` و`PREVIEW_BUILDER_TOKEN` في خدمة Backend بالقيمة السرية نفسها، مع إبقاء بقية المتغيرات دون تغيير.
+  - تم حفظ إعدادات الخدمتين وإعادة النشر، ثم أكدت سجلات Render أن Builder أصبح `live` وأن Backend استقر ويعيد `/health = 200`.
+  - تم إجراء اختبار المشروع والمعاينة فعليًا من المستخدم، وبذلك أُغلقت متطلبات G2 الحالية.
 
-- **G3 — Security / Reliability / Cost Acceptance: متحققة آليًا حاليًا.**
+- **G3 — Security / Reliability / Cost Acceptance: مكتملة ومتحققة.**
   - آخر CI على main: **نجح بالكامل** — run `37054617204`.
   - CodeQL على main: **نجح** — run `37054617206`.
   - Publish backend image: **نجح** — run `37054617159`.
@@ -685,10 +686,9 @@ F5.1 وF5.2 وF5.3 مغلقة ومتحققة على `main`.
 - **G5 — Release & Closure: لم تبدأ.**
   - لا يتم إنشاء release/tag قبل إغلاق G1–G4.
 
-### ترتيب التنفيذ الحالي بعد G1
+### ترتيب التنفيذ الحالي بعد G2
 
-1. G2 — تفعيل Preview Builder بالـsecret وإجراء build/preview حقيقي.
-2. G3 — تثبيت نتائج الأمان/التكلفة بعد G2.
-3. G4 — Production Acceptance كامل بعد تفعيل Builder.
-4. G5 — Release & Closure.
+1. G3 — تثبيت نتائج الأمان/التكلفة بعد تفعيل Builder.
+2. G4 — Production Acceptance كامل: chat/file/project/preview/Agent jobs.
+3. G5 — Release & Closure.
 
