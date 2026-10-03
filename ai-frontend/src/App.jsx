@@ -3063,6 +3063,16 @@ export default function App() {
           parentConversationId={parentConversationId}
           onOpenParentConversation={openConversation}
           isAdmin={currentUser?.role === "admin"}
+          projectName={projects.find((project) => Number(project.id) === Number(selectedProjectId))?.name || ""}
+          canEditProject={
+            selectedProjectId !== null &&
+            ["owner", "admin"].includes(
+              workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.role
+            )
+          }
+          onEditProject={() => {
+            if (selectedProjectId !== null) handleRenameProject(selectedProjectId);
+          }}
           notifications={notifications}
           onMarkNotificationRead={handleMarkNotificationRead}
           onMarkAllNotificationsRead={handleMarkAllNotificationsRead}
