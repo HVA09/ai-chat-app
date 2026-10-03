@@ -2978,6 +2978,7 @@ export default function App() {
         onMoveFolder={handleMoveFolder}
         onMoveConversationToFolder={handleMoveConversationToFolder}
         projects={projects}
+        currentUserId={currentUser?.id}
         selectedProjectId={selectedProjectId}
         onSelectProject={handleSelectProject}
         onCreateProject={handleCreateProject}
