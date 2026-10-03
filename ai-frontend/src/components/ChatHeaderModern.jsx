@@ -34,6 +34,9 @@ export default function ChatHeaderModern({
   parentConversationId = null,
   onOpenParentConversation = () => {},
   isAdmin,
+  projectName = "",
+  canEditProject = false,
+  onEditProject = () => {},
   notifications,
   onMarkNotificationRead,
   onMarkAllNotificationsRead,
@@ -73,6 +76,18 @@ export default function ChatHeaderModern({
               {conversationTitle || t("newChat")}
             </h2>
             <p className="truncate text-[11px] text-slate-400">{t("appName")}</p>
+            {canEditProject && projectName ? (
+              <button
+                type="button"
+                onClick={onEditProject}
+                className="mt-1 inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                title={t("header.editProject")}
+                aria-label={t("header.editProject")}
+              >
+                <Icon name="edit" size={12} />
+                <span>{t("header.editProject")}</span>
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
