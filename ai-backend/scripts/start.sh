@@ -72,15 +72,10 @@ if [ "${EMBEDDED_CELERY:-false}" = "true" ]; then
   echo "Embedded Celery enabled"
   echo "Celery binary: $(command -v celery)"
 
-  python -m celery -A app.tasks.celery_app worker \
-    --loglevel=info \
-    --concurrency=1 \
-    --hostname=free-worker@%h &
+  python -m celery -A app.tasks.celery_app worker     --loglevel=info     --concurrency=1     --hostname=free-worker@%h &
   WORKER_PID=$!
 
-  python -m celery -A app.tasks.celery_app beat \
-    --loglevel=info \
-    --schedule=/tmp/celerybeat-schedule &
+  python -m celery -A app.tasks.celery_app beat     --loglevel=info     --schedule=/tmp/celerybeat-schedule &
   BEAT_PID=$!
 
   sleep 3
@@ -119,7 +114,9 @@ else
   echo "Embedded Celery disabled"
 fi
 
-uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+PORT="${PORT:-8000}"
+echo "Starting API on 0.0.0.0:${PORT}"
+uvicorn app.main:app --host 0.0.0.0 --port "${PORT}" &
 API_PID=$!
 
 wait "$API_PID"
