@@ -3065,21 +3065,9 @@ export default function App() {
           onOpenParentConversation={openConversation}
           isAdmin={currentUser?.role === "admin"}
           projectName={projects.find((project) => Number(project.id) === Number(selectedProjectId))?.name || ""}
-          canEditProject={(() => {
-            const project = projects.find(
-              (item) => Number(item.id) === Number(selectedProjectId)
-            );
-            const workspaceRole = workspaces.find(
-              (workspace) => workspace.id === selectedWorkspaceId
-            )?.role;
-            return Boolean(
-              project &&
-              (
-                Number(project.owner_id) === Number(currentUser?.id) ||
-                ["owner", "admin"].includes(workspaceRole)
-              )
-            );
-          })()}
+          canEditProject={Boolean(
+            projects.some((item) => Number(item.id) === Number(selectedProjectId))
+          )}
           onEditProject={() => {
             if (selectedProjectId !== null) handleRenameProject(selectedProjectId);
           }}
