@@ -309,14 +309,19 @@ export default function SidebarModern({
                 {visibleProjects.map((project) => (
                   <div key={project.id} className="modern-library-item-group">
                     <button type="button" onClick={() => onSelectProject(project.id)} className={`modern-library-item ${selectedProjectId === project.id ? "active" : ""}`}><Icon name="project" size={14} /><span className="truncate">{project.name}</span></button>
-                    {(
-                      Number(project.owner_id) === Number(currentUserId) ||
-                      selectedWorkspaceRole === "owner" ||
-                      selectedWorkspaceRole === "admin" ||
-                      Number(project.id) === Number(selectedProjectId)
-                    ) ? (
-                      <button type="button" className="modern-item-action" onClick={() => onRenameProject(project.id)} title={t("sidebar.renameProjectTitle")}><Icon name="edit" size={13} /></button>
-                    ) : null}
+                    <button
+                      type="button"
+                      className="modern-item-action px-2"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onRenameProject(project.id);
+                      }}
+                      title={t("header.editProject")}
+                      aria-label={t("header.editProject")}
+                    >
+                      <Icon name="edit" size={13} />
+                      <span className="hidden sm:inline text-[11px]">{t("header.editProject")}</span>
+                    </button>
                   </div>
                 ))}
               </Section>
