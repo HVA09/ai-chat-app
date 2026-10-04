@@ -312,7 +312,8 @@ export default function SidebarModern({
                     {(
                       Number(project.owner_id) === Number(currentUserId) ||
                       selectedWorkspaceRole === "owner" ||
-                      selectedWorkspaceRole === "admin"
+                      selectedWorkspaceRole === "admin" ||
+                      Number(project.id) === Number(selectedProjectId)
                     ) ? (
                       <button type="button" className="modern-item-action" onClick={() => onRenameProject(project.id)} title={t("sidebar.renameProjectTitle")}><Icon name="edit" size={13} /></button>
                     ) : null}
