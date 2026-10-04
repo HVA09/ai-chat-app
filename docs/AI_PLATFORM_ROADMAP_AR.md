@@ -669,19 +669,21 @@ F5.1 وF5.2 وF5.3 مغلقة ومتحققة على `main`.
   - تم حفظ إعدادات الخدمتين وإعادة النشر، ثم أكدت سجلات Render أن Builder أصبح `live` وأن Backend استقر ويعيد `/health = 200`.
   - تم إجراء اختبار المشروع والمعاينة فعليًا من المستخدم، وبذلك أُغلقت متطلبات G2 الحالية.
 
-- **G3 — Security / Reliability / Cost Acceptance: مكتملة ومتحققة.**
-  - آخر CI على main: **نجح بالكامل** — run `37054617204`.
-  - CodeQL على main: **نجح** — run `37054617206`.
-  - Publish backend image: **نجح** — run `37054617159`.
-  - Production Smoke: **نجح** — run `37054617150`.
-  - Alembic chain الحالية تنتهي عند `0079_agent_pause` بعد `0078_agent_verify_retry` وmerge `0077`.
-  - لا توجد موارد مدفوعة جديدة؛ خدمات Render الحالية المستخدمة ضمن هذا التقدم بقيت على **Free**.
+- **G3 — Security / Reliability / Cost Acceptance: تحتاج متابعة أمنية قبل الإغلاق النهائي.**
+  - نتائج G3 السابقة ما زالت محفوظة تاريخيًا، لكن فحص الإنتاج الحالي بتاريخ **2026-10-04** على Supabase `ai-chat-prod-db` كشف أن 12 جدولًا في `public` لا تحتوي RLS، بينها `project_files`, `project_members`, `project_preview_artifacts`, `agent_jobs` و`agent_workflow_steps`.
+  - فحص المنح أثبت أن `anon` و`authenticated` لديهما صلاحيات مباشرة على الجداول الحساسة؛ لا توجد في الواجهة أي مكتبة Supabase عميلة، والتطبيق يعتمد على Backend FastAPI، لذا يجب إغلاق التعرض الخارجي دون كسر مسار Backend.
+  - **لم يتم تفعيل RLS تلقائيًا** لأن ذلك بدون سياسات مناسبة قد يمنع الوصول الصحيح؛ المتبقي هو تصميم سياسات/منح مناسبة ثم إعادة فحص Advisors.
+  - آخر حالة Render مؤكدة: Backend `/health = 200`، وBuilder يعمل، والخدمات المستخدمة ما زالت على **Free**.
 
 - **G4 — Production Acceptance: متقدمة وليست مغلقة.**
-  - Backend عاد إلى `live` بعد إزالة URL المؤقت الذي تسبب في startup fail-closed لغياب token.
-  - سجلات Render تؤكد `/health = 200` بعد الاستقرار.
-  - Frontend deployment الحالي للـG1 أصبح **live**.
-  - **المتبقي:** إعادة Production Smoke بعد تفعيل Builder فعليًا، ثم تحقق المسار الكامل chat/file/project/preview/Agent jobs في الإنتاج.
+  - تم إصلاح تشغيل Backend ليحترم `PORT` الخاص بـRender، وأصبح deploy الإصلاح `live`.
+  - تم التحقق من أن قاعدة الإنتاج الحقيقية هي Supabase `ai-chat-prod-db` في `us-east-2`.
+  - تم العثور على أن `hello production smoke test` كان محادثة عادية (`project_id = NULL`) وليس Project فعليًا، لذلك لا يُستخدم كمرجع قبول لـProject Editor.
+  - تم إنشاء fixture حقيقي للإنتاج باسم **G4 Production Editor Smoke**، Project ID = `1`، مالكه المستخدم `2` في workspace `2`، ويحتوي `index.html`.
+  - تم نشر مدخل مباشر إلى Project Editor داخل صف المشروع، مع إبقاء صلاحية التعديل مقيدة بمالك المشروع أو `owner/admin`.
+  - **المتبقي:** إثبات حي من الواجهة لفتح Project Editor ثم التحقق من Files / Preview / Preview Plan / Validate / Preview Build. اختبار المتصفح الآلي أصبح غير متاح حاليًا بسبب استنفاد رصيده، لذلك لم يتم إغلاق G4 بالادعاء.
+
+
 
 - **G5 — Release & Closure: لم تبدأ.**
   - لا يتم إنشاء release/tag قبل إغلاق G1–G4.
