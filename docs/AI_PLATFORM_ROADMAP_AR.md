@@ -669,10 +669,12 @@ F5.1 وF5.2 وF5.3 مغلقة ومتحققة على `main`.
   - تم حفظ إعدادات الخدمتين وإعادة النشر، ثم أكدت سجلات Render أن Builder أصبح `live` وأن Backend استقر ويعيد `/health = 200`.
   - تم إجراء اختبار المشروع والمعاينة فعليًا من المستخدم، وبذلك أُغلقت متطلبات G2 الحالية.
 
-- **G3 — Security / Reliability / Cost Acceptance: تحتاج متابعة أمنية قبل الإغلاق النهائي.**
-  - نتائج G3 السابقة ما زالت محفوظة تاريخيًا، لكن فحص الإنتاج الحالي بتاريخ **2026-10-04** على Supabase `ai-chat-prod-db` كشف أن 12 جدولًا في `public` لا تحتوي RLS، بينها `project_files`, `project_members`, `project_preview_artifacts`, `agent_jobs` و`agent_workflow_steps`.
-  - فحص المنح أثبت أن `anon` و`authenticated` لديهما صلاحيات مباشرة على الجداول الحساسة؛ لا توجد في الواجهة أي مكتبة Supabase عميلة، والتطبيق يعتمد على Backend FastAPI، لذا يجب إغلاق التعرض الخارجي دون كسر مسار Backend.
-  - **لم يتم تفعيل RLS تلقائيًا** لأن ذلك بدون سياسات مناسبة قد يمنع الوصول الصحيح؛ المتبقي هو تصميم سياسات/منح مناسبة ثم إعادة فحص Advisors.
+- **G3 — Security / Reliability / Cost Acceptance: متقدمة، مع إغلاق التعرض المباشر عبر Data API.**
+  - نتائج G3 السابقة ما زالت محفوظة تاريخيًا، وفحص الإنتاج بتاريخ **2026-10-04** على Supabase `ai-chat-prod-db` كشف أن 12 جدولًا في `public` لا تحتوي RLS، بينها `project_files`, `project_members`, `project_preview_artifacts`, `agent_jobs` و`agent_workflow_steps`.
+  - تم التحقق من أن الـFrontend لا يستخدم أي مكتبة Supabase عميلة، وأن الوصول الفعلي للتطبيق يمر عبر Backend FastAPI.
+  - تم سحب جميع صلاحيات `anon` و`authenticated` عن الجداول الحساسة الـ12 عبر SQL `REVOKE ALL PRIVILEGES`, ثم أُعيد فحص المنح وأصبحت النتيجة **بلا صلاحيات مباشرة** لهذين الدورين.
+  - **لم يتم تفعيل RLS تلقائيًا** لأن تصميم السياسات الدقيقة لكل جدول يحتاج مطابقة مسارات Backend أولًا؛ بقيت هذه الخطوة متابعة لاحقة بدل تنفيذ سياسات عامة قد تكسر التطبيق.
+  - فحص Security Advisors بعد التغيير لم يعد يعرض التنبيه الحرج الخاص بـRLS المعطّل لهذه الجداول، وبقيت ملاحظات INFO عن جداول RLS المفعلة بلا سياسات وWARN عن `vector` في `public`.
   - آخر حالة Render مؤكدة: Backend `/health = 200`، وBuilder يعمل، والخدمات المستخدمة ما زالت على **Free**.
 
 - **G4 — Production Acceptance: متقدمة وليست مغلقة.**
