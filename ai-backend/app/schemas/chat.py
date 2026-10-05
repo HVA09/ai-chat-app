@@ -1,14 +1,13 @@
 from datetime import datetime
 from typing import Any, Literal
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.conversation import MessageRole
 from app.schemas.tags import TagOut
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=4000)
+    message: str = Field(default="", max_length=4000)
     conversation_id: int | None = None
     assistant_id: int | None = None
     workspace_id: int | None = None
@@ -26,11 +25,16 @@ class ChatRequest(BaseModel):
 
     @field_validator("message")
     @classmethod
-    def message_not_blank(cls, v: str) -> str:
-        v = v.strip()
-        if not v:
-            raise ValueError("الرسالة لا يمكن أن تكون فارغة")
-        return v
+    def message_normalize(cls, v: str) -> str:
+        return v.strip()
+
+    @model_validator(mode="after")
+    def require_message_or_files(self) -> "ChatRequest":
+        if not self.message and not self.file_ids:
+            raise ValueError("يجب كتابة رسالة أو إرفاق ملف")
+        if not self.message and self.file_ids:
+            self.message = "أرسل لي الملف المرفق وحلله."
+        return self
 
 
 class VisionRequest(BaseModel):
@@ -256,5 +260,3 @@ class ConversationBulkImportRequest(BaseModel):
 class ConversationBulkImportOut(BaseModel):
     conversation_ids: list[int]
     imported_count: int
-
-
