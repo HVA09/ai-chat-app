@@ -180,7 +180,7 @@ vi.mock("../lib/projectValidationApi", () => ({
   getProjectPreviewPlan,
   buildProjectPreview,
 }));
-\nvi.mock("../lib/projectMembersApi", () => ({
+vi.mock("../lib/projectMembersApi", () => ({
   listProjectMembers,
   addProjectMember,
   updateProjectMember,
