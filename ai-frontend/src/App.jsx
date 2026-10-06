@@ -13,6 +13,7 @@ import OnboardingModal from "./components/OnboardingModal";
 import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
+import useSavedPrompts from "./hooks/useSavedPrompts";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, listAiModels, compareChatModels } from "./lib/chatApi";
 import { listBookmarkedMessages, toggleMessageBookmark } from "./lib/bookmarksApi";
 import { listMemories, createMemory, deleteMemory } from "./lib/memoriesApi";
@@ -102,12 +103,6 @@ import {
   deleteTag,
   setConversationTags,
 } from "./lib/tagsApi";
-import {
-  listSavedPrompts,
-  createSavedPrompt,
-  updateSavedPrompt,
-  deleteSavedPrompt,
-} from "./lib/savedPromptsApi";
 import { uploadFile, deleteFile } from "./lib/filesApi";
 import { getErrorMessage } from "./lib/errors";
 import { clearChatDraft, loadChatDraft, saveChatDraft } from "./lib/chatDrafts";
@@ -180,7 +175,6 @@ export default function App() {
   const [showProjectEditor, setShowProjectEditor] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState(null);
   const [projectMemberRoles, setProjectMemberRoles] = useState({});
-  const [savedPrompts, setSavedPrompts] = useState([]);
   const [bookmarkedMessages, setBookmarkedMessages] = useState([]);
   const [memories, setMemories] = useState([]);
   const [aiModels, setAiModels] = useState([]);
@@ -212,6 +206,15 @@ export default function App() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [titleLoading, setTitleLoading] = useState(false);
   const [autoGenerateTitles, setAutoGenerateTitles] = useState(false);
+  const {
+    savedPrompts,
+    resetSavedPrompts,
+    refreshSavedPrompts,
+    handleCreateSavedPrompt,
+    handleRenameSavedPrompt,
+    handleDeleteSavedPrompt,
+  } = useSavedPrompts({ setToast });
+
   const [autoGenerateSummaries, setAutoGenerateSummaries] = useState(false);
   useEffect(() => {
     const project = projects.find(
@@ -402,7 +405,7 @@ export default function App() {
     setTags([]);
     setSelectedTagId(null);
     setAssistants([]);
-    setSavedPrompts([]);
+    resetSavedPrompts();
     setBookmarkedMessages([]);
     setMemories([]);
     setAiModels([]);
@@ -1219,68 +1222,6 @@ export default function App() {
     } catch (err) {
       setToast({
         message: getErrorMessage(err, t("app.bookmarksLoadError")),
-        type: "error",
-      });
-    }
-  };
-
-  const refreshSavedPrompts = async () => {
-    try {
-      setSavedPrompts(await listSavedPrompts());
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.savedPromptsLoadError")),
-        type: "error",
-      });
-    }
-  };
-
-  const handleCreateSavedPrompt = async () => {
-    const name = window.prompt(t("sidebar.savedPromptCreateNamePrompt"));
-    if (!name?.trim()) return;
-    const content = window.prompt(t("sidebar.savedPromptCreateContentPrompt"));
-    if (!content?.trim()) return;
-    try {
-      await createSavedPrompt(name.trim(), content.trim());
-      await refreshSavedPrompts();
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.savedPromptCreateError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleRenameSavedPrompt = async (id, currentName, currentContent) => {
-    const name = window.prompt(
-      t("sidebar.savedPromptRenameNamePrompt"),
-      currentName
-    );
-    if (!name?.trim()) return;
-    const content = window.prompt(
-      t("sidebar.savedPromptRenameContentPrompt"),
-      currentContent
-    );
-    if (!content?.trim()) return;
-    try {
-      await updateSavedPrompt(id, name.trim(), content.trim());
-      await refreshSavedPrompts();
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.savedPromptUpdateError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleDeleteSavedPrompt = async (id, name) => {
-    if (!window.confirm(t("sidebar.savedPromptDeleteConfirm", { name }))) return;
-    try {
-      await deleteSavedPrompt(id);
-      await refreshSavedPrompts();
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.savedPromptDeleteError"),
         type: "error",
       });
     }
