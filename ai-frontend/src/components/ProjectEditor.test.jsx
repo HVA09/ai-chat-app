@@ -16,6 +16,11 @@ const {
   validateProject,
   getProjectPreviewPlan,
   buildProjectPreview,
+  listProjectMembers,
+  listWorkspaceMembers,
+  addProjectMember,
+  updateProjectMember,
+  removeProjectMember,
 } = vi.hoisted(() => ({
   listProjectMemories: vi.fn(),
   createProjectMemory: vi.fn(),
@@ -29,6 +34,11 @@ const {
   validateProject: vi.fn(),
   getProjectPreviewPlan: vi.fn(),
   buildProjectPreview: vi.fn(),
+  listProjectMembers: vi.fn().mockResolvedValue([]),
+  listWorkspaceMembers: vi.fn().mockResolvedValue([]),
+  addProjectMember: vi.fn(),
+  updateProjectMember: vi.fn(),
+  removeProjectMember: vi.fn(),
 }));
 
 const { t } = vi.hoisted(() => ({
@@ -49,6 +59,26 @@ const { t } = vi.hoisted(() => ({
         "projectEditor.noDefaultAssistant": "بدون مساعد افتراضي",
         "projectEditor.assistantHint": "سيُستخدم تلقائيًا للمحادثات الجديدة داخل المشروع.",
         "projectEditor.requiredError": "أدخل اسم المشروع",
+        "projectEditor.membersTitle": "أعضاء المشروع",
+        "projectEditor.membersDescription": "تحكم فيمن يمكنه رؤية المشروع وتحريره وإدارته.",
+        "projectEditor.membersLoading": "جارٍ تحميل أعضاء المشروع...",
+        "projectEditor.membersEmpty": "لا يوجد أعضاء إضافيون في المشروع.",
+        "projectEditor.membersYou": "أنت",
+        "projectEditor.memberSelectPlaceholder": "اختر عضوًا من مساحة العمل",
+        "projectEditor.memberRoleLabel": "دور {{email}}",
+        "projectEditor.memberRoleAddLabel": "دور العضو الجديد",
+        "projectEditor.memberAdd": "إضافة عضو",
+        "projectEditor.memberSaving": "جارٍ الحفظ...",
+        "projectEditor.memberRemove": "إزالة",
+        "projectEditor.memberRemoveConfirm": "إزالة {{email}} من المشروع؟",
+        "projectEditor.memberSaveError": "تعذر حفظ دور عضو المشروع.",
+        "projectEditor.memberDeleteError": "تعذر إزالة عضو المشروع.",
+        "projectEditor.membersLoadError": "تعذر تحميل أعضاء المشروع",
+        "projectEditor.membersWorkspaceOnly": "يمكن إضافة أعضاء موجودين داخل مساحة العمل فقط.",
+        "projectEditor.roleOwner": "مالك المشروع",
+        "projectEditor.roleViewer": "مشاهد",
+        "projectEditor.roleEditor": "محرر",
+        "projectEditor.roleManager": "مدير",
         "projectEditor.memoryTitle": "ذاكرة المشروع",
         "projectEditor.memoryDescription": "ذاكرة مشتركة",
         "projectEditor.memoryPlaceholder": "ذاكرة",
@@ -150,11 +180,125 @@ vi.mock("../lib/projectValidationApi", () => ({
   getProjectPreviewPlan,
   buildProjectPreview,
 }));
+\nvi.mock("../lib/projectMembersApi", () => ({
+  listProjectMembers,
+  addProjectMember,
+  updateProjectMember,
+  removeProjectMember,
+}));
+
+vi.mock("../lib/workspaceMembersApi", () => ({
+  listWorkspaceMembers,
+}));
 
 describe("ProjectEditor", () => {
   afterEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
+  });
+
+  it("loads and manages project members for a project owner", async () => {
+    listProjectMemories.mockResolvedValue([]);
+    listProjectFiles.mockResolvedValue([]);
+    listProjectMembers.mockResolvedValue([
+      {
+        id: null,
+        project_id: 3,
+        user_id: 1,
+        email: "owner@example.com",
+        full_name: "Owner",
+        role: "manager",
+        is_owner: true,
+      },
+      {
+        id: 10,
+        project_id: 3,
+        user_id: 2,
+        email: "viewer@example.com",
+        full_name: "Viewer",
+        role: "viewer",
+        is_owner: false,
+      },
+    ]);
+    listWorkspaceMembers.mockResolvedValue([
+      {
+        id: 1,
+        user_id: 1,
+        email: "owner@example.com",
+        full_name: "Owner",
+        role: "owner",
+      },
+      {
+        id: 2,
+        user_id: 2,
+        email: "viewer@example.com",
+        full_name: "Viewer",
+        role: "member",
+      },
+      {
+        id: 3,
+        user_id: 3,
+        email: "editor@example.com",
+        full_name: "Editor",
+        role: "member",
+      },
+    ]);
+    updateProjectMember.mockResolvedValue({
+      id: 10,
+      project_id: 3,
+      user_id: 2,
+      email: "viewer@example.com",
+      full_name: "Viewer",
+      role: "editor",
+      is_owner: false,
+    });
+    addProjectMember.mockResolvedValue({
+      id: 11,
+      project_id: 3,
+      user_id: 3,
+      email: "editor@example.com",
+      full_name: "Editor",
+      role: "editor",
+      is_owner: false,
+    });
+    removeProjectMember.mockResolvedValue(undefined);
+
+    const user = userEvent.setup();
+    render(
+      <ProjectEditor
+        project={{
+          id: 3,
+          workspace_id: 9,
+          owner_id: 1,
+          name: "Demo",
+          description: null,
+          instructions: null,
+        }}
+        currentUserId={1}
+        workspaceRole="owner"
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+      />
+    );
+
+    expect(await screen.findByText("أعضاء المشروع")).toBeInTheDocument();
+    expect(screen.getByText("viewer@example.com")).toBeInTheDocument();
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "دور viewer@example.com" }),
+      "editor"
+    );
+    expect(updateProjectMember).toHaveBeenCalledWith(3, 10, "editor");
+
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "اختر عضوًا من مساحة العمل" }),
+      "3"
+    );
+    await user.click(screen.getByRole("button", { name: "إضافة عضو" }));
+    expect(addProjectMember).toHaveBeenCalledWith(3, "3", "viewer");
+
+    await user.click(screen.getByRole("button", { name: "إزالة" }));
+    expect(removeProjectMember).toHaveBeenCalledWith(3, 10);
   });
 
   it("exports an existing project", async () => {
