@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listBookmarkedMessages, toggleMessageBookmark } from "../lib/bookmarksApi";
-import { getErrorMessage } from "../lib/errorUtils";
+import { getErrorMessage } from "../lib/errors";
 
 /**
  * Owns bookmark state and actions for the active authenticated session.
