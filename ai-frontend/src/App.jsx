@@ -411,6 +411,7 @@ export default function App() {
     setSelectedTagId(null);
     setAssistants([]);
     resetSavedPrompts();
+    resetBookmarks();
     setMemories([]);
     setAiModels([]);
     setSelectedModel("");
@@ -1614,6 +1615,7 @@ export default function App() {
     bookmarkedMessages,
     handleToggleMessageBookmark,
     handleOpenBookmarkedMessage,
+    resetBookmarks,
   } = useBookmarks({
     authed,
     conversationId,
