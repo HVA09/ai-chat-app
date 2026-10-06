@@ -263,6 +263,7 @@ describe("ProjectEditor", () => {
     });
     removeProjectMember.mockResolvedValue(undefined);
 
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     const user = userEvent.setup();
     render(
       <ProjectEditor
