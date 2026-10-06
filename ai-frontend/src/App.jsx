@@ -3442,6 +3442,11 @@ export default function App() {
           }}
           onSave={handleSaveProject}
           onExport={editingProjectId === null ? null : handleExportProject}
+          currentUserId={currentUser?.id}
+          workspaceRole={
+            workspaces.find((workspace) => workspace.id === selectedWorkspaceId)?.role ||
+            "member"
+          }
         />
       )}
 
