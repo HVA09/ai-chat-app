@@ -669,14 +669,16 @@ F5.1 وF5.2 وF5.3 مغلقة ومتحققة على `main`.
   - تم حفظ إعدادات الخدمتين وإعادة النشر، ثم أكدت سجلات Render أن Builder أصبح `live` وأن Backend استقر ويعيد `/health = 200`.
   - تم إجراء اختبار المشروع والمعاينة فعليًا من المستخدم، وبذلك أُغلقت متطلبات G2 الحالية.
 
-- **G3 — Security / Reliability / Cost Acceptance: مراجعة أمنية مكتملة، والإغلاق النهائي بانتظار تحقق CI الحالي فقط.**
-  - في Supabase `ai-chat-prod-db` تم التحقق مباشرة بتاريخ **2026-10-06** من أن جميع **46/46** جدولًا في schema `public` لديها RLS مفعّل، ولا يوجد أي جدول عام بدون RLS.
+- **G3 — Security / Reliability / Cost Acceptance: مغلقة ومتحققة — 2026-10-06.**
+  - في Supabase `ai-chat-prod-db` تم التحقق مباشرة من أن جميع **46/46** جدولًا في schema `public` لديها RLS مفعّل، ولا يوجد أي جدول عام بدون RLS.
   - Migration `0080_harden_public_rls` فعّلت RLS على الجداول الحساسة الـ12 التي كانت خارج الحماية سابقًا: `agent_jobs`, `agent_workflow_steps`, `oauth_connections`, `oauth_states`, `project_files`, `project_members`, `project_preview_artifacts`, `saved_prompt_versions`, `webhook_deliveries`, `webhook_endpoints`, `workspace_rbac_permissions`, `workspace_rbac_roles`.
   - تم التحقق من أن هذه الجداول الـ12 لا تمنح `anon` أو `authenticated` أي صلاحيات جدول مباشرة؛ والمنح الموجودة في بقية الجداول محكومة بـRLS مع عدم وجود سياسات، ما يجعل الوصول المباشر عبر Data API **default-deny**.
   - راجعنا نموذج الوصول الفعلي: التطبيق لا يعتمد على Supabase client في الواجهة، والوصول التشغيلي يتم عبر Backend FastAPI/PostgreSQL المباشر، لذلك **لم نضف سياسات RLS تخمينية** مثل `auth.uid()` قد لا تطابق نموذج الصلاحيات الفعلي.
-  - Security Advisor الحالي يسجل **46 ملاحظة INFO** من نوع `rls_enabled_no_policy`، وهي متسقة مع هذا التصميم، وتحذيرًا واحدًا `extension_in_public` للامتداد `vector`. تم الإبقاء على `vector` في `public` عمدًا لأن نقله قد يغير موضع نوع `vector(768)` المستخدم في RAG ويحتاج نافذة تغيير منفصلة؛ لا يُعتبر مانعًا وظيفيًا للإغلاق الحالي.
+  - Security Advisor يسجل **46 ملاحظة INFO** من نوع `rls_enabled_no_policy`، وهي متسقة مع هذا التصميم، وتحذيرًا واحدًا `extension_in_public` للامتداد `vector`. تم الإبقاء على `vector` في `public` عمدًا لأن نقله قد يغير موضع نوع `vector(768)` المستخدم في RAG ويحتاج نافذة تغيير منفصلة؛ لا يُعتبر مانعًا وظيفيًا للإغلاق الحالي.
   - Deploy Backend للـcommit `6063adebae906f907148acda77995a78a24f2716` أصبح **live** على Render Free، وPublish Backend Image نجح.
-  - **المتبقي لإغلاق G3:** نجاح CI الكامل للـcommit `6063ade...` ثم توثيق الإغلاق؛ لا توجد حاليًا إصلاحات قاعدة بيانات إضافية مطلوبة.
+  - PR #399 أصلح ترتيب Production Smoke ليبدأ بـ`/ready` قبل `/health`، ثم نجحت CI وCodeQL، وتم دمجه في `main`.
+  - PR #400 وثّق المراجعة الأمنية، ونجحت CI وCodeQL، ثم تم دمجه في `main`.
+  - **G3 مغلقة رسميًا.**
 
 - **G4 — Production Acceptance: مغلقة ومتحققة — 2026-10-05.**
   - تم إصلاح تشغيل Backend ليحترم `PORT` الخاص بـRender، وأصبح deploy الإصلاح `live`.
@@ -692,11 +694,15 @@ F5.1 وF5.2 وF5.3 مغلقة ومتحققة على `main`.
   - لم يتم استخدام خدمة المتصفح المدفوعة في الإغلاق النهائي؛ تم الاعتماد على التحقق اليدوي المجاني واختبارات CI.
   - **G4 مغلقة.**
 
-- **G5 — Release & Closure: لم تبدأ.**
-  - لا يتم إنشاء release/tag قبل إغلاق G1–G4.
+- **G5 — Release & Closure: قيد التنفيذ — 2026-10-06.**
+  - G1 وG2 وG3 وG4 مغلقة ومتحققة.
+  - تم تثبيت آخر `main` على commit `f014812b68ee421f77e170af26ee567c20bdb0e3` بعد دمج توثيق G3.
+  - تم تنفيذ تحسين Production Smoke ودمجه في `main`.
+  - تم التحقق من CI وCodeQL على آخر سلسلة تغييرات قبل الإغلاق.
+  - **المتبقي الوحيد:** إنشاء release/tag النهائيين وتوثيق رقم الإصدار/الـartifact النهائي. لا يتم اختراع tag تلقائيًا لأن اتصال GitHub الحالي يوفر قراءة وإدارة PR/branches ولا يوفّر عملية إنشاء Release/Tag مباشرة.
+  
+### ترتيب التنفيذ الحالي بعد G4 — 2026-10-06
 
-### ترتيب التنفيذ الحالي بعد G4 — 2026-10-05
-
-1. إغلاق G3 بعد نجاح CI الحالي وتوثيق نتيجة المراجعة الأمنية أعلاه.
-2. G5 — Release & Closure: إنشاء release/tag وإجراء قائمة الإغلاق النهائية.
+1. G3 — **مغلقة رسميًا**.
+2. G5 — **جارٍ إغلاقها** عبر release/tag النهائي وقائمة الإغلاق النهائية.
 
