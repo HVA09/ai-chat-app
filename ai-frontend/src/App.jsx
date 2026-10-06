@@ -112,6 +112,7 @@ import { uploadFile, deleteFile } from "./lib/filesApi";
 import { getErrorMessage } from "./lib/errors";
 import { clearChatDraft, loadChatDraft, saveChatDraft } from "./lib/chatDrafts";
 import { getCurrentUser } from "./lib/usersApi";
+import { listProjectMembers } from "./lib/projectMembersApi";
 import {
   listNotifications,
   markNotificationRead,
@@ -178,6 +179,7 @@ export default function App() {
   const [editingAssistantId, setEditingAssistantId] = useState(null);
   const [showProjectEditor, setShowProjectEditor] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState(null);
+  const [projectMemberRoles, setProjectMemberRoles] = useState({});
   const [savedPrompts, setSavedPrompts] = useState([]);
   const [bookmarkedMessages, setBookmarkedMessages] = useState([]);
   const [memories, setMemories] = useState([]);
@@ -211,6 +213,53 @@ export default function App() {
   const [titleLoading, setTitleLoading] = useState(false);
   const [autoGenerateTitles, setAutoGenerateTitles] = useState(false);
   const [autoGenerateSummaries, setAutoGenerateSummaries] = useState(false);
+  useEffect(() => {
+    const project = projects.find(
+      (item) => Number(item.id) === Number(selectedProjectId)
+    );
+    const workspaceRole = workspaces.find(
+      (workspace) => workspace.id === selectedWorkspaceId
+    )?.role;
+
+    if (!project || currentUser?.id == null) return;
+
+    if (
+      Number(project.owner_id) === Number(currentUser.id) ||
+      ["owner", "admin"].includes(workspaceRole)
+    ) {
+      setProjectMemberRoles((current) => ({
+        ...current,
+        [project.id]: "manager",
+      }));
+      return;
+    }
+
+    let cancelled = false;
+    listProjectMembers(project.id)
+      .then((members) => {
+        if (cancelled) return;
+        const membership = members.find(
+          (member) => Number(member.user_id) === Number(currentUser.id)
+        );
+        setProjectMemberRoles((current) => ({
+          ...current,
+          [project.id]: membership?.role ?? null,
+        }));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProjectMemberRoles((current) => ({
+            ...current,
+            [project.id]: null,
+          }));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projects, selectedProjectId, selectedWorkspaceId, currentUser?.id, workspaces]);
+
   const [notifications, setNotifications] = useState([]);
   const [notificationPreferences, setNotificationPreferences] = useState({
     realtimeToasts: true,
@@ -3076,7 +3125,8 @@ export default function App() {
               project &&
               (
                 Number(project.owner_id) === Number(currentUser?.id) ||
-                ["owner", "admin"].includes(workspaceRole)
+                ["owner", "admin"].includes(workspaceRole) ||
+                ["editor", "manager"].includes(projectMemberRoles[project.id])
               )
             );
           })()}
