@@ -99,7 +99,7 @@
 - `/health` بقي Liveness check مستقلًا.
 - أضيف `/ready` كـDeep Readiness check لقاعدة البيانات وRedis.
 - اختبارات الوحدة تغطي حالتي readiness الناجحة والفاشلة.
-- Production Smoke أصبح يفحص `/ready` مع retries مناسبة لـRender Free.
+- Production Smoke يفحص `/health` و`/ready` و`/billing/plans` و`X-Request-ID` مع retries لـRender Free. آخر تشغيل مجدول بتاريخ **2026-10-06** واجه timeouts مؤقتة على `/health` أثناء cold start، ثم نجح `/ready` و`/billing/plans` و`X-Request-ID`. إصلاح ترتيب الفحص إلى readiness-first موجود في **PR #395** ولم يُدمج بعد.
 - commit `e14cf2e4b517282c69ae70f8eefb221e764ba831` أصبح **live** على Render.
 - CodeQL وPublish backend image للcommit الجديد نجحا.
 - CI الكامل للcommit `ae5e4dede12dc03ff0179d618f6b8424601fc6c3` أُغلق بنجاح: Backend `pytest`، Frontend tests/build، Production Compose، Production Smoke، CodeQL، وPublish backend image كلها ناجحة.
@@ -669,33 +669,23 @@ F5.1 وF5.2 وF5.3 مغلقة ومتحققة على `main`.
   - تم حفظ إعدادات الخدمتين وإعادة النشر، ثم أكدت سجلات Render أن Builder أصبح `live` وأن Backend استقر ويعيد `/health = 200`.
   - تم إجراء اختبار المشروع والمعاينة فعليًا من المستخدم، وبذلك أُغلقت متطلبات G2 الحالية.
 
-- **G3 — Security / Reliability / Cost Acceptance: متقدمة، مع إغلاق التعرض المباشر عبر Data API.**
-  - نتائج G3 السابقة ما زالت محفوظة تاريخيًا، وفحص الإنتاج بتاريخ **2026-10-04** على Supabase `ai-chat-prod-db` كشف أن 12 جدولًا في `public` لا تحتوي RLS، بينها `project_files`, `project_members`, `project_preview_artifacts`, `agent_jobs` و`agent_workflow_steps`.
-  - تم التحقق من أن الـFrontend لا يستخدم أي مكتبة Supabase عميلة، وأن الوصول الفعلي للتطبيق يمر عبر Backend FastAPI.
-  - تم سحب جميع صلاحيات `anon` و`authenticated` عن الجداول الحساسة الـ12 عبر SQL `REVOKE ALL PRIVILEGES`, ثم أُعيد فحص المنح وأصبحت النتيجة **بلا صلاحيات مباشرة** لهذين الدورين.
-  - **لم يتم تفعيل RLS تلقائيًا** لأن تصميم السياسات الدقيقة لكل جدول يحتاج مطابقة مسارات Backend أولًا؛ بقيت هذه الخطوة متابعة لاحقة بدل تنفيذ سياسات عامة قد تكسر التطبيق.
-  - فحص Security Advisors بعد التغيير لم يعد يعرض التنبيه الحرج الخاص بـRLS المعطّل لهذه الجداول، وبقيت ملاحظات INFO عن جداول RLS المفعلة بلا سياسات وWARN عن `vector` في `public`.
-  - آخر حالة Render مؤكدة: Backend `/health = 200`، وBuilder يعمل، والخدمات المستخدمة ما زالت على **Free**.
-
-- **G4 — Production Acceptance: مغلقة ومتحققة — 2026-10-05.**
-  - تم إصلاح تشغيل Backend ليحترم `PORT` الخاص بـRender، وأصبح deploy الإصلاح `live`.
-  - تم التحقق من أن قاعدة الإنتاج الحقيقية هي Supabase `ai-chat-prod-db` في `us-east-2`.
-  - تم إنشاء fixture حقيقي للإنتاج باسم **G4 Production Editor Smoke**، Project ID = `1`، في workspace `2`، ويحتوي `index.html`.
-  - تم نشر مدخل مباشر إلى Project Editor داخل صف المشروع، مع إبقاء صلاحية التعديل مقيدة بمالك المشروع أو `owner/admin`.
-  - تم تنفيذ قبول G4 يدويًا من واجهة الإنتاج على الهاتف.
-  - تم التحقق من فتح **Project Editor** للمشروع، وظهور **Project Files** و`index.html`.
-  - تم التحقق من **Preview Plan** وظهور الاستراتيجية `static-html` والحالة `ready`.
-  - تم التحقق من **Validate** والنتيجة `0 errors, 0 warnings` لملف المشروع.
-  - تم التحقق من **Safe Preview** بنجاح.
-  - اختبارات CI الآلية الخاصة بـProjectEditor تغطي أيضًا preview وpreview-plan وpreview-build، وآخر CI عام نجح بالكامل.
-  - لم يتم استخدام خدمة المتصفح المدفوعة في الإغلاق النهائي؛ تم الاعتماد على التحقق اليدوي المجاني واختبارات CI.
-  - **G4 مغلقة.**
-
+- **G3 — Security / Reliability / Cost Acceptance: قيد الإغلاق — 2026-10-06.**
+  - تم إغلاق التعرض المباشر عبر Supabase Data API سابقًا بسحب صلاحيات `anon` و`authenticated` عن الجداول الحساسة.
+  - تم بعد ذلك إضافة migration **0080_harden_public_rls** لتفعيل RLS على 12 جدولًا حسّاسًا، بينها `project_files`, `project_members`, `project_preview_artifacts`, `agent_jobs` و`agent_workflow_steps`.
+  - CI الحالي يثبت نجاح `alembic upgrade head` واختبارات Backend على commit `97354acf`، وRender سجّل تنفيذ migration `0079 → 0080` بنجاح.
+  - لم تظهر بعد migration 0080 أخطاء RLS في سجلات Production الحالية، لكن القبول الوظيفي النهائي يحتاج اختبارًا عمليًا لـProject/Files/Agent/Preview وليس `/health` فقط.
+  - لا توجد ترقية Render مدفوعة؛ Backend وFrontend وPreview Builder ما زالت على Free.
+- **G4 — Production Acceptance: قبول Project Editor مكتمل، لكن الإغلاق الشامل يحتاج إعادة تحقق.**
+  - تم التحقق يدويًا من Production من فتح Project Editor، ظهور `index.html`، Preview Plan (`static-html`, `ready`)، Validate (`0 errors, 0 warnings`) وSafe Preview.
+  - تم أيضًا التحقق من Chat الإنتاجي.
+  - بعد تسجيل إغلاق G4 ظهرت مشكلة حقيقية في مسار **file-only chat submission** (`Field required`) بسبب تعارض عقد Frontend/Backend؛ تم إنشاء **PR #396** على آخر `main` لإصلاحها مع regression tests.
+  - لذلك لا نعتمد G4 كإغلاق نهائي شامل حتى ينجح PR #396 ويُعاد اختبار رفع ملف وإرساله بدون نص في Production.
 - **G5 — Release & Closure: لم تبدأ.**
-  - لا يتم إنشاء release/tag قبل إغلاق G1–G4.
+  - تبدأ فقط بعد إغلاق G3 وإعادة قبول G4 بعد الإصلاحات، ثم إنشاء release/tag وقائمة الإغلاق النهائية.
 
 ### ترتيب التنفيذ الحالي بعد G4 — 2026-10-05
 
-1. G3 — إغلاق متطلبات الأمان/الموثوقية المتبقية، خصوصًا مراجعة وتصميم سياسات RLS المطلوبة بدل الاكتفاء بسحب صلاحيات Data API المباشرة.
-2. G5 — Release & Closure بعد إغلاق G3، ثم إنشاء release/tag وإجراء قائمة الإغلاق النهائية.
+1. G3 — إكمال الاختبارات الوظيفية بعد 0080 وإغلاق القبول الأمني/الموثوقية.
+2. G4 — إعادة قبول File Upload / file-only chat في Production بعد دمج PR #396.
+3. G5 — Release & Closure بعد إغلاق G3 وG4، ثم إنشاء release/tag وإجراء قائمة الإغلاق النهائية.
 
