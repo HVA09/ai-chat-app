@@ -942,23 +942,12 @@ html.dark .chat-message-user {
   border: 0 !important;
   box-shadow: none !important;
 }
-.chat-message-user {
-  max-width: min(78%, 760px);
-  border: 1px solid rgba(255,255,255,.07);
-}
 .chat-composer {
   border-top: 0 !important;
   background: transparent !important;
   padding: 8px 0 14px !important;
   backdrop-filter: none;
   box-shadow: none;
-}
-.chat-composer > div:first-child {
-  width: 100%;
-}
-.chat-composer form,
-.chat-composer > .flex {
-  max-width: 100%;
 }
 .chat-composer .chat-textarea {
   box-shadow: 0 12px 36px rgba(15,23,42,.08);
@@ -1173,45 +1162,6 @@ html.dark .chat-message-user {
     border-radius: 18px;
     padding: 9px !important;
   }
-  .chat-composer > .flex.items-end.gap-3 {
-    flex-wrap: wrap;
-    gap: 7px;
-  }
-  .chat-composer-input {
-    order: 1;
-    flex: 1 1 100% !important;
-    min-width: 100%;
-  }
-  .chat-composer-input .chat-textarea {
-    min-height: 52px !important;
-    max-height: 180px;
-    padding: 12px 13px !important;
-    border-radius: 17px !important;
-    font-size: 15px;
-    line-height: 1.45;
-  }
-  .chat-composer > .flex.items-end.gap-3 > label,
-  .chat-composer > .flex.items-end.gap-3 > .relative,
-  .chat-composer > .flex.items-end.gap-3 > button {
-    order: 2;
-  }
-  .chat-composer > .flex.items-end.gap-3 > label,
-  .chat-composer > .flex.items-end.gap-3 > .relative > button,
-  .chat-composer > .flex.items-end.gap-3 > button {
-    min-width: 42px;
-    min-height: 42px;
-    padding: 9px !important;
-    border-radius: 14px !important;
-  }
-  .chat-composer > .flex.items-end.gap-3 > .relative {
-    flex: 0 0 auto;
-  }
-  .chat-composer > .flex.items-end.gap-3 > button:last-child {
-    min-width: 74px;
-  }
-  .chat-composer .ui-popover {
-    max-width: calc(100vw - 20px);
-  }
   .chat-summary,
   .readonly-bar {
     border-radius: 16px !important;
@@ -1249,7 +1199,7 @@ html.dark .chat-message-user {
 }
 
 
-/* UX v6: mobile-first composer and compact chat */
+/* UX v6: mobile-first composer and compact chat — selectors match current ChatComposer DOM */
 .chat-composer-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:8px}
 .chat-composer-controls{display:flex;align-items:center;gap:8px;flex:0 0 auto}
 .chat-composer-control,.chat-send-button,.chat-stop-button{min-width:42px;min-height:42px;border-radius:13px!important}
