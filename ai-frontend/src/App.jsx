@@ -14,6 +14,7 @@ import AuthForm from "./components/AuthForm";
 import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
 import useSavedPrompts from "./hooks/useSavedPrompts";
+import useNotifications from "./hooks/useNotifications";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, listAiModels, compareChatModels } from "./lib/chatApi";
 import { listBookmarkedMessages, toggleMessageBookmark } from "./lib/bookmarksApi";
 import { listMemories, createMemory, deleteMemory } from "./lib/memoriesApi";
@@ -108,12 +109,6 @@ import { getErrorMessage } from "./lib/errors";
 import { clearChatDraft, loadChatDraft, saveChatDraft } from "./lib/chatDrafts";
 import { getCurrentUser } from "./lib/usersApi";
 import { listProjectMembers } from "./lib/projectMembersApi";
-import {
-  listNotifications,
-  markNotificationRead,
-  markAllNotificationsRead,
-  buildNotificationsWebSocketUrl,
-} from "./lib/notificationsApi";
 import {
   loadNotificationPreferences,
   saveNotificationPreferences,
@@ -263,10 +258,21 @@ export default function App() {
     };
   }, [projects, selectedProjectId, selectedWorkspaceId, currentUser?.id, workspaces]);
 
-  const [notifications, setNotifications] = useState([]);
   const [notificationPreferences, setNotificationPreferences] = useState({
     realtimeToasts: true,
   });
+  const {
+    notifications,
+    resetNotifications,
+    refreshNotifications,
+    handleMarkNotificationRead,
+    handleMarkAllNotificationsRead,
+  } = useNotifications({
+    authed,
+    notificationPreferences,
+    setToast,
+  });
+
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [retryableUserMessage, setRetryableUserMessage] = useState(null);
   const [toolActivity, setToolActivity] = useState(null);
@@ -440,7 +446,7 @@ export default function App() {
     setSummaryLoading(false);
     autoSummaryLastMessageCountRef.current = {};
     messageCountRef.current = 1;
-    setNotifications([]);
+    resetNotifications();
   }, [t]);
 
   useEffect(() => {
@@ -1526,16 +1532,6 @@ export default function App() {
     }
   };
 
-  const refreshNotifications = async () => {
-    try {
-      setNotifications(await listNotifications());
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.notificationsLoadError")),
-        type: "error",
-      });
-    }
-  };
 
   useEffect(() => {
     if (authed) {
@@ -1546,7 +1542,6 @@ export default function App() {
       refreshBookmarkedMessages();
       refreshMemories();
       refreshCurrentUser();
-      refreshNotifications();
     }
   }, [authed]);
 
@@ -1563,21 +1558,6 @@ export default function App() {
     return () => window.removeEventListener("app:toast", handleAppToast);
   }, []);
 
-  // اتصال WebSocket للإشعارات الفورية — يُفتح عند الدخول، ويُغلق عند الخروج
-  useEffect(() => {
-    if (!authed) return;
-
-    const ws = new WebSocket(buildNotificationsWebSocketUrl());
-    ws.onmessage = (event) => {
-      const notification = JSON.parse(event.data);
-      setNotifications((prev) => [notification, ...prev]);
-      if (notificationPreferences.realtimeToasts) {
-        setToast({ message: notification.title, type: "success" });
-      }
-    };
-
-    return () => ws.close();
-  }, [authed, notificationPreferences.realtimeToasts]);
 
   const switchLang = (nextLang) => {
     setLang(nextLang);
@@ -2714,23 +2694,6 @@ export default function App() {
     });
   };
 
-  const handleMarkNotificationRead = async (id) => {
-    try {
-      await markNotificationRead(id);
-      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
-    } catch {
-      // تجاهل بصمت — مو حرج
-    }
-  };
-
-  const handleMarkAllNotificationsRead = async () => {
-    try {
-      await markAllNotificationsRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-    } catch {
-      // تجاهل بصمت — مو حرج
-    }
-  };
 
   const commandPaletteActions = [
     {
