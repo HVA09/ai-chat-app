@@ -669,13 +669,14 @@ F5.1 وF5.2 وF5.3 مغلقة ومتحققة على `main`.
   - تم حفظ إعدادات الخدمتين وإعادة النشر، ثم أكدت سجلات Render أن Builder أصبح `live` وأن Backend استقر ويعيد `/health = 200`.
   - تم إجراء اختبار المشروع والمعاينة فعليًا من المستخدم، وبذلك أُغلقت متطلبات G2 الحالية.
 
-- **G3 — Security / Reliability / Cost Acceptance: متقدمة، مع إغلاق التعرض المباشر عبر Data API.**
-  - نتائج G3 السابقة ما زالت محفوظة تاريخيًا، وفحص الإنتاج بتاريخ **2026-10-04** على Supabase `ai-chat-prod-db` كشف أن 12 جدولًا في `public` لا تحتوي RLS، بينها `project_files`, `project_members`, `project_preview_artifacts`, `agent_jobs` و`agent_workflow_steps`.
-  - تم التحقق من أن الـFrontend لا يستخدم أي مكتبة Supabase عميلة، وأن الوصول الفعلي للتطبيق يمر عبر Backend FastAPI.
-  - تم سحب جميع صلاحيات `anon` و`authenticated` عن الجداول الحساسة الـ12 عبر SQL `REVOKE ALL PRIVILEGES`, ثم أُعيد فحص المنح وأصبحت النتيجة **بلا صلاحيات مباشرة** لهذين الدورين.
-  - **لم يتم تفعيل RLS تلقائيًا** لأن تصميم السياسات الدقيقة لكل جدول يحتاج مطابقة مسارات Backend أولًا؛ بقيت هذه الخطوة متابعة لاحقة بدل تنفيذ سياسات عامة قد تكسر التطبيق.
-  - فحص Security Advisors بعد التغيير لم يعد يعرض التنبيه الحرج الخاص بـRLS المعطّل لهذه الجداول، وبقيت ملاحظات INFO عن جداول RLS المفعلة بلا سياسات وWARN عن `vector` في `public`.
-  - آخر حالة Render مؤكدة: Backend `/health = 200`، وBuilder يعمل، والخدمات المستخدمة ما زالت على **Free**.
+- **G3 — Security / Reliability / Cost Acceptance: مراجعة أمنية مكتملة، والإغلاق النهائي بانتظار تحقق CI الحالي فقط.**
+  - في Supabase `ai-chat-prod-db` تم التحقق مباشرة بتاريخ **2026-10-06** من أن جميع **46/46** جدولًا في schema `public` لديها RLS مفعّل، ولا يوجد أي جدول عام بدون RLS.
+  - Migration `0080_harden_public_rls` فعّلت RLS على الجداول الحساسة الـ12 التي كانت خارج الحماية سابقًا: `agent_jobs`, `agent_workflow_steps`, `oauth_connections`, `oauth_states`, `project_files`, `project_members`, `project_preview_artifacts`, `saved_prompt_versions`, `webhook_deliveries`, `webhook_endpoints`, `workspace_rbac_permissions`, `workspace_rbac_roles`.
+  - تم التحقق من أن هذه الجداول الـ12 لا تمنح `anon` أو `authenticated` أي صلاحيات جدول مباشرة؛ والمنح الموجودة في بقية الجداول محكومة بـRLS مع عدم وجود سياسات، ما يجعل الوصول المباشر عبر Data API **default-deny**.
+  - راجعنا نموذج الوصول الفعلي: التطبيق لا يعتمد على Supabase client في الواجهة، والوصول التشغيلي يتم عبر Backend FastAPI/PostgreSQL المباشر، لذلك **لم نضف سياسات RLS تخمينية** مثل `auth.uid()` قد لا تطابق نموذج الصلاحيات الفعلي.
+  - Security Advisor الحالي يسجل **46 ملاحظة INFO** من نوع `rls_enabled_no_policy`، وهي متسقة مع هذا التصميم، وتحذيرًا واحدًا `extension_in_public` للامتداد `vector`. تم الإبقاء على `vector` في `public` عمدًا لأن نقله قد يغير موضع نوع `vector(768)` المستخدم في RAG ويحتاج نافذة تغيير منفصلة؛ لا يُعتبر مانعًا وظيفيًا للإغلاق الحالي.
+  - Deploy Backend للـcommit `6063adebae906f907148acda77995a78a24f2716` أصبح **live** على Render Free، وPublish Backend Image نجح.
+  - **المتبقي لإغلاق G3:** نجاح CI الكامل للـcommit `6063ade...` ثم توثيق الإغلاق؛ لا توجد حاليًا إصلاحات قاعدة بيانات إضافية مطلوبة.
 
 - **G4 — Production Acceptance: مغلقة ومتحققة — 2026-10-05.**
   - تم إصلاح تشغيل Backend ليحترم `PORT` الخاص بـRender، وأصبح deploy الإصلاح `live`.
@@ -696,6 +697,6 @@ F5.1 وF5.2 وF5.3 مغلقة ومتحققة على `main`.
 
 ### ترتيب التنفيذ الحالي بعد G4 — 2026-10-05
 
-1. G3 — إغلاق متطلبات الأمان/الموثوقية المتبقية، خصوصًا مراجعة وتصميم سياسات RLS المطلوبة بدل الاكتفاء بسحب صلاحيات Data API المباشرة.
-2. G5 — Release & Closure بعد إغلاق G3، ثم إنشاء release/tag وإجراء قائمة الإغلاق النهائية.
+1. إغلاق G3 بعد نجاح CI الحالي وتوثيق نتيجة المراجعة الأمنية أعلاه.
+2. G5 — Release & Closure: إنشاء release/tag وإجراء قائمة الإغلاق النهائية.
 
