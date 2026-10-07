@@ -18,6 +18,7 @@ import useNotifications from "./hooks/useNotifications";
 import useBookmarks from "./hooks/useBookmarks";
 import useMemories from "./hooks/useMemories";
 import useAiModels from "./hooks/useAiModels";
+import useNotificationPreferences from "./hooks/useNotificationPreferences";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
@@ -110,11 +111,6 @@ import { getErrorMessage } from "./lib/errors";
 import { clearChatDraft, loadChatDraft, saveChatDraft } from "./lib/chatDrafts";
 import { getCurrentUser } from "./lib/usersApi";
 import { listProjectMembers } from "./lib/projectMembersApi";
-import {
-  loadNotificationPreferences,
-  saveNotificationPreferences,
-  NOTIFICATION_PREFERENCE_EVENT,
-} from "./lib/notificationPreferences";
 import "./i18n";
 
 // دالة بدل ثابت — لازم نستدعيها بعد ما يصير عندنا t() جوا المكوّن عشان رسالة
@@ -255,9 +251,6 @@ export default function App() {
     };
   }, [projects, selectedProjectId, selectedWorkspaceId, currentUser?.id, workspaces]);
 
-  const [notificationPreferences, setNotificationPreferences] = useState({
-    realtimeToasts: true,
-  });
   const {
     notifications,
     resetNotifications,
@@ -412,6 +405,7 @@ export default function App() {
     resetBookmarks();
     resetMemories();
     resetAiModels();
+    resetNotificationPreferences();
     setSelectedFolderId(null);
     setSelectedAssistantId(null);
     setConversationId(null);
@@ -448,34 +442,6 @@ export default function App() {
   useEffect(() => {
     restoreSession().then(() => setAuthed(true)).catch(() => setAuthed(false)).finally(() => setSessionChecking(false));
   }, []);
-
-  useEffect(() => {
-    if (!authed || !currentUser?.id) return;
-    setNotificationPreferences(loadNotificationPreferences(currentUser.id));
-  }, [authed, currentUser?.id]);
-
-  useEffect(() => {
-    const handlePreferenceChange = (event) => {
-      if (event.detail) {
-        setNotificationPreferences((current) => ({ ...current, ...event.detail }));
-      } else if (currentUser?.id) {
-        setNotificationPreferences(loadNotificationPreferences(currentUser.id));
-      }
-    };
-    window.addEventListener(NOTIFICATION_PREFERENCE_EVENT, handlePreferenceChange);
-    return () =>
-      window.removeEventListener(NOTIFICATION_PREFERENCE_EVENT, handlePreferenceChange);
-  }, [currentUser?.id]);
-
-  const handleNotificationToastsChanged = useCallback(
-    (enabled) => {
-      if (!currentUser?.id) return;
-      const next = { realtimeToasts: enabled };
-      setNotificationPreferences(next);
-      saveNotificationPreferences(currentUser.id, next);
-    },
-    [currentUser?.id]
-  );
 
   useEffect(() => {
     if (!authed || !currentUser?.id || typeof window === "undefined") return;
@@ -1585,6 +1551,15 @@ export default function App() {
     refreshAiModels,
     resetAiModels,
   } = useAiModels({ setToast });
+
+  const {
+    notificationPreferences,
+    setRealtimeToastsEnabled: handleNotificationToastsChanged,
+    resetNotificationPreferences,
+  } = useNotificationPreferences({
+    authed,
+    userId: currentUser?.id,
+  });
 
   const handleOpenWorkspaceSharedConversation = async (workspaceId, sharedConversationId) => {
     try {
