@@ -58,12 +58,18 @@ describe("useMessageFeedback", () => {
 
   it("rolls back optimistic state and shows an error on API failure", async () => {
     setMessageFeedback.mockRejectedValue(new Error("failed"));
-    const setMessages = vi.fn();
+    let currentMessages = [{ role: "assistant", text: "Hi", feedback: null }];
+    const setMessages = vi.fn((updater) => {
+      currentMessages = updater(currentMessages);
+    });
+    const setToast = vi.fn();
 
     const { result } = renderHook(() =>
       useMessageFeedback({
         ...baseProps(),
+        messages: currentMessages,
         setMessages,
+        setToast,
       })
     );
 
@@ -72,7 +78,11 @@ describe("useMessageFeedback", () => {
     });
 
     expect(setMessages).toHaveBeenCalledTimes(2);
-    expect(baseProps().setToast).not.toHaveBeenCalled();
+    expect(currentMessages[0].feedback).toBeNull();
+    expect(setToast).toHaveBeenCalledWith({
+      message: "app.feedbackError",
+      type: "error",
+    });
   });
 
   it("does nothing when feedback is not allowed", async () => {
