@@ -15,8 +15,8 @@ import Toast from "./components/Toast";
 import useDirection from "./hooks/useDirection";
 import useSavedPrompts from "./hooks/useSavedPrompts";
 import useNotifications from "./hooks/useNotifications";
+import useBookmarks from "./hooks/useBookmarks";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, listAiModels, compareChatModels } from "./lib/chatApi";
-import { listBookmarkedMessages, toggleMessageBookmark } from "./lib/bookmarksApi";
 import { listMemories, createMemory, deleteMemory } from "./lib/memoriesApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
@@ -170,7 +170,6 @@ export default function App() {
   const [showProjectEditor, setShowProjectEditor] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState(null);
   const [projectMemberRoles, setProjectMemberRoles] = useState({});
-  const [bookmarkedMessages, setBookmarkedMessages] = useState([]);
   const [memories, setMemories] = useState([]);
   const [aiModels, setAiModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
@@ -412,7 +411,7 @@ export default function App() {
     setSelectedTagId(null);
     setAssistants([]);
     resetSavedPrompts();
-    setBookmarkedMessages([]);
+    resetBookmarks();
     setMemories([]);
     setAiModels([]);
     setSelectedModel("");
@@ -1222,41 +1221,6 @@ export default function App() {
     }
   };
 
-  const refreshBookmarkedMessages = async () => {
-    try {
-      setBookmarkedMessages(await listBookmarkedMessages());
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.bookmarksLoadError")),
-        type: "error",
-      });
-    }
-  };
-
-  const handleToggleMessageBookmark = async (index) => {
-    if (!conversationId || loading || readOnlyConversation) return;
-    try {
-      const result = await toggleMessageBookmark(conversationId, index + 1);
-      setMessages((prev) =>
-        prev.map((message, messageIndex) =>
-          messageIndex === index
-            ? { ...message, isBookmarked: result.bookmarked }
-            : message
-        )
-      );
-      await refreshBookmarkedMessages();
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.bookmarkError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleOpenBookmarkedMessage = async (item) => {
-    await openConversation(item.conversation_id);
-  };
-
   const handleUseSavedPrompt = (content) => {
     setInput(content);
     setEditingMessageIndex(null);
@@ -1539,7 +1503,6 @@ export default function App() {
       refreshTags();
       refreshAssistants(selectedWorkspaceId);
       refreshSavedPrompts();
-      refreshBookmarkedMessages();
       refreshMemories();
       refreshCurrentUser();
     }
@@ -1647,6 +1610,21 @@ export default function App() {
       });
     }
   };
+
+  const {
+    bookmarkedMessages,
+    handleToggleMessageBookmark,
+    handleOpenBookmarkedMessage,
+    resetBookmarks,
+  } = useBookmarks({
+    authed,
+    conversationId,
+    loading,
+    readOnlyConversation,
+    setMessages,
+    setToast,
+    openConversation,
+  });
 
   const handleOpenWorkspaceSharedConversation = async (workspaceId, sharedConversationId) => {
     try {
