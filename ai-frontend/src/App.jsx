@@ -24,6 +24,7 @@ import useChatDraft from "./hooks/useChatDraft";
 import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
+import useStartNewChat from "./hooks/useStartNewChat";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
@@ -1299,24 +1300,6 @@ export default function App() {
     i18n.changeLanguage(nextLang);
   };
 
-  const startNewChat = () => {
-    messageCountRef.current = 1;
-    setToolActivity(null);
-    setShowShareManager(false);
-    setWorkspaceShare(null);
-    setReadOnlyConversation(false);
-    setShowWorkspaceComments(false);
-    setSelectedConversationIds([]);
-    setConversationId(null);
-    setConversationBranches([]);
-    setParentConversationId(null);
-    setMessages([getWelcomeMessage(t)]);
-    setInput("");
-    resetChatAttachments();
-    setEditingMessageIndex(null);
-    setError("");
-  };
-
   const {
     bookmarkedMessages,
     handleToggleMessageBookmark,
@@ -1419,6 +1402,26 @@ export default function App() {
     messageCountRef,
     autoSummaryLastMessageCountRef,
     t,
+  });
+
+  const { startNewChat } = useStartNewChat({
+    t,
+    messageCountRef,
+    resetChatAttachments,
+    setToolActivity,
+    setShowShareManager,
+    setWorkspaceShare,
+    setReadOnlyConversation,
+    setShowWorkspaceComments,
+    setSelectedConversationIds,
+    setConversationId,
+    setConversationBranches,
+    setParentConversationId,
+    setMessages,
+    setInput,
+    setEditingMessageIndex,
+    setError,
+    getWelcomeMessage,
   });
 
   const {
