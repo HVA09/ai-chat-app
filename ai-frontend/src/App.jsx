@@ -19,6 +19,7 @@ import useBookmarks from "./hooks/useBookmarks";
 import useMemories from "./hooks/useMemories";
 import useAiModels from "./hooks/useAiModels";
 import useNotificationPreferences from "./hooks/useNotificationPreferences";
+import useConversationPreferences from "./hooks/useConversationPreferences";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
@@ -193,7 +194,6 @@ export default function App() {
   const [parentConversationId, setParentConversationId] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [titleLoading, setTitleLoading] = useState(false);
-  const [autoGenerateTitles, setAutoGenerateTitles] = useState(false);
   const {
     savedPrompts,
     resetSavedPrompts,
@@ -203,7 +203,6 @@ export default function App() {
     handleDeleteSavedPrompt,
   } = useSavedPrompts({ setToast });
 
-  const [autoGenerateSummaries, setAutoGenerateSummaries] = useState(false);
   useEffect(() => {
     const project = projects.find(
       (item) => Number(item.id) === Number(selectedProjectId)
@@ -406,6 +405,7 @@ export default function App() {
     resetMemories();
     resetAiModels();
     resetNotificationPreferences();
+    resetConversationPreferences();
     setSelectedFolderId(null);
     setSelectedAssistantId(null);
     setConversationId(null);
@@ -492,27 +492,6 @@ export default function App() {
       }
     };
   }, [authed, currentUser?.id, conversationId, input]);
-
-  useEffect(() => {
-    const readPreference = () => {
-      setAutoGenerateTitles(window.localStorage.getItem("ai-chat-auto-title") === "true");
-    };
-    readPreference();
-    window.addEventListener("ai-chat:auto-title-changed", readPreference);
-    return () => window.removeEventListener("ai-chat:auto-title-changed", readPreference);
-  }, []);
-
-  useEffect(() => {
-    const readPreference = () => {
-      setAutoGenerateSummaries(
-        window.localStorage.getItem("ai-chat-auto-summary") === "true"
-      );
-    };
-    readPreference();
-    window.addEventListener("ai-chat:auto-summary-changed", readPreference);
-    return () =>
-      window.removeEventListener("ai-chat:auto-summary-changed", readPreference);
-  }, []);
 
   // لو أي طلب بأي مكان بالتطبيق رجع 401 (مو بس إرسال رسالة)، نسجّل خروج
   // ونوضّح السبب — قبل كذا كان يصير خروج صامت بدون تفسير
@@ -1560,6 +1539,12 @@ export default function App() {
     authed,
     userId: currentUser?.id,
   });
+
+  const {
+    autoGenerateTitles,
+    autoGenerateSummaries,
+    resetConversationPreferences,
+  } = useConversationPreferences();
 
   const handleOpenWorkspaceSharedConversation = async (workspaceId, sharedConversationId) => {
     try {
