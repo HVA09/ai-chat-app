@@ -25,13 +25,13 @@ import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
+import useOpenWorkspaceSharedConversation from "./hooks/useOpenWorkspaceSharedConversation";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
 import {
   shareConversationWithWorkspace,
   unshareConversationFromWorkspace,
-  getWorkspaceSharedConversation,
 } from "./lib/workspaceConversationSharesApi";
 
 // مُحمَّلة عند الحاجة فقط (lazy) — كل وحدة تصير ملف منفصل (code splitting)،
@@ -1424,6 +1424,28 @@ export default function App() {
     getWelcomeMessage,
   });
 
+  const { openWorkspaceSharedConversation: handleOpenWorkspaceSharedConversation } =
+    useOpenWorkspaceSharedConversation({
+      setShowShareManager,
+      setReadOnlyConversation,
+      setShowWorkspaceComments,
+      setWorkspaceShare,
+      setSelectedWorkspaceId,
+      setConversationId,
+      setConversationSummary,
+      setConversationSummaryUpdatedAt,
+      setSelectedAssistantId,
+      setSelectedFolderId,
+      setSelectedProjectId,
+      setSelectedModel,
+      setMessages,
+      setInput,
+      setEditingMessageIndex,
+      setError,
+      setToast,
+      t,
+    });
+
   const {
     conversations,
     conversationsLoading,
@@ -1445,45 +1467,6 @@ export default function App() {
     setToast,
     t,
   });
-
-  const handleOpenWorkspaceSharedConversation = async (workspaceId, sharedConversationId) => {
-    try {
-      const data = await getWorkspaceSharedConversation(
-        Number(workspaceId),
-        Number(sharedConversationId)
-      );
-      setShowShareManager(false);
-      setReadOnlyConversation(true);
-      setShowWorkspaceComments(true);
-      setWorkspaceShare(null);
-      setSelectedWorkspaceId(Number(workspaceId));
-      setConversationId(data.conversation_id);
-      setConversationSummary(null);
-      setConversationSummaryUpdatedAt(null);
-      setSelectedAssistantId(null);
-      setSelectedFolderId(null);
-      setSelectedProjectId(null);
-      setSelectedModel("");
-      setMessages(
-        data.messages.map((message) => ({
-          role: message.role,
-          text: message.content,
-          time: new Date(message.created_at).toLocaleTimeString(),
-          sources: message.sources ?? [],
-          feedback: null,
-          isBookmarked: false,
-        }))
-      );
-      setInput("");
-      setEditingMessageIndex(null);
-      setError("");
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("workspaceSharing.loadError"),
-        type: "error",
-      });
-    }
-  };
 
   const handleDuplicatedWorkspaceConversation = async (id) => {
     if (!id) {
