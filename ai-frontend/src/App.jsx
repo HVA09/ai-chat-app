@@ -20,6 +20,7 @@ import useMemories from "./hooks/useMemories";
 import useAiModels from "./hooks/useAiModels";
 import useNotificationPreferences from "./hooks/useNotificationPreferences";
 import useConversationPreferences from "./hooks/useConversationPreferences";
+import useChatDraft from "./hooks/useChatDraft";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
@@ -109,7 +110,7 @@ import {
 } from "./lib/tagsApi";
 import { uploadFile, deleteFile } from "./lib/filesApi";
 import { getErrorMessage } from "./lib/errors";
-import { clearChatDraft, loadChatDraft, saveChatDraft } from "./lib/chatDrafts";
+import { clearChatDraft } from "./lib/chatDrafts";
 import { getCurrentUser } from "./lib/usersApi";
 import { listProjectMembers } from "./lib/projectMembersApi";
 import "./i18n";
@@ -168,7 +169,6 @@ export default function App() {
   const [showProjectEditor, setShowProjectEditor] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState(null);
   const [projectMemberRoles, setProjectMemberRoles] = useState({});
-  const [input, setInput] = useState("");
   const [chatAttachments, setChatAttachments] = useState([]);
   const [chatAttachmentUploading, setChatAttachmentUploading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -272,8 +272,6 @@ export default function App() {
   const autoSummaryInFlightRef = useRef(false);
   const autoSummaryLastMessageCountRef = useRef({});
   const messageCountRef = useRef(messages.length);
-  const draftHydratedRef = useRef(false);
-  const draftSaveTimerRef = useRef(null);
 
   useDirection();
   useEffect(() => {
@@ -413,7 +411,7 @@ export default function App() {
     setConversationSummary(null);
     setConversationSummaryUpdatedAt(null);
     setMessages([getWelcomeMessage(t)]);
-    setInput("");
+    resetChatDraft();
     setChatAttachments([]);
     setChatAttachmentUploading(false);
     setEditingMessageIndex(null);
@@ -457,41 +455,6 @@ export default function App() {
     }
     setShowOnboarding(false);
   }, [currentUser?.id]);
-
-  useEffect(() => {
-    if (!authed || !currentUser?.id) return;
-
-    draftHydratedRef.current = false;
-    const draft = loadChatDraft(currentUser.id, conversationId);
-    setInput(draft);
-
-    const frame = window.requestAnimationFrame(() => {
-      draftHydratedRef.current = true;
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-    };
-  }, [authed, currentUser?.id, conversationId]);
-
-  useEffect(() => {
-    if (!authed || !currentUser?.id || !draftHydratedRef.current) return;
-
-    if (draftSaveTimerRef.current) {
-      window.clearTimeout(draftSaveTimerRef.current);
-    }
-
-    draftSaveTimerRef.current = window.setTimeout(() => {
-      saveChatDraft(currentUser.id, conversationId, input);
-      draftSaveTimerRef.current = null;
-    }, 300);
-
-    return () => {
-      if (draftSaveTimerRef.current) {
-        window.clearTimeout(draftSaveTimerRef.current);
-      }
-    };
-  }, [authed, currentUser?.id, conversationId, input]);
 
   // لو أي طلب بأي مكان بالتطبيق رجع 401 (مو بس إرسال رسالة)، نسجّل خروج
   // ونوضّح السبب — قبل كذا كان يصير خروج صامت بدون تفسير
@@ -1545,6 +1508,12 @@ export default function App() {
     autoGenerateSummaries,
     resetConversationPreferences,
   } = useConversationPreferences();
+
+  const { input, setInput, resetChatDraft } = useChatDraft({
+    authed,
+    userId: currentUser?.id,
+    conversationId,
+  });
 
   const handleOpenWorkspaceSharedConversation = async (workspaceId, sharedConversationId) => {
     try {
