@@ -17,7 +17,8 @@ import useSavedPrompts from "./hooks/useSavedPrompts";
 import useNotifications from "./hooks/useNotifications";
 import useBookmarks from "./hooks/useBookmarks";
 import useMemories from "./hooks/useMemories";
-import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, listAiModels, compareChatModels } from "./lib/chatApi";
+import useAiModels from "./hooks/useAiModels";
+import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
 import {
@@ -170,8 +171,6 @@ export default function App() {
   const [showProjectEditor, setShowProjectEditor] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState(null);
   const [projectMemberRoles, setProjectMemberRoles] = useState({});
-  const [aiModels, setAiModels] = useState([]);
-  const [selectedModel, setSelectedModel] = useState("");
   const [input, setInput] = useState("");
   const [chatAttachments, setChatAttachments] = useState([]);
   const [chatAttachmentUploading, setChatAttachmentUploading] = useState(false);
@@ -412,8 +411,7 @@ export default function App() {
     resetSavedPrompts();
     resetBookmarks();
     resetMemories();
-    setAiModels([]);
-    setSelectedModel("");
+    resetAiModels();
     setSelectedFolderId(null);
     setSelectedAssistantId(null);
     setConversationId(null);
@@ -560,23 +558,6 @@ export default function App() {
     window.addEventListener("auth:unauthorized", handleUnauthorized);
     return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
   }, [logout, t]);
-
-  const refreshAiModels = async () => {
-    try {
-      const data = await listAiModels();
-      const models = Array.isArray(data) ? data : data.models || [];
-      setAiModels(models);
-      const fallback = models.find((model) => model.is_default)?.id || models[0]?.id || "";
-      setSelectedModel((current) =>
-        current && models.some((model) => model.id === current) ? current : fallback
-      );
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.aiModelsLoadError")),
-        type: "error",
-      });
-    }
-  };
 
   const refreshConversations = async (
     includeArchived = showArchivedConversations,
@@ -1461,6 +1442,7 @@ export default function App() {
       refreshTags();
       refreshAssistants(selectedWorkspaceId);
       refreshSavedPrompts();
+      refreshAiModels();
       refreshCurrentUser();
     }
   }, [authed]);
@@ -1595,6 +1577,14 @@ export default function App() {
     editingMessageIndex,
     setToast,
   });
+
+  const {
+    aiModels,
+    selectedModel,
+    setSelectedModel,
+    refreshAiModels,
+    resetAiModels,
+  } = useAiModels({ setToast });
 
   const handleOpenWorkspaceSharedConversation = async (workspaceId, sharedConversationId) => {
     try {
