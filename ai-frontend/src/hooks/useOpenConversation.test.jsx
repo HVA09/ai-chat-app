@@ -135,13 +135,14 @@ describe("useOpenConversation", () => {
     const first = result.current.openConversation(1);
     const second = result.current.openConversation(2);
 
-    resolveSecond({ id: 2, messages: [] });
+    resolveSecond({ id: 2, title: "Second", messages: [] });
     await second;
 
-    resolveFirst({ id: 1, messages: [] });
+    resolveFirst({ id: 1, title: "First", messages: [] });
     await first;
 
     expect(props.setConversationId).toHaveBeenLastCalledWith(2);
-    expect(props.setActiveConversationTitle).not.toHaveBeenCalledWith("");
+    expect(props.setActiveConversationTitle).toHaveBeenLastCalledWith("Second");
+    expect(props.setActiveConversationTitle).not.toHaveBeenCalledWith("First");
   });
 });
