@@ -25,6 +25,7 @@ import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
+import useMessageEditing from "./hooks/useMessageEditing";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
@@ -1424,6 +1425,18 @@ export default function App() {
     getWelcomeMessage,
   });
 
+  const { startEditingMessage, cancelEditing } = useMessageEditing({
+    readOnlyConversation,
+    loading,
+    conversationId,
+    messages,
+    resetChatAttachments,
+    setError,
+    setRetryableUserMessage,
+    setEditingMessageIndex,
+    setInput,
+  });
+
   const {
     conversations,
     conversationsLoading,
@@ -2032,21 +2045,6 @@ export default function App() {
     }
     setLoading(false);
     setToolActivity(null);
-  };
-
-  const cancelEditing = () => {
-    setEditingMessageIndex(null);
-    setInput("");
-    setError("");
-  };
-
-  const startEditingMessage = (index) => {
-    if (readOnlyConversation || loading || !conversationId || messages[index]?.role !== "user") return;
-    setError("");
-    setRetryableUserMessage(null);
-    resetChatAttachments();
-    setEditingMessageIndex(index);
-    setInput(messages[index]?.text ?? "");
   };
 
   const editMessage = async () => {
