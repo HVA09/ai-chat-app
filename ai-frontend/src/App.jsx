@@ -25,6 +25,7 @@ import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
+import useMessageEditing from "./hooks/useMessageEditing";
 import useConversationBulkActions from "./hooks/useConversationBulkActions";
 import useConversationSelection from "./hooks/useConversationSelection";
 import useConversationItemActions from "./hooks/useConversationItemActions";
@@ -1328,6 +1329,18 @@ export default function App() {
     setError,
     getWelcomeMessage,
   });
+  const { startEditingMessage, cancelEditing } = useMessageEditing({
+    readOnlyConversation,
+    loading,
+    conversationId,
+    messages,
+    resetChatAttachments,
+    setError,
+    setRetryableUserMessage,
+    setEditingMessageIndex,
+    setInput,
+  });
+
 
   const {
     toggleConversationSelection,
@@ -1917,21 +1930,6 @@ export default function App() {
     }
     setLoading(false);
     setToolActivity(null);
-  };
-
-  const cancelEditing = () => {
-    setEditingMessageIndex(null);
-    setInput("");
-    setError("");
-  };
-
-  const startEditingMessage = (index) => {
-    if (readOnlyConversation || loading || !conversationId || messages[index]?.role !== "user") return;
-    setError("");
-    setRetryableUserMessage(null);
-    resetChatAttachments();
-    setEditingMessageIndex(index);
-    setInput(messages[index]?.text ?? "");
   };
 
   const editMessage = async () => {
