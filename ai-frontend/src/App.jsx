@@ -25,6 +25,7 @@ import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
+import useMessageFeedback from "./hooks/useMessageFeedback";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
@@ -1424,6 +1425,17 @@ export default function App() {
     getWelcomeMessage,
   });
 
+  const { handleMessageFeedback } = useMessageFeedback({
+    conversationId,
+    loading,
+    readOnlyConversation,
+    messages,
+    setMessages,
+    setMessageFeedback,
+    setToast,
+    t,
+  });
+
   const {
     conversations,
     conversationsLoading,
@@ -1569,30 +1581,6 @@ export default function App() {
       throw err;
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleMessageFeedback = async (index, rating) => {
-    if (!conversationId || loading || readOnlyConversation) return;
-
-    const nextRating = rating === messages[index]?.feedback ? null : rating;
-    const previousRating = messages[index]?.feedback ?? null;
-
-    setMessages((prev) =>
-      prev.map((message, messageIndex) =>
-        messageIndex === index ? { ...message, feedback: nextRating } : message
-      )
-    );
-
-    try {
-      await setMessageFeedback(conversationId, index + 1, nextRating);
-    } catch {
-      setMessages((prev) =>
-        prev.map((message, messageIndex) =>
-          messageIndex === index ? { ...message, feedback: previousRating } : message
-        )
-      );
-      setToast({ message: t("app.feedbackError"), type: "error" });
     }
   };
 
