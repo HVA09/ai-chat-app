@@ -26,6 +26,7 @@ import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
 import useConversationSelection from "./hooks/useConversationSelection";
+import useConversationItemActions from "./hooks/useConversationItemActions";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
@@ -58,9 +59,7 @@ const WorkspaceInvitePage = lazy(() => import("./components/WorkspaceInvitePage"
 const ConversationShareManager = lazy(() => import("./components/ConversationShareManager"));
 import {
   getConversation,
-  renameConversation,
   deleteConversation,
-  togglePinConversation,
   toggleArchiveConversation,
   toggleTrashConversation,
   moveConversationToFolder,
@@ -1434,6 +1433,26 @@ export default function App() {
     t,
   });
 
+  const {
+    handleDeleteConversation,
+    handleRenameConversation,
+    handleToggleArchiveConversation,
+    handleTogglePinConversation,
+    handleToggleTrashConversation,
+  } = useConversationItemActions({
+    conversationId,
+    conversationSearch,
+    refreshConversations,
+    selectedFolderId,
+    selectedProjectId,
+    selectedWorkspaceId,
+    setToast,
+    showArchivedConversations,
+    showTrashConversations,
+    startNewChat,
+    t,
+  });
+
   const handleOpenWorkspaceSharedConversation = async (workspaceId, sharedConversationId) => {
     try {
       const data = await getWorkspaceSharedConversation(
@@ -1690,14 +1709,6 @@ export default function App() {
     }
   };
 
-  const handleRenameConversation = async (id, newTitle) => {
-    try {
-      await renameConversation(id, newTitle);
-      await refreshConversations();
-    } catch {
-      setToast({ message: t("app.renameConversationError"), type: "error" });
-    }
-  };
 
   const handleImportConversation = async (file) => {
     if (!file) return;
@@ -1869,32 +1880,7 @@ export default function App() {
     setShowShareManager(true);
   };
 
-  const handleToggleTrashConversation = async (id) => {
-    try {
-      await toggleTrashConversation(id);
-      if (id === conversationId) startNewChat();
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations
-      );
-    } catch {
-      setToast({ message: t("app.trashConversationError"), type: "error" });
-    }
-  };
 
-  const handleToggleArchiveConversation = async (id) => {
-    try {
-      const result = await toggleArchiveConversation(id);
-      if (result.is_archived && id === conversationId) startNewChat();
-      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
-    } catch {
-      setToast({ message: t("app.archiveConversationError"), type: "error" });
-    }
-  };
 
   const handleBranchConversation = async (messageIndex) => {
     if (!conversationId || loading || readOnlyConversation) return;
@@ -1941,40 +1927,7 @@ export default function App() {
     }
   };
 
-  const handleTogglePinConversation = async (id) => {
-    try {
-      await togglePinConversation(id);
-      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
-    } catch {
-      setToast({ message: t("app.pinConversationError"), type: "error" });
-    }
-  };
 
-  const handleDeleteConversation = async (id) => {
-    try {
-      if (showTrashConversations) {
-        await deleteConversation(id);
-      } else {
-        await toggleTrashConversation(id);
-      }
-      if (id === conversationId) startNewChat();
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations
-      );
-    } catch {
-      setToast({
-        message: showTrashConversations
-          ? t("app.deleteConversationError")
-          : t("app.trashConversationError"),
-        type: "error",
-      });
-    }
-  };
 
   const deleteMessage = async (index) => {
     if (!conversationId || loading || editingMessageIndex !== null || readOnlyConversation) return;
