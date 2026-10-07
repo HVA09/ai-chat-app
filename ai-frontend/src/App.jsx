@@ -1399,7 +1399,7 @@ export default function App() {
     setError("");
     setInput("");
     resetChatAttachments();
-    setChatAttachmentUploading(false);
+    resetChatAttachments();
     setEditingMessageIndex(null);
     setRetryableUserMessage(null);
     try {
@@ -2126,7 +2126,7 @@ export default function App() {
     if (readOnlyConversation || loading || !conversationId || messages[index]?.role !== "user") return;
     setError("");
     setRetryableUserMessage(null);
-    setChatAttachments([]);
+    resetChatAttachments();
     setEditingMessageIndex(index);
     setInput(messages[index]?.text ?? "");
   };
