@@ -25,6 +25,7 @@ import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
+import useConversationBulkActions from "./hooks/useConversationBulkActions";
 import useConversationSelection from "./hooks/useConversationSelection";
 import useConversationItemActions from "./hooks/useConversationItemActions";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
@@ -66,7 +67,6 @@ import {
   duplicateConversation,
   branchConversation,
   exportConversation,
-  exportConversations,
   importConversation,
   importConversations,
   summarizeConversation,
@@ -1165,82 +1165,6 @@ export default function App() {
     }
   };
 
-  const handleBulkArchive = async () => {
-    if (!selectedConversationIds.length) return;
-    const results = await Promise.allSettled(
-      selectedConversationIds.map((id) => toggleArchiveConversation(id))
-    );
-    const failed = results.filter((result) => result.status === "rejected").length;
-    if (selectedConversationIds.includes(conversationId)) startNewChat();
-    setSelectedConversationIds([]);
-    await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
-    if (failed) {
-      setToast({
-        message: t("app.bulkActionError", { count: failed }),
-        type: "error",
-      });
-    }
-  };
-
-  const handleBulkDelete = async () => {
-    if (!selectedConversationIds.length) return;
-    const confirmed = window.confirm(
-      t("sidebar.bulkDeleteConfirm", { count: selectedConversationIds.length })
-    );
-    if (!confirmed) return;
-
-    const selectedIds = [...selectedConversationIds];
-    const action = showTrashConversations ? deleteConversation : toggleTrashConversation;
-    const results = await Promise.allSettled(
-      selectedIds.map((id) => action(id))
-    );
-    const failed = results.filter((result) => result.status === "rejected").length;
-    if (selectedIds.includes(conversationId)) startNewChat();
-    setSelectedConversationIds([]);
-    await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
-    if (failed) {
-      setToast({
-        message: t("app.bulkActionError", { count: failed }),
-        type: "error",
-      });
-    }
-  };
-
-  const handleBulkExport = async () => {
-    if (!selectedConversationIds.length) return;
-    try {
-      await exportConversations(selectedConversationIds);
-      setSelectedConversationIds([]);
-      setToast({ message: t("app.bulkExportSuccess"), type: "success" });
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.bulkExportError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleBulkMoveToFolder = async (folderValue) => {
-    if (!selectedConversationIds.length || folderValue === "") return;
-    const folderId = folderValue === "__none__" ? null : Number(folderValue);
-    const selectedIds = [...selectedConversationIds];
-    const results = await Promise.allSettled(
-      selectedIds.map((id) => moveConversationToFolder(id, folderId))
-    );
-    const failed = results.filter((result) => result.status === "rejected").length;
-    if (selectedIds.includes(conversationId) && folderId !== selectedFolderId) {
-      startNewChat();
-    }
-    setSelectedConversationIds([]);
-    await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
-    if (failed) {
-      setToast({
-        message: t("app.bulkActionError", { count: failed }),
-        type: "error",
-      });
-    }
-  };
-
   const refreshCurrentUser = async () => {
     try {
       const user = await getCurrentUser();
@@ -1429,6 +1353,26 @@ export default function App() {
       selectedTagId,
       conversationSearch,
     },
+    setToast,
+    t,
+  });
+
+  const {
+    handleBulkArchive,
+    handleBulkDelete,
+    handleBulkExport,
+    handleBulkMoveToFolder,
+  } = useConversationBulkActions({
+    selectedConversationIds,
+    conversationId,
+    showArchivedConversations,
+    showTrashConversations,
+    selectedFolderId,
+    selectedWorkspaceId,
+    selectedProjectId,
+    refreshConversations,
+    setSelectedConversationIds,
+    startNewChat,
     setToast,
     t,
   });
