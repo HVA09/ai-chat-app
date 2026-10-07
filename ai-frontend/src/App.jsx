@@ -25,6 +25,7 @@ import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
+import useConversationSelection from "./hooks/useConversationSelection";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
@@ -1165,25 +1166,6 @@ export default function App() {
     }
   };
 
-  const toggleConversationSelection = (id) => {
-    setSelectedConversationIds((prev) =>
-      prev.includes(id) ? prev.filter((itemId) => itemId !== id) : [...prev, id]
-    );
-  };
-
-  const toggleSelectAllVisibleConversations = (ids) => {
-    setSelectedConversationIds((prev) => {
-      const visible = new Set(ids);
-      const allSelected = ids.length > 0 && ids.every((id) => prev.includes(id));
-      if (allSelected) {
-        return prev.filter((id) => !visible.has(id));
-      }
-      return Array.from(new Set([...prev, ...ids]));
-    });
-  };
-
-  const clearSelectedConversations = () => setSelectedConversationIds([]);
-
   const handleBulkArchive = async () => {
     if (!selectedConversationIds.length) return;
     const results = await Promise.allSettled(
@@ -1423,6 +1405,12 @@ export default function App() {
     setError,
     getWelcomeMessage,
   });
+
+  const {
+    toggleConversationSelection,
+    toggleSelectAllVisibleConversations,
+    clearSelectedConversations,
+  } = useConversationSelection({ setSelectedConversationIds });
 
   const {
     conversations,
