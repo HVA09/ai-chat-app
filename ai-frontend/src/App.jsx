@@ -1399,7 +1399,6 @@ export default function App() {
     setError("");
     setInput("");
     resetChatAttachments();
-    resetChatAttachments();
     setEditingMessageIndex(null);
     setRetryableUserMessage(null);
     try {
