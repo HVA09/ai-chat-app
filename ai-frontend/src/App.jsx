@@ -23,11 +23,11 @@ import useConversationPreferences from "./hooks/useConversationPreferences";
 import useChatDraft from "./hooks/useChatDraft";
 import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
+import useOpenConversation from "./hooks/useOpenConversation";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
 import {
-  getConversationWorkspaceShare,
   shareConversationWithWorkspace,
   unshareConversationFromWorkspace,
   getWorkspaceSharedConversation,
@@ -64,7 +64,6 @@ import {
   moveConversationToFolder,
   duplicateConversation,
   branchConversation,
-  listConversationBranches,
   exportConversation,
   exportConversations,
   importConversation,
@@ -261,7 +260,6 @@ export default function App() {
   const [toolActivity, setToolActivity] = useState(null);
   const bottomRef = useRef(null);
   const streamAbortRef = useRef(null);
-  const conversationOpenRequestRef = useRef(0);
   const autoSummaryInFlightRef = useRef(false);
   const autoSummaryLastMessageCountRef = useRef({});
   const messageCountRef = useRef(messages.length);
@@ -1319,70 +1317,6 @@ export default function App() {
     setError("");
   };
 
-  const openConversation = async (id) => {
-    const requestId = ++conversationOpenRequestRef.current;
-    setConversationId(Number(id));
-    setShowShareManager(false);
-    setReadOnlyConversation(false);
-    setShowWorkspaceComments(false);
-    setSelectedConversationIds([]);
-    setError("");
-    setInput("");
-    resetChatAttachments();
-    setEditingMessageIndex(null);
-    setRetryableUserMessage(null);
-    try {
-      const data = await getConversation(id);
-      if (requestId !== conversationOpenRequestRef.current) return;
-      setConversationId(data.id);
-      setActiveConversationTitle(data.title || "");
-      setParentConversationId(data.parent_conversation_id ?? null);
-      messageCountRef.current = data.messages.length;
-      autoSummaryLastMessageCountRef.current[data.id] = data.summary
-        ? data.messages.length
-        : 0;
-      try {
-        setConversationBranches(await listConversationBranches(data.id));
-      } catch {
-        setConversationBranches([]);
-      }
-      setConversationSummary(data.summary ?? null);
-      setConversationSummaryUpdatedAt(data.summary_updated_at ?? null);
-      setSelectedAssistantId(data.assistant_id ?? null);
-      setSelectedWorkspaceId(data.workspace_id ?? null);
-      setSelectedFolderId(data.folder_id ?? null);
-      setSelectedProjectId(data.project_id ?? null);
-      setSelectedModel(
-        data.ai_model ||
-          aiModels.find((model) => model.is_default)?.id ||
-          aiModels[0]?.id ||
-          ""
-      );
-      try {
-        setWorkspaceShare(await getConversationWorkspaceShare(data.id));
-      } catch {
-        setWorkspaceShare(null);
-      }
-      setMessages(
-        data.messages.map((m) => ({
-          role: m.role,
-          text: m.content,
-          time: new Date(m.created_at).toLocaleTimeString(),
-          sources: m.sources ?? [],
-          feedback: m.feedback ?? null,
-          isBookmarked: m.is_bookmarked ?? false,
-        }))
-      );
-    } catch (err) {
-      if (requestId !== conversationOpenRequestRef.current) return;
-      setError("");
-      setToast({
-        message: getErrorMessage(err, t("app.conversationLoadError")),
-        type: "error",
-      });
-    }
-  };
-
   const {
     bookmarkedMessages,
     handleToggleMessageBookmark,
@@ -1454,6 +1388,36 @@ export default function App() {
     readOnlyConversation,
     editingMessageIndex,
     setToast,
+    t,
+  });
+
+  const { openConversation } = useOpenConversation({
+    aiModels,
+    setConversationId,
+    setActiveConversationTitle,
+    setParentConversationId,
+    setConversationBranches,
+    setConversationSummary,
+    setConversationSummaryUpdatedAt,
+    setSelectedAssistantId,
+    setSelectedWorkspaceId,
+    setSelectedFolderId,
+    setSelectedProjectId,
+    setSelectedModel,
+    setWorkspaceShare,
+    setMessages,
+    setSelectedConversationIds,
+    setShowShareManager,
+    setReadOnlyConversation,
+    setShowWorkspaceComments,
+    setError,
+    setToast,
+    setInput,
+    resetChatAttachments,
+    setEditingMessageIndex,
+    setRetryableUserMessage,
+    messageCountRef,
+    autoSummaryLastMessageCountRef,
     t,
   });
 
