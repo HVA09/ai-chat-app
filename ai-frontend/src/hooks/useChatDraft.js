@@ -3,17 +3,17 @@ import { loadChatDraft, saveChatDraft } from "../lib/chatDrafts";
 
 export default function useChatDraft({ authed, userId, conversationId }) {
   const [input, setInput] = useState("");
-  const draftHydratedRef = useRef(false);
+  const [draftHydrated, setDraftHydrated] = useState(false);
   const draftSaveTimerRef = useRef(null);
 
   useEffect(() => {
     if (!authed || !userId || typeof window === "undefined") return;
 
-    draftHydratedRef.current = false;
+    setDraftHydrated(false);
     setInput(loadChatDraft(userId, conversationId));
 
     const frame = window.requestAnimationFrame(() => {
-      draftHydratedRef.current = true;
+      setDraftHydrated(true);
     });
 
     return () => {
@@ -22,7 +22,7 @@ export default function useChatDraft({ authed, userId, conversationId }) {
   }, [authed, userId, conversationId]);
 
   useEffect(() => {
-    if (!authed || !userId || !draftHydratedRef.current) return;
+    if (!authed || !userId || !draftHydrated) return;
 
     if (draftSaveTimerRef.current) {
       window.clearTimeout(draftSaveTimerRef.current);
@@ -38,14 +38,14 @@ export default function useChatDraft({ authed, userId, conversationId }) {
         window.clearTimeout(draftSaveTimerRef.current);
       }
     };
-  }, [authed, userId, conversationId, input]);
+  }, [authed, userId, conversationId, input, draftHydrated]);
 
   const resetChatDraft = useCallback(() => {
     if (draftSaveTimerRef.current) {
       window.clearTimeout(draftSaveTimerRef.current);
       draftSaveTimerRef.current = null;
     }
-    draftHydratedRef.current = false;
+    setDraftHydrated(false);
     setInput("");
   }, []);
 
