@@ -22,6 +22,7 @@ import useNotificationPreferences from "./hooks/useNotificationPreferences";
 import useConversationPreferences from "./hooks/useConversationPreferences";
 import useChatDraft from "./hooks/useChatDraft";
 import useChatAttachments from "./hooks/useChatAttachments";
+import useConversationList from "./hooks/useConversationList";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
@@ -54,7 +55,6 @@ const WorkspaceMembersPanel = lazy(() => import("./components/WorkspaceMembersPa
 const WorkspaceInvitePage = lazy(() => import("./components/WorkspaceInvitePage"));
 const ConversationShareManager = lazy(() => import("./components/ConversationShareManager"));
 import {
-  listConversations,
   getConversation,
   renameConversation,
   deleteConversation,
@@ -146,12 +146,8 @@ export default function App() {
   const [messages, setMessages] = useState(() => [getWelcomeMessage(t)]);
   const [conversationId, setConversationId] = useState(null);
   const [activeConversationTitle, setActiveConversationTitle] = useState("");
-  const [conversations, setConversations] = useState([]);
   const [selectedConversationIds, setSelectedConversationIds] = useState([]);
   const [conversationSearch, setConversationSearch] = useState("");
-  const [conversationsLoading, setConversationsLoading] = useState(false);
-  const [conversationsLoadingMore, setConversationsLoadingMore] = useState(false);
-  const [hasMoreConversations, setHasMoreConversations] = useState(false);
   const [showArchivedConversations, setShowArchivedConversations] = useState(false);
   const [showTrashConversations, setShowTrashConversations] = useState(false);
   const [folders, setFolders] = useState([]);
@@ -265,7 +261,6 @@ export default function App() {
   const [toolActivity, setToolActivity] = useState(null);
   const bottomRef = useRef(null);
   const streamAbortRef = useRef(null);
-  const conversationLoadRequestRef = useRef(0);
   const conversationOpenRequestRef = useRef(0);
   const autoSummaryInFlightRef = useRef(false);
   const autoSummaryLastMessageCountRef = useRef({});
@@ -385,7 +380,7 @@ export default function App() {
   const logout = useCallback(async () => {
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
     setAuthed(false);
-    setConversations([]);
+    resetConversations();
     setSelectedConversationIds([]);
     setFolders([]);
     setProjects([]);
@@ -464,57 +459,6 @@ export default function App() {
     return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
   }, [logout, t]);
 
-  const refreshConversations = async (
-    includeArchived = showArchivedConversations,
-    folderId = selectedFolderId,
-    workspaceId = selectedWorkspaceId,
-    projectId = selectedProjectId,
-    search = conversationSearch,
-    includeDeleted = showTrashConversations,
-    tagId = selectedTagId,
-    reset = true
-  ) => {
-    const pageSize = 50;
-    if (reset) setConversationsLoading(true);
-    else setConversationsLoadingMore(true);
-
-    const requestId = ++conversationLoadRequestRef.current;
-    try {
-      const list = await listConversations(
-        includeArchived,
-        folderId,
-        workspaceId,
-        projectId,
-        search,
-        includeDeleted,
-        tagId,
-        reset ? 0 : conversations.length,
-        pageSize + 1
-      );
-      const page = list.slice(0, pageSize);
-
-      if (requestId !== conversationLoadRequestRef.current) return;
-      if (reset) {
-        setConversations(page);
-      } else {
-        setConversations((current) => {
-          const existingIds = new Set(current.map((item) => item.id));
-          return [...current, ...page.filter((item) => !existingIds.has(item.id))];
-        });
-      }
-
-      setHasMoreConversations(list.length > pageSize);
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.conversationsLoadError")),
-        type: "error",
-      });
-    } finally {
-      if (reset) setConversationsLoading(false);
-      else setConversationsLoadingMore(false);
-    }
-  };
-
   const refreshProjects = async (workspaceId = selectedWorkspaceId) => {
     if (workspaceId === null || workspaceId === undefined) {
       setProjects([]);
@@ -535,20 +479,6 @@ export default function App() {
         type: "error",
       });
     }
-  };
-
-  const loadMoreConversations = async () => {
-    if (!hasMoreConversations || conversationsLoading || conversationsLoadingMore) return;
-    await refreshConversations(
-      showArchivedConversations,
-      selectedFolderId,
-      selectedWorkspaceId,
-      selectedProjectId,
-      conversationSearch,
-      showTrashConversations,
-      selectedTagId,
-      false
-    );
   };
 
   useEffect(() => {
@@ -1523,6 +1453,28 @@ export default function App() {
     loading,
     readOnlyConversation,
     editingMessageIndex,
+    setToast,
+    t,
+  });
+
+  const {
+    conversations,
+    conversationsLoading,
+    conversationsLoadingMore,
+    hasMoreConversations,
+    refreshConversations,
+    loadMoreConversations,
+    resetConversations,
+  } = useConversationList({
+    filters: {
+      showArchivedConversations,
+      showTrashConversations,
+      selectedFolderId,
+      selectedWorkspaceId,
+      selectedProjectId,
+      selectedTagId,
+      conversationSearch,
+    },
     setToast,
     t,
   });
