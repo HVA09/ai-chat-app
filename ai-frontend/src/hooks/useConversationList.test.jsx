@@ -59,10 +59,6 @@ describe("useConversationList", () => {
     );
     expect(result.current.conversations).toEqual([{ id: 1 }, { id: 2 }]);
 
-    act(() => {
-      result.current.loadMoreConversations();
-    });
-
     await act(async () => {
       await result.current.loadMoreConversations();
     });
