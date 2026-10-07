@@ -9,7 +9,14 @@ import { getErrorMessage } from "../lib/errors";
  * The hook keeps memory persistence behavior outside the root App component while
  * preserving the existing message-content matching and toast semantics.
  */
-export default function useMemories({ authed, messages, setToast }) {
+export default function useMemories({
+  authed,
+  messages,
+  loading,
+  readOnlyConversation,
+  editingMessageIndex,
+  setToast,
+}) {
   const { t } = useTranslation();
   const [memories, setMemories] = useState([]);
 
@@ -26,6 +33,14 @@ export default function useMemories({ authed, messages, setToast }) {
 
   const handleToggleMessageMemory = useCallback(
     async (index) => {
+      if (
+        readOnlyConversation ||
+        loading ||
+        editingMessageIndex !== null
+      ) {
+        return;
+      }
+
       const message = messages[index];
       if (!message || message.role !== "user") return;
 
@@ -54,7 +69,15 @@ export default function useMemories({ authed, messages, setToast }) {
         });
       }
     },
-    [messages, memories, setToast, t]
+    [
+      editingMessageIndex,
+      loading,
+      messages,
+      memories,
+      readOnlyConversation,
+      setToast,
+      t,
+    ]
   );
 
   const resetMemories = useCallback(() => {
