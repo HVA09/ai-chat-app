@@ -83,7 +83,7 @@ describe("useConversationBulkActions", () => {
     expect(exportConversations).toHaveBeenCalledWith([1, 2]);
     expect(props.setSelectedConversationIds).toHaveBeenCalledWith([]);
     expect(props.setToast).toHaveBeenCalledWith({
-      message: "app.bulkExportSuccess",
+      message: "app.bulkExportSuccess:",
       type: "success",
     });
   });
