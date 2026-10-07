@@ -25,6 +25,7 @@ import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
+import useConversationItemActions from "./hooks/useConversationItemActions";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
@@ -58,11 +59,6 @@ const ConversationShareManager = lazy(() => import("./components/ConversationSha
 import {
   getConversation,
   renameConversation,
-  deleteConversation,
-  togglePinConversation,
-  toggleArchiveConversation,
-  toggleTrashConversation,
-  moveConversationToFolder,
   duplicateConversation,
   branchConversation,
   exportConversation,
@@ -1425,6 +1421,25 @@ export default function App() {
   });
 
   const {
+    handleDeleteConversation,
+    handleToggleArchiveConversation,
+    handleTogglePinConversation,
+    handleToggleTrashConversation,
+  } = useConversationItemActions({
+    conversationId,
+    conversationSearch,
+    refreshConversations,
+    selectedFolderId,
+    selectedProjectId,
+    selectedWorkspaceId,
+    setToast,
+    showArchivedConversations,
+    showTrashConversations,
+    startNewChat,
+    t,
+  });
+
+  const {
     conversations,
     conversationsLoading,
     conversationsLoadingMore,
@@ -1881,33 +1896,6 @@ export default function App() {
     setShowShareManager(true);
   };
 
-  const handleToggleTrashConversation = async (id) => {
-    try {
-      await toggleTrashConversation(id);
-      if (id === conversationId) startNewChat();
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations
-      );
-    } catch {
-      setToast({ message: t("app.trashConversationError"), type: "error" });
-    }
-  };
-
-  const handleToggleArchiveConversation = async (id) => {
-    try {
-      const result = await toggleArchiveConversation(id);
-      if (result.is_archived && id === conversationId) startNewChat();
-      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
-    } catch {
-      setToast({ message: t("app.archiveConversationError"), type: "error" });
-    }
-  };
-
   const handleBranchConversation = async (messageIndex) => {
     if (!conversationId || loading || readOnlyConversation) return;
     try {
@@ -1948,41 +1936,6 @@ export default function App() {
     } catch (err) {
       setToast({
         message: err?.response?.data?.detail || t("app.duplicateConversationError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleTogglePinConversation = async (id) => {
-    try {
-      await togglePinConversation(id);
-      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
-    } catch {
-      setToast({ message: t("app.pinConversationError"), type: "error" });
-    }
-  };
-
-  const handleDeleteConversation = async (id) => {
-    try {
-      if (showTrashConversations) {
-        await deleteConversation(id);
-      } else {
-        await toggleTrashConversation(id);
-      }
-      if (id === conversationId) startNewChat();
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations
-      );
-    } catch {
-      setToast({
-        message: showTrashConversations
-          ? t("app.deleteConversationError")
-          : t("app.trashConversationError"),
         type: "error",
       });
     }
