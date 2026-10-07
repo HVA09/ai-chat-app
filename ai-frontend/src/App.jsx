@@ -21,6 +21,7 @@ import useAiModels from "./hooks/useAiModels";
 import useNotificationPreferences from "./hooks/useNotificationPreferences";
 import useConversationPreferences from "./hooks/useConversationPreferences";
 import useChatDraft from "./hooks/useChatDraft";
+import useChatAttachments from "./hooks/useChatAttachments";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
@@ -108,7 +109,6 @@ import {
   deleteTag,
   setConversationTags,
 } from "./lib/tagsApi";
-import { uploadFile, deleteFile } from "./lib/filesApi";
 import { getErrorMessage } from "./lib/errors";
 import { clearChatDraft } from "./lib/chatDrafts";
 import { getCurrentUser } from "./lib/usersApi";
@@ -169,8 +169,6 @@ export default function App() {
   const [showProjectEditor, setShowProjectEditor] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState(null);
   const [projectMemberRoles, setProjectMemberRoles] = useState({});
-  const [chatAttachments, setChatAttachments] = useState([]);
-  const [chatAttachmentUploading, setChatAttachmentUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null); // { message, type }
@@ -412,8 +410,7 @@ export default function App() {
     setConversationSummaryUpdatedAt(null);
     setMessages([getWelcomeMessage(t)]);
     resetChatDraft();
-    setChatAttachments([]);
-    setChatAttachmentUploading(false);
+    resetChatAttachments();
     setEditingMessageIndex(null);
     setRetryableUserMessage(null);
     setError("");
@@ -1387,8 +1384,7 @@ export default function App() {
     setParentConversationId(null);
     setMessages([getWelcomeMessage(t)]);
     setInput("");
-    setChatAttachments([]);
-    setChatAttachmentUploading(false);
+    resetChatAttachments();
     setEditingMessageIndex(null);
     setError("");
   };
@@ -1402,7 +1398,7 @@ export default function App() {
     setSelectedConversationIds([]);
     setError("");
     setInput("");
-    setChatAttachments([]);
+    resetChatAttachments();
     setChatAttachmentUploading(false);
     setEditingMessageIndex(null);
     setRetryableUserMessage(null);
@@ -1515,6 +1511,23 @@ export default function App() {
     conversationId,
   });
 
+  const {
+    chatAttachments,
+    chatAttachmentUploading,
+    handleAttachFiles,
+    handleRemoveAttachment,
+    resetChatAttachments,
+  } = useChatAttachments({
+    conversationId,
+    selectedWorkspaceId,
+    selectedProjectId,
+    loading,
+    readOnlyConversation,
+    editingMessageIndex,
+    setToast,
+    t,
+  });
+
   const handleOpenWorkspaceSharedConversation = async (workspaceId, sharedConversationId) => {
     try {
       const data = await getWorkspaceSharedConversation(
@@ -1583,100 +1596,6 @@ export default function App() {
     } catch (err) {
       setToast({
         message: err?.response?.data?.detail || t("workspaceSharing.updateError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleAttachFiles = async (files) => {
-    if (
-      readOnlyConversation ||
-      loading ||
-      editingMessageIndex !== null ||
-      chatAttachmentUploading
-    ) {
-      return;
-    }
-
-    const selectedFiles = Array.from(files || []).filter(Boolean);
-    if (!selectedFiles.length) return;
-
-    const remainingSlots = 10 - chatAttachments.length;
-    if (remainingSlots <= 0) {
-      setToast({ message: t("app.tooManyAttachments"), type: "error" });
-      return;
-    }
-
-    const filesToUpload = selectedFiles.slice(0, remainingSlots);
-    if (filesToUpload.length < selectedFiles.length) {
-      setToast({ message: t("app.attachmentLimitReached"), type: "error" });
-    }
-
-    const maxBytes = 10 * 1024 * 1024;
-    const oversized = filesToUpload.filter((file) => file.size > maxBytes);
-    const validFiles = filesToUpload.filter((file) => file.size <= maxBytes);
-
-    if (oversized.length) {
-      setToast({
-        message: t("app.attachmentTooLarge", { count: oversized.length }),
-        type: "error",
-      });
-    }
-    if (!validFiles.length) return;
-
-    setChatAttachmentUploading(true);
-    let uploadedAny = false;
-    let failed = 0;
-    try {
-      for (const file of validFiles) {
-        try {
-          const result = await uploadFile(file, undefined, conversationId, selectedWorkspaceId, selectedProjectId);
-          uploadedAny = true;
-          setChatAttachments((current) => [
-            ...current,
-            {
-              id: result.id,
-              original_filename: result.original_filename,
-              content_type: result.content_type,
-              size_bytes: result.size_bytes,
-            },
-          ]);
-        } catch (err) {
-          failed += 1;
-          setToast({
-            message: getErrorMessage(
-              err,
-              t("app.attachmentUploadErrorForFile", { name: file.name })
-            ),
-            type: "error",
-          });
-        }
-      }
-    } finally {
-      setChatAttachmentUploading(false);
-    }
-
-    if (uploadedAny && failed === 0 && oversized.length === 0) {
-      setToast({ message: t("app.attachmentsReady"), type: "success" });
-    }
-  };
-
-  const handleRemoveAttachment = async (fileId) => {
-    if (loading) return;
-    const attachment = chatAttachments.find((file) => file.id === fileId);
-    setChatAttachments((current) => current.filter((file) => file.id !== fileId));
-    try {
-      await deleteFile(fileId);
-    } catch (err) {
-      if (attachment) {
-        setChatAttachments((current) =>
-          current.some((file) => file.id === fileId)
-            ? current
-            : [...current, attachment]
-        );
-      }
-      setToast({
-        message: getErrorMessage(err, t("app.attachmentRemoveError")),
         type: "error",
       });
     }
@@ -2369,7 +2288,7 @@ export default function App() {
         streamAbortRef.current = null;
         setLoading(false);
         setRetryableUserMessage(null);
-        setChatAttachments([]);
+        resetChatAttachments();
         if (isNewConversation) {
           setActiveConversationTitle(submittedText.slice(0, 50));
           refreshConversations(
