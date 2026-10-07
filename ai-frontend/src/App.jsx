@@ -28,7 +28,7 @@ import useStartNewChat from "./hooks/useStartNewChat";
 import useConversationSelection from "./hooks/useConversationSelection";
 import useConversationItemActions from "./hooks/useConversationItemActions";
 import useMessageFeedback from "./hooks/useMessageFeedback";
-import { streamChatMessage, streamRegenerateMessage, streamEditMessage, analyzeImage, compareChatModels } from "./lib/chatApi";
+import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
 import {
