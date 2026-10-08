@@ -25,6 +25,7 @@ import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
+import useConversationMetadata from "./hooks/useConversationMetadata";
 import useMessageEditing from "./hooks/useMessageEditing";
 import useConversationBulkActions from "./hooks/useConversationBulkActions";
 import useConversationSelection from "./hooks/useConversationSelection";
@@ -54,7 +55,6 @@ import PrivacyPage from "./components/PrivacyPage";
 import PricingPage from "./components/PricingPage";
 const PublicAssistantPage = lazy(() => import("./components/PublicAssistantPage"));
 
-const AUTO_SUMMARY_MESSAGE_THRESHOLD = 12;
 const SharedConversationPage = lazy(() => import("./components/SharedConversationPage"));
 const WorkspaceMembersPanel = lazy(() => import("./components/WorkspaceMembersPanel"));
 const WorkspaceInvitePage = lazy(() => import("./components/WorkspaceInvitePage"));
@@ -1341,6 +1341,39 @@ export default function App() {
     setInput,
   });
 
+  const {
+    handleGenerateConversationTitle,
+    maybeAutoGenerateConversationTitle,
+    maybeAutoSummarizeConversation,
+    handleSummarizeConversation,
+  } = useConversationMetadata({
+    conversationId,
+    loading,
+    titleLoading,
+    summaryLoading,
+    readOnlyConversation,
+    autoGenerateTitles,
+    autoGenerateSummaries,
+    conversationSearch,
+    showArchivedConversations,
+    showTrashConversations,
+    selectedFolderId,
+    selectedWorkspaceId,
+    selectedProjectId,
+    selectedTagId,
+    messageCountRef,
+    autoSummaryLastMessageCountRef,
+    autoSummaryInFlightRef,
+    refreshConversations,
+    setConversationSummary,
+    setConversationSummaryUpdatedAt,
+    setSummaryLoading,
+    setTitleLoading,
+    setError,
+    setToast,
+    t,
+  });
+
 
   const {
     toggleConversationSelection,
@@ -1559,113 +1592,6 @@ export default function App() {
       setToast({ message: t("app.feedbackError"), type: "error" });
     }
   };
-
-  const handleGenerateConversationTitle = async () => {
-    if (!conversationId || loading || titleLoading || readOnlyConversation) return;
-    setTitleLoading(true);
-    setError("");
-    try {
-      const result = await generateConversationTitle(conversationId);
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations,
-        selectedTagId
-      );
-      setToast({ message: t("conversationTitle.generated"), type: "success" });
-      return result;
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("conversationTitle.error"),
-        type: "error",
-      });
-    } finally {
-      setTitleLoading(false);
-    }
-  };
-
-  const maybeAutoGenerateConversationTitle = async (id) => {
-    if (!autoGenerateTitles || !id || titleLoading || readOnlyConversation) return;
-    setTitleLoading(true);
-    try {
-      const result = await generateConversationTitle(id);
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations,
-        selectedTagId
-      );
-      if (result?.title) {
-        setToast({ message: result.title, type: "success" });
-      }
-    } catch {
-      // Auto-title is optional; a title-generation failure must not affect the chat response.
-    } finally {
-      setTitleLoading(false);
-    }
-  };
-
-  const maybeAutoSummarizeConversation = async (
-    id,
-    messageCount = messageCountRef.current
-  ) => {
-    if (
-      !autoGenerateSummaries ||
-      !id ||
-      readOnlyConversation ||
-      messageCount < AUTO_SUMMARY_MESSAGE_THRESHOLD ||
-      autoSummaryInFlightRef.current
-    ) {
-      return;
-    }
-
-    const lastCount = autoSummaryLastMessageCountRef.current[id] ?? 0;
-    if (messageCount - lastCount < AUTO_SUMMARY_MESSAGE_THRESHOLD) return;
-
-    autoSummaryInFlightRef.current = true;
-    try {
-      const result = await summarizeConversation(id);
-      autoSummaryLastMessageCountRef.current[id] = messageCount;
-      if (id === conversationId) {
-        setConversationSummary(result.summary);
-        setConversationSummaryUpdatedAt(result.summary_updated_at);
-      }
-    } catch {
-      // الملخص التلقائي اختياري؛ فشله لا يؤثر على الرسالة.
-    } finally {
-      autoSummaryInFlightRef.current = false;
-    }
-  };
-
-  const handleSummarizeConversation = async () => {
-    if (!conversationId || loading || summaryLoading || readOnlyConversation) return;
-    setSummaryLoading(true);
-    setError("");
-    try {
-      const result = await summarizeConversation(conversationId);
-      setConversationSummary(result.summary);
-      setConversationSummaryUpdatedAt(result.summary_updated_at);
-      if (conversationId) {
-        autoSummaryLastMessageCountRef.current[conversationId] =
-          messageCountRef.current;
-      }
-      setToast({ message: t("summary.saved"), type: "success" });
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("summary.error"),
-        type: "error",
-      });
-    } finally {
-      setSummaryLoading(false);
-    }
-  };
-
 
   const handleImportConversation = async (file) => {
     if (!file) return;
