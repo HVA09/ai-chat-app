@@ -25,18 +25,13 @@ import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
+import useConversationSharing from "./hooks/useConversationSharing";
 import useMessageEditing from "./hooks/useMessageEditing";
 import useConversationBulkActions from "./hooks/useConversationBulkActions";
 import useConversationSelection from "./hooks/useConversationSelection";
 import useConversationItemActions from "./hooks/useConversationItemActions";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
-import { createConversationShare } from "./lib/sharedConversationsApi";
-import {
-  shareConversationWithWorkspace,
-  unshareConversationFromWorkspace,
-  getWorkspaceSharedConversation,
-} from "./lib/workspaceConversationSharesApi";
 
 // مُحمَّلة عند الحاجة فقط (lazy) — كل وحدة تصير ملف منفصل (code splitting)،
 // يقلّل حجم الحزمة الأولى اللي يحمّلها أي زائر
@@ -1329,6 +1324,41 @@ export default function App() {
     setError,
     getWelcomeMessage,
   });
+
+  const {
+    handleShareConversation,
+    handleManageConversationShares,
+    handleOpenWorkspaceSharedConversation,
+    handleDuplicatedWorkspaceConversation,
+    handleToggleWorkspaceShare,
+  } = useConversationSharing({
+    conversationId,
+    selectedWorkspaceId,
+    loading,
+    readOnlyConversation,
+    workspaceShare,
+    messages,
+    setShowShareManager,
+    setReadOnlyConversation,
+    setShowWorkspaceComments,
+    setWorkspaceShare,
+    setSelectedWorkspaceId,
+    setConversationId,
+    setConversationSummary,
+    setConversationSummaryUpdatedAt,
+    setSelectedAssistantId,
+    setSelectedFolderId,
+    setSelectedProjectId,
+    setSelectedModel,
+    setMessages,
+    setInput,
+    setEditingMessageIndex,
+    setToast,
+    setError,
+    openConversation,
+    t,
+  });
+
   const { startEditingMessage, cancelEditing } = useMessageEditing({
     readOnlyConversation,
     loading,
@@ -1409,79 +1439,6 @@ export default function App() {
     startNewChat,
     t,
   });
-
-  const handleOpenWorkspaceSharedConversation = async (workspaceId, sharedConversationId) => {
-    try {
-      const data = await getWorkspaceSharedConversation(
-        Number(workspaceId),
-        Number(sharedConversationId)
-      );
-      setShowShareManager(false);
-      setReadOnlyConversation(true);
-      setShowWorkspaceComments(true);
-      setWorkspaceShare(null);
-      setSelectedWorkspaceId(Number(workspaceId));
-      setConversationId(data.conversation_id);
-      setConversationSummary(null);
-      setConversationSummaryUpdatedAt(null);
-      setSelectedAssistantId(null);
-      setSelectedFolderId(null);
-      setSelectedProjectId(null);
-      setSelectedModel("");
-      setMessages(
-        data.messages.map((message) => ({
-          role: message.role,
-          text: message.content,
-          time: new Date(message.created_at).toLocaleTimeString(),
-          sources: message.sources ?? [],
-          feedback: null,
-          isBookmarked: false,
-        }))
-      );
-      setInput("");
-      setEditingMessageIndex(null);
-      setError("");
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("workspaceSharing.loadError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleDuplicatedWorkspaceConversation = async (id) => {
-    if (!id) {
-      setToast({ message: t("workspaceSharing.duplicateError"), type: "error" });
-      return;
-    }
-    try {
-      await openConversation(id);
-      setReadOnlyConversation(false);
-      setToast({ message: t("workspaceSharing.duplicated"), type: "success" });
-    } catch {
-      setToast({ message: t("workspaceSharing.duplicateError"), type: "error" });
-    }
-  };
-
-  const handleToggleWorkspaceShare = async () => {
-    if (!conversationId || !selectedWorkspaceId || loading || readOnlyConversation) return;
-    try {
-      if (workspaceShare) {
-        await unshareConversationFromWorkspace(conversationId);
-        setWorkspaceShare(null);
-        setToast({ message: t("workspaceSharing.unshared"), type: "success" });
-      } else {
-        const share = await shareConversationWithWorkspace(conversationId);
-        setWorkspaceShare(share);
-        setToast({ message: t("workspaceSharing.shared"), type: "success" });
-      }
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("workspaceSharing.updateError"),
-        type: "error",
-      });
-    }
-  };
 
   const handleAnalyzeImage = async (file, prompt) => {
     if (!conversationId || loading || readOnlyConversation) return;
