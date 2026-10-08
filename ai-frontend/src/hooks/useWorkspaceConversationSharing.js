@@ -1,5 +1,6 @@
 import { useCallback } from "react";
-
+import {
+} from "../lib/workspaceConversationSharesApi";
 export default function useWorkspaceConversationSharing({
   conversationId,
   selectedWorkspaceId,
@@ -69,7 +70,6 @@ export default function useWorkspaceConversationSharing({
       }
     },
     [
-      getWorkspaceSharedConversation,
       setConversationId,
       setConversationSummary,
       setConversationSummaryUpdatedAt,
@@ -152,9 +152,7 @@ export default function useWorkspaceConversationSharing({
       selectedWorkspaceId,
       setToast,
       setWorkspaceShare,
-      shareConversationWithWorkspace,
       t,
-      unshareConversationFromWorkspace,
       workspaceShare,
     ]
   );
