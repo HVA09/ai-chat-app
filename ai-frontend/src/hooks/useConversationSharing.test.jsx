@@ -38,6 +38,7 @@ const buildProps = (overrides = {}) => ({
   setInput: vi.fn(),
   setEditingMessageIndex: vi.fn(),
   setToast: vi.fn(),
+  setError: vi.fn(),
   openConversation: vi.fn(),
   t: vi.fn((key) => key),
   ...overrides,
