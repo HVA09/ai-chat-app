@@ -31,10 +31,10 @@ import useMessageEditing from "./hooks/useMessageEditing";
 import useConversationBulkActions from "./hooks/useConversationBulkActions";
 import useConversationSelection from "./hooks/useConversationSelection";
 import useConversationItemActions from "./hooks/useConversationItemActions";
+import useConversationSharing from "./hooks/useConversationSharing";
 import useRegenerateLastResponse from "./hooks/useRegenerateLastResponse";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
-import { createConversationShare } from "./lib/sharedConversationsApi";
 import {
   shareConversationWithWorkspace,
   unshareConversationFromWorkspace,
@@ -1353,6 +1353,18 @@ export default function App() {
     t,
   });
 
+  const {
+    handleManageConversationShares,
+    handleShareConversation,
+  } = useConversationSharing({
+    conversationId,
+    loading,
+    messages,
+    setShowShareManager,
+    setToast,
+    t,
+  });
+
   const handleOpenWorkspaceSharedConversation = async (workspaceId, sharedConversationId) => {
     try {
       const data = await getWorkspaceSharedConversation(
@@ -1622,58 +1634,6 @@ export default function App() {
       });
     }
   };
-
-  const handleShareConversation = async () => {
-    if (!conversationId) return;
-    try {
-      const protect = window.confirm(t("sharing.protectConfirm"));
-      let password = null;
-
-      if (protect) {
-        password = window.prompt(t("sharing.passwordPrompt"));
-        if (password === null) return;
-        password = password.trim();
-        if (password.length < 8) {
-          setToast({ message: t("sharing.passwordTooShort"), type: "error" });
-          return;
-        }
-      }
-
-      const share = await createConversationShare(conversationId, 7, password);
-      if (navigator.share) {
-        try {
-          await navigator.share({
-            title: messages[0]?.text || t("appName"),
-            url: share.url,
-          });
-          setToast({ message: t("sharing.sharedSuccess"), type: "success" });
-          return;
-        } catch (err) {
-          if (err?.name === "AbortError") return;
-        }
-      }
-
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(share.url);
-        setToast({ message: t("sharing.linkCopied"), type: "success" });
-        return;
-      }
-
-      window.prompt(t("sharing.copyPrompt"), share.url);
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("sharing.createError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleManageConversationShares = () => {
-    if (!conversationId || loading) return;
-    setShowShareManager(true);
-  };
-
-
 
   const handleBranchConversation = async (messageIndex) => {
     if (!conversationId || loading || readOnlyConversation) return;
