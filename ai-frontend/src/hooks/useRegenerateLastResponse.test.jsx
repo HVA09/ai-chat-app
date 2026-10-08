@@ -64,7 +64,7 @@ describe("useRegenerateLastResponse", () => {
     expect(props.setConversationId).toHaveBeenCalledWith("conversation-2");
     expect(props.setError).toHaveBeenCalledWith("failed");
     expect(state[1].text).toBe("Previous");
-    expect(state[1].feedback).toBe("up");
+    expect(state[1].feedback).toBe(null);
     expect(props.streamAbortRef.current).toBe(null);
   });
 
