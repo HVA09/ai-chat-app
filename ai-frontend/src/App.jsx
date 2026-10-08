@@ -25,13 +25,13 @@ import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
-import useConversationImport from "./hooks/useConversationImport";
 import useTagManagement from "./hooks/useTagManagement";
 import useConversationMetadata from "./hooks/useConversationMetadata";
 import useMessageEditing from "./hooks/useMessageEditing";
 import useConversationBulkActions from "./hooks/useConversationBulkActions";
 import useConversationSelection from "./hooks/useConversationSelection";
 import useConversationItemActions from "./hooks/useConversationItemActions";
+import useConversationImport from "./hooks/useConversationImport";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
@@ -1278,20 +1278,7 @@ export default function App() {
     setToast,
   });
 
-  const { handleImportConversation } = useConversationImport({
-    selectedWorkspaceId,
-    t,
-    setToast,
-    setShowArchivedConversations,
-    setShowTrashConversations,
-    setConversationSearch,
-    setSelectedTagId,
-    setSelectedFolderId,
-    setSelectedProjectId,
-    setSelectedConversationIds,
-    refreshConversations,
-    openConversation,
-  });
+
 
   const {
     handleGenerateConversationTitle,
@@ -1515,6 +1502,21 @@ export default function App() {
       setToast({ message: t("app.feedbackError"), type: "error" });
     }
   };
+
+  const { handleImportConversation } = useConversationImport({
+    selectedWorkspaceId,
+    t,
+    setToast,
+    setShowArchivedConversations,
+    setShowTrashConversations,
+    setConversationSearch,
+    setSelectedTagId,
+    setSelectedFolderId,
+    setSelectedProjectId,
+    setSelectedConversationIds,
+    refreshConversations,
+    openConversation,
+  });
 
   const handleExportConversation = async (format = "markdown") => {
     if (!conversationId || loading) return;
