@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import {
   listTags,
   createTag,
@@ -9,7 +9,6 @@ import {
 import { getErrorMessage } from "../lib/errors";
 
 export default function useConversationTags({
-  conversationId,
   showArchivedConversations,
   showTrashConversations,
   selectedFolderId,
@@ -21,10 +20,11 @@ export default function useConversationTags({
   startNewChat,
   setToast,
   t,
+  tags,
+  setTags,
+  selectedTagId,
+  setSelectedTagId,
 }) {
-  const [tags, setTags] = useState([]);
-  const [selectedTagId, setSelectedTagId] = useState(null);
-
   const refreshTags = useCallback(async () => {
     try {
       setTags(await listTags());
