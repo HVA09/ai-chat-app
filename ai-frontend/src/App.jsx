@@ -26,6 +26,7 @@ import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
 import useDeleteMessage from "./hooks/useDeleteMessage";
+import useTagManagement from "./hooks/useTagManagement";
 import useConversationMetadata from "./hooks/useConversationMetadata";
 import useMessageEditing from "./hooks/useMessageEditing";
 import useConversationBulkActions from "./hooks/useConversationBulkActions";
@@ -103,13 +104,6 @@ import {
   shareAssistantWithWorkspace,
   unshareAssistantFromWorkspace,
 } from "./lib/assistantsApi";
-import {
-  listTags,
-  createTag,
-  updateTag,
-  deleteTag,
-  setConversationTags,
-} from "./lib/tagsApi";
 import { getErrorMessage } from "./lib/errors";
 import { clearChatDraft } from "./lib/chatDrafts";
 import { getCurrentUser } from "./lib/usersApi";
@@ -505,115 +499,6 @@ export default function App() {
     }, 300);
     return () => window.clearTimeout(timer);
   }, [conversationSearch, authed]);
-
-  const refreshTags = async () => {
-    try {
-      setTags(await listTags());
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.tagsLoadError")),
-        type: "error",
-      });
-    }
-  };
-
-  const handleCreateTag = async () => {
-    const name = window.prompt(t("sidebar.tagCreatePrompt"));
-    if (!name?.trim()) return;
-    try {
-      const tag = await createTag(name.trim());
-      await refreshTags();
-      setSelectedTagId(tag.id);
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations,
-        tag.id
-      );
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.tagCreateError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleRenameTag = async (id, currentName, currentColor) => {
-    const name = window.prompt(t("sidebar.tagRenamePrompt"), currentName);
-    if (!name?.trim()) return;
-    try {
-      await updateTag(id, name.trim(), currentColor);
-      await refreshTags();
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.tagRenameError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleDeleteTag = async (id, name) => {
-    if (!window.confirm(t("sidebar.tagDeleteConfirm", { name }))) return;
-    const wasSelected = id === selectedTagId;
-    try {
-      await deleteTag(id);
-      if (wasSelected) setSelectedTagId(null);
-      await refreshTags();
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations,
-        wasSelected ? null : selectedTagId
-      );
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.tagDeleteError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleSelectTag = async (id) => {
-    const tagId = id === null || id === undefined ? null : Number(id);
-    setSelectedTagId(tagId);
-    setSelectedConversationIds([]);
-    startNewChat();
-    await refreshConversations(
-      showArchivedConversations,
-      selectedFolderId,
-      selectedWorkspaceId,
-      selectedProjectId,
-      conversationSearch,
-      showTrashConversations,
-      tagId
-    );
-  };
-
-  const handleSetConversationTags = async (id, tagIds) => {
-    try {
-      await setConversationTags(id, tagIds);
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations,
-        selectedTagId
-      );
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.conversationTagError"),
-        type: "error",
-      });
-    }
-  };
 
   const refreshWorkspaces = async () => {
     let list;
@@ -1348,19 +1233,6 @@ export default function App() {
     clearSelectedConversations,
   } = useConversationSelection({ setSelectedConversationIds });
 
-  const { deleteMessage } = useDeleteMessage({
-    conversationId,
-    loading,
-    editingMessageIndex,
-    readOnlyConversation,
-    setError,
-    setMessages,
-    refreshConversations,
-    getWelcomeMessage,
-    t,
-    setToast,
-  });
-
   const {
     conversations,
     conversationsLoading,
@@ -1383,6 +1255,42 @@ export default function App() {
     t,
   });
 
+  const { deleteMessage } = useDeleteMessage({
+    conversationId,
+    loading,
+    editingMessageIndex,
+    readOnlyConversation,
+    setError,
+    setMessages,
+    refreshConversations,
+    getWelcomeMessage,
+    t,
+    setToast,
+  });
+
+  const {
+    refreshTags,
+    handleCreateTag,
+    handleRenameTag,
+    handleDeleteTag,
+    handleSelectTag,
+    handleSetConversationTags,
+  } = useTagManagement({
+    t,
+    selectedTagId,
+    setSelectedTagId,
+    setTags,
+    setSelectedConversationIds,
+    startNewChat,
+    refreshConversations,
+    showArchivedConversations,
+    selectedFolderId,
+    selectedWorkspaceId,
+    selectedProjectId,
+    conversationSearch,
+    showTrashConversations,
+    setToast,
+  });
 
   const {
     handleGenerateConversationTitle,
