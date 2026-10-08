@@ -1341,6 +1341,36 @@ export default function App() {
     setInput,
   });
 
+
+  const {
+    toggleConversationSelection,
+    toggleSelectAllVisibleConversations,
+    clearSelectedConversations,
+  } = useConversationSelection({ setSelectedConversationIds });
+
+  const {
+    conversations,
+    conversationsLoading,
+    conversationsLoadingMore,
+    hasMoreConversations,
+    refreshConversations,
+    loadMoreConversations,
+    resetConversations,
+  } = useConversationList({
+    filters: {
+      showArchivedConversations,
+      showTrashConversations,
+      selectedFolderId,
+      selectedWorkspaceId,
+      selectedProjectId,
+      selectedTagId,
+      conversationSearch,
+    },
+    setToast,
+    t,
+  });
+
+
   const {
     handleGenerateConversationTitle,
     maybeAutoGenerateConversationTitle,
@@ -1370,35 +1400,6 @@ export default function App() {
     setSummaryLoading,
     setTitleLoading,
     setError,
-    setToast,
-    t,
-  });
-
-
-  const {
-    toggleConversationSelection,
-    toggleSelectAllVisibleConversations,
-    clearSelectedConversations,
-  } = useConversationSelection({ setSelectedConversationIds });
-
-  const {
-    conversations,
-    conversationsLoading,
-    conversationsLoadingMore,
-    hasMoreConversations,
-    refreshConversations,
-    loadMoreConversations,
-    resetConversations,
-  } = useConversationList({
-    filters: {
-      showArchivedConversations,
-      showTrashConversations,
-      selectedFolderId,
-      selectedWorkspaceId,
-      selectedProjectId,
-      selectedTagId,
-      conversationSearch,
-    },
     setToast,
     t,
   });
