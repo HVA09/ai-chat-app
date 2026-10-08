@@ -21,8 +21,8 @@ describe("useConversationTags", () => {
   const setToast = vi.fn();
   const startNewChat = vi.fn();
   const setSelectedConversationIds = vi.fn();
+  const setTags = vi.fn();
   const baseProps = {
-    conversationId: 42,
     showArchivedConversations: false,
     showTrashConversations: false,
     selectedFolderId: null,
@@ -34,6 +34,10 @@ describe("useConversationTags", () => {
     startNewChat,
     setToast,
     t: (key) => key,
+    tags: [],
+    setTags,
+    selectedTagId: null,
+    setSelectedTagId: vi.fn(),
   };
 
   beforeEach(() => {
