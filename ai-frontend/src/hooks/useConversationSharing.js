@@ -29,6 +29,7 @@ export default function useConversationSharing({
   setInput,
   setEditingMessageIndex,
   setToast,
+  setError,
   openConversation,
   t,
 }) {
@@ -116,7 +117,7 @@ export default function useConversationSharing({
         );
         setInput("");
         setEditingMessageIndex(null);
-        setToast(null);
+        setError("");
       } catch (err) {
         setToast({
           message: err?.response?.data?.detail || t("workspaceSharing.loadError"),
@@ -140,6 +141,7 @@ export default function useConversationSharing({
       setShowShareManager,
       setShowWorkspaceComments,
       setToast,
+      setError,
       t,
     ]
   );
