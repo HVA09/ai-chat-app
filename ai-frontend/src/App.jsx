@@ -500,12 +500,6 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [conversationSearch, authed]);
 
-  const { refreshTags, handleCreateTag, handleRenameTag, handleDeleteTag, handleSelectTag, handleSetConversationTags } = useTagManagement({
-    t, selectedTagId, setSelectedTagId, setTags, setSelectedConversationIds, startNewChat,
-    refreshConversations, showArchivedConversations, selectedFolderId, selectedWorkspaceId,
-    selectedProjectId, conversationSearch, showTrashConversations, setToast,
-  });
-
   const refreshWorkspaces = async () => {
     let list;
     try {
@@ -1261,6 +1255,29 @@ export default function App() {
     t,
   });
 
+  const {
+    refreshTags,
+    handleCreateTag,
+    handleRenameTag,
+    handleDeleteTag,
+    handleSelectTag,
+    handleSetConversationTags,
+  } = useTagManagement({
+    t,
+    selectedTagId,
+    setSelectedTagId,
+    setTags,
+    setSelectedConversationIds,
+    startNewChat,
+    refreshConversations,
+    showArchivedConversations,
+    selectedFolderId,
+    selectedWorkspaceId,
+    selectedProjectId,
+    conversationSearch,
+    showTrashConversations,
+    setToast,
+  });
 
   const {
     handleGenerateConversationTitle,
