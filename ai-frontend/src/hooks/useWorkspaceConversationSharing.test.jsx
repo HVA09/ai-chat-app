@@ -1,6 +1,17 @@
 import { renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  getWorkspaceSharedConversation,
+  shareConversationWithWorkspace,
+  unshareConversationFromWorkspace,
+} from "../lib/workspaceConversationSharesApi";
 import useWorkspaceConversationSharing from "./useWorkspaceConversationSharing";
+
+vi.mock("../lib/workspaceConversationSharesApi", () => ({
+  getWorkspaceSharedConversation: vi.fn(),
+  shareConversationWithWorkspace: vi.fn(),
+  unshareConversationFromWorkspace: vi.fn(),
+}));
 
 const createProps = () => ({
   conversationId: 7,
@@ -9,19 +20,6 @@ const createProps = () => ({
   loading: false,
   readOnlyConversation: false,
   openConversation: vi.fn().mockResolvedValue(undefined),
-  getWorkspaceSharedConversation: vi.fn().mockResolvedValue({
-    conversation_id: 19,
-    messages: [
-      {
-        role: "user",
-        content: "Hello",
-        created_at: "2026-10-08T10:00:00Z",
-        sources: [{ title: "source" }],
-      },
-    ],
-  }),
-  shareConversationWithWorkspace: vi.fn().mockResolvedValue({ id: 11 }),
-  unshareConversationFromWorkspace: vi.fn().mockResolvedValue(undefined),
   setShowShareManager: vi.fn(),
   setReadOnlyConversation: vi.fn(),
   setShowWorkspaceComments: vi.fn(),
@@ -43,13 +41,30 @@ const createProps = () => ({
 });
 
 describe("useWorkspaceConversationSharing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getWorkspaceSharedConversation.mockResolvedValue({
+      conversation_id: 19,
+      messages: [
+        {
+          role: "user",
+          content: "Hello",
+          created_at: "2026-10-08T10:00:00Z",
+          sources: [{ title: "source" }],
+        },
+      ],
+    });
+    shareConversationWithWorkspace.mockResolvedValue({ id: 11 });
+    unshareConversationFromWorkspace.mockResolvedValue(undefined);
+  });
+
   it("opens a shared workspace conversation as read-only", async () => {
     const props = createProps();
     const { result } = renderHook(() => useWorkspaceConversationSharing(props));
 
     await result.current.handleOpenWorkspaceSharedConversation(3, 19);
 
-    expect(props.getWorkspaceSharedConversation).toHaveBeenCalledWith(3, 19);
+    expect(getWorkspaceSharedConversation).toHaveBeenCalledWith(3, 19);
     expect(props.setReadOnlyConversation).toHaveBeenCalledWith(true);
     expect(props.setSelectedWorkspaceId).toHaveBeenCalledWith(3);
     expect(props.setConversationId).toHaveBeenCalledWith(19);
@@ -70,13 +85,13 @@ describe("useWorkspaceConversationSharing", () => {
     );
 
     await result.current.handleToggleWorkspaceShare();
-    expect(props.shareConversationWithWorkspace).toHaveBeenCalledWith(7);
+    expect(shareConversationWithWorkspace).toHaveBeenCalledWith(7);
     expect(props.setWorkspaceShare).toHaveBeenCalledWith({ id: 11 });
 
     const unshareProps = { ...props, workspaceShare: { id: 11 } };
     rerender(unshareProps);
     await result.current.handleToggleWorkspaceShare();
-    expect(unshareProps.unshareConversationFromWorkspace).toHaveBeenCalledWith(7);
+    expect(unshareConversationFromWorkspace).toHaveBeenCalledWith(7);
     expect(unshareProps.setWorkspaceShare).toHaveBeenCalledWith(null);
   });
 
