@@ -25,12 +25,13 @@ import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
+import useRegenerateLastResponse from "./hooks/useRegenerateLastResponse";
 import useConversationMetadata from "./hooks/useConversationMetadata";
 import useMessageEditing from "./hooks/useMessageEditing";
 import useConversationBulkActions from "./hooks/useConversationBulkActions";
 import useConversationSelection from "./hooks/useConversationSelection";
 import useConversationItemActions from "./hooks/useConversationItemActions";
-import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
+import { streamChatMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import { createConversationShare } from "./lib/sharedConversationsApi";
 import {
@@ -2146,68 +2147,27 @@ export default function App() {
     });
   };
 
-  const regenerateLastResponse = async () => {
-    if (readOnlyConversation || !conversationId || loading || lastAssistantIndex < 0) return;
-
-    setRetryableUserMessage(null);
-    const targetIndex = lastAssistantIndex;
-    const previousText = messages[targetIndex]?.text ?? "";
-    autoSummaryLastMessageCountRef.current[conversationId] = 0;
-    setError("");
-    setMessages((prev) =>
-      prev.map((message, index) =>
-        index === targetIndex ? { ...message, text: "", feedback: null } : message
-      )
-    );
-    setLoading(true);
-
-    const controller = new AbortController();
-    streamAbortRef.current = controller;
-
-    const appendToTargetMessage = (chunk) => {
-      setMessages((prev) =>
-        prev.map((message, index) =>
-          index === targetIndex ? { ...message, text: message.text + chunk } : message
-        )
-      );
-    };
-
-    await streamRegenerateMessage(conversationId, {
-      signal: controller.signal,
-      onConversationId: (id) => setConversationId(id),
-      onSources: (sources) => {
-        setMessages((prev) => prev.map((message, index) =>
-          index === targetIndex ? { ...message, sources } : message
-        ));
-      },
-      onChunk: appendToTargetMessage,
-      onDone: () => {
-        streamAbortRef.current = null;
-        setLoading(false);
-        refreshConversations(
-          showArchivedConversations,
-          selectedFolderId,
-          selectedWorkspaceId,
-          selectedProjectId
-        );
-        void maybeAutoSummarizeConversation(
-          conversationId,
-          messageCountRef.current
-        );
-      },
-      onError: (message) => {
-        streamAbortRef.current = null;
-        setLoading(false);
-        setError(message);
-        setMessages((prev) =>
-          prev.map((item, index) =>
-            index === targetIndex ? { ...item, text: previousText } : item
-          )
-        );
-      },
-    });
-  };
-
+  const { regenerateLastResponse } = useRegenerateLastResponse({
+    readOnlyConversation,
+    conversationId,
+    loading,
+    lastAssistantIndex,
+    messages,
+    autoSummaryLastMessageCountRef,
+    streamAbortRef,
+    messageCountRef,
+    setRetryableUserMessage,
+    setError,
+    setMessages,
+    setLoading,
+    setConversationId,
+    refreshConversations,
+    showArchivedConversations,
+    selectedFolderId,
+    selectedWorkspaceId,
+    selectedProjectId,
+    maybeAutoSummarizeConversation,
+  });
 
   const commandPaletteActions = [
     {
