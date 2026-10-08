@@ -57,7 +57,6 @@ const WorkspaceMembersPanel = lazy(() => import("./components/WorkspaceMembersPa
 const WorkspaceInvitePage = lazy(() => import("./components/WorkspaceInvitePage"));
 const ConversationShareManager = lazy(() => import("./components/ConversationShareManager"));
 import {
-  getConversation,
   renameConversation,
   deleteConversation,
   togglePinConversation,
