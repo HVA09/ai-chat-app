@@ -31,6 +31,7 @@ import useMessageEditing from "./hooks/useMessageEditing";
 import useConversationBulkActions from "./hooks/useConversationBulkActions";
 import useConversationSelection from "./hooks/useConversationSelection";
 import useConversationItemActions from "./hooks/useConversationItemActions";
+import useDeleteMessage from "./hooks/useDeleteMessage";
 import useRegenerateLastResponse from "./hooks/useRegenerateLastResponse";
 import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
@@ -62,7 +63,6 @@ const WorkspaceMembersPanel = lazy(() => import("./components/WorkspaceMembersPa
 const WorkspaceInvitePage = lazy(() => import("./components/WorkspaceInvitePage"));
 const ConversationShareManager = lazy(() => import("./components/ConversationShareManager"));
 import {
-  getConversation,
   deleteConversation,
   toggleArchiveConversation,
   toggleTrashConversation,
@@ -1353,6 +1353,19 @@ export default function App() {
     t,
   });
 
+  const { deleteMessage } = useDeleteMessage({
+    conversationId,
+    loading,
+    editingMessageIndex,
+    readOnlyConversation,
+    setError,
+    setMessages,
+    refreshConversations,
+    getWelcomeMessage,
+    t,
+    setToast,
+  });
+
   const handleOpenWorkspaceSharedConversation = async (workspaceId, sharedConversationId) => {
     try {
       const data = await getWorkspaceSharedConversation(
@@ -1721,43 +1734,6 @@ export default function App() {
   };
 
 
-
-  const deleteMessage = async (index) => {
-    if (!conversationId || loading || editingMessageIndex !== null || readOnlyConversation) return;
-
-    const isArabic = document.documentElement.lang === "ar";
-    const confirmed = window.confirm(
-      isArabic
-        ? "حذف هذه الرسالة؟ إذا كانت رسالة مستخدم فسيُحذف رد المساعد المرتبط بها أيضًا."
-        : "Delete this message? For a user message, its linked assistant reply will also be deleted."
-    );
-    if (!confirmed) return;
-
-    setError("");
-    try {
-      await api.delete(`/chat/${conversationId}/messages/${index + 1}`);
-      const data = await getConversation(conversationId);
-      setMessages(
-        data.messages.length
-          ? data.messages.map((m) => ({
-              role: m.role,
-              text: m.content,
-              time: new Date(m.created_at).toLocaleTimeString(),
-              sources: m.sources ?? [],
-            }))
-          : [getWelcomeMessage(t)]
-      );
-      await refreshConversations();
-    } catch (err) {
-      if (err?.response?.status === 401) return;
-      setToast({
-        message:
-          err?.response?.data?.detail ||
-          (isArabic ? "تعذر حذف الرسالة" : "Couldn't delete the message"),
-        type: "error",
-      });
-    }
-  };
 
   const stopGeneration = () => {
     if (streamAbortRef.current) {
