@@ -25,6 +25,7 @@ import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
+import useConversationTitle from "./hooks/useConversationTitle";
 import useMessageEditing from "./hooks/useMessageEditing";
 import useConversationBulkActions from "./hooks/useConversationBulkActions";
 import useConversationSelection from "./hooks/useConversationSelection";
@@ -71,7 +72,6 @@ import {
   importConversation,
   importConversations,
   summarizeConversation,
-  generateConversationTitle,
 } from "./lib/conversationsApi";
 import {
   listFolders,
@@ -188,7 +188,6 @@ export default function App() {
   const [conversationBranches, setConversationBranches] = useState([]);
   const [parentConversationId, setParentConversationId] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
-  const [titleLoading, setTitleLoading] = useState(false);
   const {
     savedPrompts,
     resetSavedPrompts,
@@ -1410,6 +1409,28 @@ export default function App() {
     t,
   });
 
+  const {
+    handleGenerateConversationTitle,
+    maybeAutoGenerateConversationTitle,
+    titleLoading,
+  } = useConversationTitle({
+    autoGenerateTitles,
+    conversationId,
+    conversationSearch,
+    loading,
+    readOnlyConversation,
+    refreshConversations,
+    selectedFolderId,
+    selectedProjectId,
+    selectedTagId,
+    selectedWorkspaceId,
+    setError,
+    setToast,
+    showArchivedConversations,
+    showTrashConversations,
+    t,
+  });
+
   const handleOpenWorkspaceSharedConversation = async (workspaceId, sharedConversationId) => {
     try {
       const data = await getWorkspaceSharedConversation(
@@ -1557,57 +1578,6 @@ export default function App() {
         )
       );
       setToast({ message: t("app.feedbackError"), type: "error" });
-    }
-  };
-
-  const handleGenerateConversationTitle = async () => {
-    if (!conversationId || loading || titleLoading || readOnlyConversation) return;
-    setTitleLoading(true);
-    setError("");
-    try {
-      const result = await generateConversationTitle(conversationId);
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations,
-        selectedTagId
-      );
-      setToast({ message: t("conversationTitle.generated"), type: "success" });
-      return result;
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("conversationTitle.error"),
-        type: "error",
-      });
-    } finally {
-      setTitleLoading(false);
-    }
-  };
-
-  const maybeAutoGenerateConversationTitle = async (id) => {
-    if (!autoGenerateTitles || !id || titleLoading || readOnlyConversation) return;
-    setTitleLoading(true);
-    try {
-      const result = await generateConversationTitle(id);
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations,
-        selectedTagId
-      );
-      if (result?.title) {
-        setToast({ message: result.title, type: "success" });
-      }
-    } catch {
-      // Auto-title is optional; a title-generation failure must not affect the chat response.
-    } finally {
-      setTitleLoading(false);
     }
   };
 
