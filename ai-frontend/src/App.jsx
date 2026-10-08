@@ -25,6 +25,7 @@ import useChatAttachments from "./hooks/useChatAttachments";
 import useConversationList from "./hooks/useConversationList";
 import useOpenConversation from "./hooks/useOpenConversation";
 import useStartNewChat from "./hooks/useStartNewChat";
+import useConversationBranching from "./hooks/useConversationBranching";
 import useMessageEditing from "./hooks/useMessageEditing";
 import useConversationBulkActions from "./hooks/useConversationBulkActions";
 import useConversationSelection from "./hooks/useConversationSelection";
@@ -66,7 +67,6 @@ import {
   toggleTrashConversation,
   moveConversationToFolder,
   duplicateConversation,
-  branchConversation,
   exportConversation,
   importConversation,
   importConversations,
@@ -1310,6 +1310,23 @@ export default function App() {
     t,
   });
 
+  const { handleBranchConversation } = useConversationBranching({
+    conversationId,
+    conversationSearch,
+    loading,
+    openConversation,
+    readOnlyConversation,
+    refreshConversations,
+    selectedFolderId,
+    selectedProjectId,
+    selectedTagId,
+    selectedWorkspaceId,
+    setToast,
+    showArchivedConversations,
+    showTrashConversations,
+    t,
+  });
+
   const { startNewChat } = useStartNewChat({
     t,
     messageCountRef,
@@ -1838,29 +1855,6 @@ export default function App() {
   };
 
 
-
-  const handleBranchConversation = async (messageIndex) => {
-    if (!conversationId || loading || readOnlyConversation) return;
-    try {
-      const branch = await branchConversation(conversationId, messageIndex + 1);
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations,
-        selectedTagId
-      );
-      await openConversation(branch.id);
-      setToast({ message: t("app.branchConversationSuccess"), type: "success" });
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.branchConversationError"),
-        type: "error",
-      });
-    }
-  };
 
   const handleDuplicateConversation = async (id) => {
     try {
