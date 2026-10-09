@@ -243,6 +243,15 @@ export default function App() {
   }, [projects, selectedProjectId, selectedWorkspaceId, currentUser?.id, workspaces]);
 
   const {
+    notificationPreferences,
+    setRealtimeToastsEnabled: handleNotificationToastsChanged,
+    resetNotificationPreferences,
+  } = useNotificationPreferences({
+    authed,
+    userId: currentUser?.id,
+  });
+
+  const {
     notifications,
     resetNotifications,
     refreshNotifications,
@@ -1096,21 +1105,6 @@ export default function App() {
   };
 
   const {
-    bookmarkedMessages,
-    handleToggleMessageBookmark,
-    handleOpenBookmarkedMessage,
-    resetBookmarks,
-  } = useBookmarks({
-    authed,
-    conversationId,
-    loading,
-    readOnlyConversation,
-    setMessages,
-    setToast,
-    openConversation,
-  });
-
-  const {
     memories,
     handleToggleMessageMemory,
     resetMemories,
@@ -1130,15 +1124,6 @@ export default function App() {
     refreshAiModels,
     resetAiModels,
   } = useAiModels({ setToast });
-
-  const {
-    notificationPreferences,
-    setRealtimeToastsEnabled: handleNotificationToastsChanged,
-    resetNotificationPreferences,
-  } = useNotificationPreferences({
-    authed,
-    userId: currentUser?.id,
-  });
 
   const {
     autoGenerateTitles,
@@ -1197,6 +1182,21 @@ export default function App() {
     messageCountRef,
     autoSummaryLastMessageCountRef,
     t,
+  });
+
+  const {
+    bookmarkedMessages,
+    handleToggleMessageBookmark,
+    handleOpenBookmarkedMessage,
+    resetBookmarks,
+  } = useBookmarks({
+    authed,
+    conversationId,
+    loading,
+    readOnlyConversation,
+    setMessages,
+    setToast,
+    openConversation,
   });
 
   const { startNewChat } = useStartNewChat({
