@@ -1,4 +1,5 @@
-FROM node:22-bookworm-slim
+# Docker Official Node.js image mirrored on ECR Public to avoid Docker Hub pull-rate-limit failures.
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
