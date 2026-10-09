@@ -901,6 +901,10 @@ html.dark .chat-message-user {
   .modern-sidebar.modern-sidebar-open {
     transform: translateX(0);
   }
+  /* RTL has a more specific off-canvas rule; explicitly override it while open. */
+  html[dir="rtl"] .modern-sidebar.modern-sidebar-open {
+    transform: translateX(0);
+  }
   .modern-library-scroll {
     max-height: 30dvh;
   }
