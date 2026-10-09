@@ -243,6 +243,15 @@ export default function App() {
   }, [projects, selectedProjectId, selectedWorkspaceId, currentUser?.id, workspaces]);
 
   const {
+    notificationPreferences,
+    setRealtimeToastsEnabled: handleNotificationToastsChanged,
+    resetNotificationPreferences,
+  } = useNotificationPreferences({
+    authed,
+    userId: currentUser?.id,
+  });
+
+  const {
     notifications,
     resetNotifications,
     refreshNotifications,
@@ -1130,15 +1139,6 @@ export default function App() {
     refreshAiModels,
     resetAiModels,
   } = useAiModels({ setToast });
-
-  const {
-    notificationPreferences,
-    setRealtimeToastsEnabled: handleNotificationToastsChanged,
-    resetNotificationPreferences,
-  } = useNotificationPreferences({
-    authed,
-    userId: currentUser?.id,
-  });
 
   const {
     autoGenerateTitles,
