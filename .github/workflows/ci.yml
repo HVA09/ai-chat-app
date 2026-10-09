@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: public.ecr.aws/docker/library/postgres:16-bookworm
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: ai_backend_test
@@ -26,7 +26,7 @@ jobs:
           --health-cmd "pg_isready -U postgres -d ai_backend_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
       redis:
-        image: redis:7-alpine
+        image: public.ecr.aws/docker/library/redis:7-alpine
         ports:
           - 6379:6379
     defaults:
@@ -34,6 +34,16 @@ jobs:
         working-directory: ai-backend
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Install pgvector in PostgreSQL service
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_id="$(docker ps --quiet --filter 'ancestor=public.ecr.aws/docker/library/postgres:16-bookworm' | head -n 1)"
+          if [[ -z "${container_id}" ]]; then
+            echo "PostgreSQL service container was not found" >&2
+            exit 1
+          fi
+          docker exec "${container_id}" bash -lc 'apt-get update && apt-get install -y --no-install-recommends postgresql-16-pgvector && rm -rf /var/lib/apt/lists/*'
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"

@@ -1,5 +1,6 @@
 # ---- مرحلة البناء (تثبيت المكتبات فقط) ----
-FROM python:3.12-slim AS builder
+# Docker Official Images mirrored on ECR Public to avoid Docker Hub pull-rate-limit failures.
+FROM public.ecr.aws/docker/library/python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -10,7 +11,7 @@ COPY requirements.txt .
 RUN pip install --user --no-cache-dir -r requirements.txt
 
 # ---- مرحلة التشغيل (صورة نهائية أصغر، بدون أدوات بناء) ----
-FROM python:3.12-slim
+FROM public.ecr.aws/docker/library/python:3.12-slim
 
 WORKDIR /app
 
