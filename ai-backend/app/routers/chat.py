@@ -54,6 +54,7 @@ from app.services.tools.data_analysis import (
     analyze_file,
     extract_data_analysis_request,
 )
+from app.services.storage import materialize_file
 from app.services.tools.web_search import WebSearchError, extract_web_search_query, format_web_search_response, search_web
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -668,12 +669,12 @@ def _build_project_context(conversation: Conversation, db: Session) -> str:
     )
 
 
-def _get_attached_data_file(
+def _get_attached_data_attachment(
     conversation: Conversation,
     current_user: User,
     filename: str,
     db: Session,
-) -> DataFile:
+) -> FileAttachment:
     requested_name = filename.strip()
     if not requested_name:
         raise DataAnalysisError("اكتب اسم الملف بعد /analyze، مثل: /analyze sales.csv")
@@ -716,15 +717,7 @@ def _get_attached_data_file(
         suffix = f" الملفات المرفقة: {available}." if available else " لا توجد ملفات مرفقة بهذه المحادثة."
         raise DataAnalysisError(f"لم أجد الملف المطلوب.{suffix}")
 
-    path = Path(settings.UPLOAD_DIR) / str(current_user.id) / attachment.stored_filename
-    if not path.exists():
-        raise DataAnalysisError("الملف غير موجود على القرص.")
-
-    return DataFile(
-        path=path,
-        original_filename=attachment.original_filename,
-        content_type=attachment.content_type,
-    )
+    return attachment
 
 
 async def _augment_message(
@@ -788,12 +781,6 @@ def _get_attached_image(
         )
 
     path = Path(settings.UPLOAD_DIR) / str(current_user.id) / row.stored_filename
-    if not path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="ملف الصورة غير موجود على القرص",
-        )
-
     return row, path
 
 
@@ -838,7 +825,8 @@ async def analyze_attached_image(
         prompt = "\n\n".join(context_parts) + f"\n\nUSER REQUEST:\n{payload.message}"
 
     try:
-        raw = image_path.read_bytes()
+        with materialize_file(attachment.object_key, image_path) as materialized_path:
+            raw = materialized_path.read_bytes()
         image_data_url = (
             f"data:{attachment.content_type};base64,"
             f"{base64.b64encode(raw).decode('ascii')}"
@@ -849,6 +837,11 @@ async def analyze_attached_image(
             history,
             conversation.ai_model,
         )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="ملف الصورة غير موجود في التخزين",
+        ) from exc
     except OSError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1081,8 +1074,27 @@ async def chat(
     analysis_filename = extract_data_analysis_request(payload.message)
     if analysis_filename is not None:
         try:
-            data_file = _get_attached_data_file(conversation, current_user, analysis_filename, db)
-            analysis_result = analyze_file(data_file)
+            attachment = _get_attached_data_attachment(
+                conversation, current_user, analysis_filename, db
+            )
+            fallback_path = (
+                Path(settings.UPLOAD_DIR)
+                / str(current_user.id)
+                / attachment.stored_filename
+            )
+            with materialize_file(attachment.object_key, fallback_path) as path:
+                data_file = DataFile(
+                    path=path,
+                    original_filename=attachment.original_filename,
+                    content_type=attachment.content_type,
+                )
+                analysis_result = analyze_file(data_file)
+
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="الملف غير موجود في التخزين.",
+            ) from exc
         except DataAnalysisError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1388,8 +1400,27 @@ async def chat_stream(
     analysis_filename = extract_data_analysis_request(payload.message)
     if analysis_filename is not None:
         try:
-            data_file = _get_attached_data_file(conversation, current_user, analysis_filename, db)
-            analysis_result = analyze_file(data_file)
+            attachment = _get_attached_data_attachment(
+                conversation, current_user, analysis_filename, db
+            )
+            fallback_path = (
+                Path(settings.UPLOAD_DIR)
+                / str(current_user.id)
+                / attachment.stored_filename
+            )
+            with materialize_file(attachment.object_key, fallback_path) as path:
+                data_file = DataFile(
+                    path=path,
+                    original_filename=attachment.original_filename,
+                    content_type=attachment.content_type,
+                )
+                analysis_result = analyze_file(data_file)
+
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="الملف غير موجود في التخزين.",
+            ) from exc
         except DataAnalysisError as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

@@ -29,7 +29,12 @@ from app.schemas.project_files import ProjectFileCreate
 from app.services.tools.calculator import CalculatorError, calculate_expression
 from app.services.tools.code_execution import CodeExecutionError, execute_python_code
 from app.services.tools.data_analysis import DataAnalysisError, DataFile, analyze_file
-from app.services.storage import delete_file as delete_stored_file, put_file
+from app.services.storage import (
+    StorageError,
+    delete_file as delete_stored_file,
+    materialize_file,
+    put_file,
+)
 from app.services.tool_security import (
     ToolArgumentSecurityError,
     inspect_untrusted_output,
@@ -170,12 +175,12 @@ class ToolRegistry:
         return result
 
 
-def _get_attached_data_file(
+def _get_attached_data_attachment(
     conversation: Conversation,
     current_user: User,
     filename: str,
     db: Session,
-) -> DataFile:
+) -> FileAttachment:
     requested = filename.strip().casefold()
     if not requested:
         raise DataAnalysisError("اذكر اسم ملف CSV/XLSX المرفق الذي تريد تحليله.")
@@ -203,15 +208,7 @@ def _get_attached_data_file(
         suffix = f" الملفات المرفقة: {names}." if names else " لا توجد ملفات مرفقة."
         raise DataAnalysisError(f"لم أجد ملف البيانات المطلوب.{suffix}")
 
-    path = Path(settings.UPLOAD_DIR) / str(current_user.id) / attachment.stored_filename
-    if not path.exists():
-        raise DataAnalysisError("الملف المطلوب غير موجود على القرص.")
-
-    return DataFile(
-        path=path,
-        original_filename=attachment.original_filename,
-        content_type=attachment.content_type,
-    )
+    return attachment
 
 
 async def _calculator(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
@@ -266,16 +263,30 @@ async def _web_search(arguments: dict[str, Any], context: ToolContext) -> ToolRe
 async def _analyze_data(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
     filename = str(arguments.get("filename") or "").strip()
     try:
-        data_file = _get_attached_data_file(
+        attachment = _get_attached_data_attachment(
             context.conversation,
             context.current_user,
             filename,
             context.db,
         )
-        result = analyze_file(data_file)
+        fallback_path = (
+            Path(settings.UPLOAD_DIR)
+            / str(context.current_user.id)
+            / attachment.stored_filename
+        )
+        try:
+            with materialize_file(attachment.object_key, fallback_path) as path:
+                data_file = DataFile(
+                    path=path,
+                    original_filename=attachment.original_filename,
+                    content_type=attachment.content_type,
+                )
+                result = analyze_file(data_file)
+        except FileNotFoundError as exc:
+            raise DataAnalysisError("الملف المطلوب غير موجود في التخزين.") from exc
         source = {
             "id": "D1",
-            "filename": data_file.original_filename,
+            "filename": attachment.original_filename,
             "chunk": None,
             "kind": "data-analysis",
         }
@@ -283,6 +294,12 @@ async def _analyze_data(arguments: dict[str, Any], context: ToolContext) -> Tool
     except DataAnalysisError as exc:
         return ToolResult(
             content=f"تعذر تحليل ملف البيانات: {exc}",
+            sources=[],
+            succeeded=False,
+        )
+    except StorageError:
+        return ToolResult(
+            content="تعذر الوصول إلى ملف البيانات في التخزين الآن.",
             sources=[],
             succeeded=False,
         )

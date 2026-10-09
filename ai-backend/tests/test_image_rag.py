@@ -1,4 +1,8 @@
 """اختبارات فهرسة الصور للبحث الدلالي في RAG."""
+import asyncio
+import base64
+from contextlib import contextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from app.models.file_attachment import FileAttachment
@@ -107,3 +111,46 @@ def test_index_image_for_rag_rejects_non_image(client, monkeypatch):
         headers=headers,
     )
     assert response.status_code == 400
+
+
+def test_index_image_for_rag_materializes_remote_object(monkeypatch, tmp_path):
+    file = SimpleNamespace(
+        user_id=73,
+        stored_filename="chart.png",
+        object_key="users/73/chart.png",
+        content_type="image/png",
+        extracted_text=None,
+    )
+    remote_path = tmp_path / "materialized-remote.png"
+    remote_path.write_bytes(PNG_HEADER)
+    materialize_calls = []
+
+    @contextmanager
+    def fake_materialize(object_key, fallback_path):
+        materialize_calls.append((object_key, fallback_path))
+        yield remote_path
+
+    vision_reply = AIReply(text="مخطط تجريبي")
+    get_vision_reply = AsyncMock(return_value=vision_reply)
+    monkeypatch.setattr(image_rag, "materialize_file", fake_materialize)
+    monkeypatch.setattr(image_rag, "get_ai_vision_reply", get_vision_reply)
+    monkeypatch.setattr(image_rag, "index_file_chunks", lambda db, attachment: 2)
+
+    class FakeDB:
+        def flush(self):
+            pass
+
+    reply, indexed_chunks = asyncio.run(
+        image_rag.index_image_file(file, FakeDB(), "test-model")
+    )
+
+    assert reply is vision_reply
+    assert indexed_chunks == 2
+    assert materialize_calls == [
+        ("users/73/chart.png", image_rag._image_path(file))
+    ]
+    expected_data_url = (
+        "data:image/png;base64," + base64.b64encode(PNG_HEADER).decode("ascii")
+    )
+    assert get_vision_reply.call_args.args[1] == expected_data_url
+    assert file.extracted_text == "[IMAGE DESCRIPTION] مخطط تجريبي"

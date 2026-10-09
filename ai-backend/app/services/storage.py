@@ -1,8 +1,11 @@
 """Unified file storage with S3-compatible object storage and local fallback."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
-from typing import BinaryIO
+from shutil import copyfileobj
+from tempfile import NamedTemporaryFile
+from typing import BinaryIO, Iterator
 
 import boto3
 from botocore.config import Config
@@ -114,6 +117,68 @@ def open_file(object_key: str, fallback_path: Path) -> BinaryIO:
         if fallback_path.exists():
             return fallback_path.open("rb")
         raise StorageError("فشل قراءة الملف من Object Storage") from exc
+
+
+@contextmanager
+def materialize_file(object_key: str | None, fallback_path: Path) -> Iterator[Path]:
+    """Provide a temporary local path for APIs that cannot consume a stream."""
+    if not _s3_enabled():
+        if not fallback_path.exists():
+            raise FileNotFoundError(str(fallback_path))
+        yield fallback_path
+        return
+
+    if object_key:
+        source = open_file(object_key, fallback_path)
+    elif fallback_path.exists():
+        source = fallback_path.open("rb")
+    else:
+        raise FileNotFoundError(str(fallback_path))
+
+    temp_path: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            prefix="ai-chat-storage-",
+            suffix=fallback_path.suffix or ".bin",
+            delete=False,
+        ) as temporary:
+            temp_path = Path(temporary.name)
+            copyfileobj(source, temporary)
+        yield temp_path
+    finally:
+        source.close()
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+
+
+def delete_user_objects(user_id: int) -> None:
+    """Delete every remote object owned by a user, including orphaned uploads."""
+    if not _s3_enabled():
+        return
+
+    prefix = f"users/{user_id}/"
+    try:
+        client = _client()
+        paginator = client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=settings.S3_BUCKET, Prefix=prefix):
+            contents = page.get("Contents") or []
+            for start in range(0, len(contents), 1000):
+                objects = [
+                    {"Key": item["Key"]}
+                    for item in contents[start : start + 1000]
+                ]
+                response = client.delete_objects(
+                    Bucket=settings.S3_BUCKET,
+                    Delete={"Objects": objects, "Quiet": True},
+                )
+                if response.get("Errors"):
+                    raise StorageError(
+                        "فشل حذف بعض ملفات المستخدم من Object Storage"
+                    )
+    except (BotoCoreError, ClientError) as exc:
+        raise StorageError(
+            "تعذر تنظيف ملفات المستخدم من Object Storage"
+        ) from exc
 
 
 def delete_file(object_key: str, fallback_path: Path) -> None:
