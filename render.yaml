@@ -1,30 +1,28 @@
-# Render Blueprint for production.
-# Applying this Blueprint creates/updates billable resources where a paid plan
-# is specified. Review the Render plan and secrets before clicking Apply.
+# Current production Blueprint for the no-paid-resource deployment.
 #
-# Existing resources are named to match the current Render workspace so the
-# Blueprint can manage them rather than creating duplicate resources.
+# This file intentionally mirrors the live architecture:
+# - Frontend: free static site
+# - Backend: free web service with embedded Celery worker/beat
+# - Redis/Key Value: free, non-persistent cache/queue
+# - PostgreSQL: external Supabase project, supplied via DATABASE_URL secret
+# - Files: S3-compatible Object Storage supplied via secrets
+#
+# Render Free services have ephemeral local filesystems, so production file
+# persistence must not rely on /app/uploads. See docs/PRODUCTION.md for details.
 
 services:
   - type: web
     name: ai-chat-backend
     runtime: docker
-    plan: starter
+    plan: free
     region: ohio
     dockerfilePath: ai-backend/Dockerfile
     dockerContext: ai-backend
     autoDeployTrigger: checksPass
     healthCheckPath: /health
-    maxShutdownDelaySeconds: 60
-    disk:
-      name: uploads
-      mountPath: /app/uploads
-      sizeGB: 10
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: ai-chat-db
-          property: connectionString
+        sync: false
       - key: REDIS_URL
         fromService:
           name: ai-chat-redis
@@ -42,13 +40,14 @@ services:
           property: connectionString
       - key: JWT_SECRET_KEY
         generateValue: true
+      - key: TOTP_ENCRYPTION_KEY
+        generateValue: true
       - key: AI_API_KEY
+        sync: false
+      - key: AI_FALLBACK_API_KEY
         sync: false
       - key: INITIAL_ADMIN_EMAIL
         sync: false
-      - key: TOTP_ENCRYPTION_KEY
-        generateValue: true
-      # Optional S3-compatible object storage. Leave unset to keep local fallback.
       - key: S3_BUCKET
         sync: false
       - key: S3_ENDPOINT_URL
@@ -77,15 +76,28 @@ services:
         sync: false
       - key: PAYPAL_WEBHOOK_ID
         sync: false
+      - key: OAUTH_CALLBACK_BASE_URL
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: MICROSOFT_OAUTH_CLIENT_ID
+        sync: false
+      - key: MICROSOFT_OAUTH_CLIENT_SECRET
+        sync: false
       - key: APP_NAME
         value: AI Backend
       - key: ENVIRONMENT
         value: production
       - key: DEBUG
         value: "false"
-      # Keep false for the paid blueprint with dedicated worker/beat services.
       - key: EMBEDDED_CELERY
+        value: "true"
+      - key: MCP_ENABLED
         value: "false"
+      - key: AGENT_ALLOWED_TOOLS_JSON
+        value: '["calculator","python","web_search","analyze_data","create_project_archive"]'
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: "30"
       - key: REFRESH_TOKEN_EXPIRE_DAYS
@@ -98,6 +110,12 @@ services:
         value: "[]"
       - key: AI_PROVIDER
         value: openai
+      - key: AI_FALLBACK_PROVIDER
+        value: ""
+      - key: AI_FALLBACK_MODEL
+        value: ""
+      - key: AI_FALLBACK_API_BASE_URL
+        value: ""
       - key: EMBEDDING_MODEL
         value: gemini-embedding-001
       - key: EMBEDDING_DIMENSIONS
@@ -151,113 +169,11 @@ services:
       - key: CACHE_TTL_SECONDS
         value: "60"
 
-  - type: worker
-    name: ai-chat-worker
-    runtime: docker
-    plan: starter
-    region: ohio
-    dockerfilePath: ai-backend/Dockerfile
-    dockerContext: ai-backend
-    dockerCommand: celery -A app.tasks.celery_app worker --loglevel=info
-    autoDeployTrigger: checksPass
-    maxShutdownDelaySeconds: 60
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: ai-chat-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          name: ai-chat-redis
-          type: keyvalue
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          name: ai-chat-redis
-          type: keyvalue
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          name: ai-chat-redis
-          type: keyvalue
-          property: connectionString
-      - key: JWT_SECRET_KEY
-        generateValue: true
-      - key: AI_API_KEY
-        sync: false
-      - key: INITIAL_ADMIN_EMAIL
-        sync: false
-      - key: CORS_ORIGINS
-        value: '["https://ai-chat-frontend-v8ma.onrender.com"]'
-      - key: TOTP_ENCRYPTION_KEY
-        generateValue: true
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_USER
-        sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM_EMAIL
-        sync: false
-      - key: ENVIRONMENT
-        value: production
-      - key: DEBUG
-        value: "false"
-
-  - type: worker
-    name: ai-chat-beat
-    runtime: docker
-    plan: starter
-    region: ohio
-    dockerfilePath: ai-backend/Dockerfile
-    dockerContext: ai-backend
-    dockerCommand: celery -A app.tasks.celery_app beat --loglevel=info
-    autoDeployTrigger: checksPass
-    maxShutdownDelaySeconds: 60
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: ai-chat-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          name: ai-chat-redis
-          type: keyvalue
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          name: ai-chat-redis
-          type: keyvalue
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          name: ai-chat-redis
-          type: keyvalue
-          property: connectionString
-      - key: JWT_SECRET_KEY
-        generateValue: true
-      - key: AI_API_KEY
-        sync: false
-      - key: INITIAL_ADMIN_EMAIL
-        sync: false
-      - key: CORS_ORIGINS
-        value: '["https://ai-chat-frontend-v8ma.onrender.com"]'
-      - key: TOTP_ENCRYPTION_KEY
-        generateValue: true
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_FROM_EMAIL
-        sync: false
-      - key: ENVIRONMENT
-        value: production
-      - key: DEBUG
-        value: "false"
-
   - type: web
     name: ai-chat-frontend
     runtime: static
     rootDir: ai-frontend
-    buildCommand: npm install && npm run build
+    buildCommand: yarn install; yarn build
     staticPublishPath: dist
     autoDeployTrigger: checksPass
     routes:
@@ -271,13 +187,7 @@ services:
   - type: keyvalue
     name: ai-chat-redis
     region: ohio
-    plan: starter
+    plan: free
     ipAllowList: []
     maxmemoryPolicy: allkeys-lru
-    persistenceMode: journal-snapshot
-
-databases:
-  - name: ai-chat-db
-    plan: basic_1gb
-    region: ohio
-    version: 18
+    persistenceMode: off
