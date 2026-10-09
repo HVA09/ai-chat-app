@@ -35,6 +35,7 @@ import useConversationImport from "./hooks/useConversationImport";
 import useConversationBranching from "./hooks/useConversationBranching";
 import useImageAnalysis from "./hooks/useImageAnalysis";
 import useMessageFeedback from "./hooks/useMessageFeedback";
+import useAppendToLastMessage from "./hooks/useAppendToLastMessage";
 import useConversationSharing from "./hooks/useConversationSharing";
 import useDeleteMessage from "./hooks/useDeleteMessage";
 import useRegenerateLastResponse from "./hooks/useRegenerateLastResponse";
@@ -261,6 +262,7 @@ export default function App() {
   const autoSummaryInFlightRef = useRef(false);
   const autoSummaryLastMessageCountRef = useRef({});
   const messageCountRef = useRef(messages.length);
+  const appendToLastMessage = useAppendToLastMessage({ setMessages });
 
   useDirection();
   useEffect(() => {
@@ -1588,15 +1590,6 @@ export default function App() {
     const controller = new AbortController();
     streamAbortRef.current = controller;
 
-    const appendToLastMessage = (chunk) => {
-      setMessages((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        next[next.length - 1] = { ...last, text: last.text + chunk };
-        return next;
-      });
-    };
-
     await streamEditMessage(conversationId, userMessageIndex, editedText, {
       signal: controller.signal,
       onConversationId: (id) => setConversationId(id),
@@ -1666,15 +1659,6 @@ export default function App() {
     const isNewConversation = !conversationId;
     let createdConversationId = conversationId;
     let receivedFirstChunk = false;
-
-    const appendToLastMessage = (chunk) => {
-      setMessages((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        next[next.length - 1] = { ...last, text: last.text + chunk };
-        return next;
-      });
-    };
 
     await streamChatMessage(submittedText, conversationId, selectedAssistantId, {
       signal: controller.signal,
@@ -1786,15 +1770,6 @@ export default function App() {
     const controller = new AbortController();
     streamAbortRef.current = controller;
     const targetConversationId = conversationId;
-
-    const appendToLastMessage = (chunk) => {
-      setMessages((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        next[next.length - 1] = { ...last, text: last.text + chunk };
-        return next;
-      });
-    };
 
     await streamRegenerateMessage(targetConversationId, {
       signal: controller.signal,
