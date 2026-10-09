@@ -34,10 +34,11 @@ import useConversationItemActions from "./hooks/useConversationItemActions";
 import useConversationImport from "./hooks/useConversationImport";
 import useConversationBranching from "./hooks/useConversationBranching";
 import useImageAnalysis from "./hooks/useImageAnalysis";
+import useMessageFeedback from "./hooks/useMessageFeedback";
 import useConversationSharing from "./hooks/useConversationSharing";
 import useDeleteMessage from "./hooks/useDeleteMessage";
 import useRegenerateLastResponse from "./hooks/useRegenerateLastResponse";
-import { streamChatMessage, streamRegenerateMessage, streamEditMessage, setMessageFeedback, analyzeImage, compareChatModels } from "./lib/chatApi";
+import { streamChatMessage, streamRegenerateMessage, streamEditMessage, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 import {
   shareConversationWithWorkspace,
@@ -1366,6 +1367,16 @@ export default function App() {
     t,
   });
 
+  const { handleMessageFeedback } = useMessageFeedback({
+    conversationId,
+    loading,
+    readOnlyConversation,
+    messages,
+    setMessages,
+    setToast,
+    t,
+  });
+
   const {
     handleBulkArchive,
     handleBulkDelete,
@@ -1499,30 +1510,6 @@ export default function App() {
         message: err?.response?.data?.detail || t("workspaceSharing.updateError"),
         type: "error",
       });
-    }
-  };
-
-  const handleMessageFeedback = async (index, rating) => {
-    if (!conversationId || loading || readOnlyConversation) return;
-
-    const nextRating = rating === messages[index]?.feedback ? null : rating;
-    const previousRating = messages[index]?.feedback ?? null;
-
-    setMessages((prev) =>
-      prev.map((message, messageIndex) =>
-        messageIndex === index ? { ...message, feedback: nextRating } : message
-      )
-    );
-
-    try {
-      await setMessageFeedback(conversationId, index + 1, nextRating);
-    } catch {
-      setMessages((prev) =>
-        prev.map((message, messageIndex) =>
-          messageIndex === index ? { ...message, feedback: previousRating } : message
-        )
-      );
-      setToast({ message: t("app.feedbackError"), type: "error" });
     }
   };
 
