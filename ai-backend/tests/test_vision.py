@@ -106,7 +106,7 @@ def test_analyze_image_requires_authentication(client):
     )
     assert response.status_code == 401
 
-def test_analyze_attached_image_works_without_local_upload_copy(client, monkeypatch):
+def test_analyze_attached_image_works_without_local_upload_copy(client, monkeypatch, tmp_path):
     monkeypatch.setattr(
         chat_router_module,
         "get_ai_reply",
@@ -134,9 +134,7 @@ def test_analyze_attached_image_works_without_local_upload_copy(client, monkeypa
     )
     assert uploaded.status_code == 201
 
-    materialized_remote_copy = __import__("pathlib").Path(
-        __import__("tempfile").mkdtemp()
-    ) / "remote.png"
+    materialized_remote_copy = tmp_path / "remote.png"
     materialized_remote_copy.write_bytes(PNG_HEADER)
     materialize_calls = []
 
@@ -166,5 +164,3 @@ def test_analyze_attached_image_works_without_local_upload_copy(client, monkeypa
     assert vision_call.args[1] == (
         "data:image/png;base64," + base64.b64encode(PNG_HEADER).decode("ascii")
     )
-    materialized_remote_copy.unlink(missing_ok=True)
-    materialized_remote_copy.parent.rmdir()
