@@ -27,6 +27,7 @@ from app.models.user import User
 from app.models.user_memory import UserMemory
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.user import ChangePasswordRequest, DeleteAccountRequest, ProfileUpdate, UserOut
+from app.services.storage import StorageError, delete_user_objects
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -349,11 +350,19 @@ def delete_account(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="كلمة المرور غير صحيحة"
         )
-    log_event(db, "account_deleted", f"حذف حساب: {current_user.email}", current_user.id)
+    # Clean remote objects before deleting the account metadata, so a storage failure
+    # does not silently leave user-owned objects behind after the account is gone.
+    try:
+        delete_user_objects(current_user.id)
+    except StorageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="تعذر تنظيف ملفات الحساب الآن. أعد المحاولة لاحقًا.",
+        ) from exc
 
-    # الحذف بالـ DB (cascade) يشيل صفوف الملفات، لكن ما يحذف الملفات الفعلية من القرص
+    log_event(db, "account_deleted", f"حذف حساب: {current_user.email}", current_user.id)
     user_upload_dir = Path(settings.UPLOAD_DIR) / str(current_user.id)
     shutil.rmtree(user_upload_dir, ignore_errors=True)
 
-    db.delete(current_user)  # cascade يحذف محادثاته وسجلات استخدامه تلقائيًا
+    db.delete(current_user)  # cascade يحذف بيانات الحساب الوصفية تلقائيًا
     db.commit()
