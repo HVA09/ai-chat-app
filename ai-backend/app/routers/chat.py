@@ -781,12 +781,6 @@ def _get_attached_image(
         )
 
     path = Path(settings.UPLOAD_DIR) / str(current_user.id) / row.stored_filename
-    if not path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="ملف الصورة غير موجود على القرص",
-        )
-
     return row, path
 
 
@@ -831,7 +825,8 @@ async def analyze_attached_image(
         prompt = "\n\n".join(context_parts) + f"\n\nUSER REQUEST:\n{payload.message}"
 
     try:
-        raw = image_path.read_bytes()
+        with materialize_file(attachment.object_key, image_path) as materialized_path:
+            raw = materialized_path.read_bytes()
         image_data_url = (
             f"data:{attachment.content_type};base64,"
             f"{base64.b64encode(raw).decode('ascii')}"
@@ -842,6 +837,11 @@ async def analyze_attached_image(
             history,
             conversation.ai_model,
         )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="ملف الصورة غير موجود في التخزين",
+        ) from exc
     except OSError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
