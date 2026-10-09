@@ -15,7 +15,7 @@ request_with_retry() {
   local url="$1"
   local output_file="$2"
   local attempts=0
-  local max_attempts=4
+  local max_attempts="${3:-4}"
   local meta=""
   local code=""
 
@@ -28,7 +28,7 @@ request_with_retry() {
     fi
     attempts=$((attempts + 1))
     if (( attempts < max_attempts )); then
-      info "Retry $attempts/$((max_attempts - 1)) after transient failure on $url"
+      info "Retry $attempts/$((max_attempts - 1)) after transient failure on $url" >&2
       sleep 5
     fi
   done
@@ -44,7 +44,9 @@ trap 'rm -f "$tmp_health" "$tmp_ready" "$tmp_plans"' EXIT
 
 info "→ Smoke against $BASE_URL"
 
-ready_meta="$(request_with_retry "$BASE_URL/ready" "$tmp_ready" || true)"
+# Render Free cold starts can exceed the previous ~75-second retry window.
+# Give the initial readiness probe up to 8 bounded attempts (~155 seconds worst case).
+ready_meta="$(request_with_retry "$BASE_URL/ready" "$tmp_ready" 8 || true)"
 ready_code="$(echo "$ready_meta" | awk '{print $1}')"
 ready_time="$(echo "$ready_meta" | awk '{print $2}')"
 ready_json="$(cat "$tmp_ready")"
