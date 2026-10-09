@@ -1105,21 +1105,6 @@ export default function App() {
   };
 
   const {
-    bookmarkedMessages,
-    handleToggleMessageBookmark,
-    handleOpenBookmarkedMessage,
-    resetBookmarks,
-  } = useBookmarks({
-    authed,
-    conversationId,
-    loading,
-    readOnlyConversation,
-    setMessages,
-    setToast,
-    openConversation,
-  });
-
-  const {
     memories,
     handleToggleMessageMemory,
     resetMemories,
@@ -1197,6 +1182,21 @@ export default function App() {
     messageCountRef,
     autoSummaryLastMessageCountRef,
     t,
+  });
+
+  const {
+    bookmarkedMessages,
+    handleToggleMessageBookmark,
+    handleOpenBookmarkedMessage,
+    resetBookmarks,
+  } = useBookmarks({
+    authed,
+    conversationId,
+    loading,
+    readOnlyConversation,
+    setMessages,
+    setToast,
+    openConversation,
   });
 
   const { startNewChat } = useStartNewChat({
