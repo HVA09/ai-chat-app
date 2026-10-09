@@ -32,6 +32,7 @@ import useConversationBulkActions from "./hooks/useConversationBulkActions";
 import useConversationSelection from "./hooks/useConversationSelection";
 import useConversationItemActions from "./hooks/useConversationItemActions";
 import useConversationImport from "./hooks/useConversationImport";
+import useConversationBranching from "./hooks/useConversationBranching";
 import useConversationSharing from "./hooks/useConversationSharing";
 import useDeleteMessage from "./hooks/useDeleteMessage";
 import useRegenerateLastResponse from "./hooks/useRegenerateLastResponse";
@@ -69,7 +70,6 @@ import {
   toggleTrashConversation,
   moveConversationToFolder,
   duplicateConversation,
-  branchConversation,
   exportConversation,
   summarizeConversation,
   generateConversationTitle,
@@ -1294,6 +1294,23 @@ export default function App() {
     openConversation,
   });
 
+  const { handleBranchConversation } = useConversationBranching({
+    conversationId,
+    conversationSearch,
+    loading,
+    openConversation,
+    readOnlyConversation,
+    refreshConversations,
+    selectedFolderId,
+    selectedProjectId,
+    selectedTagId,
+    selectedWorkspaceId,
+    setToast,
+    showArchivedConversations,
+    showTrashConversations,
+    t,
+  });
+
   const {
     handleGenerateConversationTitle,
     maybeAutoGenerateConversationTitle,
@@ -1548,29 +1565,6 @@ export default function App() {
     } catch (err) {
       setToast({
         message: err?.response?.data?.detail || t("exportConversationError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleBranchConversation = async (messageIndex) => {
-    if (!conversationId || loading || readOnlyConversation) return;
-    try {
-      const branch = await branchConversation(conversationId, messageIndex + 1);
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations,
-        selectedTagId
-      );
-      await openConversation(branch.id);
-      setToast({ message: t("app.branchConversationSuccess"), type: "success" });
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.branchConversationError"),
         type: "error",
       });
     }
