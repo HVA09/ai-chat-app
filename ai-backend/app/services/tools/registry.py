@@ -29,7 +29,12 @@ from app.schemas.project_files import ProjectFileCreate
 from app.services.tools.calculator import CalculatorError, calculate_expression
 from app.services.tools.code_execution import CodeExecutionError, execute_python_code
 from app.services.tools.data_analysis import DataAnalysisError, DataFile, analyze_file
-from app.services.storage import delete_file as delete_stored_file, materialize_file, put_file
+from app.services.storage import (
+    StorageError,
+    delete_file as delete_stored_file,
+    materialize_file,
+    put_file,
+)
 from app.services.tool_security import (
     ToolArgumentSecurityError,
     inspect_untrusted_output,
@@ -269,13 +274,16 @@ async def _analyze_data(arguments: dict[str, Any], context: ToolContext) -> Tool
             / str(context.current_user.id)
             / attachment.stored_filename
         )
-        with materialize_file(attachment.object_key, fallback_path) as path:
-            data_file = DataFile(
-                path=path,
-                original_filename=attachment.original_filename,
-                content_type=attachment.content_type,
-            )
-            result = analyze_file(data_file)
+        try:
+            with materialize_file(attachment.object_key, fallback_path) as path:
+                data_file = DataFile(
+                    path=path,
+                    original_filename=attachment.original_filename,
+                    content_type=attachment.content_type,
+                )
+                result = analyze_file(data_file)
+        except FileNotFoundError as exc:
+            raise DataAnalysisError("الملف المطلوب غير موجود في التخزين.") from exc
         source = {
             "id": "D1",
             "filename": attachment.original_filename,
@@ -286,6 +294,12 @@ async def _analyze_data(arguments: dict[str, Any], context: ToolContext) -> Tool
     except DataAnalysisError as exc:
         return ToolResult(
             content=f"تعذر تحليل ملف البيانات: {exc}",
+            sources=[],
+            succeeded=False,
+        )
+    except StorageError:
+        return ToolResult(
+            content="تعذر الوصول إلى ملف البيانات في التخزين الآن.",
             sources=[],
             succeeded=False,
         )
