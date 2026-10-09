@@ -1,4 +1,6 @@
 """اختبارات تحليل الصور المرفقة بالمحادثة."""
+import base64
+from contextlib import contextmanager
 from unittest.mock import AsyncMock
 
 from app.routers import chat as chat_router_module
@@ -103,3 +105,66 @@ def test_analyze_image_requires_authentication(client):
         json={"conversation_id": 1, "file_id": 1, "message": "حلل الصورة"},
     )
     assert response.status_code == 401
+
+def test_analyze_attached_image_works_without_local_upload_copy(client, monkeypatch):
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تمهيدي")),
+    )
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_vision_reply",
+        AsyncMock(return_value=AIReply(text="تحليل من التخزين الخارجي")),
+    )
+
+    token = _register_and_login(client, "vision-remote-storage@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "ابدأ"},
+        headers=headers,
+    ).json()["conversation_id"]
+
+    uploaded = client.post(
+        "/files/upload",
+        params={"conversation_id": conversation_id},
+        files={"file": ("remote.png", PNG_HEADER, "image/png")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+
+    materialized_remote_copy = __import__("pathlib").Path(
+        __import__("tempfile").mkdtemp()
+    ) / "remote.png"
+    materialized_remote_copy.write_bytes(PNG_HEADER)
+    materialize_calls = []
+
+    @contextmanager
+    def fake_materialize(object_key, fallback_path):
+        materialize_calls.append((object_key, fallback_path))
+        # Simulate a Render redeploy: the ephemeral local copy no longer exists.
+        fallback_path.unlink(missing_ok=True)
+        yield materialized_remote_copy
+
+    monkeypatch.setattr(chat_router_module, "materialize_file", fake_materialize)
+
+    response = client.post(
+        "/chat/vision",
+        json={
+            "conversation_id": conversation_id,
+            "file_id": uploaded.json()["id"],
+            "message": "حلل الصورة",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert len(materialize_calls) == 1
+    assert materialize_calls[0][0].startswith("users/")
+    vision_call = chat_router_module.get_ai_vision_reply.await_args
+    assert vision_call.args[1] == (
+        "data:image/png;base64," + base64.b64encode(PNG_HEADER).decode("ascii")
+    )
+    materialized_remote_copy.unlink(missing_ok=True)
+    materialized_remote_copy.parent.rmdir()
