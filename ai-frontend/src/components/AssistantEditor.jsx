@@ -40,6 +40,7 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [publicSettings, setPublicSettings] = useState(null);
   const [publicLoading, setPublicLoading] = useState(false);
+  const [publicLoadError, setPublicLoadError] = useState(false);
 
   const showErrorToast = (error, fallbackKey) => {
     const message = error?.response?.data?.detail || t(fallbackKey);
@@ -56,6 +57,7 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
     setInstructions(assistant?.instructions ?? "");
     setValidationError("");
     setPublicSettings(null);
+    setPublicLoadError(false);
   }, [assistant]);
 
   const refreshKnowledge = async () => {
@@ -78,12 +80,30 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
     }
   };
 
+  const refreshPublicSettings = async () => {
+    if (!assistant?.id) return;
+
+    setPublicLoading(true);
+    setPublicLoadError(false);
+    try {
+      setPublicSettings(await getAssistantPublicSettings(assistant.id));
+      setPublicLoadError(false);
+    } catch (error) {
+      setPublicSettings(null);
+      setPublicLoadError(true);
+      showErrorToast(error, "assistantEditor.publicLoadError");
+    } finally {
+      setPublicLoading(false);
+    }
+  };
+
   useEffect(() => {
     refreshKnowledge();
     if (!assistant?.id) {
       setVersions([]);
       setAnalytics(null);
       setPublicSettings(null);
+      setPublicLoadError(false);
       return;
     }
     setVersionsLoading(true);
@@ -104,14 +124,7 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
       })
       .finally(() => setAnalyticsLoading(false));
 
-    setPublicLoading(true);
-    getAssistantPublicSettings(assistant.id)
-      .then(setPublicSettings)
-      .catch((error) => {
-        setPublicSettings(null);
-        showErrorToast(error, "assistantEditor.publicLoadError");
-      })
-      .finally(() => setPublicLoading(false));
+    refreshPublicSettings();
   }, [assistant?.id]);
 
   const compareVersion = async (version) => {
@@ -182,7 +195,7 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
   };
 
   const enablePublicLink = async () => {
-    if (!assistant?.id || publicLoading) return;
+    if (!assistant?.id || publicLoading || publicLoadError) return;
     setPublicLoading(true);
     try {
       setPublicSettings(await enableAssistantPublicLink(assistant.id));
@@ -194,7 +207,7 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
   };
 
   const rotatePublicLink = async () => {
-    if (!assistant?.id || publicLoading) return;
+    if (!assistant?.id || publicLoading || publicLoadError) return;
     if (!window.confirm(t("assistantEditor.rotatePublicConfirm"))) return;
     setPublicLoading(true);
     try {
@@ -207,7 +220,7 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
   };
 
   const disablePublicLink = async () => {
-    if (!assistant?.id || publicLoading) return;
+    if (!assistant?.id || publicLoading || publicLoadError) return;
     if (!window.confirm(t("assistantEditor.disablePublicConfirm"))) return;
     setPublicLoading(true);
     try {
@@ -345,6 +358,20 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
 
               {publicLoading ? (
                 <p className="text-xs text-slate-400">...</p>
+              ) : publicLoadError ? (
+                <div
+                  role="alert"
+                  className="space-y-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200"
+                >
+                  <p>{t("assistantEditor.publicLoadError")}</p>
+                  <button
+                    type="button"
+                    onClick={refreshPublicSettings}
+                    className="rounded-lg border border-red-300 px-3 py-2 text-xs font-medium hover:bg-red-100 dark:border-red-800 dark:hover:bg-red-900/50"
+                  >
+                    {t("assistantEditor.publicRetry")}
+                  </button>
+                </div>
               ) : publicSettings?.is_public ? (
                 <div className="space-y-3">
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
