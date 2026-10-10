@@ -21,10 +21,6 @@ vi.mock("../lib/notificationsApi", () => ({
   buildNotificationsWebSocketUrl,
 }));
 
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key) => key }),
-}));
-
 function setupHook() {
   const setToast = vi.fn();
   const hook = renderHook(() =>
@@ -70,7 +66,7 @@ describe("useNotifications error feedback", () => {
     });
 
     expect(setToast).toHaveBeenCalledWith({
-      message: "app.notificationsReadAllError",
+      message: "تعذر تحديث حالة الإشعارات",
       type: "error",
     });
   });
