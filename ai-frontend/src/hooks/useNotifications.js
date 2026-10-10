@@ -33,19 +33,25 @@ export default function useNotifications({
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
       );
-    } catch {
-      // تجاهل بصمت — مو حرج
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.notificationReadError")),
+        type: "error",
+      });
     }
-  }, []);
+  }, [setToast, t]);
 
   const handleMarkAllNotificationsRead = useCallback(async () => {
     try {
       await markAllNotificationsRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-    } catch {
-      // تجاهل بصمت — مو حرج
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.notificationsReadAllError")),
+        type: "error",
+      });
     }
-  }, []);
+  }, [setToast, t]);
 
   useEffect(() => {
     if (authed) {
