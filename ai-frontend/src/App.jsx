@@ -1065,8 +1065,11 @@ export default function App() {
     try {
       const user = await getCurrentUser();
       setCurrentUser(user);
-    } catch {
-      // تجاهل بصمت — لوحة الحساب تبقى غير محدّثة لو فشل التحميل فقط
+    } catch (err) {
+      setToast({
+        message: getErrorMessage(err, t("app.currentUserLoadError")),
+        type: "error",
+      });
     }
   };
 
