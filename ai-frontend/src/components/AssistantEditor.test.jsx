@@ -116,6 +116,8 @@ vi.mock("react-i18next", () => ({
       "assistantEditor.analyticsUnavailable": "تعذر تحميل إحصائيات الاستخدام",
       "assistantEditor.publicTitle": "الرابط العام",
       "assistantEditor.publicSubtitle": "شارك رابطًا آمنًا للمساعد.",
+      "assistantEditor.publicLoadError": "تعذر تحميل إعدادات الرابط العام.",
+      "assistantEditor.publicRetry": "إعادة المحاولة",
       "assistantEditor.publicEnabled": "الرابط العام مفعّل.",
       "assistantEditor.enablePublic": "تفعيل الرابط العام",
       "assistantEditor.copyPublic": "نسخ الرابط",
@@ -653,9 +655,15 @@ describe("AssistantEditor", () => {
     dispatchSpy.mockRestore();
   });
 
-  it("shows a global toast when assistant public settings fail to load", async () => {
+  it("blocks public-link changes and offers retry when public settings fail to load", async () => {
+    const user = userEvent.setup();
     getAssistantPublicSettings.mockRejectedValueOnce({
       response: { data: { detail: "Public settings denied" } },
+    });
+    getAssistantPublicSettings.mockResolvedValueOnce({
+      is_public: false,
+      public_token: null,
+      public_url: null,
     });
     listAssistantKnowledgeFiles.mockResolvedValue([]);
     listFiles.mockResolvedValue([]);
@@ -679,6 +687,22 @@ describe("AssistantEditor", () => {
         )
       ).toBe(true);
     });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "تعذر تحميل إعدادات الرابط العام."
+    );
+    expect(
+      screen.queryByRole("button", { name: "تفعيل الرابط العام" })
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "إعادة المحاولة" }));
+
+    await waitFor(() => {
+      expect(getAssistantPublicSettings).toHaveBeenCalledTimes(2);
+    });
+    expect(
+      await screen.findByRole("button", { name: "تفعيل الرابط العام" })
+    ).toBeInTheDocument();
     dispatchSpy.mockRestore();
   });
 
