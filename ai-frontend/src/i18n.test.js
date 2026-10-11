@@ -17,6 +17,13 @@ describe("i18n language namespaces", () => {
     expect(i18n.getResource("en", "translation", "projectEditor.createTitle")).toBe("Create project");
   });
 
+  it("keeps speech input and output error messages distinct", () => {
+    expect(i18n.getResource("ar", "translation", "app.voiceInputNotSupported")).toBe("الإدخال الصوتي غير مدعوم في هذا المتصفح");
+    expect(i18n.getResource("ar", "translation", "app.voiceOutputNotSupported")).toBe("الإخراج الصوتي غير مدعوم في هذا المتصفح");
+    expect(i18n.getResource("en", "translation", "app.voiceInputNotSupported")).toBe("Voice input is not supported in this browser");
+    expect(i18n.getResource("en", "translation", "app.voiceOutputNotSupported")).toBe("Voice output is not supported in this browser");
+  });
+
   it("keeps assistant editor labels in the correct language", () => {
     expect(i18n.getResource("ar", "translation", "assistantEditor.createTitle")).toBe("إنشاء مساعد");
     expect(i18n.getResource("en", "translation", "assistantEditor.createTitle")).toBe("Create assistant");
