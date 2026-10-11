@@ -428,7 +428,7 @@ export default function ChatComposer({
         ) : (
           <button
             type="submit"
-            disabled={!value.trim() && attachments.length === 0}
+            disabled={attachmentUploading || (!value.trim() && attachments.length === 0)}
             className="chat-send-button rounded-2xl bg-slate-900 px-5 py-3 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-1 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
           >
             <Icon name="send" size={16} />
