@@ -202,7 +202,7 @@ export default function ChatMessage({
       typeof window.SpeechSynthesisUtterance === "undefined"
     ) {
       window.dispatchEvent(new CustomEvent("app:toast", {
-        detail: { message: t("app.voiceNotSupported"), type: "error" },
+        detail: { message: t("app.voiceOutputNotSupported"), type: "error" },
       }));
       return;
     }
@@ -220,14 +220,14 @@ export default function ChatMessage({
       utterance.onerror = () => {
         setSpeaking(false);
         window.dispatchEvent(new CustomEvent("app:toast", {
-          detail: { message: t("app.voiceError"), type: "error" },
+          detail: { message: t("app.voiceOutputError"), type: "error" },
         }));
       };
       window.speechSynthesis.speak(utterance);
     } catch {
       setSpeaking(false);
       window.dispatchEvent(new CustomEvent("app:toast", {
-        detail: { message: t("app.voiceError"), type: "error" },
+        detail: { message: t("app.voiceOutputError"), type: "error" },
       }));
     }
   };
