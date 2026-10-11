@@ -1268,3 +1268,21 @@ html.dark .chat-message-user {
     padding-inline: 0.75rem;
   }
 }
+
+
+/* Final mobile override: keep narrow-screen message bubbles from inheriting the later desktop default. */
+@media (max-width: 767px) {
+  .chat-message-bubble {
+    max-width: 94% !important;
+    padding: 9px 12px !important;
+    font-size: 14px;
+  }
+
+  .chat-message-user {
+    max-width: 92%;
+  }
+
+  .chat-surface {
+    padding-inline: 2px !important;
+  }
+}
