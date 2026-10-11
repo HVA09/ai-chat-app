@@ -145,13 +145,25 @@ export default function AssistantEditor({ assistant = null, onClose, onSave, onR
     if (!assistant?.id || restoringVersion !== null) return;
     setRestoringVersion(version);
     try {
-      const restored = await restoreAssistantVersion(assistant.id, version);
+      let restored;
+      try {
+        restored = await restoreAssistantVersion(assistant.id, version);
+      } catch (error) {
+        showErrorToast(error, "assistantEditor.restoreError");
+        return;
+      }
+
       setName(restored.name);
       setDescription(restored.description ?? "");
       setInstructions(restored.instructions);
-      const nextVersions = await listAssistantVersions(assistant.id);
-      setVersions(nextVersions);
       onRestored?.(restored);
+
+      try {
+        setVersions(await listAssistantVersions(assistant.id));
+      } catch (error) {
+        // The restore succeeded; only the history refresh failed.
+        showErrorToast(error, "assistantEditor.versionsLoadError");
+      }
     } finally {
       setRestoringVersion(null);
     }
