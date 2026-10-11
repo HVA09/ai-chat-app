@@ -23,8 +23,8 @@ vi.mock("react-i18next", () => ({
         "chat.branchConversation": "Branch conversation",
         "tools.voiceOutput": "Read aloud",
         "tools.stopVoiceOutput": "Stop reading",
-        "app.voiceNotSupported": "Voice output is not supported in this browser",
-        "app.voiceError": "Couldn't read the message aloud",
+        "app.voiceOutputNotSupported": "Voice output is not supported in this browser",
+        "app.voiceOutputError": "Couldn't read the message aloud",
       })[key] ?? key,
   }),
 }));
