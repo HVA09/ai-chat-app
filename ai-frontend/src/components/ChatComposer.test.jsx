@@ -254,6 +254,49 @@ describe("ChatComposer attachments", () => {
     await user.click(screen.getByLabelText("إزالة الملف"));
     expect(onRemoveAttachment).toHaveBeenCalledWith(7);
   });
+
+  it("does not submit until attachment upload finishes", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+
+    render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={onSend}
+        onStop={vi.fn()}
+        attachments={[{ id: 7, original_filename: "notes.txt" }]}
+        attachmentUploading
+      />
+    );
+
+    const sendButton = screen.getByRole("button", { name: "إرسال" });
+    expect(sendButton).toBeDisabled();
+    await user.click(sendButton);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("allows sending an attachment-only message after upload finishes", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+
+    render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={onSend}
+        onStop={vi.fn()}
+        attachments={[{ id: 7, original_filename: "notes.txt" }]}
+        attachmentUploading={false}
+      />
+    );
+
+    const sendButton = screen.getByRole("button", { name: "إرسال" });
+    expect(sendButton).toBeEnabled();
+    await user.click(sendButton);
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
 });
 
 
