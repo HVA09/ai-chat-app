@@ -183,4 +183,57 @@ describe("useChatAttachments", () => {
     expect(result.current.chatAttachmentUploading).toBe(false);
     expect(setToast).toHaveBeenCalledWith({ message: "app.attachmentsReady", type: "success" });
   });
+
+  it("does not restore a removed attachment after the draft is reset", async () => {
+    uploadFile.mockResolvedValue({
+      id: 21,
+      original_filename: "old.txt",
+      content_type: "text/plain",
+      size_bytes: 4,
+    });
+    let rejectDelete;
+    deleteFile.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => { rejectDelete = reject; })
+    );
+
+    const setToast = vi.fn();
+    const baseProps = {
+      selectedWorkspaceId: null,
+      selectedProjectId: null,
+      loading: false,
+      readOnlyConversation: false,
+      editingMessageIndex: null,
+      setToast,
+      t,
+    };
+    const { result, rerender } = renderHook(
+      ({ conversationId }) => useChatAttachments({ ...baseProps, conversationId }),
+      { initialProps: { conversationId: 7 } }
+    );
+
+    await act(async () => {
+      await result.current.handleAttachFiles([createFile("old.txt")]);
+    });
+    expect(result.current.chatAttachments).toHaveLength(1);
+    const toastCountBeforeRemove = setToast.mock.calls.length;
+
+    let removePromise;
+    await act(async () => {
+      removePromise = result.current.handleRemoveAttachment(21);
+    });
+    expect(result.current.chatAttachments).toEqual([]);
+
+    act(() => {
+      result.current.resetChatAttachments();
+      rerender({ conversationId: 8 });
+    });
+
+    await act(async () => {
+      rejectDelete(new Error("delete failed"));
+      await removePromise;
+    });
+
+    expect(result.current.chatAttachments).toEqual([]);
+    expect(setToast).toHaveBeenCalledTimes(toastCountBeforeRemove);
+  });
 });
