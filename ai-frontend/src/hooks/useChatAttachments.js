@@ -17,7 +17,7 @@ export default function useChatAttachments({
 }) {
   const [chatAttachments, setChatAttachments] = useState([]);
   const [chatAttachmentUploading, setChatAttachmentUploading] = useState(false);
-  const uploadGenerationRef = useRef(0);
+  const attachmentGenerationRef = useRef(0);
 
   const handleAttachFiles = useCallback(
     async (files) => {
@@ -55,14 +55,14 @@ export default function useChatAttachments({
       }
       if (!validFiles.length) return;
 
-      const uploadGeneration = uploadGenerationRef.current;
+      const operationGeneration = attachmentGenerationRef.current;
       setChatAttachmentUploading(true);
       let uploadedAny = false;
       let failed = 0;
 
       try {
         for (const file of validFiles) {
-          if (uploadGeneration !== uploadGenerationRef.current) break;
+          if (operationGeneration !== attachmentGenerationRef.current) break;
           try {
             const result = await uploadFile(
               file,
@@ -71,7 +71,7 @@ export default function useChatAttachments({
               selectedWorkspaceId,
               selectedProjectId
             );
-            if (uploadGeneration !== uploadGenerationRef.current) break;
+            if (operationGeneration !== attachmentGenerationRef.current) break;
             uploadedAny = true;
             setChatAttachments((current) => [
               ...current,
@@ -83,7 +83,7 @@ export default function useChatAttachments({
               },
             ]);
           } catch (err) {
-            if (uploadGeneration !== uploadGenerationRef.current) break;
+            if (operationGeneration !== attachmentGenerationRef.current) break;
             failed += 1;
             setToast({
               message: getErrorMessage(
@@ -95,13 +95,13 @@ export default function useChatAttachments({
           }
         }
       } finally {
-        if (uploadGeneration === uploadGenerationRef.current) {
+        if (operationGeneration === attachmentGenerationRef.current) {
           setChatAttachmentUploading(false);
         }
       }
 
       if (
-        uploadGeneration === uploadGenerationRef.current &&
+        operationGeneration === attachmentGenerationRef.current &&
         uploadedAny &&
         failed === 0 &&
         oversized.length === 0
@@ -128,11 +128,13 @@ export default function useChatAttachments({
       if (loading) return;
 
       const attachment = chatAttachments.find((file) => file.id === fileId);
+      const operationGeneration = attachmentGenerationRef.current;
       setChatAttachments((current) => current.filter((file) => file.id !== fileId));
 
       try {
         await deleteFile(fileId);
       } catch (err) {
+        if (operationGeneration !== attachmentGenerationRef.current) return;
         if (attachment) {
           setChatAttachments((current) =>
             current.some((file) => file.id === fileId)
@@ -150,7 +152,7 @@ export default function useChatAttachments({
   );
 
   const resetChatAttachments = useCallback(() => {
-    uploadGenerationRef.current += 1;
+    attachmentGenerationRef.current += 1;
     setChatAttachments([]);
     setChatAttachmentUploading(false);
   }, []);
