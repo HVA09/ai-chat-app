@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { uploadFile, deleteFile } from "../lib/filesApi";
 import { getErrorMessage } from "../lib/errors";
 
@@ -17,6 +17,7 @@ export default function useChatAttachments({
 }) {
   const [chatAttachments, setChatAttachments] = useState([]);
   const [chatAttachmentUploading, setChatAttachmentUploading] = useState(false);
+  const uploadGenerationRef = useRef(0);
 
   const handleAttachFiles = useCallback(
     async (files) => {
@@ -54,12 +55,14 @@ export default function useChatAttachments({
       }
       if (!validFiles.length) return;
 
+      const uploadGeneration = uploadGenerationRef.current;
       setChatAttachmentUploading(true);
       let uploadedAny = false;
       let failed = 0;
 
       try {
         for (const file of validFiles) {
+          if (uploadGeneration !== uploadGenerationRef.current) break;
           try {
             const result = await uploadFile(
               file,
@@ -68,6 +71,7 @@ export default function useChatAttachments({
               selectedWorkspaceId,
               selectedProjectId
             );
+            if (uploadGeneration !== uploadGenerationRef.current) break;
             uploadedAny = true;
             setChatAttachments((current) => [
               ...current,
@@ -79,6 +83,7 @@ export default function useChatAttachments({
               },
             ]);
           } catch (err) {
+            if (uploadGeneration !== uploadGenerationRef.current) break;
             failed += 1;
             setToast({
               message: getErrorMessage(
@@ -90,10 +95,17 @@ export default function useChatAttachments({
           }
         }
       } finally {
-        setChatAttachmentUploading(false);
+        if (uploadGeneration === uploadGenerationRef.current) {
+          setChatAttachmentUploading(false);
+        }
       }
 
-      if (uploadedAny && failed === 0 && oversized.length === 0) {
+      if (
+        uploadGeneration === uploadGenerationRef.current &&
+        uploadedAny &&
+        failed === 0 &&
+        oversized.length === 0
+      ) {
         setToast({ message: t("app.attachmentsReady"), type: "success" });
       }
     },
@@ -138,6 +150,7 @@ export default function useChatAttachments({
   );
 
   const resetChatAttachments = useCallback(() => {
+    uploadGenerationRef.current += 1;
     setChatAttachments([]);
     setChatAttachmentUploading(false);
   }, []);
