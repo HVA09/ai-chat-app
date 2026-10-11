@@ -98,6 +98,8 @@ vi.mock("react-i18next", () => ({
         "assistantEditor.versionLabel": "الإصدار {{version}}",
         "assistantEditor.restore": "استرجاع",
         "assistantEditor.restoring": "جارٍ الاسترجاع...",
+        "assistantEditor.restoreError": "تعذر استرجاع نسخة المساعد.",
+        "assistantEditor.versionsLoadError": "تعذر تحميل نسخ المساعد.",
       "assistantEditor.compare": "مقارنة",
       "assistantEditor.comparing": "جارٍ المقارنة...",
       "assistantEditor.compareTitle": "مقارنة الإصدار {{version}}",
@@ -273,6 +275,111 @@ describe("AssistantEditor", () => {
         instructions: "تعليمات قديمة",
       })
     );
+  });
+
+  it("shows a global toast when restoring a previous assistant version fails", async () => {
+    listAssistantVersions.mockResolvedValue([
+      {
+        id: 1,
+        version: 1,
+        name: "مساعد قديم",
+        description: "قديم",
+        instructions: "تعليمات قديمة",
+        created_at: "2026-09-22T10:00:00Z",
+      },
+    ]);
+    restoreAssistantVersion.mockRejectedValueOnce(
+      new Error("restore unavailable")
+    );
+    const onRestored = vi.fn();
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onRestored={onRestored}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "استرجاع" }));
+
+    await waitFor(() => {
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "تعذر استرجاع نسخة المساعد." &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+    expect(restoreAssistantVersion).toHaveBeenCalledWith(7, 1);
+    expect(onRestored).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue("مساعد حالي")).toBeInTheDocument();
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("keeps a successful restore successful when refreshing version history fails", async () => {
+    listAssistantVersions
+      .mockResolvedValueOnce([
+        {
+          id: 1,
+          version: 1,
+          name: "مساعد قديم",
+          description: "قديم",
+          instructions: "تعليمات قديمة",
+          created_at: "2026-09-22T10:00:00Z",
+        },
+      ])
+      .mockRejectedValueOnce(new Error("history refresh unavailable"));
+    const onRestored = vi.fn();
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    render(
+      <AssistantEditor
+        assistant={{
+          id: 7,
+          name: "مساعد حالي",
+          description: "حالي",
+          instructions: "تعليمات حالية",
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onRestored={onRestored}
+      />
+    );
+
+    await user.click(await screen.findByRole("button", { name: "استرجاع" }));
+
+    await waitFor(() => {
+      expect(onRestored).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 7,
+          instructions: "تعليمات قديمة",
+        })
+      );
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "تعذر تحميل نسخ المساعد." &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+    });
+    expect(screen.getByDisplayValue("مساعد قديم")).toBeInTheDocument();
+
+    dispatchSpy.mockRestore();
   });
 
   it("compares a historical version with the current assistant", async () => {
