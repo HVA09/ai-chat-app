@@ -115,7 +115,7 @@ export default function ChatComposer({
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      onVoiceError?.(t("app.voiceNotSupported"));
+      onVoiceError?.(t("app.voiceInputNotSupported"));
       return;
     }
 
@@ -133,7 +133,7 @@ export default function ChatComposer({
     recognition.onerror = () => {
       setIsListening(false);
       recognitionRef.current = null;
-      onVoiceError?.(t("app.voiceError"));
+      onVoiceError?.(t("app.voiceInputError"));
     };
     recognition.onresult = (event) => {
       const transcript = Array.from(event.results)
@@ -153,7 +153,7 @@ export default function ChatComposer({
     } catch {
       recognitionRef.current = null;
       setIsListening(false);
-      onVoiceError?.(t("app.voiceError"));
+      onVoiceError?.(t("app.voiceInputError"));
     }
   };
 
