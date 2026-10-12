@@ -76,7 +76,11 @@ import {
 } from "./lib/conversationsApi";
 import useFolderManagement from "./hooks/useFolderManagement";
 import useProjectManagement from "./hooks/useProjectManagement";
-import { exportProject, importProject } from "./lib/projectsApi";
+import {
+  exportProject,
+  importProject,
+  moveConversationToProject,
+} from "./lib/projectsApi";
 import {
   listWorkspaces,
   createWorkspace,
