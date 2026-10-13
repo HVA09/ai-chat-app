@@ -33,7 +33,7 @@ function setupHook() {
   return { ...hook, setToast };
 }
 
-describe("useNotifications error feedback", () => {
+describe("useNotifications", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     listNotifications.mockResolvedValue([]);
@@ -41,12 +41,43 @@ describe("useNotifications error feedback", () => {
     markAllNotificationsRead.mockResolvedValue({});
   });
 
-  it("shows a global toast when marking one notification as read fails", async () => {
+  it("shows a translated fallback and preserves existing notifications when loading fails", async () => {
+    const existing = [{ id: 7, title: "Existing", is_read: false }];
+    listNotifications.mockResolvedValueOnce(existing);
+    const { result, setToast } = setupHook();
+
+    await act(async () => {
+      await result.current.refreshNotifications();
+    });
+    expect(result.current.notifications).toEqual(existing);
+
+    listNotifications.mockRejectedValueOnce(new Error("offline"));
+    await act(async () => {
+      await result.current.refreshNotifications();
+    });
+
+    expect(setToast).toHaveBeenCalledWith({
+      message: "تعذر تحميل الإشعارات",
+      type: "error",
+    });
+    expect(result.current.notifications).toEqual(existing);
+  });
+
+  it("shows the API error and preserves notification state when marking one as read fails", async () => {
+    const existing = [
+      { id: 42, title: "Unread", is_read: false },
+      { id: 43, title: "Other", is_read: false },
+    ];
+    listNotifications.mockResolvedValueOnce(existing);
+    const { result, setToast } = setupHook();
+
+    await act(async () => {
+      await result.current.refreshNotifications();
+    });
+
     markNotificationRead.mockRejectedValueOnce({
       response: { data: { detail: "Permission denied" } },
     });
-    const { result, setToast } = setupHook();
-
     await act(async () => {
       await result.current.handleMarkNotificationRead(42);
     });
@@ -55,12 +86,42 @@ describe("useNotifications error feedback", () => {
       message: "Permission denied",
       type: "error",
     });
+    expect(result.current.notifications).toEqual(existing);
   });
 
-  it("shows a translated fallback when marking all notifications as read fails", async () => {
-    markAllNotificationsRead.mockRejectedValueOnce(new Error("offline"));
+  it("marks only the requested notification as read after a successful request", async () => {
+    const existing = [
+      { id: 42, title: "First", is_read: false },
+      { id: 43, title: "Second", is_read: false },
+    ];
+    listNotifications.mockResolvedValueOnce(existing);
     const { result, setToast } = setupHook();
 
+    await act(async () => {
+      await result.current.refreshNotifications();
+      await result.current.handleMarkNotificationRead(42);
+    });
+
+    expect(result.current.notifications).toEqual([
+      { ...existing[0], is_read: true },
+      existing[1],
+    ]);
+    expect(setToast).not.toHaveBeenCalled();
+  });
+
+  it("shows a translated fallback and preserves state when marking all as read fails", async () => {
+    const existing = [
+      { id: 42, title: "First", is_read: false },
+      { id: 43, title: "Second", is_read: false },
+    ];
+    listNotifications.mockResolvedValueOnce(existing);
+    const { result, setToast } = setupHook();
+
+    await act(async () => {
+      await result.current.refreshNotifications();
+    });
+
+    markAllNotificationsRead.mockRejectedValueOnce(new Error("offline"));
     await act(async () => {
       await result.current.handleMarkAllNotificationsRead();
     });
@@ -69,5 +130,25 @@ describe("useNotifications error feedback", () => {
       message: "تعذر تحديث حالة الإشعارات",
       type: "error",
     });
+    expect(result.current.notifications).toEqual(existing);
+  });
+
+  it("marks all notifications as read only after a successful request", async () => {
+    const existing = [
+      { id: 42, title: "First", is_read: false },
+      { id: 43, title: "Second", is_read: true },
+    ];
+    listNotifications.mockResolvedValueOnce(existing);
+    const { result, setToast } = setupHook();
+
+    await act(async () => {
+      await result.current.refreshNotifications();
+      await result.current.handleMarkAllNotificationsRead();
+    });
+
+    expect(result.current.notifications).toEqual(
+      existing.map((notification) => ({ ...notification, is_read: true }))
+    );
+    expect(setToast).not.toHaveBeenCalled();
   });
 });
