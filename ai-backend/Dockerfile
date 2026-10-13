@@ -1,5 +1,5 @@
 # ---- مرحلة البناء (تثبيت المكتبات فقط) ----
-# Docker Official Images mirrored on ECR Public to avoid Docker Hub pull-rate-limit failures.
+# GHCR-hosted Python 3.12/Trixie slim base, pinned by digest to avoid ECR Public data-limit failures.
 FROM ghcr.io/astral-sh/uv:0.12.23-python3.12-trixie-slim@sha256:28d570c06d150303b39adfa731ada20956c63fc86b1277d7ff2ad63185974092 AS builder
 
 WORKDIR /app
