@@ -77,11 +77,7 @@ import {
 import useFolderManagement from "./hooks/useFolderManagement";
 import useProjectManagement from "./hooks/useProjectManagement";
 import useWorkspaceManagement from "./hooks/useWorkspaceManagement";
-import {
-  exportProject,
-  importProject,
-  moveConversationToProject,
-} from "./lib/projectsApi";
+import { moveConversationToProject } from "./lib/projectsApi";
 
 import useAssistantManagement from "./hooks/useAssistantManagement";
 import { getErrorMessage } from "./lib/errors";
@@ -483,61 +479,6 @@ export default function App() {
     setShowProjectEditor(true);
   };
 
-  const handleExportProject = async (projectId) => {
-    try {
-      const project = projects.find((item) => item.id === Number(projectId));
-      const blob = await exportProject(Number(projectId));
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `project-${projectId}-${(project?.name || "export").replace(/[^a-zA-Z0-9_-]+/g, "-")}.zip`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
-      setToast({ message: t("app.projectExportSuccess"), type: "success" });
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.projectExportError"),
-        type: "error",
-      });
-    }
-  };
-
-  const handleImportProject = async (file) => {
-    if (!selectedWorkspaceId || !file) return;
-    try {
-      let result;
-      try {
-        result = await importProject(selectedWorkspaceId, file, "fail");
-      } catch (err) {
-        if (err?.response?.status !== 409) throw err;
-        const rename = window.confirm(t("app.projectImportRenameConfirm"));
-        if (!rename) return;
-        result = await importProject(selectedWorkspaceId, file, "rename");
-      }
-      await refreshProjects(selectedWorkspaceId);
-      setSelectedProjectId(result.project_id);
-      setSelectedFolderId(null);
-      startNewChat();
-      await refreshConversations(
-        showArchivedConversations,
-        null,
-        selectedWorkspaceId,
-        result.project_id
-      );
-      setToast({
-        message: t("app.projectImportSuccess", { name: result.name }),
-        type: "success",
-      });
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.projectImportError"),
-        type: "error",
-      });
-    }
-  };
-
   const handleUseSavedPrompt = (content) => {
     setInput(content);
     setEditingMessageIndex(null);
@@ -786,6 +727,8 @@ export default function App() {
     handleSaveProject,
     handleDeleteProject,
     handleSelectProject,
+    handleExportProject,
+    handleImportProject,
     handleMoveConversationToProject,
   } = useProjectManagement({
     projects,
