@@ -128,40 +128,45 @@ async def embed_query(text: str) -> list[float]:
     """يولّد embedding لسؤال المستخدم باستخدام مهمة الاسترجاع."""
     provider = settings.AI_PROVIDER.lower().strip()
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        if provider == "gemini":
-            payload = {
-                "model": f"models/{settings.EMBEDDING_MODEL}",
-                "content": {"parts": [{"text": text}]},
-                "taskType": "RETRIEVAL_QUERY",
-                "outputDimensionality": settings.EMBEDDING_DIMENSIONS,
-            }
-            response = await client.post(
-                _gemini_url("embedContent"),
-                headers=_gemini_headers(),
-                json=payload,
-            )
-        else:
-            payload = {
-                "model": settings.EMBEDDING_MODEL,
-                "input": text,
-            }
-            if settings.EMBEDDING_DIMENSIONS:
-                payload["dimensions"] = settings.EMBEDDING_DIMENSIONS
-            response = await client.post(
-                f"{settings.AI_API_BASE_URL.rstrip('/')}/embeddings",
-                headers=_openai_headers(),
-                json=payload,
-            )
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if provider == "gemini":
+                payload = {
+                    "model": f"models/{settings.EMBEDDING_MODEL}",
+                    "content": {"parts": [{"text": text}]},
+                    "taskType": "RETRIEVAL_QUERY",
+                    "outputDimensionality": settings.EMBEDDING_DIMENSIONS,
+                }
+                response = await client.post(
+                    _gemini_url("embedContent"),
+                    headers=_gemini_headers(),
+                    json=payload,
+                )
+            else:
+                payload = {
+                    "model": settings.EMBEDDING_MODEL,
+                    "input": text,
+                }
+                if settings.EMBEDDING_DIMENSIONS:
+                    payload["dimensions"] = settings.EMBEDDING_DIMENSIONS
+                response = await client.post(
+                    f"{settings.AI_API_BASE_URL.rstrip('/')}/embeddings",
+                    headers=_openai_headers(),
+                    json=payload,
+                )
 
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            raise EmbeddingServiceError(
-                f"فشل توليد embedding للسؤال: HTTP {response.status_code}"
-            ) from exc
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                raise EmbeddingServiceError(
+                    f"فشل توليد embedding للسؤال: HTTP {response.status_code}"
+                ) from exc
 
-        vectors = _extract_embedding_vectors(response.json())
-        if len(vectors) != 1:
-            raise EmbeddingServiceError("المزوّد لم يُرجع embedding واحدًا للسؤال")
-        return vectors[0]
+            vectors = _extract_embedding_vectors(response.json())
+            if len(vectors) != 1:
+                raise EmbeddingServiceError("المزوّد لم يُرجع embedding واحدًا للسؤال")
+            return vectors[0]
+    except httpx.RequestError as exc:
+        # Timeouts and transport errors must trigger the chat route's existing
+        # full-text file-context fallback instead of aborting the chat request.
+        raise EmbeddingServiceError("تعذر الاتصال بمزوّد embeddings") from exc
