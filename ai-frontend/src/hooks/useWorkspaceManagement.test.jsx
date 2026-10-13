@@ -174,7 +174,7 @@ describe("useWorkspaceManagement", () => {
     expect(renameWorkspace).toHaveBeenCalledWith(2, "Updated name");
     const updateWorkspaces = props.setWorkspaces.mock.calls[0][0];
     expect(updateWorkspaces(props.workspaces)).toEqual([
-      { ...props.workspaces[0], id: 2, name: "Renamed" },
+      { id: 2, name: "Renamed" },
       props.workspaces[1],
     ]);
   });
