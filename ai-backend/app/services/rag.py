@@ -83,7 +83,6 @@ async def retrieve_relevant_chunks(
 ) -> list[tuple[FileChunk, FileAttachment]]:
     from app.models.conversation_file_link import ConversationFileLink
 
-    query_embedding = await embed_query(query)
     linked_to_conversation = exists().where(
         ConversationFileLink.file_id == FileChunk.file_id,
         ConversationFileLink.conversation_id == conversation_id,
@@ -121,6 +120,28 @@ async def retrieve_relevant_chunks(
         if assistant_id is not None
         else False
     )
+    chunk_scope = or_(
+        personal_scope,
+        workspace_scope,
+        project_scope,
+        assistant_scope,
+    )
+
+    # Most chat turns have no indexed file context. Check scope before making
+    # an external embedding request, both to save latency/cost and to keep
+    # ordinary chats independent of the embeddings provider's availability.
+    candidate = (
+        db.query(FileChunk.id)
+        .join(FileAttachment, FileAttachment.id == FileChunk.file_id)
+        .outerjoin(AssistantFileLink, AssistantFileLink.file_id == FileAttachment.id)
+        .outerjoin(Assistant, Assistant.id == AssistantFileLink.assistant_id)
+        .filter(FileChunk.embedding.is_not(None), chunk_scope)
+        .first()
+    )
+    if candidate is None:
+        return []
+
+    query_embedding = await embed_query(query)
 
     return (
         db.query(FileChunk, FileAttachment)
@@ -129,7 +150,7 @@ async def retrieve_relevant_chunks(
         .outerjoin(Assistant, Assistant.id == AssistantFileLink.assistant_id)
         .filter(
             FileChunk.embedding.is_not(None),
-            or_(personal_scope, workspace_scope, project_scope, assistant_scope),
+            chunk_scope,
         )
         .order_by(FileChunk.embedding.cosine_distance(query_embedding))
         .limit(max(1, min(top_k, 12)))
