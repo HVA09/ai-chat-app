@@ -1,6 +1,8 @@
 import {
   createProject,
   deleteProject,
+  exportProject,
+  importProject,
   listProjects,
   moveConversationToProject,
   updateProject,
@@ -142,6 +144,61 @@ export default function useProjectManagement({
     );
   };
 
+  const handleExportProject = async (projectId) => {
+    try {
+      const project = projects.find((item) => item.id === Number(projectId));
+      const blob = await exportProject(Number(projectId));
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `project-${projectId}-${(project?.name || "export").replace(/[^a-zA-Z0-9_-]+/g, "-")}.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setToast({ message: t("app.projectExportSuccess"), type: "success" });
+    } catch (error) {
+      setToast({
+        message: error?.response?.data?.detail || t("app.projectExportError"),
+        type: "error",
+      });
+    }
+  };
+
+  const handleImportProject = async (file) => {
+    if (!selectedWorkspaceId || !file) return;
+    try {
+      let result;
+      try {
+        result = await importProject(selectedWorkspaceId, file, "fail");
+      } catch (error) {
+        if (error?.response?.status !== 409) throw error;
+        const shouldRename = window.confirm(t("app.projectImportRenameConfirm"));
+        if (!shouldRename) return;
+        result = await importProject(selectedWorkspaceId, file, "rename");
+      }
+      await refreshProjects(selectedWorkspaceId);
+      setSelectedProjectId(result.project_id);
+      setSelectedFolderId(null);
+      startNewChat();
+      await refreshConversations(
+        showArchivedConversations,
+        null,
+        selectedWorkspaceId,
+        result.project_id
+      );
+      setToast({
+        message: t("app.projectImportSuccess", { name: result.name }),
+        type: "success",
+      });
+    } catch (error) {
+      setToast({
+        message: error?.response?.data?.detail || t("app.projectImportError"),
+        type: "error",
+      });
+    }
+  };
+
   const handleMoveConversationToProject = async (id, projectId) => {
     const normalizedProjectId = projectId === "" ? null : Number(projectId);
     try {
@@ -172,6 +229,8 @@ export default function useProjectManagement({
     handleSaveProject,
     handleDeleteProject,
     handleSelectProject,
+    handleExportProject,
+    handleImportProject,
     handleMoveConversationToProject,
   };
 }

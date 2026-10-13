@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createProject,
   deleteProject,
+  exportProject,
+  importProject,
   listProjects,
   moveConversationToProject,
   updateProject,
@@ -12,6 +14,8 @@ import useProjectManagement from "./useProjectManagement";
 vi.mock("../lib/projectsApi", () => ({
   createProject: vi.fn(),
   deleteProject: vi.fn(),
+  exportProject: vi.fn(),
+  importProject: vi.fn(),
   listProjects: vi.fn(),
   moveConversationToProject: vi.fn(),
   updateProject: vi.fn(),
@@ -51,11 +55,14 @@ describe("useProjectManagement", () => {
     createProject.mockResolvedValue({ id: 19, name: "Research" });
     updateProject.mockResolvedValue({ id: 5, name: "Updated" });
     deleteProject.mockResolvedValue({});
+    exportProject.mockResolvedValue(new Blob(["project archive"]));
+    importProject.mockResolvedValue({ project_id: 19, name: "Imported" });
     moveConversationToProject.mockResolvedValue({ project_id: 2 });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("loads projects and preserves the current selection only when it still exists", async () => {
@@ -205,6 +212,135 @@ describe("useProjectManagement", () => {
     expect(props.setSelectedAssistantId).toHaveBeenCalledWith(12);
     expect(props.startNewChat).toHaveBeenCalledOnce();
     expect(props.refreshConversations).toHaveBeenCalledWith(false, null, 3, 5);
+  });
+
+  it("downloads the exported project and reports success", async () => {
+    const blob = new Blob(["archive"]);
+    exportProject.mockResolvedValueOnce(blob);
+    const createObjectURL = vi.fn(() => "blob:project-archive");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", Object.assign(Object.create(URL), {
+      createObjectURL,
+      revokeObjectURL,
+    }));
+    let clickedAnchor = null;
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function () {
+      clickedAnchor = this;
+    });
+    const props = createProps({
+      projects: [{ id: 19, name: "Research / Plans" }],
+    });
+    const { result } = renderHook(() => useProjectManagement(props));
+
+    await act(async () => {
+      await result.current.handleExportProject(19);
+    });
+
+    expect(exportProject).toHaveBeenCalledWith(19);
+    expect(createObjectURL).toHaveBeenCalledWith(blob);
+    expect(clickedAnchor?.download).toBe("project-19-Research-Plans.zip");
+    expect(clickedAnchor?.parentNode).toBeNull();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:project-archive");
+    expect(props.setToast).toHaveBeenCalledWith({
+      message: "app.projectExportSuccess",
+      type: "success",
+    });
+  });
+
+  it("reports an export failure through the global toast", async () => {
+    exportProject.mockRejectedValueOnce({
+      response: { data: { detail: "export denied" } },
+    });
+    const props = createProps();
+    const { result } = renderHook(() => useProjectManagement(props));
+
+    await act(async () => {
+      await result.current.handleExportProject(5);
+    });
+
+    expect(props.setToast).toHaveBeenCalledWith({
+      message: "export denied",
+      type: "error",
+    });
+  });
+
+  it("imports a project and refreshes its conversations", async () => {
+    const file = new File(["archive"], "project.zip", { type: "application/zip" });
+    const props = createProps();
+    const { result } = renderHook(() => useProjectManagement(props));
+
+    await act(async () => {
+      await result.current.handleImportProject(file);
+    });
+
+    expect(importProject).toHaveBeenCalledWith(3, file, "fail");
+    expect(props.setSelectedProjectId).toHaveBeenLastCalledWith(19);
+    expect(props.setSelectedFolderId).toHaveBeenCalledWith(null);
+    expect(props.startNewChat).toHaveBeenCalledOnce();
+    expect(props.refreshConversations).toHaveBeenCalledWith(false, null, 3, 19);
+    expect(props.setToast).toHaveBeenCalledWith({
+      message: "app.projectImportSuccess:Imported",
+      type: "success",
+    });
+  });
+
+  it("asks to rename a conflicting imported project and retries when confirmed", async () => {
+    const file = new File(["archive"], "project.zip", { type: "application/zip" });
+    importProject
+      .mockRejectedValueOnce({ response: { status: 409 } })
+      .mockResolvedValueOnce({ project_id: 20, name: "Imported copy" });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const props = createProps();
+    const { result } = renderHook(() => useProjectManagement(props));
+
+    await act(async () => {
+      await result.current.handleImportProject(file);
+    });
+
+    expect(importProject).toHaveBeenNthCalledWith(1, 3, file, "fail");
+    expect(importProject).toHaveBeenNthCalledWith(2, 3, file, "rename");
+    expect(props.setSelectedProjectId).toHaveBeenLastCalledWith(20);
+    expect(props.setToast).toHaveBeenCalledWith({
+      message: "app.projectImportSuccess:Imported copy",
+      type: "success",
+    });
+  });
+
+  it("stops a conflicting import without mutating state when rename is cancelled", async () => {
+    const file = new File(["archive"], "project.zip", { type: "application/zip" });
+    importProject.mockRejectedValueOnce({ response: { status: 409 } });
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const props = createProps();
+    const { result } = renderHook(() => useProjectManagement(props));
+
+    await act(async () => {
+      await result.current.handleImportProject(file);
+    });
+
+    expect(importProject).toHaveBeenCalledOnce();
+    expect(props.setSelectedProjectId).not.toHaveBeenCalled();
+    expect(props.startNewChat).not.toHaveBeenCalled();
+    expect(props.refreshConversations).not.toHaveBeenCalled();
+    expect(props.setToast).not.toHaveBeenCalled();
+  });
+
+  it("reports an import failure through the global toast", async () => {
+    const file = new File(["archive"], "project.zip", { type: "application/zip" });
+    importProject.mockRejectedValueOnce({
+      response: { data: { detail: "import denied" } },
+    });
+    const props = createProps();
+    const { result } = renderHook(() => useProjectManagement(props));
+
+    await act(async () => {
+      await result.current.handleImportProject(file);
+    });
+
+    expect(props.setToast).toHaveBeenCalledWith({
+      message: "import denied",
+      type: "error",
+    });
+    expect(props.setSelectedProjectId).not.toHaveBeenCalled();
   });
 
   it("moves the active conversation out of the selected project", async () => {
