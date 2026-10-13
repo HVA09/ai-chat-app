@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import {
   deleteConversation,
   duplicateConversation,
+  moveConversationToFolder,
   renameConversation,
   toggleArchiveConversation,
   togglePinConversation,
@@ -142,6 +143,38 @@ export default function useConversationItemActions({
     t,
   ]);
 
+  const handleMoveConversationToFolder = useCallback(async (id, folderId) => {
+    const normalizedFolderId = folderId === "" ? null : Number(folderId);
+    try {
+      const result = await moveConversationToFolder(id, normalizedFolderId);
+      if (
+        id === conversationId &&
+        selectedFolderId !== null &&
+        result.folder_id !== selectedFolderId
+      ) {
+        startNewChat();
+      }
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        selectedProjectId
+      );
+    } catch {
+      setToast({ message: t("app.conversationMoveError"), type: "error" });
+    }
+  }, [
+    conversationId,
+    refreshConversations,
+    selectedFolderId,
+    selectedProjectId,
+    selectedWorkspaceId,
+    setToast,
+    showArchivedConversations,
+    startNewChat,
+    t,
+  ]);
+
   const handleDeleteConversation = useCallback(async (id) => {
     try {
       if (showTrashConversations) {
@@ -183,6 +216,7 @@ export default function useConversationItemActions({
   return {
     handleDeleteConversation,
     handleDuplicateConversation,
+    handleMoveConversationToFolder,
     handleRenameConversation,
     handleToggleArchiveConversation,
     handleTogglePinConversation,

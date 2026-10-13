@@ -484,23 +484,6 @@ export default function App() {
     setError("");
   };
 
-  const handleMoveConversationToFolder = async (id, folderId) => {
-    const normalizedFolderId = folderId === "" ? null : Number(folderId);
-    try {
-      const result = await moveConversationToFolder(id, normalizedFolderId);
-      if (
-        id === conversationId &&
-        selectedFolderId !== null &&
-        result.folder_id !== selectedFolderId
-      ) {
-        startNewChat();
-      }
-      await refreshConversations(showArchivedConversations, selectedFolderId, selectedWorkspaceId, selectedProjectId);
-    } catch {
-      setToast({ message: t("app.conversationMoveError"), type: "error" });
-    }
-  };
-
   const refreshCurrentUser = async () => {
     try {
       const user = await getCurrentUser();
@@ -942,6 +925,7 @@ export default function App() {
   const {
     handleDeleteConversation,
     handleDuplicateConversation,
+    handleMoveConversationToFolder,
     handleRenameConversation,
     handleToggleArchiveConversation,
     handleTogglePinConversation,

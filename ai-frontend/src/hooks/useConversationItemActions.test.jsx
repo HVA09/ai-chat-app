@@ -5,6 +5,7 @@ import useConversationItemActions from "./useConversationItemActions";
 vi.mock("../lib/conversationsApi", () => ({
   deleteConversation: vi.fn(),
   duplicateConversation: vi.fn(),
+  moveConversationToFolder: vi.fn(),
   renameConversation: vi.fn(),
   toggleArchiveConversation: vi.fn(),
   togglePinConversation: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock("../lib/conversationsApi", () => ({
 import {
   deleteConversation,
   duplicateConversation,
+  moveConversationToFolder,
   renameConversation,
   toggleArchiveConversation,
   togglePinConversation,
@@ -85,6 +87,49 @@ describe("useConversationItemActions", () => {
     });
     expect(props.refreshConversations).not.toHaveBeenCalled();
     expect(props.openConversation).not.toHaveBeenCalled();
+  });
+
+  it("moves the active conversation out of the selected folder and resets the chat", async () => {
+    const props = baseProps();
+    props.selectedFolderId = 6;
+    moveConversationToFolder.mockResolvedValueOnce({ folder_id: null });
+    const { result } = renderHook(() => useConversationItemActions(props));
+
+    await result.current.handleMoveConversationToFolder(7, "");
+
+    expect(moveConversationToFolder).toHaveBeenCalledWith(7, null);
+    expect(props.startNewChat).toHaveBeenCalledOnce();
+    expect(props.refreshConversations).toHaveBeenCalledWith(false, 6, null, null);
+    expect(props.setToast).not.toHaveBeenCalled();
+  });
+
+  it("normalizes folder IDs and keeps the active chat when moving another conversation", async () => {
+    const props = baseProps();
+    props.selectedFolderId = 6;
+    moveConversationToFolder.mockResolvedValueOnce({ folder_id: 8 });
+    const { result } = renderHook(() => useConversationItemActions(props));
+
+    await result.current.handleMoveConversationToFolder(11, "8");
+
+    expect(moveConversationToFolder).toHaveBeenCalledWith(11, 8);
+    expect(props.startNewChat).not.toHaveBeenCalled();
+    expect(props.refreshConversations).toHaveBeenCalledWith(false, 6, null, null);
+    expect(props.setToast).not.toHaveBeenCalled();
+  });
+
+  it("reports a folder-move failure without changing the active chat", async () => {
+    const props = baseProps();
+    moveConversationToFolder.mockRejectedValueOnce(new Error("offline"));
+    const { result } = renderHook(() => useConversationItemActions(props));
+
+    await result.current.handleMoveConversationToFolder(11, "8");
+
+    expect(props.setToast).toHaveBeenCalledWith({
+      message: "app.conversationMoveError",
+      type: "error",
+    });
+    expect(props.refreshConversations).not.toHaveBeenCalled();
+    expect(props.startNewChat).not.toHaveBeenCalled();
   });
 
   it("pins a conversation and refreshes the current list", async () => {
