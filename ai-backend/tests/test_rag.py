@@ -412,10 +412,10 @@ def test_project_knowledge_not_visible_to_unscoped_workspace_chat(db_session, mo
     )
     db_session.commit()
 
-    async def fake_embed_query(_query):
-        return [0.1] * 768
-
-    monkeypatch.setattr(rag, "embed_query", fake_embed_query)
+    embed_query = AsyncMock(
+        side_effect=AssertionError("unscoped chat must not query project embeddings")
+    )
+    monkeypatch.setattr(rag, "embed_query", embed_query)
     rows = asyncio.run(
         rag.retrieve_relevant_chunks(
             db_session,
@@ -427,6 +427,7 @@ def test_project_knowledge_not_visible_to_unscoped_workspace_chat(db_session, mo
         )
     )
     assert rows == []
+    embed_query.assert_not_awaited()
 
 def test_retrieval_skips_embedding_request_when_no_scoped_chunks_exist(db_session, monkeypatch):
     from app.models.conversation import Conversation
