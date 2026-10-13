@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import {
   deleteConversation,
+  duplicateConversation,
   renameConversation,
   toggleArchiveConversation,
   togglePinConversation,
@@ -10,9 +11,11 @@ import {
 export default function useConversationItemActions({
   conversationId,
   conversationSearch,
+  openConversation,
   refreshConversations,
   selectedFolderId,
   selectedProjectId,
+  selectedTagId,
   selectedWorkspaceId,
   setToast,
   showArchivedConversations,
@@ -105,6 +108,40 @@ export default function useConversationItemActions({
     t,
   ]);
 
+  const handleDuplicateConversation = useCallback(async (id) => {
+    try {
+      const duplicate = await duplicateConversation(id);
+      await refreshConversations(
+        showArchivedConversations,
+        selectedFolderId,
+        selectedWorkspaceId,
+        selectedProjectId,
+        conversationSearch,
+        showTrashConversations,
+        selectedTagId
+      );
+      await openConversation(duplicate.id);
+      setToast({ message: t("app.duplicateConversationSuccess"), type: "success" });
+    } catch (error) {
+      setToast({
+        message: error?.response?.data?.detail || t("app.duplicateConversationError"),
+        type: "error",
+      });
+    }
+  }, [
+    conversationSearch,
+    openConversation,
+    refreshConversations,
+    selectedFolderId,
+    selectedProjectId,
+    selectedTagId,
+    selectedWorkspaceId,
+    setToast,
+    showArchivedConversations,
+    showTrashConversations,
+    t,
+  ]);
+
   const handleDeleteConversation = useCallback(async (id) => {
     try {
       if (showTrashConversations) {
@@ -145,6 +182,7 @@ export default function useConversationItemActions({
 
   return {
     handleDeleteConversation,
+    handleDuplicateConversation,
     handleRenameConversation,
     handleToggleArchiveConversation,
     handleTogglePinConversation,

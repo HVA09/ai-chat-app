@@ -69,7 +69,6 @@ import {
   toggleArchiveConversation,
   toggleTrashConversation,
   moveConversationToFolder,
-  duplicateConversation,
   exportConversation,
   summarizeConversation,
   generateConversationTitle,
@@ -942,6 +941,7 @@ export default function App() {
 
   const {
     handleDeleteConversation,
+    handleDuplicateConversation,
     handleRenameConversation,
     handleToggleArchiveConversation,
     handleTogglePinConversation,
@@ -949,9 +949,11 @@ export default function App() {
   } = useConversationItemActions({
     conversationId,
     conversationSearch,
+    openConversation,
     refreshConversations,
     selectedFolderId,
     selectedProjectId,
+    selectedTagId,
     selectedWorkspaceId,
     setToast,
     showArchivedConversations,
@@ -1027,27 +1029,7 @@ export default function App() {
     }
   };
 
-  const handleDuplicateConversation = async (id) => {
-    try {
-      const duplicate = await duplicateConversation(id);
-      await refreshConversations(
-        showArchivedConversations,
-        selectedFolderId,
-        selectedWorkspaceId,
-        selectedProjectId,
-        conversationSearch,
-        showTrashConversations,
-        selectedTagId
-      );
-      await openConversation(duplicate.id);
-      setToast({ message: t("app.duplicateConversationSuccess"), type: "success" });
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("app.duplicateConversationError"),
-        type: "error",
-      });
-    }
-  };
+
 
 
 
