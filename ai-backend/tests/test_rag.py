@@ -1,11 +1,15 @@
 """اختبارات فهرسة المقاطع واسترجاع RAG."""
+import asyncio
 from unittest.mock import AsyncMock
+
+import httpx
+import pytest
 
 from app.models.file_attachment import FileAttachment
 from app.models.file_chunk import FileChunk
 from app.models.user import User
 from app.routers import chat as chat_router_module
-from app.services import rag
+from app.services import embeddings, rag
 
 
 def _register_and_login(client, email):
@@ -422,4 +426,52 @@ def test_project_knowledge_not_visible_to_unscoped_workspace_chat(db_session, mo
         )
     )
     assert rows == []
+
+def test_retrieval_skips_embedding_request_when_no_scoped_chunks_exist(db_session, monkeypatch):
+    from app.models.conversation import Conversation
+
+    user = User(email="rag-no-chunks@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+
+    conversation = Conversation(user_id=user.id, title="Ordinary chat")
+    db_session.add(conversation)
+    db_session.commit()
+
+    embed_query = AsyncMock(side_effect=AssertionError("provider must not be called"))
+    monkeypatch.setattr(rag, "embed_query", embed_query)
+
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            user.id,
+            conversation.id,
+            "A normal question",
+        )
+    )
+
+    assert rows == []
+    embed_query.assert_not_awaited()
+
+
+def test_embed_query_wraps_provider_timeout_as_service_error(monkeypatch):
+    class TimeoutClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def post(self, *args, **kwargs):
+            raise httpx.ReadTimeout("embedding provider timed out")
+
+    monkeypatch.setattr(embeddings.httpx, "AsyncClient", TimeoutClient)
+
+    with pytest.raises(embeddings.EmbeddingServiceError) as error:
+        asyncio.run(embeddings.embed_query("a question"))
+
+    assert isinstance(error.value.__cause__, httpx.ReadTimeout)
 
