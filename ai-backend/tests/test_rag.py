@@ -8,6 +8,7 @@ import pytest
 from app.models.file_attachment import FileAttachment
 from app.models.file_chunk import FileChunk
 from app.models.user import User
+from app.models.workspace import Workspace
 from app.routers import chat as chat_router_module
 from app.services import embeddings, rag
 
@@ -434,7 +435,15 @@ def test_retrieval_skips_embedding_request_when_no_scoped_chunks_exist(db_sessio
     db_session.add(user)
     db_session.flush()
 
-    conversation = Conversation(user_id=user.id, title="Ordinary chat")
+    workspace = Workspace(owner_id=user.id, name="Personal")
+    db_session.add(workspace)
+    db_session.flush()
+
+    conversation = Conversation(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        title="Ordinary chat",
+    )
     db_session.add(conversation)
     db_session.commit()
 
