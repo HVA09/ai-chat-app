@@ -16,7 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:16-bookworm
+        # PostgreSQL 16 image with pgvector pre-installed; avoids the exhausted ECR Public data allowance.
+        image: ghcr.io/jonathanmcohen/pgvector:16-0.8.7
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: ai_backend_test
@@ -26,7 +27,8 @@ jobs:
           --health-cmd "pg_isready -U postgres -d ai_backend_test"
           --health-interval 5s --health-timeout 5s --health-retries 10
       redis:
-        image: public.ecr.aws/docker/library/redis:7-alpine
+        # Valkey is Redis-protocol compatible and avoids pulling from the exhausted ECR Public registry.
+        image: ghcr.io/valkey-io/valkey@sha256:a038175878d66b9d274fbf8be73c0305e93798b83917647f167e18cef3c71eec
         ports:
           - 6379:6379
     defaults:
@@ -34,16 +36,6 @@ jobs:
         working-directory: ai-backend
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - name: Install pgvector in PostgreSQL service
-        shell: bash
-        run: |
-          set -euo pipefail
-          container_id="$(docker ps --quiet --filter 'ancestor=public.ecr.aws/docker/library/postgres:16-bookworm' | head -n 1)"
-          if [[ -z "${container_id}" ]]; then
-            echo "PostgreSQL service container was not found" >&2
-            exit 1
-          fi
-          docker exec "${container_id}" bash -lc 'apt-get update && apt-get install -y --no-install-recommends postgresql-16-pgvector && rm -rf /var/lib/apt/lists/*'
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
