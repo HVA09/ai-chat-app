@@ -32,6 +32,7 @@ import useConversationBulkActions from "./hooks/useConversationBulkActions";
 import useConversationSelection from "./hooks/useConversationSelection";
 import useConversationItemActions from "./hooks/useConversationItemActions";
 import useConversationImport from "./hooks/useConversationImport";
+import useConversationExport from "./hooks/useConversationExport";
 import useConversationBranching from "./hooks/useConversationBranching";
 import useImageAnalysis from "./hooks/useImageAnalysis";
 import useMessageFeedback from "./hooks/useMessageFeedback";
@@ -69,7 +70,6 @@ import {
   toggleArchiveConversation,
   toggleTrashConversation,
   moveConversationToFolder,
-  exportConversation,
   summarizeConversation,
   generateConversationTitle,
 } from "./lib/conversationsApi";
@@ -771,6 +771,13 @@ export default function App() {
     openConversation,
   });
 
+  const { handleExportConversation } = useConversationExport({
+    conversationId,
+    loading,
+    setToast,
+    t,
+  });
+
   const { handleBranchConversation } = useConversationBranching({
     conversationId,
     conversationSearch,
@@ -1000,18 +1007,7 @@ export default function App() {
     t,
   });
 
-  const handleExportConversation = async (format = "markdown") => {
-    if (!conversationId || loading) return;
-    try {
-      await exportConversation(conversationId, format);
-      setToast({ message: t("exportConversationSuccess"), type: "success" });
-    } catch (err) {
-      setToast({
-        message: err?.response?.data?.detail || t("exportConversationError"),
-        type: "error",
-      });
-    }
-  };
+
 
 
 
