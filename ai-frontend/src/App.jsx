@@ -1007,12 +1007,6 @@ export default function App() {
     t,
   });
 
-
-
-
-
-
-
   const stopGeneration = () => {
     if (streamAbortRef.current) {
       streamAbortRef.current.abort();
