@@ -42,7 +42,8 @@ import useConversationSharing from "./hooks/useConversationSharing";
 import useWorkspaceConversationSharing from "./hooks/useWorkspaceConversationSharing";
 import useDeleteMessage from "./hooks/useDeleteMessage";
 import useRegenerateLastResponse from "./hooks/useRegenerateLastResponse";
-import { streamChatMessage, streamRegenerateMessage, streamEditMessage, analyzeImage, compareChatModels } from "./lib/chatApi";
+import useRetryFailedGeneration from "./hooks/useRetryFailedGeneration";
+import { streamChatMessage, streamEditMessage, analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
 
 
@@ -1105,85 +1106,29 @@ export default function App() {
     });
   };
 
-  const retryFailedGeneration = async () => {
-    if (
-      readOnlyConversation ||
-      loading ||
-      !retryableUserMessage ||
-      !conversationId ||
-      retryableUserMessage.conversationId !== conversationId
-    ) {
-      return;
-    }
-
-    setError("");
-    setLoading(true);
-    setRetryableUserMessage(null);
-    messageCountRef.current += 1;
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "assistant",
-        text: "",
-        time: new Date().toLocaleTimeString(),
-        feedback: null,
-        sources: [],
-      },
-    ]);
-
-    const controller = new AbortController();
-    streamAbortRef.current = controller;
-    const targetConversationId = conversationId;
-
-    await streamRegenerateMessage(targetConversationId, {
-      signal: controller.signal,
-      onConversationId: (id) => setConversationId(id),
-      onSources: (sources) => {
-        setMessages((prev) => prev.map((message, index) =>
-          index === prev.length - 1 && message.role === "assistant"
-            ? { ...message, sources }
-            : message
-        ));
-      },
-      onChunk: appendToLastMessage,
-      onDone: () => {
-        streamAbortRef.current = null;
-        setLoading(false);
-        refreshConversations(
-          showArchivedConversations,
-          selectedFolderId,
-          selectedWorkspaceId,
-          selectedProjectId,
-          conversationSearch,
-          showTrashConversations,
-          selectedTagId
-        );
-        void maybeAutoSummarizeConversation(
-          targetConversationId,
-          messageCountRef.current
-        );
-      },
-      onError: (message) => {
-        streamAbortRef.current = null;
-        setLoading(false);
-        setError(message);
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant" && last.text === "") {
-            const next = prev.slice(0, -1);
-            messageCountRef.current = next.length;
-            return next;
-          }
-          messageCountRef.current = prev.length;
-          return prev;
-        });
-        setRetryableUserMessage({
-          conversationId: targetConversationId,
-          text: retryableUserMessage.text,
-        });
-      },
-    });
-  };
+  const { retryFailedGeneration } = useRetryFailedGeneration({
+    readOnlyConversation,
+    loading,
+    retryableUserMessage,
+    conversationId,
+    setError,
+    setLoading,
+    setRetryableUserMessage,
+    messageCountRef,
+    setMessages,
+    streamAbortRef,
+    setConversationId,
+    appendToLastMessage,
+    refreshConversations,
+    showArchivedConversations,
+    selectedFolderId,
+    selectedWorkspaceId,
+    selectedProjectId,
+    conversationSearch,
+    showTrashConversations,
+    selectedTagId,
+    maybeAutoSummarizeConversation,
+  });
 
   const { regenerateLastResponse } = useRegenerateLastResponse({
     readOnlyConversation,
