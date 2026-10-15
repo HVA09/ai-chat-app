@@ -14,6 +14,9 @@ export async function uploadFile(
   if (workspaceId) params.workspace_id = workspaceId;
   if (projectId) params.project_id = projectId;
   const { data } = await api.post("/files/upload", formData, {
+    // The shared Axios instance defaults to JSON. Clear it for FormData so the
+    // browser can add the multipart boundary required by FastAPI UploadFile.
+    headers: { "Content-Type": null },
     params,
     onUploadProgress: (event) => {
       if (onProgress && event.total) {
