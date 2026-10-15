@@ -78,12 +78,12 @@ import {
 } from "./lib/conversationsApi";
 import useFolderManagement from "./hooks/useFolderManagement";
 import useProjectManagement from "./hooks/useProjectManagement";
+import useProjectMemberRoles from "./hooks/useProjectMemberRoles";
 import useWorkspaceManagement from "./hooks/useWorkspaceManagement";
 
 import useAssistantManagement from "./hooks/useAssistantManagement";
 import { getErrorMessage } from "./lib/errors";
 import { getCurrentUser } from "./lib/usersApi";
-import { listProjectMembers } from "./lib/projectMembersApi";
 import "./i18n";
 
 // دالة بدل ثابت — لازم نستدعيها بعد ما يصير عندنا t() جوا المكوّن عشان رسالة
@@ -135,7 +135,6 @@ export default function App() {
   const [editingAssistantId, setEditingAssistantId] = useState(null);
   const [showProjectEditor, setShowProjectEditor] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState(null);
-  const [projectMemberRoles, setProjectMemberRoles] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null); // { message, type }
@@ -168,52 +167,13 @@ export default function App() {
     handleDeleteSavedPrompt,
   } = useSavedPrompts({ setToast });
 
-  useEffect(() => {
-    const project = projects.find(
-      (item) => Number(item.id) === Number(selectedProjectId)
-    );
-    const workspaceRole = workspaces.find(
-      (workspace) => workspace.id === selectedWorkspaceId
-    )?.role;
-
-    if (!project || currentUser?.id == null) return;
-
-    if (
-      Number(project.owner_id) === Number(currentUser.id) ||
-      ["owner", "admin"].includes(workspaceRole)
-    ) {
-      setProjectMemberRoles((current) => ({
-        ...current,
-        [project.id]: "manager",
-      }));
-      return;
-    }
-
-    let cancelled = false;
-    listProjectMembers(project.id)
-      .then((members) => {
-        if (cancelled) return;
-        const membership = members.find(
-          (member) => Number(member.user_id) === Number(currentUser.id)
-        );
-        setProjectMemberRoles((current) => ({
-          ...current,
-          [project.id]: membership?.role ?? null,
-        }));
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setProjectMemberRoles((current) => ({
-            ...current,
-            [project.id]: null,
-          }));
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projects, selectedProjectId, selectedWorkspaceId, currentUser?.id, workspaces]);
+  const projectMemberRoles = useProjectMemberRoles({
+    projects,
+    selectedProjectId,
+    selectedWorkspaceId,
+    currentUserId: currentUser?.id,
+    workspaces,
+  });
 
   const {
     notificationPreferences,
