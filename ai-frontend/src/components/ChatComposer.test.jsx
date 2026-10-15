@@ -171,7 +171,7 @@ describe("ChatComposer tools", () => {
       />
     );
 
-    await user.click(screen.getByTitle(/فتح أدوات الرسالة|tools\\.mobileMenu/));
+    await user.click(screen.getByTitle(/فتح أدوات الرسالة|tools\.mobileMenu/));
     await user.click(screen.getByTitle("بحث الويب"));
     await waitFor(() => expect(screen.getByPlaceholderText("اكتب رسالتك هنا...")).toHaveFocus());
     expect(onInsertWebSearch).toHaveBeenCalledTimes(1);
