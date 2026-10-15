@@ -26,7 +26,7 @@ export default defineConfig({
       workbox: {
         // ما نخزّن ردود /chat أو /ws — تفاعلية وتحتاج اتصال حي دائمًا.
         // الهدف هنا تحميل أسرع للواجهة الثابتة فقط (JS/CSS)، مو استخدام offline كامل
-        navigateFallbackDenylist: [/^\\/chat/, /^\\/ws/],
+        navigateFallbackDenylist: [/^\/chat/, /^\/ws/],
       },
     }),
   ],
