@@ -83,8 +83,7 @@ import useProjectMemberRoles from "./hooks/useProjectMemberRoles";
 import useWorkspaceManagement from "./hooks/useWorkspaceManagement";
 
 import useAssistantManagement from "./hooks/useAssistantManagement";
-import { getErrorMessage } from "./lib/errors";
-import { getCurrentUser } from "./lib/usersApi";
+import useCurrentUser from "./hooks/useCurrentUser";
 import "./i18n";
 
 // دالة بدل ثابت — لازم نستدعيها بعد ما يصير عندنا t() جوا المكوّن عشان رسالة
@@ -139,7 +138,10 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null); // { message, type }
-  const [currentUser, setCurrentUser] = useState(null);
+  const { currentUser, refreshCurrentUser, resetCurrentUser } = useCurrentUser({
+    setToast,
+    t,
+  });
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showModelCompare, setShowModelCompare] = useState(false);
@@ -258,7 +260,7 @@ export default function App() {
     setEditingMessageIndex(null);
     setRetryableUserMessage(null);
     setError("");
-    setCurrentUser(null);
+    resetCurrentUser();
     setShowAccountSettings(false);
     setShowFiles(false);
     setShowAdmin(false);
@@ -276,7 +278,7 @@ export default function App() {
     autoSummaryLastMessageCountRef.current = {};
     messageCountRef.current = 1;
     resetNotifications();
-  }, [t]);
+  }, [resetCurrentUser, t]);
 
   useEffect(() => {
     restoreSession().then(() => setAuthed(true)).catch(() => setAuthed(false)).finally(() => setSessionChecking(false));
@@ -354,17 +356,7 @@ export default function App() {
     setError("");
   };
 
-  const refreshCurrentUser = async () => {
-    try {
-      const user = await getCurrentUser();
-      setCurrentUser(user);
-    } catch (err) {
-      setToast({
-        message: getErrorMessage(err, t("app.currentUserLoadError")),
-        type: "error",
-      });
-    }
-  };
+
 
 
   useEffect(() => {
