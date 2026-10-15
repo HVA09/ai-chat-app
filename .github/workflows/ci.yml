@@ -88,7 +88,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node24-npm-
       - run: npm install --prefer-offline --no-audit --no-fund
-      - run: npm test
+      # The complete jsdom suite can exhaust Node 24's heap when every file starts in parallel.
+      - run: npm test -- --maxWorkers=2
       - run: npm run build
 
   sdk:
