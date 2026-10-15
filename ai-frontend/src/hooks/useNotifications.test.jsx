@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import useNotifications from "./useNotifications";
 
 const {
@@ -21,12 +21,30 @@ vi.mock("../lib/notificationsApi", () => ({
   buildNotificationsWebSocketUrl,
 }));
 
-function setupHook() {
+class MockWebSocket {
+  static instances = [];
+
+  constructor(url) {
+    this.url = url;
+    this.close = vi.fn();
+    MockWebSocket.instances.push(this);
+  }
+
+  emitMessage(data) {
+    this.onmessage?.({ data });
+  }
+
+  emitError() {
+    this.onerror?.(new Event("error"));
+  }
+}
+
+function setupHook({ authed = false, realtimeToasts = false } = {}) {
   const setToast = vi.fn();
   const hook = renderHook(() =>
     useNotifications({
-      authed: false,
-      notificationPreferences: { realtimeToasts: false },
+      authed,
+      notificationPreferences: { realtimeToasts },
       setToast,
     })
   );
@@ -36,9 +54,15 @@ function setupHook() {
 describe("useNotifications", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    MockWebSocket.instances = [];
+    vi.stubGlobal("WebSocket", MockWebSocket);
     listNotifications.mockResolvedValue([]);
     markNotificationRead.mockResolvedValue({});
     markAllNotificationsRead.mockResolvedValue({});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("shows a translated fallback and preserves existing notifications when loading fails", async () => {
@@ -151,4 +175,59 @@ describe("useNotifications", () => {
     );
     expect(setToast).not.toHaveBeenCalled();
   });
+  it("adds valid realtime notifications and only shows the success toast when enabled", async () => {
+    const { result, setToast } = setupHook({ authed: true, realtimeToasts: true });
+    const socket = MockWebSocket.instances[0];
+
+    expect(socket.url).toBe("ws://localhost/notifications");
+    await act(async () => {
+      await result.current.refreshNotifications();
+    });
+    act(() => {
+      socket.emitMessage(JSON.stringify({ id: 9, title: "Live update", is_read: false }));
+    });
+
+    expect(result.current.notifications).toEqual([
+      { id: 9, title: "Live update", is_read: false },
+    ]);
+    expect(setToast).toHaveBeenCalledWith({
+      message: "Live update",
+      type: "success",
+    });
+  });
+
+  it("reports malformed or incomplete realtime payloads without throwing", async () => {
+    const { result, setToast } = setupHook({ authed: true });
+    const socket = MockWebSocket.instances[0];
+
+    await act(async () => {
+      await result.current.refreshNotifications();
+    });
+    act(() => {
+      socket.emitMessage("not-json");
+      socket.emitMessage(JSON.stringify({ title: "Missing ID" }));
+    });
+
+    expect(result.current.notifications).toEqual([]);
+    expect(setToast).toHaveBeenCalledTimes(2);
+    expect(setToast).toHaveBeenLastCalledWith({
+      message: "تعذر استقبال الإشعارات الفورية",
+      type: "error",
+    });
+  });
+
+  it("reports realtime socket errors", () => {
+    const { setToast } = setupHook({ authed: true });
+    const socket = MockWebSocket.instances[0];
+
+    act(() => {
+      socket.emitError();
+    });
+
+    expect(setToast).toHaveBeenCalledWith({
+      message: "تعذر استقبال الإشعارات الفورية",
+      type: "error",
+    });
+  });
+
 });
