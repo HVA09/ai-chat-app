@@ -1131,11 +1131,6 @@ export default function App() {
           }}
         />
         <Toast message={toast?.message} type={toast?.type} onDismiss={() => setToast(null)} />
-      <CommandPalette
-        open={commandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-        actions={commandPaletteActions}
-      />
       </>
     );
   }
@@ -1554,6 +1549,13 @@ export default function App() {
       </main>
 
       <Toast message={toast?.message} type={toast?.type} onDismiss={() => setToast(null)} />
+
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        actions={commandPaletteActions}
+      />
+
 
       {showOnboarding ? (
         <OnboardingModal
