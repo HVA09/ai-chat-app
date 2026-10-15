@@ -84,7 +84,7 @@ export default function SidebarModern({
   onOpenWorkspaceMembers = () => {},
   onOpenScheduledTasks = () => {},
   onOpenSettings = () => {},
-  onOpenWorkspaceSharedConversation = () => {}
+  onOpenWorkspaceSharedConversation = () => {},
   onDuplicatedWorkspaceConversation = () => {},
   showArchived = false,
   onShowArchived = () => {},
