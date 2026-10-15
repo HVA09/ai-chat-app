@@ -12,7 +12,7 @@ describe("filesApi regression coverage", () => {
     vi.clearAllMocks();
   });
 
-  it("uploads a file with conversation/workspace/project scope and lets axios set multipart headers", async () => {
+  it("uploads FormData without inheriting the shared JSON content type", async () => {
     api.post.mockResolvedValue({ data: { id: 42, original_filename: "notes.txt" } });
 
     const { uploadFile } = await import("./filesApi");
@@ -30,7 +30,7 @@ describe("filesApi regression coverage", () => {
       workspace_id: 3,
       project_id: 9,
     });
-    expect(config.headers).toBeUndefined();
+    expect(config.headers).toEqual({ "Content-Type": null });
   });
 
   it("preserves the current conversation scope when IDs are omitted", async () => {
