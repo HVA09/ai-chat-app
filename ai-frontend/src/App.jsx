@@ -1223,6 +1223,7 @@ export default function App() {
         onOpenScheduledTasks={() => setShowScheduledTasks(true)}
         onOpenWorkspaceSharedConversation={handleOpenWorkspaceSharedConversation}
         onDuplicatedWorkspaceConversation={handleDuplicatedWorkspaceConversation}
+        onOpenSettings={() => setShowAccountSettings(true)}
         searchValue={conversationSearch}
         onSearchChange={setConversationSearch}
         showArchived={showArchivedConversations}
@@ -1356,7 +1357,7 @@ export default function App() {
             </div>
           ) : null}
 
-          <div className="chat-surface mx-auto flex w-full max-w-4xl flex-1 space-y-3 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div className="chat-surface mx-auto flex flex-col w-full max-w-4xl flex-1 space-y-3 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             {empty ? (
               <div className="empty-state flex h-full flex-col items-center justify-center px-4 text-center">
                 <div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-slate-900 text-xs font-extrabold tracking-[0.12em] text-white shadow-lg dark:bg-slate-100 dark:text-slate-900">AI</div>

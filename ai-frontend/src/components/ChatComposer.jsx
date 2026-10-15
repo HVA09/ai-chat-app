@@ -39,6 +39,7 @@ export default function ChatComposer({
   const [dragOver, setDragOver] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const nearLimit = value.length > MAX_MESSAGE_LENGTH - 200;
+  const activeToolCommand = value.match(/^\/(calc|search|analyze|agent|python)\s/i)?.[1] ?? null;
   const lang = document.documentElement.lang;
   const saveEditLabel = lang === "ar" ? "حفظ التعديل" : "Save edit";
   const cancelEditLabel = lang === "ar" ? "إلغاء" : "Cancel";
@@ -73,6 +74,17 @@ export default function ChatComposer({
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
+  const activateTool = (handler) => {
+    handler?.();
+    setToolsOpen(false);
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      const end = textarea.value.length;
+      textarea.setSelectionRange(end, end);
+    });
+  };
 
   useEffect(() => {
     const SpeechRecognition =
@@ -105,7 +117,7 @@ export default function ChatComposer({
   };
 
   const toggleVoiceInput = () => {
-    if (!voiceSupported || loading || isEditing) return;
+    if (loading || isEditing) return;
 
     if (isListening) {
       recognitionRef.current?.stop();
@@ -282,6 +294,13 @@ export default function ChatComposer({
               </div>
             ) : null}
           </div>
+          {activeToolCommand ? (
+            <p className="mt-1 px-2 text-start text-xs text-slate-400">
+              {lang === "ar"
+                ? `اكتب المهمة بعد /${activeToolCommand} ثم اضغط إرسال لتشغيل الأداة.`
+                : `Type your task after /${activeToolCommand}, then press Send to run the tool.`}
+            </p>
+          ) : null}
           {nearLimit && (
             <p className="mt-1 text-end text-xs text-slate-400">
               {value.length}/{MAX_MESSAGE_LENGTH}
@@ -307,18 +326,16 @@ export default function ChatComposer({
               />
             </label>
 
-            {voiceSupported ? (
-              <button
-                type="button"
-                onClick={toggleVoiceInput}
-                title={isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
-                aria-label={isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
-                aria-pressed={isListening}
-                className={`chat-composer-control ${isListening ? "chat-composer-control-active" : ""}`}
-              >
-                <Icon name={isListening ? "stop" : "mic"} size={18} />
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={toggleVoiceInput}
+              title={voiceSupported ? (isListening ? t("tools.voiceStop") : t("tools.voiceInput")) : t("app.voiceInputNotSupported")}
+              aria-label={voiceSupported ? (isListening ? t("tools.voiceStop") : t("tools.voiceInput")) : t("app.voiceInputNotSupported")}
+              aria-pressed={isListening}
+              className={`chat-composer-control ${isListening ? "chat-composer-control-active" : ""}`}
+            >
+              <Icon name={isListening ? "stop" : "mic"} size={18} />
+            </button>
 
             <div className="relative">
               <button
@@ -353,7 +370,7 @@ export default function ChatComposer({
                     ) : null}
                     <button
                       type="button"
-                      onClick={() => { onInsertCalculator?.(); setToolsOpen(false); }}
+                      onClick={() => activateTool(onInsertCalculator)}
                       title={t("tools.calculator")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
@@ -361,7 +378,7 @@ export default function ChatComposer({
                     </button>
                     <button
                       type="button"
-                      onClick={() => { onInsertWebSearch?.(); setToolsOpen(false); }}
+                      onClick={() => activateTool(onInsertWebSearch)}
                       title={t("tools.webSearch")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
@@ -369,7 +386,7 @@ export default function ChatComposer({
                     </button>
                     <button
                       type="button"
-                      onClick={() => { onInsertDataAnalysis?.(); setToolsOpen(false); }}
+                      onClick={() => activateTool(onInsertDataAnalysis)}
                       title={t("tools.dataAnalysis")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
@@ -377,7 +394,7 @@ export default function ChatComposer({
                     </button>
                     <button
                       type="button"
-                      onClick={() => { onInsertAgent?.(); setToolsOpen(false); }}
+                      onClick={() => activateTool(onInsertAgent)}
                       title={t("tools.agent")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
@@ -394,21 +411,12 @@ export default function ChatComposer({
                     </button>
                     <button
                       type="button"
-                      onClick={() => { onInsertPython?.(); setToolsOpen(false); }}
+                      onClick={() => activateTool(onInsertPython)}
                       title={t("tools.python")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
                       <Icon name="code" size={16} /> {t("tools.pythonShort")}
                     </button>
-                    {voiceSupported ? (
-                      <button
-                        type="button"
-                        onClick={() => { toggleVoiceInput(); setToolsOpen(false); }}
-                        className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                      >
-                        <Icon name={isListening ? "stop" : "mic"} size={16} /> {isListening ? t("tools.voiceStop") : t("tools.voiceInput")}
-                      </button>
-                    ) : null}
                   </div>
                 </div>
               ) : null}

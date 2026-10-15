@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { useState } from "react";
@@ -17,6 +17,8 @@ vi.mock("react-i18next", () => ({
       "tools.python": "مفسّر بايثون آمن",
       "tools.voiceInput": "إدخال صوتي",
       "tools.voiceStop": "إيقاف الإدخال الصوتي",
+      "app.voiceInputNotSupported": "الإدخال الصوتي غير مدعوم في هذا المتصفح",
+      "app.voiceInputError": "تعذر استخدام الإدخال الصوتي",
       "tools.modelSelector": "نموذج الذكاء الاصطناعي",
       "tools.attachFiles": "إرفاق ملفات",
       "tools.removeAttachment": "إزالة الملف",
@@ -154,6 +156,47 @@ describe("ChatComposer tools", () => {
 
     await user.click(screen.getByTitle("إدخال صوتي"));
     expect(currentValue).toBe("اختبار صوتي");
+  });
+
+  it("يركّز مربع الكتابة بعد اختيار أداة", async () => {
+    const user = userEvent.setup();
+    const onInsertWebSearch = vi.fn();
+    render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onInsertWebSearch={onInsertWebSearch}
+      />
+    );
+
+    await user.click(screen.getByTitle(/فتح أدوات الرسالة|tools\.mobileMenu/));
+    await user.click(screen.getByTitle("بحث الويب"));
+    await waitFor(() => expect(screen.getByPlaceholderText("اكتب رسالتك هنا...")).toHaveFocus());
+    expect(onInsertWebSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it("يُظهر زر الميكروفون ويوضح عدم دعم المتصفح", async () => {
+    Object.defineProperty(window, "SpeechRecognition", { configurable: true, writable: true, value: undefined });
+    Object.defineProperty(window, "webkitSpeechRecognition", { configurable: true, writable: true, value: undefined });
+    const user = userEvent.setup();
+    const onVoiceError = vi.fn();
+
+    render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onVoiceError={onVoiceError}
+      />
+    );
+
+    const microphone = screen.getByTitle("الإدخال الصوتي غير مدعوم في هذا المتصفح");
+    expect(microphone).toBeInTheDocument();
+    await user.click(microphone);
+    expect(onVoiceError).toHaveBeenCalledWith("الإدخال الصوتي غير مدعوم في هذا المتصفح");
   });
 
   it("يتيح اختيار نموذج الذكاء الاصطناعي", async () => {

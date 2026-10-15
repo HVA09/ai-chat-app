@@ -313,7 +313,7 @@ export default function ChatMessage({
               <button
                 type="button"
                 onClick={toggleVoiceOutput}
-                className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                className="chat-voice-output-button rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
                 aria-label={speaking ? stopVoiceOutputLabel : voiceOutputLabel}
                 title={speaking ? stopVoiceOutputLabel : voiceOutputLabel}
                 aria-pressed={speaking}
