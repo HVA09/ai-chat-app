@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./lib/api", async () => {
@@ -32,12 +32,25 @@ describe("App initial render", () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
     restoreSession.mockReset();
     restoreSession.mockRejectedValue(new Error("No active test session"));
   });
 
-  it("renders before session restoration without a temporal-dead-zone error", () => {
-    expect(() => render(<App />)).not.toThrow();
+  it("renders before session restoration without a temporal-dead-zone error", async () => {
+    await act(async () => {
+      expect(() => render(<App />)).not.toThrow();
+      await Promise.resolve();
+    });
   });
 
   it("keeps the command palette mounted in the authenticated app shell", async () => {
