@@ -84,6 +84,7 @@ import useWorkspaceManagement from "./hooks/useWorkspaceManagement";
 
 import useAssistantManagement from "./hooks/useAssistantManagement";
 import useCurrentUser from "./hooks/useCurrentUser";
+import useAppGlobalEvents from "./hooks/useAppGlobalEvents";
 import "./i18n";
 
 // دالة بدل ثابت — لازم نستدعيها بعد ما يصير عندنا t() جوا المكوّن عشان رسالة
@@ -299,27 +300,7 @@ export default function App() {
     setShowOnboarding(false);
   }, [currentUser?.id]);
 
-  // لو أي طلب بأي مكان بالتطبيق رجع 401 (مو بس إرسال رسالة)، نسجّل خروج
-  // ونوضّح السبب — قبل كذا كان يصير خروج صامت بدون تفسير
-  useEffect(() => {
-    const handleUnauthorized = () => {
-      logout();
-      setToast({ message: t("app.sessionExpired"), type: "error" });
-    };
-    window.addEventListener("auth:unauthorized", handleUnauthorized);
-    return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
-  }, [logout, t]);
-
-  useEffect(() => {
-    const handleCommandShortcut = (event) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setCommandPaletteOpen((current) => !current);
-      }
-    };
-    window.addEventListener("keydown", handleCommandShortcut);
-    return () => window.removeEventListener("keydown", handleCommandShortcut);
-  }, []);
+  useAppGlobalEvents({ logout, setCommandPaletteOpen, setToast, t });
 
   useEffect(() => {
     if (!authed) return;
@@ -370,18 +351,7 @@ export default function App() {
     }
   }, [authed]);
 
-  useEffect(() => {
-    const handleAppToast = (event) => {
-      if (event.detail?.message) {
-        setToast({
-          message: event.detail.message,
-          type: event.detail.type || "error",
-        });
-      }
-    };
-    window.addEventListener("app:toast", handleAppToast);
-    return () => window.removeEventListener("app:toast", handleAppToast);
-  }, []);
+
 
 
   const switchLang = (nextLang) => {
