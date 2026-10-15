@@ -34,6 +34,7 @@ import useConversationItemActions from "./hooks/useConversationItemActions";
 import useConversationImport from "./hooks/useConversationImport";
 import useConversationExport from "./hooks/useConversationExport";
 import useToolActivity from "./hooks/useToolActivity";
+import useStopGeneration from "./hooks/useStopGeneration";
 import useConversationBranching from "./hooks/useConversationBranching";
 import useImageAnalysis from "./hooks/useImageAnalysis";
 import useMessageFeedback from "./hooks/useMessageFeedback";
@@ -876,14 +877,11 @@ export default function App() {
     t,
   });
 
-  const stopGeneration = () => {
-    if (streamAbortRef.current) {
-      streamAbortRef.current.abort();
-      streamAbortRef.current = null;
-    }
-    setLoading(false);
-    setToolActivity(null);
-  };
+  const { stopGeneration } = useStopGeneration({
+    streamAbortRef,
+    setLoading,
+    setToolActivity,
+  });
 
   const { editMessage } = useEditMessageGeneration({
     readOnlyConversation,
