@@ -59,20 +59,53 @@ export default function useNotifications({
     }
   }, [authed, refreshNotifications]);
 
+  const showRealtimeError = useCallback(() => {
+    setToast({
+      message: t("app.notificationRealtimeError"),
+      type: "error",
+    });
+  }, [setToast, t]);
+
   useEffect(() => {
     if (!authed) return;
 
     const ws = new WebSocket(buildNotificationsWebSocketUrl());
     ws.onmessage = (event) => {
-      const notification = JSON.parse(event.data);
+      let notification;
+      try {
+        notification = JSON.parse(event.data);
+      } catch {
+        showRealtimeError();
+        return;
+      }
+
+      if (
+        !notification ||
+        typeof notification !== "object" ||
+        Array.isArray(notification) ||
+        (typeof notification.id !== "number" &&
+          typeof notification.id !== "string") ||
+        typeof notification.title !== "string" ||
+        !notification.title.trim()
+      ) {
+        showRealtimeError();
+        return;
+      }
+
       setNotifications((prev) => [notification, ...prev]);
       if (notificationPreferences.realtimeToasts) {
         setToast({ message: notification.title, type: "success" });
       }
     };
+    ws.onerror = showRealtimeError;
 
     return () => ws.close();
-  }, [authed, notificationPreferences.realtimeToasts, setToast]);
+  }, [
+    authed,
+    notificationPreferences.realtimeToasts,
+    setToast,
+    showRealtimeError,
+  ]);
 
   const resetNotifications = useCallback(() => {
     setNotifications([]);
