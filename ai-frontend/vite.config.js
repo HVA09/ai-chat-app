@@ -31,13 +31,33 @@ export default defineConfig({
     }),
   ],
   build: {
-    rollupOptions: {
+    // Vite 8 uses Rolldown: the old object form of output.manualChunks is no longer supported.
+    // Keep the existing vendor boundaries through the supported codeSplitting groups API.
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          "react-vendor": ["react", "react-dom", "react-is"],
-          "markdown-vendor": ["react-markdown", "remark-gfm"],
-          "charts-vendor": ["recharts"],
-          "i18n-vendor": ["i18next", "react-i18next"],
+        codeSplitting: {
+          groups: [
+            {
+              name: "react-vendor",
+              test: /node_modules[\\/](react|react-dom|react-is)([\\/]|$)/,
+              priority: 40,
+            },
+            {
+              name: "markdown-vendor",
+              test: /node_modules[\\/](react-markdown|remark-gfm)([\\/]|$)/,
+              priority: 30,
+            },
+            {
+              name: "charts-vendor",
+              test: /node_modules[\\/]recharts([\\/]|$)/,
+              priority: 20,
+            },
+            {
+              name: "i18n-vendor",
+              test: /node_modules[\\/](i18next|react-i18next)([\\/]|$)/,
+              priority: 10,
+            },
+          ],
         },
       },
     },
