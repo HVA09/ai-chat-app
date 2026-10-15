@@ -83,7 +83,8 @@ export default function SidebarModern({
   onRenameWorkspace = () => {},
   onOpenWorkspaceMembers = () => {},
   onOpenScheduledTasks = () => {},
-  onOpenWorkspaceSharedConversation = () => {},
+  onOpenSettings = () => {},
+  onOpenWorkspaceSharedConversation = () => {}
   onDuplicatedWorkspaceConversation = () => {},
   showArchived = false,
   onShowArchived = () => {},
@@ -425,6 +426,14 @@ export default function SidebarModern({
             onOpenConversation={onOpenWorkspaceSharedConversation}
             onDuplicatedConversation={onDuplicatedWorkspaceConversation}
           />
+          <button
+            type="button"
+            onClick={() => { closeMobile(); onOpenSettings(); }}
+            className="modern-sidebar-settings"
+          >
+            <Icon name="settings" size={16} />
+            <span>{t("header.settings")}</span>
+          </button>
         </div>
       </aside>
     </>
