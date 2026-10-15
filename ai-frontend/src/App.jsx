@@ -84,6 +84,7 @@ import useWorkspaceManagement from "./hooks/useWorkspaceManagement";
 
 import useAssistantManagement from "./hooks/useAssistantManagement";
 import useCurrentUser from "./hooks/useCurrentUser";
+import useOnboarding from "./hooks/useOnboarding";
 import useAppGlobalEvents from "./hooks/useAppGlobalEvents";
 import "./i18n";
 
@@ -143,7 +144,10 @@ export default function App() {
     setToast,
     t,
   });
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const { showOnboarding, closeOnboarding } = useOnboarding({
+    authed,
+    userId: currentUser?.id,
+  });
   const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showModelCompare, setShowModelCompare] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
@@ -285,20 +289,7 @@ export default function App() {
     restoreSession().then(() => setAuthed(true)).catch(() => setAuthed(false)).finally(() => setSessionChecking(false));
   }, []);
 
-  useEffect(() => {
-    if (!authed || !currentUser?.id || typeof window === "undefined") return;
-    const key = `ai-chat-onboarding:${currentUser.id}`;
-    if (window.localStorage.getItem(key) !== "done") {
-      setShowOnboarding(true);
-    }
-  }, [authed, currentUser?.id]);
 
-  const closeOnboarding = useCallback(() => {
-    if (currentUser?.id && typeof window !== "undefined") {
-      window.localStorage.setItem(`ai-chat-onboarding:${currentUser.id}`, "done");
-    }
-    setShowOnboarding(false);
-  }, [currentUser?.id]);
 
   useAppGlobalEvents({ logout, setCommandPaletteOpen, setToast, t });
 
