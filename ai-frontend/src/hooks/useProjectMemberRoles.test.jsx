@@ -25,11 +25,10 @@ describe("useProjectMemberRoles", () => {
   });
 
   it("grants manager role to the project owner without an API request", () => {
-    const { result } = renderHook(() =>
-      useProjectMemberRoles(createOptions({
-        projects: [{ id: 5, owner_id: 12 }],
-      }))
-    );
+    const options = createOptions({
+      projects: [{ id: 5, owner_id: 12 }],
+    });
+    const { result } = renderHook(() => useProjectMemberRoles(options));
 
     expect(result.current[5]).toBe("manager");
     expect(listProjectMembers).not.toHaveBeenCalled();
@@ -38,11 +37,10 @@ describe("useProjectMemberRoles", () => {
   it.each(["owner", "admin"])(
     "grants manager role to a workspace %s without an API request",
     (role) => {
-      const { result } = renderHook(() =>
-        useProjectMemberRoles(createOptions({
-          workspaces: [{ id: 3, role }],
-        }))
-      );
+      const options = createOptions({
+        workspaces: [{ id: 3, role }],
+      });
+      const { result } = renderHook(() => useProjectMemberRoles(options));
 
       expect(result.current[5]).toBe("manager");
       expect(listProjectMembers).not.toHaveBeenCalled();
@@ -50,9 +48,8 @@ describe("useProjectMemberRoles", () => {
   );
 
   it("loads the current user's project membership role", async () => {
-    const { result } = renderHook(() =>
-      useProjectMemberRoles(createOptions())
-    );
+    const options = createOptions();
+    const { result } = renderHook(() => useProjectMemberRoles(options));
 
     await waitFor(() => expect(result.current[5]).toBe("editor"));
     expect(listProjectMembers).toHaveBeenCalledWith(5);
@@ -62,18 +59,16 @@ describe("useProjectMemberRoles", () => {
     listProjectMembers.mockResolvedValueOnce([
       { user_id: 88, role: "viewer" },
     ]);
-    const { result } = renderHook(() =>
-      useProjectMemberRoles(createOptions())
-    );
+    const options = createOptions();
+    const { result } = renderHook(() => useProjectMemberRoles(options));
 
     await waitFor(() => expect(result.current[5]).toBeNull());
   });
 
   it("fails closed when project membership cannot be loaded", async () => {
     listProjectMembers.mockRejectedValueOnce(new Error("network unavailable"));
-    const { result } = renderHook(() =>
-      useProjectMemberRoles(createOptions())
-    );
+    const options = createOptions();
+    const { result } = renderHook(() => useProjectMemberRoles(options));
 
     await waitFor(() => {
       expect(result.current).toHaveProperty("5", null);
