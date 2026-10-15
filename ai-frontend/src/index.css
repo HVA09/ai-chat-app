@@ -759,6 +759,23 @@ html.dark .chat-message-user {
   flex: 0 0 auto;
   padding: 0 10px 10px;
 }
+.modern-sidebar-settings {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 42px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  background: rgba(255,255,255,.6);
+  color: #475569;
+  text-align: start;
+  font-size: 13px;
+}
+.modern-sidebar-settings:hover { background: var(--sidebar-hover); }
+.dark .modern-sidebar-settings { background: rgba(255,255,255,.035); color: #e2e8f0; }
 .modern-chat-header {
   position: sticky;
   top: 0;
@@ -1210,14 +1227,15 @@ html.dark .chat-message-user {
 .chat-composer-control{border:1px solid rgba(148,163,184,.28);background:#fff;color:#475569;padding:9px}
 .chat-composer-control:hover{background:#f8fafc}
 .chat-composer-control-active{border-color:rgba(239,68,68,.35);background:#fef2f2;color:#b91c1c}
+.chat-voice-output-button{min-width:32px;min-height:30px;border-radius:8px!important;background:var(--ui-accent-soft)}
 .dark .chat-composer-control{border-color:rgba(255,255,255,.1);background:#212121;color:#e2e8f0}
 .dark .chat-composer-control:hover{background:#2a2a2a}
 .dark .chat-composer-control-active{border-color:rgba(248,113,113,.35);background:#3a1717;color:#fca5a5}
 .modern-header-mobile-menu{display:grid;width:34px;height:34px;flex:0 0 auto;place-items:center;border:1px solid rgba(148,163,184,.22);border-radius:10px;background:transparent;color:#64748b}
 .dark .modern-header-mobile-menu{color:#e2e8f0;border-color:rgba(255,255,255,.1)}
 .modern-settings-menu{min-width:220px}
-.chat-message-bubble{max-width:min(74%,720px)!important;padding-top:10px!important;padding-bottom:10px!important}
-.chat-message-user{max-width:min(70%,680px)}
+.chat-message-bubble{max-width:min(82%,760px)!important;padding-top:9px!important;padding-bottom:9px!important}
+.chat-message-user{max-width:min(76%,700px)}
 .chat-message-bubble > .mb-2{margin-bottom:6px!important;font-size:10px}
 @media (max-width:767px){
   .chat-composer-row{grid-template-columns:minmax(0,1fr);gap:7px}
@@ -1229,7 +1247,7 @@ html.dark .chat-message-user {
   .chat-composer-controls>.chat-send-button,
   .chat-composer-controls>.chat-stop-button{grid-column:span 1;min-width:0}
   .chat-composer-control,.chat-send-button,.chat-stop-button{min-height:42px}
-  .chat-message-bubble{max-width:94%!important;padding:9px 12px!important;font-size:14px}
+  .chat-message-bubble{max-width:96%!important;padding:8px 10px!important;font-size:14px;line-height:1.55}
   .chat-message-user{max-width:92%}
   .chat-surface{padding-inline:2px!important}
 }
