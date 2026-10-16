@@ -21,9 +21,13 @@ vi.mock("../lib/savedPromptsApi", () => ({
   updateSavedPrompt,
 }));
 
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key) => key }),
-}));
+vi.mock("react-i18next", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    useTranslation: () => ({ t: (key) => key }),
+  };
+});
 
 describe("useSavedPrompts", () => {
   beforeEach(() => {
