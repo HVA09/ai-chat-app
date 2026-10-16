@@ -129,6 +129,7 @@ export default function App() {
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [tags, setTags] = useState([]);
+  const tagRequestGenerationRef = useRef(0);
   const [selectedTagId, setSelectedTagId] = useState(null);
   const [workspaces, setWorkspaces] = useState([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(null);
@@ -235,8 +236,9 @@ export default function App() {
   }, [messages]);
 
   const logout = useCallback(async () => {
-    // Invalidate pending folder loads before waiting for the logout request.
+    // Invalidate pending folder and tag loads before waiting for the logout request.
     folderRequestGenerationRef.current += 1;
+    tagRequestGenerationRef.current += 1;
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
     setAuthed(false);
     resetConversations();
@@ -566,6 +568,7 @@ export default function App() {
     handleSelectTag,
     handleSetConversationTags,
   } = useTagManagement({
+    tagRequestGenerationRef,
     t,
     selectedTagId,
     setSelectedTagId,
