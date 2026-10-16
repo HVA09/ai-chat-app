@@ -127,6 +127,7 @@ export default function App() {
   const folderRequestGenerationRef = useRef(0);
   const [selectedFolderId, setSelectedFolderId] = useState(null);
   const [projects, setProjects] = useState([]);
+  const projectRequestGenerationRef = useRef(0);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
   const [tags, setTags] = useState([]);
   const tagRequestGenerationRef = useRef(0);
@@ -236,8 +237,9 @@ export default function App() {
   }, [messages]);
 
   const logout = useCallback(async () => {
-    // Invalidate pending folder and tag loads before waiting for the logout request.
+    // Invalidate pending user-scoped list loads before waiting for logout.
     folderRequestGenerationRef.current += 1;
+    projectRequestGenerationRef.current += 1;
     tagRequestGenerationRef.current += 1;
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
     setAuthed(false);
@@ -543,6 +545,7 @@ export default function App() {
   } = useProjectManagement({
     projects,
     selectedWorkspaceId,
+    projectRequestGenerationRef,
     selectedProjectId,
     selectedFolderId,
     editingProjectId,
