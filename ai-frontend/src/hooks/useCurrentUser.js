@@ -1,14 +1,19 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { getCurrentUser } from "../lib/usersApi";
 import { getErrorMessage } from "../lib/errors";
 
 export default function useCurrentUser({ setToast, t }) {
   const [currentUser, setCurrentUser] = useState(null);
+  const refreshRequestRef = useRef(0);
 
   const refreshCurrentUser = useCallback(async () => {
+    const requestId = ++refreshRequestRef.current;
     try {
-      setCurrentUser(await getCurrentUser());
+      const user = await getCurrentUser();
+      if (requestId !== refreshRequestRef.current) return;
+      setCurrentUser(user);
     } catch (error) {
+      if (requestId !== refreshRequestRef.current) return;
       setToast({
         message: getErrorMessage(error, t("app.currentUserLoadError")),
         type: "error",
@@ -17,6 +22,8 @@ export default function useCurrentUser({ setToast, t }) {
   }, [setToast, t]);
 
   const resetCurrentUser = useCallback(() => {
+    // Ignore any account request that began before logout/reset.
+    refreshRequestRef.current += 1;
     setCurrentUser(null);
   }, []);
 
