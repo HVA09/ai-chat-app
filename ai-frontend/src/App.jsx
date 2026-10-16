@@ -124,6 +124,7 @@ export default function App() {
   const [showArchivedConversations, setShowArchivedConversations] = useState(false);
   const [showTrashConversations, setShowTrashConversations] = useState(false);
   const [folders, setFolders] = useState([]);
+  const folderRequestGenerationRef = useRef(0);
   const [selectedFolderId, setSelectedFolderId] = useState(null);
   const [projects, setProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
@@ -234,6 +235,8 @@ export default function App() {
   }, [messages]);
 
   const logout = useCallback(async () => {
+    // Invalidate pending folder loads before waiting for the logout request.
+    folderRequestGenerationRef.current += 1;
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
     setAuthed(false);
     resetConversations();
@@ -659,6 +662,7 @@ export default function App() {
     handleDeleteFolder,
     handleSelectFolder,
   } = useFolderManagement({
+    folderRequestGenerationRef,
     selectedWorkspaceId,
     selectedFolderId,
     selectedProjectId,
