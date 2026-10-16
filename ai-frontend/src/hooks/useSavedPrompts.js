@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   createSavedPrompt,
@@ -11,15 +11,23 @@ import { getErrorMessage } from "../lib/errors";
 export default function useSavedPrompts({ setToast }) {
   const { t } = useTranslation();
   const [savedPrompts, setSavedPrompts] = useState([]);
+  const refreshRequestRef = useRef(0);
 
   const resetSavedPrompts = useCallback(() => {
+    // Invalidate any request started before logout or account reset.
+    refreshRequestRef.current += 1;
     setSavedPrompts([]);
   }, []);
 
   const refreshSavedPrompts = useCallback(async () => {
+    const requestId = ++refreshRequestRef.current;
     try {
-      setSavedPrompts(await listSavedPrompts());
+      const prompts = await listSavedPrompts();
+      if (requestId !== refreshRequestRef.current) return;
+      setSavedPrompts(prompts);
     } catch (err) {
+      // A stale failure should not show an error for a newer session or refresh.
+      if (requestId !== refreshRequestRef.current) return;
       setToast({
         message: getErrorMessage(err, t("app.savedPromptsLoadError")),
         type: "error",
