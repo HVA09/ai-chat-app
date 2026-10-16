@@ -209,6 +209,12 @@ describe("useAssistantManagement", () => {
 
     act(() => {
       oldRequest = result.current.refreshAssistants(3);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => {
       currentRequest = result.current.refreshAssistants(4);
     });
     await act(async () => {
@@ -247,6 +253,12 @@ describe("useAssistantManagement", () => {
 
     act(() => {
       oldRequest = result.current.refreshAssistants(3);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => {
       currentRequest = result.current.refreshAssistants(4);
     });
     await act(async () => {
