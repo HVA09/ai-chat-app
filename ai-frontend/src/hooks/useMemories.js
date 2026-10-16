@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listMemories, createMemory, deleteMemory } from "../lib/memoriesApi";
 import { getErrorMessage } from "../lib/errors";
@@ -19,11 +19,30 @@ export default function useMemories({
 }) {
   const { t } = useTranslation();
   const [memories, setMemories] = useState([]);
+  const refreshRequestRef = useRef(0);
+  const sessionVersionRef = useRef(0);
 
   const refreshMemories = useCallback(async () => {
+    const requestId = ++refreshRequestRef.current;
+    const sessionVersion = sessionVersionRef.current;
+
     try {
-      setMemories(await listMemories());
+      const nextMemories = await listMemories();
+      if (
+        sessionVersion !== sessionVersionRef.current ||
+        requestId !== refreshRequestRef.current
+      ) {
+        return;
+      }
+      setMemories(nextMemories);
     } catch (err) {
+      // Ignore an obsolete failure after logout/reset or a newer refresh.
+      if (
+        sessionVersion !== sessionVersionRef.current ||
+        requestId !== refreshRequestRef.current
+      ) {
+        return;
+      }
       setToast({
         message: getErrorMessage(err, t("app.memoriesLoadError")),
         type: "error",
@@ -48,10 +67,12 @@ export default function useMemories({
       if (!content) return;
 
       const existing = memories.find((memory) => memory.content === content);
+      const sessionVersion = sessionVersionRef.current;
 
       try {
         if (existing) {
           await deleteMemory(existing.id);
+          if (sessionVersion !== sessionVersionRef.current) return;
           setMemories((current) =>
             current.filter((memory) => memory.id !== existing.id)
           );
@@ -60,11 +81,13 @@ export default function useMemories({
         }
 
         const created = await createMemory(content);
+        if (sessionVersion !== sessionVersionRef.current) return;
         setMemories((current) => [created, ...current]);
         setToast({ message: t("memory.saved"), type: "success" });
       } catch (err) {
+        if (sessionVersion !== sessionVersionRef.current) return;
         setToast({
-          message: err?.response?.data?.detail || t("memory.error"),
+          message: getErrorMessage(err, t("memory.error")),
           type: "error",
         });
       }
@@ -81,6 +104,9 @@ export default function useMemories({
   );
 
   const resetMemories = useCallback(() => {
+    // Invalidate pending reads and writes before clearing user-scoped data.
+    sessionVersionRef.current += 1;
+    refreshRequestRef.current += 1;
     setMemories([]);
   }, []);
 
