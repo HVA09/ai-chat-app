@@ -137,4 +137,146 @@ describe("useConversationList", () => {
     expect(result.current.conversationsLoading).toBe(false);
     expect(result.current.conversationsLoadingMore).toBe(false);
   });
+
+  it("ignores errors and loading cleanup from an obsolete refresh", async () => {
+    let rejectFirst;
+    let resolveLatest;
+    listConversations
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectFirst = reject;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveLatest = resolve;
+          })
+      );
+
+    const props = createProps();
+    const { result } = renderHook(() => useConversationList(props));
+    let firstRequest;
+    let latestRequest;
+
+    act(() => {
+      firstRequest = result.current.refreshConversations();
+      latestRequest = result.current.refreshConversations();
+    });
+
+    expect(result.current.conversationsLoading).toBe(true);
+
+    await act(async () => {
+      rejectFirst(new Error("obsolete refresh failed"));
+      await firstRequest;
+    });
+
+    expect(result.current.conversationsLoading).toBe(true);
+    expect(props.setToast).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveLatest([{ id: 99 }]);
+      await latestRequest;
+    });
+
+    expect(result.current.conversations).toEqual([{ id: 99 }]);
+    expect(result.current.conversationsLoading).toBe(false);
+    expect(props.setToast).not.toHaveBeenCalled();
+  });
+
+  it("keeps a reset refresh active when an obsolete load-more request fails", async () => {
+    listConversations.mockResolvedValueOnce(
+      Array.from({ length: 51 }, (_, index) => ({ id: index + 1 }))
+    );
+
+    const props = createProps();
+    const { result } = renderHook(() => useConversationList(props));
+
+    await act(async () => {
+      await result.current.refreshConversations();
+    });
+
+    let rejectLoadMore;
+    let resolveRefresh;
+    listConversations
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectLoadMore = reject;
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRefresh = resolve;
+          })
+      );
+
+    let loadMoreRequest;
+    let refreshRequest;
+    act(() => {
+      loadMoreRequest = result.current.loadMoreConversations();
+    });
+
+    expect(result.current.conversationsLoadingMore).toBe(true);
+
+    act(() => {
+      refreshRequest = result.current.refreshConversations();
+    });
+
+    expect(result.current.conversationsLoading).toBe(true);
+    expect(result.current.conversationsLoadingMore).toBe(false);
+
+    await act(async () => {
+      rejectLoadMore(new Error("obsolete page load failed"));
+      await loadMoreRequest;
+    });
+
+    expect(result.current.conversationsLoading).toBe(true);
+    expect(result.current.conversationsLoadingMore).toBe(false);
+    expect(props.setToast).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveRefresh([{ id: 200 }]);
+      await refreshRequest;
+    });
+
+    expect(result.current.conversations).toEqual([{ id: 200 }]);
+    expect(result.current.conversationsLoading).toBe(false);
+    expect(result.current.conversationsLoadingMore).toBe(false);
+    expect(props.setToast).not.toHaveBeenCalled();
+  });
+
+  it("uses the latest selected project when refreshing with default filters", async () => {
+    const props = createProps();
+    const { result, rerender } = renderHook(
+      ({ selectedProjectId }) =>
+        useConversationList({
+          ...props,
+          filters: { ...props.filters, selectedProjectId },
+        }),
+      { initialProps: { selectedProjectId: 3 } }
+    );
+    listConversations.mockResolvedValueOnce([]);
+
+    rerender({ selectedProjectId: 99 });
+
+    await act(async () => {
+      await result.current.refreshConversations();
+    });
+
+    expect(listConversations).toHaveBeenCalledWith(
+      false,
+      null,
+      2,
+      99,
+      "",
+      false,
+      null,
+      0,
+      51
+    );
+  });
+
 });

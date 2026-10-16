@@ -26,10 +26,13 @@ export default function useConversationList({
       tagId = filters.selectedTagId,
       reset = true
     ) => {
-      if (reset) setConversationsLoading(true);
-      else setConversationsLoadingMore(true);
-
       const requestId = ++conversationLoadRequestRef.current;
+      if (reset) {
+        setConversationsLoading(true);
+        setConversationsLoadingMore(false);
+      } else {
+        setConversationsLoadingMore(true);
+      }
       try {
         const list = await listConversations(
           includeArchived,
@@ -57,19 +60,24 @@ export default function useConversationList({
 
         setHasMoreConversations(list.length > PAGE_SIZE);
       } catch (err) {
-        setToast({
-          message: getErrorMessage(err, t("app.conversationsLoadError")),
-          type: "error",
-        });
+        if (requestId === conversationLoadRequestRef.current) {
+          setToast({
+            message: getErrorMessage(err, t("app.conversationsLoadError")),
+            type: "error",
+          });
+        }
       } finally {
-        if (reset) setConversationsLoading(false);
-        else setConversationsLoadingMore(false);
+        if (requestId === conversationLoadRequestRef.current) {
+          if (reset) setConversationsLoading(false);
+          else setConversationsLoadingMore(false);
+        }
       }
     },
     [
       conversations.length,
       filters.conversationSearch,
       filters.selectedFolderId,
+      filters.selectedProjectId,
       filters.selectedTagId,
       filters.selectedWorkspaceId,
       filters.showArchivedConversations,
