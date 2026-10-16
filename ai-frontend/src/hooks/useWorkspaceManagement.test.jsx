@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createWorkspace,
@@ -24,6 +24,7 @@ function createProps(overrides = {}) {
       { id: 3, name: "Writing", default_ai_model: "model-c", daily_ai_request_limit: null },
     ],
     selectedWorkspaceId: 2,
+    workspaceRequestGenerationRef: { current: 0 },
     aiModels: [
       { id: "model-a", is_default: true },
       { id: "model-b", is_default: false },
@@ -233,4 +234,196 @@ describe("useWorkspaceManagement", () => {
       type: "success",
     });
   });
+
+  it("keeps the newest workspace list when requests resolve out of order", async () => {
+    const staleList = [{ id: 7, name: "Old workspace" }];
+    const currentList = [{ id: 8, name: "Current workspace", default_ai_model: "model-c" }];
+    let resolveStale;
+    listWorkspaces
+      .mockImplementationOnce(
+        () => new Promise((resolve) => { resolveStale = resolve; })
+      )
+      .mockResolvedValueOnce(currentList);
+    const props = createProps();
+    const { result } = renderHook(() => useWorkspaceManagement(props));
+    let staleRequest;
+    let currentRequest;
+
+    act(() => {
+      staleRequest = result.current.refreshWorkspaces();
+      currentRequest = result.current.refreshWorkspaces();
+    });
+
+    await act(async () => {
+      await currentRequest;
+    });
+    await act(async () => {
+      resolveStale(staleList);
+      await staleRequest;
+    });
+
+    expect(props.setWorkspaces).toHaveBeenCalledOnce();
+    expect(props.setWorkspaces).toHaveBeenCalledWith(currentList);
+    expect(props.setSelectedWorkspaceId).toHaveBeenCalledOnce();
+    expect(props.setSelectedWorkspaceId).toHaveBeenCalledWith(8);
+    expect(props.refreshFolders).toHaveBeenCalledOnce();
+    expect(props.refreshFolders).toHaveBeenCalledWith(8);
+    expect(props.refreshProjects).toHaveBeenCalledOnce();
+    expect(props.refreshProjects).toHaveBeenCalledWith(8);
+    expect(props.refreshAssistants).toHaveBeenCalledOnce();
+    expect(props.refreshAssistants).toHaveBeenCalledWith(8);
+    expect(props.refreshConversations).toHaveBeenCalledOnce();
+    expect(props.refreshConversations).toHaveBeenCalledWith(false, null, 8, null);
+    expect(props.setToast).not.toHaveBeenCalled();
+  });
+
+  it("ignores an older workspace-list failure after a newer refresh succeeds", async () => {
+    const currentList = [{ id: 8, name: "Current workspace", default_ai_model: "model-c" }];
+    let rejectStale;
+    listWorkspaces
+      .mockImplementationOnce(
+        () => new Promise((_resolve, reject) => { rejectStale = reject; })
+      )
+      .mockResolvedValueOnce(currentList);
+    const props = createProps();
+    const { result } = renderHook(() => useWorkspaceManagement(props));
+    let staleRequest;
+    let currentRequest;
+
+    act(() => {
+      staleRequest = result.current.refreshWorkspaces();
+      currentRequest = result.current.refreshWorkspaces();
+    });
+
+    await act(async () => {
+      await currentRequest;
+    });
+    await act(async () => {
+      rejectStale(new Error("older workspace request failed"));
+      await staleRequest;
+    });
+
+    expect(props.setWorkspaces).toHaveBeenCalledOnce();
+    expect(props.setWorkspaces).toHaveBeenCalledWith(currentList);
+    expect(props.setToast).not.toHaveBeenCalled();
+    expect(props.refreshConversations).toHaveBeenCalledOnce();
+    expect(props.refreshConversations).toHaveBeenCalledWith(false, null, 8, null);
+  });
+
+  it("stops an older refresh cascade if a newer workspace refresh starts during folder loading", async () => {
+    const oldList = [{ id: 2, name: "Old context", default_ai_model: "model-b" }];
+    const currentList = [{ id: 3, name: "Current context", default_ai_model: "model-c" }];
+    let resolveOldFolders;
+    listWorkspaces
+      .mockResolvedValueOnce(oldList)
+      .mockResolvedValueOnce(currentList);
+    const props = createProps({
+      refreshFolders: vi.fn()
+        .mockImplementationOnce(() => new Promise((resolve) => { resolveOldFolders = resolve; }))
+        .mockResolvedValue(undefined),
+    });
+    const { result } = renderHook(() => useWorkspaceManagement(props));
+    let oldRequest;
+
+    act(() => {
+      oldRequest = result.current.refreshWorkspaces();
+    });
+    await waitFor(() => {
+      expect(props.refreshFolders).toHaveBeenCalledWith(2);
+    });
+
+    let currentRequest;
+    act(() => {
+      currentRequest = result.current.refreshWorkspaces();
+    });
+    await act(async () => {
+      await currentRequest;
+    });
+
+    await act(async () => {
+      resolveOldFolders();
+      await oldRequest;
+    });
+
+    expect(props.refreshFolders).toHaveBeenCalledTimes(2);
+    expect(props.refreshFolders).toHaveBeenNthCalledWith(1, 2);
+    expect(props.refreshFolders).toHaveBeenNthCalledWith(2, 3);
+    expect(props.refreshProjects).toHaveBeenCalledOnce();
+    expect(props.refreshProjects).toHaveBeenCalledWith(3);
+    expect(props.refreshAssistants).toHaveBeenCalledOnce();
+    expect(props.refreshAssistants).toHaveBeenCalledWith(3);
+    expect(props.refreshConversations).toHaveBeenCalledOnce();
+    expect(props.refreshConversations).toHaveBeenCalledWith(false, null, 3, null);
+  });
+
+  it("does not restore workspaces when a pending refresh resolves after logout invalidation", async () => {
+    let resolvePending;
+    listWorkspaces.mockImplementationOnce(
+      () => new Promise((resolve) => { resolvePending = resolve; })
+    );
+    const generationRef = { current: 0 };
+    const props = createProps({ workspaceRequestGenerationRef: generationRef });
+    const { result } = renderHook(() => useWorkspaceManagement(props));
+    let pendingRequest;
+
+    act(() => {
+      pendingRequest = result.current.refreshWorkspaces();
+    });
+    act(() => {
+      generationRef.current += 1;
+    });
+    await act(async () => {
+      resolvePending([{ id: 8, name: "Previous session workspace" }]);
+      await pendingRequest;
+    });
+
+    expect(props.setWorkspaces).not.toHaveBeenCalled();
+    expect(props.setSelectedWorkspaceId).not.toHaveBeenCalled();
+    expect(props.setSelectedModel).not.toHaveBeenCalled();
+    expect(props.setToast).not.toHaveBeenCalled();
+    expect(props.refreshFolders).not.toHaveBeenCalled();
+    expect(props.refreshProjects).not.toHaveBeenCalled();
+    expect(props.refreshAssistants).not.toHaveBeenCalled();
+    expect(props.refreshConversations).not.toHaveBeenCalled();
+  });
+
+  it("stops an older workspace selection cascade after a newer selection", async () => {
+    let resolveOlderFolders;
+    const props = createProps({
+      refreshFolders: vi.fn()
+        .mockImplementationOnce(() => new Promise((resolve) => { resolveOlderFolders = resolve; }))
+        .mockResolvedValue(undefined),
+    });
+    const { result } = renderHook(() => useWorkspaceManagement(props));
+    let olderSelection;
+
+    act(() => {
+      olderSelection = result.current.handleSelectWorkspace("3");
+    });
+    await waitFor(() => {
+      expect(props.refreshFolders).toHaveBeenCalledWith(3);
+    });
+
+    let newerSelection;
+    act(() => {
+      newerSelection = result.current.handleSelectWorkspace("4");
+    });
+    await act(async () => {
+      await newerSelection;
+    });
+
+    await act(async () => {
+      resolveOlderFolders();
+      await olderSelection;
+    });
+
+    expect(props.refreshFolders).toHaveBeenCalledTimes(2);
+    expect(props.refreshProjects).toHaveBeenCalledOnce();
+    expect(props.refreshProjects).toHaveBeenCalledWith(4);
+    expect(props.refreshAssistants).toHaveBeenCalledOnce();
+    expect(props.refreshAssistants).toHaveBeenCalledWith(4);
+    expect(props.refreshConversations).toHaveBeenCalledOnce();
+    expect(props.refreshConversations).toHaveBeenCalledWith(false, null, 4, null);
+  });
+
 });
