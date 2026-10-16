@@ -1,4 +1,4 @@
-import { renderHook } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import useOpenConversation from "./useOpenConversation";
 
@@ -48,6 +48,22 @@ function createProps() {
     messageCountRef: { current: 0 },
     autoSummaryLastMessageCountRef: { current: {} },
     t: (key) => key,
+  };
+}
+
+function conversationData(id) {
+  return {
+    id,
+    title: `Conversation ${id}`,
+    parent_conversation_id: null,
+    messages: [],
+    summary: `Summary ${id}`,
+    summary_updated_at: "2026-10-16T12:00:00Z",
+    assistant_id: 4,
+    workspace_id: 5,
+    folder_id: 6,
+    project_id: 8,
+    ai_model: "model-a",
   };
 }
 
@@ -145,4 +161,66 @@ describe("useOpenConversation", () => {
     expect(props.setActiveConversationTitle).toHaveBeenLastCalledWith("Second");
     expect(props.setActiveConversationTitle).not.toHaveBeenCalledWith("First");
   });
+  it("ignores late branch-list results from a stale conversation", async () => {
+    let resolveFirstBranches;
+    getConversation.mockImplementation(async (id) => conversationData(id));
+    listConversationBranches.mockImplementation((id) => {
+      if (id === 1) {
+        return new Promise((resolve) => {
+          resolveFirstBranches = resolve;
+        });
+      }
+      return Promise.resolve([{ id: 200 }]);
+    });
+    getConversationWorkspaceShare.mockImplementation(async (id) => ({ id: id * 10 }));
+
+    const props = createProps();
+    const { result } = renderHook(() => useOpenConversation(props));
+
+    const first = result.current.openConversation(1);
+    await waitFor(() => expect(listConversationBranches).toHaveBeenCalledWith(1));
+
+    const second = result.current.openConversation(2);
+    await second;
+
+    resolveFirstBranches([{ id: 100 }]);
+    await first;
+
+    expect(props.setConversationBranches).toHaveBeenCalledWith([{ id: 200 }]);
+    expect(props.setConversationBranches).not.toHaveBeenCalledWith([{ id: 100 }]);
+    expect(props.setConversationSummary).not.toHaveBeenCalledWith("Summary 1");
+    expect(props.setMessages).toHaveBeenCalledTimes(1);
+    expect(getConversationWorkspaceShare).not.toHaveBeenCalledWith(1);
+  });
+
+  it("ignores late workspace-share results from a stale conversation", async () => {
+    let resolveFirstShare;
+    getConversation.mockImplementation(async (id) => conversationData(id));
+    listConversationBranches.mockImplementation(async (id) => [{ id: id * 100 }]);
+    getConversationWorkspaceShare.mockImplementation((id) => {
+      if (id === 1) {
+        return new Promise((resolve) => {
+          resolveFirstShare = resolve;
+        });
+      }
+      return Promise.resolve({ id: 20 });
+    });
+
+    const props = createProps();
+    const { result } = renderHook(() => useOpenConversation(props));
+
+    const first = result.current.openConversation(1);
+    await waitFor(() => expect(getConversationWorkspaceShare).toHaveBeenCalledWith(1));
+
+    const second = result.current.openConversation(2);
+    await second;
+
+    resolveFirstShare({ id: 10 });
+    await first;
+
+    expect(props.setWorkspaceShare).toHaveBeenCalledWith({ id: 20 });
+    expect(props.setWorkspaceShare).not.toHaveBeenCalledWith({ id: 10 });
+    expect(props.setMessages).toHaveBeenCalledTimes(1);
+  });
+
 });
