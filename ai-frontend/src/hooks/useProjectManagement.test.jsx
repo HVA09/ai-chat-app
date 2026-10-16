@@ -29,6 +29,7 @@ function createProps(overrides = {}) {
   return {
     projects: [{ id: 5, name: "Existing", assistant_id: 12 }],
     selectedWorkspaceId: 3,
+    projectRequestGenerationRef: { current: 0 },
     selectedProjectId: 5,
     selectedFolderId: 6,
     editingProjectId: null,
@@ -372,4 +373,94 @@ describe("useProjectManagement", () => {
       type: "error",
     });
   });
+
+  it("ignores an older project list after a newer workspace refresh resolves", async () => {
+    const staleProjects = [{ id: 1, name: "Old workspace project" }];
+    const currentProjects = [{ id: 8, name: "Current workspace project" }];
+    let resolveStale;
+    let resolveCurrent;
+    listProjects
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveStale = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveCurrent = resolve; }));
+    const props = createProps();
+    const { result } = renderHook(() => useProjectManagement(props));
+    let staleRequest;
+    let currentRequest;
+
+    act(() => {
+      staleRequest = result.current.refreshProjects(3);
+      currentRequest = result.current.refreshProjects(4);
+    });
+
+    await act(async () => {
+      resolveCurrent(currentProjects);
+      await currentRequest;
+    });
+    await act(async () => {
+      resolveStale(staleProjects);
+      await staleRequest;
+    });
+
+    expect(props.setProjects).toHaveBeenCalledOnce();
+    expect(props.setProjects).toHaveBeenCalledWith(currentProjects);
+    expect(props.setToast).not.toHaveBeenCalled();
+    expect(props.setSelectedProjectId).toHaveBeenCalledOnce();
+  });
+
+  it("ignores a stale project-list failure after a newer refresh succeeds", async () => {
+    const currentProjects = [{ id: 8, name: "Current workspace project" }];
+    let rejectStale;
+    listProjects
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectStale = reject; }))
+      .mockResolvedValueOnce(currentProjects);
+    const props = createProps();
+    const { result } = renderHook(() => useProjectManagement(props));
+    let staleRequest;
+    let currentRequest;
+
+    act(() => {
+      staleRequest = result.current.refreshProjects(3);
+      currentRequest = result.current.refreshProjects(4);
+    });
+
+    await act(async () => {
+      await currentRequest;
+    });
+    await act(async () => {
+      rejectStale(new Error("old workspace failed"));
+      await staleRequest;
+    });
+
+    expect(props.setProjects).toHaveBeenCalledOnce();
+    expect(props.setProjects).toHaveBeenCalledWith(currentProjects);
+    expect(props.setSelectedProjectId).toHaveBeenCalledOnce();
+    expect(props.setToast).not.toHaveBeenCalled();
+  });
+
+  it("ignores a pending project refresh after logout invalidates the request generation", async () => {
+    const staleProjects = [{ id: 1, name: "Previous session project" }];
+    let resolvePending;
+    const props = createProps();
+    listProjects.mockImplementationOnce(
+      () => new Promise((resolve) => { resolvePending = resolve; })
+    );
+    const { result } = renderHook(() => useProjectManagement(props));
+    let pendingRequest;
+
+    act(() => {
+      pendingRequest = result.current.refreshProjects(3);
+    });
+    act(() => {
+      props.projectRequestGenerationRef.current += 1;
+    });
+    await act(async () => {
+      resolvePending(staleProjects);
+      await pendingRequest;
+    });
+
+    expect(props.setProjects).not.toHaveBeenCalled();
+    expect(props.setSelectedProjectId).not.toHaveBeenCalled();
+    expect(props.setToast).not.toHaveBeenCalled();
+  });
+
 });
