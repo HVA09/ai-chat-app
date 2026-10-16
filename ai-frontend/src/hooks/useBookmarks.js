@@ -24,7 +24,9 @@ export default function useBookmarks({
   const refreshRequestRef = useRef(0);
   const sessionVersionRef = useRef(0);
   const conversationIdRef = useRef(conversationId);
-  conversationIdRef.current = conversationId;
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
 
   const refreshBookmarkedMessages = useCallback(async () => {
     const requestId = ++refreshRequestRef.current;
@@ -120,10 +122,8 @@ export default function useBookmarks({
   useEffect(() => {
     if (authed) {
       refreshBookmarkedMessages();
-    } else {
-      resetBookmarks();
     }
-  }, [authed, refreshBookmarkedMessages, resetBookmarks]);
+  }, [authed, refreshBookmarkedMessages]);
 
   return {
     bookmarkedMessages,
