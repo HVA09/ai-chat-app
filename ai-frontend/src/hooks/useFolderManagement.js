@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import {
   createFolder,
   deleteFolder,
@@ -8,6 +9,7 @@ import {
 import { getErrorMessage } from "../lib/errors";
 
 export default function useFolderManagement({
+  folderRequestGenerationRef,
   selectedWorkspaceId,
   selectedFolderId,
   selectedProjectId,
@@ -23,10 +25,22 @@ export default function useFolderManagement({
   setToast,
   t,
 }) {
+  const refreshRequestRef = useRef(0);
+
   const refreshFolders = async (workspaceId = selectedWorkspaceId) => {
+    const requestId = ++refreshRequestRef.current;
+    const resetGeneration = folderRequestGenerationRef?.current ?? 0;
+    const isCurrentRequest = () =>
+      requestId === refreshRequestRef.current &&
+      resetGeneration === (folderRequestGenerationRef?.current ?? 0);
+
     try {
-      setFolders(await listFolders(workspaceId));
+      const nextFolders = await listFolders(workspaceId);
+      if (!isCurrentRequest()) return;
+      setFolders(nextFolders);
     } catch (err) {
+      // Do not surface failures from a request superseded by a newer load or logout.
+      if (!isCurrentRequest()) return;
       setToast({
         message: getErrorMessage(err, t("app.foldersLoadError")),
         type: "error",
