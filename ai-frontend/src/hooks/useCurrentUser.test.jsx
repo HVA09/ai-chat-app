@@ -63,4 +63,72 @@ describe("useCurrentUser", () => {
     });
     expect(result.current.currentUser).toBeNull();
   });
+
+  it("ignores a pending response after logout resets the current user", async () => {
+    let resolveRequest;
+    getCurrentUser.mockImplementation(
+      () => new Promise((resolve) => {
+        resolveRequest = resolve;
+      })
+    );
+    const options = { setToast: vi.fn(), t: (key) => key };
+    const { result } = renderHook(() => useCurrentUser(options));
+    let pendingRequest;
+
+    act(() => {
+      pendingRequest = result.current.refreshCurrentUser();
+    });
+    act(() => {
+      result.current.resetCurrentUser();
+    });
+
+    await act(async () => {
+      resolveRequest({ id: 99, email: "previous-user@example.com" });
+      await pendingRequest;
+    });
+
+    expect(result.current.currentUser).toBeNull();
+    expect(options.setToast).not.toHaveBeenCalled();
+  });
+
+  it("keeps the latest user when overlapping refreshes resolve out of order", async () => {
+    let resolveOldRequest;
+    let resolveLatestRequest;
+    getCurrentUser
+      .mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveOldRequest = resolve;
+        })
+      )
+      .mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveLatestRequest = resolve;
+        })
+      );
+
+    const options = { setToast: vi.fn(), t: (key) => key };
+    const { result } = renderHook(() => useCurrentUser(options));
+    let oldRequest;
+    let latestRequest;
+
+    act(() => {
+      oldRequest = result.current.refreshCurrentUser();
+      latestRequest = result.current.refreshCurrentUser();
+    });
+
+    await act(async () => {
+      resolveLatestRequest({ id: 2, email: "current@example.com" });
+      await latestRequest;
+    });
+    await act(async () => {
+      resolveOldRequest({ id: 1, email: "stale@example.com" });
+      await oldRequest;
+    });
+
+    expect(result.current.currentUser).toEqual({
+      id: 2,
+      email: "current@example.com",
+    });
+    expect(options.setToast).not.toHaveBeenCalled();
+  });
 });
