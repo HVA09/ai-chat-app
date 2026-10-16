@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import {
   createWorkspace,
   listWorkspaces,
@@ -8,6 +9,7 @@ import { getErrorMessage } from "../lib/errors";
 export default function useWorkspaceManagement({
   workspaces,
   selectedWorkspaceId,
+  workspaceRequestGenerationRef,
   aiModels,
   showArchivedConversations,
   setWorkspaces,
@@ -23,11 +25,24 @@ export default function useWorkspaceManagement({
   setToast,
   t,
 }) {
+  const refreshRequestRef = useRef(0);
+
+  const beginWorkspaceRequest = () => {
+    const requestId = ++refreshRequestRef.current;
+    const resetGeneration = workspaceRequestGenerationRef?.current ?? 0;
+    return () =>
+      requestId === refreshRequestRef.current &&
+      resetGeneration === (workspaceRequestGenerationRef?.current ?? 0);
+  };
+
   const refreshWorkspaces = async () => {
+    const isCurrentRequest = beginWorkspaceRequest();
     let list;
     try {
       list = await listWorkspaces();
+      if (!isCurrentRequest()) return;
     } catch (err) {
+      if (!isCurrentRequest()) return;
       setToast({
         message: getErrorMessage(err, t("app.workspacesLoadError")),
         type: "error",
@@ -51,8 +66,11 @@ export default function useWorkspaceManagement({
     setSelectedFolderId(null);
     setSelectedProjectId(null);
     await refreshFolders(nextId);
+    if (!isCurrentRequest()) return;
     await refreshProjects(nextId);
+    if (!isCurrentRequest()) return;
     await refreshAssistants(nextId);
+    if (!isCurrentRequest()) return;
     await refreshConversations(showArchivedConversations, null, nextId, null);
   };
 
@@ -118,6 +136,7 @@ export default function useWorkspaceManagement({
   const handleSelectWorkspace = async (id) => {
     const workspaceId = Number(id);
     if (!workspaceId || workspaceId === selectedWorkspaceId) return;
+    const isCurrentRequest = beginWorkspaceRequest();
     const workspace = workspaces.find((item) => item.id === workspaceId);
     setSelectedWorkspaceId(workspaceId);
     setSelectedFolderId(null);
@@ -130,8 +149,11 @@ export default function useWorkspaceManagement({
     );
     startNewChat();
     await refreshFolders(workspaceId);
+    if (!isCurrentRequest()) return;
     await refreshProjects(workspaceId);
+    if (!isCurrentRequest()) return;
     await refreshAssistants(workspaceId);
+    if (!isCurrentRequest()) return;
     await refreshConversations(showArchivedConversations, null, workspaceId, null);
   };
 
