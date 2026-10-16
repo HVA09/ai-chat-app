@@ -68,13 +68,13 @@ describe("useCommandPaletteActions", () => {
   });
 
   it("includes the administration action only for administrators", () => {
-    const { result } = renderHook(() =>
-      useCommandPaletteActions(createProps({ currentUserRole: "admin" }))
-    );
+    const props = createProps({ currentUserRole: "admin" });
+    const { result } = renderHook(() => useCommandPaletteActions(props));
     const adminAction = result.current.find((action) => action.id === "admin");
 
     expect(adminAction).toBeDefined();
     adminAction.onSelect();
+    expect(props.setShowAdmin).toHaveBeenCalledWith(true);
     expect(result.current.length).toBe(11);
   });
 
