@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listAiModels } from "../lib/chatApi";
 import { getErrorMessage } from "../lib/errors";
@@ -14,10 +14,15 @@ export default function useAiModels({ setToast }) {
   const { t } = useTranslation();
   const [aiModels, setAiModels] = useState([]);
   const [selectedModel, setSelectedModel] = useState("");
+  const refreshRequestRef = useRef(0);
 
   const refreshAiModels = useCallback(async () => {
+    const requestId = ++refreshRequestRef.current;
     try {
       const data = await listAiModels();
+      // A newer request or logout/reset has made this response obsolete.
+      if (requestId !== refreshRequestRef.current) return;
+
       const models = Array.isArray(data) ? data : data.models || [];
       setAiModels(models);
 
@@ -32,6 +37,8 @@ export default function useAiModels({ setToast }) {
           : fallback
       );
     } catch (err) {
+      // Do not surface failures from a stale request after reset or refresh.
+      if (requestId !== refreshRequestRef.current) return;
       setToast({
         message: getErrorMessage(err, t("app.aiModelsLoadError")),
         type: "error",
@@ -40,6 +47,8 @@ export default function useAiModels({ setToast }) {
   }, [setToast, t]);
 
   const resetAiModels = useCallback(() => {
+    // Invalidate in-flight reads before clearing user-scoped UI state.
+    refreshRequestRef.current += 1;
     setAiModels([]);
     setSelectedModel("");
   }, []);
