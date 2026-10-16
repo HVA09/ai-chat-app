@@ -113,10 +113,8 @@ export default function useMemories({
   useEffect(() => {
     if (authed) {
       refreshMemories();
-    } else {
-      resetMemories();
     }
-  }, [authed, refreshMemories, resetMemories]);
+  }, [authed, refreshMemories]);
 
   return {
     memories,
