@@ -1,16 +1,35 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { createTag, deleteTag, listTags, setConversationTags, updateTag } from "../lib/tagsApi";
 import { getErrorMessage } from "../lib/errors";
 
 export default function useTagManagement({
+  tagRequestGenerationRef,
   t, selectedTagId, setSelectedTagId, setTags, setSelectedConversationIds,
   startNewChat, refreshConversations, showArchivedConversations, selectedFolderId,
   selectedWorkspaceId, selectedProjectId, conversationSearch, showTrashConversations, setToast,
 }) {
+  const refreshRequestRef = useRef(0);
+
   const refreshTags = useCallback(async () => {
-    try { setTags(await listTags()); }
-    catch (err) { setToast({ message: getErrorMessage(err, t("app.tagsLoadError")), type: "error" }); }
-  }, [setTags, setToast, t]);
+    const requestId = ++refreshRequestRef.current;
+    const resetGeneration = tagRequestGenerationRef?.current ?? 0;
+    const isCurrentRequest = () =>
+      requestId === refreshRequestRef.current &&
+      resetGeneration === (tagRequestGenerationRef?.current ?? 0);
+
+    try {
+      const nextTags = await listTags();
+      if (!isCurrentRequest()) return;
+      setTags(nextTags);
+    } catch (err) {
+      // A stale failure should not surface after logout or a newer refresh.
+      if (!isCurrentRequest()) return;
+      setToast({
+        message: getErrorMessage(err, t("app.tagsLoadError")),
+        type: "error",
+      });
+    }
+  }, [setTags, setToast, t, tagRequestGenerationRef]);
 
   const handleCreateTag = useCallback(async () => {
     const name = window.prompt(t("sidebar.tagCreatePrompt"));
