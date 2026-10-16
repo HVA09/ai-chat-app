@@ -133,6 +133,7 @@ export default function App() {
   const tagRequestGenerationRef = useRef(0);
   const [selectedTagId, setSelectedTagId] = useState(null);
   const [workspaces, setWorkspaces] = useState([]);
+  const workspaceRequestGenerationRef = useRef(0);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(null);
   const [assistants, setAssistants] = useState([]);
   const [selectedAssistantId, setSelectedAssistantId] = useState(null);
@@ -241,6 +242,7 @@ export default function App() {
     folderRequestGenerationRef.current += 1;
     projectRequestGenerationRef.current += 1;
     tagRequestGenerationRef.current += 1;
+    workspaceRequestGenerationRef.current += 1;
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
     setAuthed(false);
     resetConversations();
@@ -695,6 +697,7 @@ export default function App() {
   } = useWorkspaceManagement({
     workspaces,
     selectedWorkspaceId,
+    workspaceRequestGenerationRef,
     aiModels,
     showArchivedConversations,
     setWorkspaces,
