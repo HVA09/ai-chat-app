@@ -24,6 +24,7 @@ vi.mock("../lib/assistantsApi", () => ({
 function createProps(overrides = {}) {
   return {
     selectedWorkspaceId: 3,
+    assistantRequestGenerationRef: { current: 0 },
     selectedAssistantId: null,
     editingAssistantId: null,
     setAssistants: vi.fn(),
@@ -193,5 +194,107 @@ describe("useAssistantManagement", () => {
     expect(props.setSelectedAssistantId).toHaveBeenCalledWith(null);
     expect(props.startNewChat).toHaveBeenCalledTimes(1);
     vi.restoreAllMocks();
+  });
+
+  it("ignores an older shared-assistant response after a newer workspace refresh", async () => {
+    let resolveOldShared;
+    let resolveCurrentShared;
+    listWorkspaceSharedAssistants
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOldShared = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveCurrentShared = resolve; }));
+    const props = createProps();
+    const { result } = renderHook(() => useAssistantManagement(props));
+    let oldRequest;
+    let currentRequest;
+
+    act(() => {
+      oldRequest = result.current.refreshAssistants(3);
+      currentRequest = result.current.refreshAssistants(4);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(listWorkspaceSharedAssistants).toHaveBeenNthCalledWith(1, 3);
+    expect(listWorkspaceSharedAssistants).toHaveBeenNthCalledWith(2, 4);
+    await act(async () => {
+      resolveCurrentShared([{ id: 4, name: "Current shared", workspace_id: 4, can_edit: false }]);
+      await currentRequest;
+    });
+    await act(async () => {
+      resolveOldShared([{ id: 3, name: "Stale shared", workspace_id: 3, can_edit: false }]);
+      await oldRequest;
+    });
+
+    expect(props.setAssistants).toHaveBeenCalledTimes(1);
+    expect(props.setAssistants).toHaveBeenCalledWith([
+      { id: 1, name: "Owned", is_shared: false, can_edit: true },
+      { id: 4, name: "Current shared", workspace_id: 4, can_edit: false },
+    ]);
+    expect(props.setToast).not.toHaveBeenCalled();
+  });
+
+  it("ignores a stale shared-assistant failure after a newer refresh succeeds", async () => {
+    let rejectOldShared;
+    listWorkspaceSharedAssistants
+      .mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectOldShared = reject; }))
+      .mockResolvedValueOnce([{ id: 4, name: "Current shared", workspace_id: 4, can_edit: false }]);
+    const props = createProps();
+    const { result } = renderHook(() => useAssistantManagement(props));
+    let oldRequest;
+    let currentRequest;
+
+    act(() => {
+      oldRequest = result.current.refreshAssistants(3);
+      currentRequest = result.current.refreshAssistants(4);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await currentRequest;
+    });
+    await act(async () => {
+      rejectOldShared(new Error("old workspace failed"));
+      await oldRequest;
+    });
+
+    expect(props.setAssistants).toHaveBeenCalledTimes(1);
+    expect(props.setAssistants).toHaveBeenCalledWith([
+      { id: 1, name: "Owned", is_shared: false, can_edit: true },
+      { id: 4, name: "Current shared", workspace_id: 4, can_edit: false },
+    ]);
+    expect(props.setToast).not.toHaveBeenCalled();
+  });
+
+  it("ignores a pending assistant refresh after logout invalidates the request generation", async () => {
+    let resolvePendingShared;
+    listWorkspaceSharedAssistants.mockImplementationOnce(
+      () => new Promise((resolve) => { resolvePendingShared = resolve; })
+    );
+    const props = createProps();
+    const { result } = renderHook(() => useAssistantManagement(props));
+    let pendingRequest;
+
+    act(() => {
+      pendingRequest = result.current.refreshAssistants(3);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => {
+      props.assistantRequestGenerationRef.current += 1;
+    });
+    await act(async () => {
+      resolvePendingShared([{ id: 3, name: "Previous session shared", workspace_id: 3, can_edit: false }]);
+      await pendingRequest;
+    });
+
+    expect(props.setAssistants).not.toHaveBeenCalled();
+    expect(props.setSelectedAssistantId).not.toHaveBeenCalled();
+    expect(props.setToast).not.toHaveBeenCalled();
   });
 });
