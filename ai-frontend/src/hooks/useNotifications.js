@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   listNotifications,
@@ -15,11 +15,17 @@ export default function useNotifications({
 }) {
   const { t } = useTranslation();
   const [notifications, setNotifications] = useState([]);
+  const refreshRequestRef = useRef(0);
 
   const refreshNotifications = useCallback(async () => {
+    const requestId = ++refreshRequestRef.current;
     try {
-      setNotifications(await listNotifications());
+      const nextNotifications = await listNotifications();
+      if (requestId !== refreshRequestRef.current) return;
+      setNotifications(nextNotifications);
     } catch (err) {
+      // A stale failure must not show an error for a newer refresh or session.
+      if (requestId !== refreshRequestRef.current) return;
       setToast({
         message: getErrorMessage(err, t("app.notificationsLoadError")),
         type: "error",
@@ -108,6 +114,8 @@ export default function useNotifications({
   ]);
 
   const resetNotifications = useCallback(() => {
+    // Invalidate in-flight loads before clearing user-scoped notification state.
+    refreshRequestRef.current += 1;
     setNotifications([]);
   }, []);
 

@@ -87,6 +87,98 @@ describe("useNotifications", () => {
     expect(result.current.notifications).toEqual(existing);
   });
 
+  it("does not restore notifications when a pending refresh resolves after reset", async () => {
+    const stale = [{ id: 8, title: "Stale notification", is_read: false }];
+    let resolvePending;
+    listNotifications.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolvePending = resolve;
+      })
+    );
+    const { result, setToast } = setupHook();
+
+    let pendingRequest;
+    act(() => {
+      pendingRequest = result.current.refreshNotifications();
+    });
+    act(() => {
+      result.current.resetNotifications();
+    });
+    expect(result.current.notifications).toEqual([]);
+
+    await act(async () => {
+      resolvePending(stale);
+      await pendingRequest;
+    });
+
+    expect(result.current.notifications).toEqual([]);
+    expect(setToast).not.toHaveBeenCalled();
+  });
+
+  it("keeps the newest result when overlapping notification refreshes resolve out of order", async () => {
+    const stale = [{ id: 8, title: "Older response", is_read: false }];
+    const current = [{ id: 9, title: "Newest response", is_read: false }];
+    let resolveOlder;
+    let resolveCurrent;
+    listNotifications
+      .mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveOlder = resolve;
+        })
+      )
+      .mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveCurrent = resolve;
+        })
+      );
+    const { result, setToast } = setupHook();
+
+    let olderRequest;
+    let currentRequest;
+    act(() => {
+      olderRequest = result.current.refreshNotifications();
+      currentRequest = result.current.refreshNotifications();
+    });
+
+    await act(async () => {
+      resolveCurrent(current);
+      await currentRequest;
+    });
+    await act(async () => {
+      resolveOlder(stale);
+      await olderRequest;
+    });
+
+    expect(result.current.notifications).toEqual(current);
+    expect(setToast).not.toHaveBeenCalled();
+  });
+
+  it("ignores a stale load failure after reset instead of showing an error toast", async () => {
+    let rejectPending;
+    listNotifications.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => {
+        rejectPending = reject;
+      })
+    );
+    const { result, setToast } = setupHook();
+
+    let pendingRequest;
+    act(() => {
+      pendingRequest = result.current.refreshNotifications();
+    });
+    act(() => {
+      result.current.resetNotifications();
+    });
+
+    await act(async () => {
+      rejectPending(new Error("previous session failed"));
+      await pendingRequest;
+    });
+
+    expect(result.current.notifications).toEqual([]);
+    expect(setToast).not.toHaveBeenCalled();
+  });
+
   it("shows the API error and preserves notification state when marking one as read fails", async () => {
     const existing = [
       { id: 42, title: "Unread", is_read: false },
