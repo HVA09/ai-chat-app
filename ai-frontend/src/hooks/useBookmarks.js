@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listBookmarkedMessages, toggleMessageBookmark } from "../lib/bookmarksApi";
 import { getErrorMessage } from "../lib/errors";
@@ -21,11 +21,29 @@ export default function useBookmarks({
 }) {
   const { t } = useTranslation();
   const [bookmarkedMessages, setBookmarkedMessages] = useState([]);
+  const sessionEpochRef = useRef(0);
+  const refreshRequestRef = useRef(0);
 
   const refreshBookmarkedMessages = useCallback(async () => {
+    const sessionEpoch = sessionEpochRef.current;
+    const requestId = ++refreshRequestRef.current;
     try {
-      setBookmarkedMessages(await listBookmarkedMessages());
+      const items = await listBookmarkedMessages();
+      if (
+        sessionEpoch !== sessionEpochRef.current ||
+        requestId !== refreshRequestRef.current
+      ) {
+        return;
+      }
+      setBookmarkedMessages(items);
     } catch (err) {
+      // Ignore errors from an old session or a refresh superseded by a newer one.
+      if (
+        sessionEpoch !== sessionEpochRef.current ||
+        requestId !== refreshRequestRef.current
+      ) {
+        return;
+      }
       setToast({
         message: getErrorMessage(err, t("app.bookmarksLoadError")),
         type: "error",
@@ -36,9 +54,12 @@ export default function useBookmarks({
   const handleToggleMessageBookmark = useCallback(
     async (index) => {
       if (!conversationId || loading || readOnlyConversation) return;
+      const sessionEpoch = sessionEpochRef.current;
 
       try {
         const result = await toggleMessageBookmark(conversationId, index + 1);
+        if (sessionEpoch !== sessionEpochRef.current) return;
+
         setMessages((prev) =>
           prev.map((message, messageIndex) =>
             messageIndex === index
@@ -48,6 +69,7 @@ export default function useBookmarks({
         );
         await refreshBookmarkedMessages();
       } catch (err) {
+        if (sessionEpoch !== sessionEpochRef.current) return;
         setToast({
           message: err?.response?.data?.detail || t("app.bookmarkError"),
           type: "error",
@@ -73,6 +95,9 @@ export default function useBookmarks({
   );
 
   const resetBookmarks = useCallback(() => {
+    // Invalidate pending reads and mutations before clearing account state.
+    sessionEpochRef.current += 1;
+    refreshRequestRef.current += 1;
     setBookmarkedMessages([]);
   }, []);
 
