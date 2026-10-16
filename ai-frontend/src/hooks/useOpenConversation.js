@@ -61,8 +61,11 @@ export default function useOpenConversation({
           : 0;
 
         try {
-          setConversationBranches(await listConversationBranches(data.id));
+          const branches = await listConversationBranches(data.id);
+          if (requestId !== conversationOpenRequestRef.current) return;
+          setConversationBranches(branches);
         } catch {
+          if (requestId !== conversationOpenRequestRef.current) return;
           setConversationBranches([]);
         }
 
@@ -80,8 +83,11 @@ export default function useOpenConversation({
         );
 
         try {
-          setWorkspaceShare(await getConversationWorkspaceShare(data.id));
+          const workspaceShare = await getConversationWorkspaceShare(data.id);
+          if (requestId !== conversationOpenRequestRef.current) return;
+          setWorkspaceShare(workspaceShare);
         } catch {
+          if (requestId !== conversationOpenRequestRef.current) return;
           setWorkspaceShare(null);
         }
 
