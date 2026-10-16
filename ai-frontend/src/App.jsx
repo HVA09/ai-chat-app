@@ -135,6 +135,7 @@ export default function App() {
   const [workspaces, setWorkspaces] = useState([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(null);
   const [assistants, setAssistants] = useState([]);
+  const assistantRequestGenerationRef = useRef(0);
   const [selectedAssistantId, setSelectedAssistantId] = useState(null);
   const [showAssistantEditor, setShowAssistantEditor] = useState(false);
   const [editingAssistantId, setEditingAssistantId] = useState(null);
@@ -240,6 +241,7 @@ export default function App() {
     // Invalidate pending user-scoped list loads before waiting for logout.
     folderRequestGenerationRef.current += 1;
     projectRequestGenerationRef.current += 1;
+    assistantRequestGenerationRef.current += 1;
     tagRequestGenerationRef.current += 1;
     try { await api.post("/auth/logout"); } catch { /* session may already be gone */ }
     setAuthed(false);
@@ -483,6 +485,7 @@ export default function App() {
     handleSelectAssistant,
   } = useAssistantManagement({
     selectedWorkspaceId,
+    assistantRequestGenerationRef,
     selectedAssistantId,
     editingAssistantId,
     setAssistants,

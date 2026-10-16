@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import {
   listAssistants,
   listWorkspaceSharedAssistants,
@@ -11,6 +12,7 @@ import { getErrorMessage } from "../lib/errors";
 
 export default function useAssistantManagement({
   selectedWorkspaceId,
+  assistantRequestGenerationRef,
   selectedAssistantId,
   editingAssistantId,
   setAssistants,
@@ -21,18 +23,28 @@ export default function useAssistantManagement({
   startNewChat,
   t,
 }) {
+  const refreshRequestRef = useRef(0);
+
   const refreshAssistants = async (workspaceId = selectedWorkspaceId) => {
+    const requestId = ++refreshRequestRef.current;
+    const resetGeneration = assistantRequestGenerationRef?.current ?? 0;
+    const isCurrentRequest = () =>
+      requestId === refreshRequestRef.current &&
+      resetGeneration === (assistantRequestGenerationRef?.current ?? 0);
+
     try {
       const owned = (await listAssistants()).map((assistant) => ({
         ...assistant,
         is_shared: false,
         can_edit: true,
       }));
+      if (!isCurrentRequest()) return;
 
       let shared = [];
       if (workspaceId !== null && workspaceId !== undefined) {
         shared = await listWorkspaceSharedAssistants(workspaceId);
       }
+      if (!isCurrentRequest()) return;
 
       const ownedById = new Map(owned.map((assistant) => [assistant.id, assistant]));
       for (const item of shared) {
@@ -60,6 +72,7 @@ export default function useAssistantManagement({
         setSelectedAssistantId(null);
       }
     } catch (err) {
+      if (!isCurrentRequest()) return;
       setToast({
         message: getErrorMessage(err, t("app.assistantLoadError")),
         type: "error",
