@@ -185,4 +185,80 @@ describe("useFolderManagement", () => {
       type: "error",
     });
   });
+
+  it("only applies the newest folder refresh when requests resolve out of order", async () => {
+    const olderFolders = [{ id: 1, name: "Older workspace folder" }];
+    const newerFolders = [{ id: 2, name: "Current workspace folder" }];
+    let resolveOlder;
+    let resolveNewer;
+    listFolders
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOlder = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveNewer = resolve; }));
+    const props = createProps({ folderRequestGenerationRef: { current: 0 } });
+    const { result } = renderHook(() => useFolderManagement(props));
+
+    let olderRequest;
+    let newerRequest;
+    act(() => { olderRequest = result.current.refreshFolders(3); });
+    act(() => { newerRequest = result.current.refreshFolders(4); });
+
+    await act(async () => {
+      resolveNewer(newerFolders);
+      await newerRequest;
+    });
+    await act(async () => {
+      resolveOlder(olderFolders);
+      await olderRequest;
+    });
+
+    expect(props.setFolders).toHaveBeenCalledTimes(1);
+    expect(props.setFolders).toHaveBeenCalledWith(newerFolders);
+    expect(props.setToast).not.toHaveBeenCalled();
+  });
+
+  it("ignores a pending folder result after logout invalidates the request generation", async () => {
+    const previousSessionFolders = [{ id: 7, name: "Previous session folder" }];
+    const folderRequestGenerationRef = { current: 0 };
+    let resolvePending;
+    listFolders.mockImplementationOnce(
+      () => new Promise((resolve) => { resolvePending = resolve; })
+    );
+    const props = createProps({ folderRequestGenerationRef });
+    const { result } = renderHook(() => useFolderManagement(props));
+
+    let pendingRequest;
+    act(() => { pendingRequest = result.current.refreshFolders(3); });
+    folderRequestGenerationRef.current += 1;
+    props.setFolders([]);
+
+    await act(async () => {
+      resolvePending(previousSessionFolders);
+      await pendingRequest;
+    });
+
+    expect(props.setFolders).toHaveBeenCalledTimes(1);
+    expect(props.setFolders).toHaveBeenCalledWith([]);
+    expect(props.setToast).not.toHaveBeenCalled();
+  });
+
+  it("does not show a stale load error after logout invalidates the request generation", async () => {
+    const folderRequestGenerationRef = { current: 0 };
+    let rejectPending;
+    listFolders.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => { rejectPending = reject; })
+    );
+    const props = createProps({ folderRequestGenerationRef });
+    const { result } = renderHook(() => useFolderManagement(props));
+
+    let pendingRequest;
+    act(() => { pendingRequest = result.current.refreshFolders(3); });
+    folderRequestGenerationRef.current += 1;
+
+    await act(async () => {
+      rejectPending(new Error("previous session request failed"));
+      await pendingRequest;
+    });
+
+    expect(props.setToast).not.toHaveBeenCalled();
+  });
 });
