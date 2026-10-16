@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listBookmarkedMessages, toggleMessageBookmark } from "../lib/bookmarksApi";
 import { getErrorMessage } from "../lib/errors";
@@ -21,11 +21,33 @@ export default function useBookmarks({
 }) {
   const { t } = useTranslation();
   const [bookmarkedMessages, setBookmarkedMessages] = useState([]);
+  const refreshRequestRef = useRef(0);
+  const sessionVersionRef = useRef(0);
+  const conversationIdRef = useRef(conversationId);
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
 
   const refreshBookmarkedMessages = useCallback(async () => {
+    const requestId = ++refreshRequestRef.current;
+    const sessionVersion = sessionVersionRef.current;
+
     try {
-      setBookmarkedMessages(await listBookmarkedMessages());
+      const nextBookmarks = await listBookmarkedMessages();
+      if (
+        sessionVersion !== sessionVersionRef.current ||
+        requestId !== refreshRequestRef.current
+      ) {
+        return;
+      }
+      setBookmarkedMessages(nextBookmarks);
     } catch (err) {
+      if (
+        sessionVersion !== sessionVersionRef.current ||
+        requestId !== refreshRequestRef.current
+      ) {
+        return;
+      }
       setToast({
         message: getErrorMessage(err, t("app.bookmarksLoadError")),
         type: "error",
@@ -35,21 +57,39 @@ export default function useBookmarks({
 
   const handleToggleMessageBookmark = useCallback(
     async (index) => {
-      if (!conversationId || loading || readOnlyConversation) return;
+      const requestedConversationId = conversationId;
+      const sessionVersion = sessionVersionRef.current;
+
+      if (!requestedConversationId || loading || readOnlyConversation) return;
 
       try {
-        const result = await toggleMessageBookmark(conversationId, index + 1);
-        setMessages((prev) =>
-          prev.map((message, messageIndex) =>
-            messageIndex === index
-              ? { ...message, isBookmarked: result.bookmarked }
-              : message
-          )
+        const result = await toggleMessageBookmark(
+          requestedConversationId,
+          index + 1
         );
+        if (sessionVersion !== sessionVersionRef.current) return;
+
+        // A slow request for an old conversation must not mutate the new
+        // conversation's messages by index.
+        if (conversationIdRef.current === requestedConversationId) {
+          setMessages((prev) =>
+            prev.map((message, messageIndex) =>
+              messageIndex === index
+                ? { ...message, isBookmarked: result.bookmarked }
+                : message
+            )
+          );
+        }
         await refreshBookmarkedMessages();
       } catch (err) {
+        if (
+          sessionVersion !== sessionVersionRef.current ||
+          conversationIdRef.current !== requestedConversationId
+        ) {
+          return;
+        }
         setToast({
-          message: err?.response?.data?.detail || t("app.bookmarkError"),
+          message: getErrorMessage(err, t("app.bookmarkError")),
           type: "error",
         });
       }
@@ -73,6 +113,9 @@ export default function useBookmarks({
   );
 
   const resetBookmarks = useCallback(() => {
+    // Invalidate pending reads and writes before clearing user-scoped data.
+    sessionVersionRef.current += 1;
+    refreshRequestRef.current += 1;
     setBookmarkedMessages([]);
   }, []);
 
