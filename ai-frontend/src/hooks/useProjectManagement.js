@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import {
   createProject,
   deleteProject,
@@ -12,6 +13,7 @@ import { getErrorMessage } from "../lib/errors";
 export default function useProjectManagement({
   projects,
   selectedWorkspaceId,
+  projectRequestGenerationRef,
   selectedProjectId,
   selectedFolderId,
   editingProjectId,
@@ -28,8 +30,17 @@ export default function useProjectManagement({
   setToast,
   t,
 }) {
+  const refreshRequestRef = useRef(0);
+
   const refreshProjects = async (workspaceId = selectedWorkspaceId) => {
+    const requestId = ++refreshRequestRef.current;
+    const resetGeneration = projectRequestGenerationRef?.current ?? 0;
+    const isCurrentRequest = () =>
+      requestId === refreshRequestRef.current &&
+      resetGeneration === (projectRequestGenerationRef?.current ?? 0);
+
     if (workspaceId === null || workspaceId === undefined) {
+      if (!isCurrentRequest()) return;
       setProjects([]);
       setSelectedProjectId(null);
       return;
@@ -37,11 +48,15 @@ export default function useProjectManagement({
 
     try {
       const list = await listProjects(workspaceId);
+      // Workspace switches and logout invalidate requests started for older context.
+      if (!isCurrentRequest()) return;
       setProjects(list);
       setSelectedProjectId((current) =>
         current && list.some((project) => project.id === current) ? current : null
       );
     } catch (error) {
+      // An outdated failure must not clear the current workspace's projects or toast.
+      if (!isCurrentRequest()) return;
       setProjects([]);
       setSelectedProjectId(null);
       setToast({
