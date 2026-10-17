@@ -283,3 +283,80 @@ def test_project_file_cannot_attach_to_different_project_conversation(client, db
     )
     assert attached.status_code == 400
 
+
+
+
+def test_object_storage_upload_download_delete_survives_local_file_loss(
+    client, db_session, tmp_path, monkeypatch
+):
+    """Exercise the file API against a remote-object-store stand-in."""
+    import io
+
+    from app.models.file_attachment import FileAttachment
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    for name, value in (
+        ("S3_BUCKET", "test-bucket"),
+        ("S3_ENDPOINT_URL", "https://objects.example.test"),
+        ("S3_REGION", "us-east-1"),
+        ("S3_ACCESS_KEY_ID", "test-access-key"),
+        ("S3_SECRET_ACCESS_KEY", "test-secret-key"),
+    ):
+        monkeypatch.setattr(app_settings, name, value)
+
+    objects = {}
+    operations = []
+
+    def fake_put_file(path, object_key, content_type):
+        objects[object_key] = path.read_bytes()
+        operations.append(("put", object_key, content_type))
+
+    def fake_open_file(object_key, fallback_path):
+        operations.append(("get", object_key))
+        try:
+            return io.BytesIO(objects[object_key])
+        except KeyError as exc:
+            raise FileNotFoundError(object_key) from exc
+
+    def fake_delete_file(object_key, fallback_path):
+        operations.append(("delete", object_key))
+        objects.pop(object_key, None)
+        fallback_path.unlink(missing_ok=True)
+
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(files_router, "open_file", fake_open_file)
+    monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda db, file: 0)
+
+    token = _register_and_login(client, "remote-storage-roundtrip@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    original_bytes = b"Durable object storage content.\nSecond line."
+
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("durable.txt", original_bytes, "text/plain")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+    attachment = db_session.get(FileAttachment, file_id)
+    assert attachment is not None
+    object_key = attachment.object_key
+    assert object_key in objects
+    assert objects[object_key] == original_bytes
+    assert attachment.extracted_text == original_bytes.decode("utf-8")
+
+    # Simulate a Render redeploy: the ephemeral local copy is no longer available.
+    local_path = tmp_path / str(attachment.user_id) / attachment.stored_filename
+    local_path.unlink()
+
+    downloaded = client.get(f"/files/{file_id}", headers=headers)
+    assert downloaded.status_code == 200
+    assert downloaded.content == original_bytes
+
+    deleted = client.delete(f"/files/{file_id}", headers=headers)
+    assert deleted.status_code == 204
+    assert object_key not in objects
+    assert client.get(f"/files/{file_id}", headers=headers).status_code == 404
+    assert [operation[0] for operation in operations] == ["put", "get", "delete"]
