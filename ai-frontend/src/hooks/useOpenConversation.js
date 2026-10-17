@@ -111,6 +111,7 @@ export default function useOpenConversation({
     },
     [
       aiModels,
+      conversationOpenRequestRef,
       autoSummaryLastMessageCountRef,
       messageCountRef,
       resetChatAttachments,
