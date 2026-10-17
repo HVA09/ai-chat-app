@@ -8,6 +8,7 @@ describe("useStartNewChat", () => {
     const props = {
       t: "ar",
       messageCountRef: { current: 9 },
+      conversationOpenRequestRef: { current: 0 },
       resetChatAttachments: vi.fn(() => calls.push("resetChatAttachments")),
       setToolActivity: vi.fn((value) => calls.push(["tool", value])),
       setShowShareManager: vi.fn((value) => calls.push(["shareManager", value])),
@@ -30,6 +31,7 @@ describe("useStartNewChat", () => {
     result.current.startNewChat();
 
     expect(props.messageCountRef.current).toBe(1);
+    expect(props.conversationOpenRequestRef.current).toBe(1);
     expect(props.getWelcomeMessage).toHaveBeenCalledWith("ar");
     expect(props.setConversationId).toHaveBeenCalledWith(null);
     expect(props.setConversationBranches).toHaveBeenCalledWith([]);
