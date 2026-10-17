@@ -279,6 +279,33 @@ describe("ChatComposer attachments", () => {
     expect(onAttachFiles).toHaveBeenCalledWith([file]);
   });
 
+  it("يتيح إعادة اختيار الملف نفسه بعد الاختيار الأول", async () => {
+    const user = userEvent.setup();
+    const onAttachFiles = vi.fn();
+    const file = new File(["hello"], "retry.txt", { type: "text/plain" });
+
+    render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onAttachFiles={onAttachFiles}
+        attachments={[]}
+      />
+    );
+
+    const input = screen.getByLabelText("إرفاق ملفات");
+    await user.upload(input, file);
+    expect(onAttachFiles).toHaveBeenCalledTimes(1);
+    expect(onAttachFiles).toHaveBeenLastCalledWith([file]);
+
+    // The file input must be cleared so the same file can be selected again after a failed upload.
+    await user.upload(input, file);
+    expect(onAttachFiles).toHaveBeenCalledTimes(2);
+    expect(onAttachFiles).toHaveBeenLastCalledWith([file]);
+  });
+
   it("يستطيع إزالة مرفق موجود", async () => {
     const user = userEvent.setup();
     const onRemoveAttachment = vi.fn();
