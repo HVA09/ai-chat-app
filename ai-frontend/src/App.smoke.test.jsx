@@ -9,6 +9,31 @@ vi.mock("./lib/api", async () => {
   };
 });
 
+/*
+ * Keep the authenticated-shell smoke test independent from real API failures.
+ * These list requests can finish after the jsdom environment is torn down,
+ * producing late React updates that fail with "window is not defined".
+ */
+vi.mock("./lib/usersApi", async () => {
+  const actual = await vi.importActual("./lib/usersApi");
+  return { ...actual, getCurrentUser: vi.fn().mockResolvedValue(null) };
+});
+
+vi.mock("./lib/bookmarksApi", async () => {
+  const actual = await vi.importActual("./lib/bookmarksApi");
+  return { ...actual, listBookmarkedMessages: vi.fn().mockResolvedValue([]) };
+});
+
+vi.mock("./lib/tagsApi", async () => {
+  const actual = await vi.importActual("./lib/tagsApi");
+  return { ...actual, listTags: vi.fn().mockResolvedValue([]) };
+});
+
+vi.mock("./lib/savedPromptsApi", async () => {
+  const actual = await vi.importActual("./lib/savedPromptsApi");
+  return { ...actual, listSavedPrompts: vi.fn().mockResolvedValue([]) };
+});
+
 vi.mock("./hooks/useNotifications", () => ({
   default: () => ({
     notifications: [],
