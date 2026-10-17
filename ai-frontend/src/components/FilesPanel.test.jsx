@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import FilesPanel from "./FilesPanel";
@@ -219,4 +219,128 @@ describe("FilesPanel project knowledge", () => {
       );
     });
   });
+
+  it("ignores stale file-list responses after the selected conversation changes", async () => {
+    listFiles.mockReset();
+    let resolveOlder;
+    let resolveCurrent;
+    listFiles
+      .mockImplementationOnce(
+        () => new Promise((resolve) => { resolveOlder = resolve; })
+      )
+      .mockImplementationOnce(
+        () => new Promise((resolve) => { resolveCurrent = resolve; })
+      );
+
+    const oldFile = {
+      id: 71,
+      original_filename: "old-conversation.txt",
+      content_type: "text/plain",
+      size_bytes: 4,
+      created_at: "2026-10-17T10:00:00Z",
+      workspace_id: null,
+      project_id: null,
+      is_attached: false,
+      is_ai_indexed: false,
+      can_delete: false,
+    };
+    const currentFile = {
+      ...oldFile,
+      id: 72,
+      original_filename: "current-conversation.txt",
+    };
+    const { rerender } = render(
+      <FilesPanel onClose={vi.fn()} conversationId={11} />
+    );
+
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+    rerender(<FilesPanel onClose={vi.fn()} conversationId={22} />);
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      resolveCurrent([currentFile]);
+    });
+    expect(await screen.findByText("current-conversation.txt")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveOlder([oldFile]);
+    });
+    expect(screen.getByText("current-conversation.txt")).toBeInTheDocument();
+    expect(screen.queryByText("old-conversation.txt")).not.toBeInTheDocument();
+  });
+
+  it("does not show an error from an obsolete file-list request", async () => {
+    listFiles.mockReset();
+    let rejectOlder;
+    let resolveCurrent;
+    listFiles
+      .mockImplementationOnce(
+        () => new Promise((_resolve, reject) => { rejectOlder = reject; })
+      )
+      .mockImplementationOnce(
+        () => new Promise((resolve) => { resolveCurrent = resolve; })
+      );
+
+    const setDispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const { rerender } = render(
+      <FilesPanel onClose={vi.fn()} conversationId={11} />
+    );
+
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+    rerender(<FilesPanel onClose={vi.fn()} conversationId={22} />);
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      resolveCurrent([]);
+    });
+    await act(async () => {
+      rejectOlder({ response: { data: { detail: "Stale request denied" } } });
+    });
+
+    expect(
+      setDispatchSpy.mock.calls.some(
+        ([event]) =>
+          event.type === "app:toast" &&
+          event.detail?.message === "Stale request denied"
+      )
+    ).toBe(false);
+    setDispatchSpy.mockRestore();
+  });
+
+  it("does not refresh the old conversation when an upload finishes after switching conversations", async () => {
+    listFiles.mockReset().mockResolvedValue([]);
+    uploadFile.mockReset();
+    let resolveUpload;
+    uploadFile.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveUpload = resolve; })
+    );
+
+    const user = userEvent.setup();
+    const { container, rerender } = render(
+      <FilesPanel onClose={vi.fn()} conversationId={11} />
+    );
+
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+    const input = container.querySelector('input[type="file"]');
+    const file = new File(["old scope"], "upload.txt", { type: "text/plain" });
+    await user.upload(input, file);
+    await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
+
+    rerender(<FilesPanel onClose={vi.fn()} conversationId={22} />);
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      resolveUpload({
+        id: 99,
+        original_filename: "upload.txt",
+        content_type: "text/plain",
+        size_bytes: 9,
+      });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.getByText("100%")).toBeInTheDocument());
+    expect(listFiles).toHaveBeenCalledTimes(2);
+  });
+
 });
