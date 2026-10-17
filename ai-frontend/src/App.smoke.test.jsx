@@ -1,51 +1,19 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./lib/api", async () => {
-  const actual = await vi.importActual("./lib/api");
+vi.mock("./lib/api", () => {
+  const request = () => vi.fn().mockResolvedValue({ data: [] });
   return {
-    ...actual,
+    default: {
+      get: request(),
+      post: request(),
+      put: request(),
+      patch: request(),
+      delete: request(),
+      request: request(),
+    },
     restoreSession: vi.fn().mockRejectedValue(new Error("No active test session")),
   };
-});
-
-/*
- * Keep the authenticated-shell smoke test independent from real API failures.
- * These list requests can finish after the jsdom environment is torn down,
- * producing late React updates that fail with "window is not defined".
- */
-vi.mock("./lib/usersApi", async () => {
-  const actual = await vi.importActual("./lib/usersApi");
-  return { ...actual, getCurrentUser: vi.fn().mockResolvedValue(null) };
-});
-
-vi.mock("./lib/bookmarksApi", async () => {
-  const actual = await vi.importActual("./lib/bookmarksApi");
-  return { ...actual, listBookmarkedMessages: vi.fn().mockResolvedValue([]) };
-});
-
-vi.mock("./lib/tagsApi", async () => {
-  const actual = await vi.importActual("./lib/tagsApi");
-  return { ...actual, listTags: vi.fn().mockResolvedValue([]) };
-});
-
-vi.mock("./lib/savedPromptsApi", async () => {
-  const actual = await vi.importActual("./lib/savedPromptsApi");
-  return { ...actual, listSavedPrompts: vi.fn().mockResolvedValue([]) };
-});
-
-vi.mock("./lib/assistantsApi", async () => {
-  const actual = await vi.importActual("./lib/assistantsApi");
-  return {
-    ...actual,
-    listAssistants: vi.fn().mockResolvedValue([]),
-    listWorkspaceSharedAssistants: vi.fn().mockResolvedValue([]),
-  };
-});
-
-vi.mock("./lib/memoriesApi", async () => {
-  const actual = await vi.importActual("./lib/memoriesApi");
-  return { ...actual, listMemories: vi.fn().mockResolvedValue([]) };
 });
 
 vi.mock("./hooks/useNotifications", () => ({
