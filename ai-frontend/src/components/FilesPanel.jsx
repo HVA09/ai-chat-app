@@ -73,26 +73,64 @@ export default function FilesPanel({
     }
   }, [workspaceId, projectId]);
 
+  const refreshRequestRef = useRef(0);
+  const fileScopeKey = JSON.stringify([
+    conversationId,
+    showWorkspaceFiles,
+    showProjectFiles,
+    workspaceId,
+    projectId,
+  ]);
+  const currentFileScopeRef = useRef(fileScopeKey);
+  currentFileScopeRef.current = fileScopeKey;
+
   const refresh = async () => {
+    const requestScopeKey = fileScopeKey;
+    // A callback from an older render (for example, an upload that finishes
+    // after the user switches conversations) must not start a refresh for the old scope.
+    if (requestScopeKey !== currentFileScopeRef.current) return;
+
+    const requestId = ++refreshRequestRef.current;
     setLoading(true);
     try {
-      setFiles(
-        await listFiles(
-          showProjectFiles || showWorkspaceFiles ? null : conversationId,
-          showProjectFiles || showWorkspaceFiles ? false : Boolean(conversationId),
-          showProjectFiles || showWorkspaceFiles ? workspaceId : null,
-          showProjectFiles ? projectId : null
-        )
+      const nextFiles = await listFiles(
+        showProjectFiles || showWorkspaceFiles ? null : conversationId,
+        showProjectFiles || showWorkspaceFiles ? false : Boolean(conversationId),
+        showProjectFiles || showWorkspaceFiles ? workspaceId : null,
+        showProjectFiles ? projectId : null
       );
+      if (
+        requestId !== refreshRequestRef.current ||
+        requestScopeKey !== currentFileScopeRef.current
+      ) {
+        return;
+      }
+      setFiles(nextFiles);
     } catch (errorValue) {
+      if (
+        requestId !== refreshRequestRef.current ||
+        requestScopeKey !== currentFileScopeRef.current
+      ) {
+        return;
+      }
       showErrorToast(errorValue, "files.listError");
     } finally {
-      setLoading(false);
+      if (
+        requestId === refreshRequestRef.current &&
+        requestScopeKey === currentFileScopeRef.current
+      ) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     refresh();
+    return () => {
+      // Invalidate pending loads when the conversation/workspace/project scope changes
+      // or this modal unmounts.
+      refreshRequestRef.current += 1;
+    };
   }, [conversationId, showWorkspaceFiles, showProjectFiles, workspaceId, projectId]);
 
   const filteredFiles = files.filter((file) =>
