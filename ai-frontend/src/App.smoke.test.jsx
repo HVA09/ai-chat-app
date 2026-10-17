@@ -34,6 +34,20 @@ vi.mock("./lib/savedPromptsApi", async () => {
   return { ...actual, listSavedPrompts: vi.fn().mockResolvedValue([]) };
 });
 
+vi.mock("./lib/assistantsApi", async () => {
+  const actual = await vi.importActual("./lib/assistantsApi");
+  return {
+    ...actual,
+    listAssistants: vi.fn().mockResolvedValue([]),
+    listWorkspaceSharedAssistants: vi.fn().mockResolvedValue([]),
+  };
+});
+
+vi.mock("./lib/memoriesApi", async () => {
+  const actual = await vi.importActual("./lib/memoriesApi");
+  return { ...actual, listMemories: vi.fn().mockResolvedValue([]) };
+});
+
 vi.mock("./hooks/useNotifications", () => ({
   default: () => ({
     notifications: [],
