@@ -129,7 +129,6 @@ describe("useOpenConversation", () => {
     expect(props.autoSummaryLastMessageCountRef.current[7]).toBe(1);
   });
 
-
   it("ignores a late response after a pending conversation open is invalidated", async () => {
     let resolvePending;
     getConversation.mockImplementationOnce(
