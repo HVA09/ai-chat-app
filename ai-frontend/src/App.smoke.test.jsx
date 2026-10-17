@@ -1,10 +1,17 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./lib/api", async () => {
-  const actual = await vi.importActual("./lib/api");
+vi.mock("./lib/api", () => {
+  const request = () => vi.fn().mockResolvedValue({ data: [] });
   return {
-    ...actual,
+    default: {
+      get: request(),
+      post: request(),
+      put: request(),
+      patch: request(),
+      delete: request(),
+      request: request(),
+    },
     restoreSession: vi.fn().mockRejectedValue(new Error("No active test session")),
   };
 });
