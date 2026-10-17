@@ -3,6 +3,7 @@ import { useCallback } from "react";
 export default function useStartNewChat({
   t,
   messageCountRef,
+  conversationOpenRequestRef,
   resetChatAttachments,
   setToolActivity,
   setShowShareManager,
@@ -20,6 +21,7 @@ export default function useStartNewChat({
   getWelcomeMessage,
 }) {
   const startNewChat = useCallback(() => {
+    conversationOpenRequestRef.current += 1;
     messageCountRef.current = 1;
     setToolActivity(null);
     setShowShareManager(false);
@@ -36,6 +38,7 @@ export default function useStartNewChat({
     setEditingMessageIndex(null);
     setError("");
   }, [
+    conversationOpenRequestRef,
     getWelcomeMessage,
     messageCountRef,
     resetChatAttachments,
