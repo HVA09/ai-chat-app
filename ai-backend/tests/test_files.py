@@ -331,7 +331,7 @@ def test_object_storage_upload_download_delete_survives_local_file_loss(
 
     token = _register_and_login(client, "remote-storage-roundtrip@example.com")
     headers = {"Authorization": f"Bearer {token}"}
-    original_bytes = b"Durable object storage content.\\nSecond line."
+    original_bytes = b"Durable object storage content.\nSecond line."
 
     uploaded = client.post(
         "/files/upload",
