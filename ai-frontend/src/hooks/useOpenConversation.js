@@ -1,10 +1,11 @@
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import { getConversation, listConversationBranches } from "../lib/conversationsApi";
 import { getConversationWorkspaceShare } from "../lib/workspaceConversationSharesApi";
 import { getErrorMessage } from "../lib/errors";
 
 export default function useOpenConversation({
   aiModels,
+  conversationOpenRequestRef,
   setConversationId,
   setActiveConversationTitle,
   setParentConversationId,
@@ -32,8 +33,6 @@ export default function useOpenConversation({
   autoSummaryLastMessageCountRef,
   t,
 }) {
-  const conversationOpenRequestRef = useRef(0);
-
   const openConversation = useCallback(
     async (id) => {
       const requestId = ++conversationOpenRequestRef.current;
@@ -112,6 +111,7 @@ export default function useOpenConversation({
     },
     [
       aiModels,
+      conversationOpenRequestRef,
       autoSummaryLastMessageCountRef,
       messageCountRef,
       resetChatAttachments,

@@ -22,6 +22,7 @@ vi.mock("../lib/errors", () => ({
 function createProps() {
   return {
     aiModels: [{ id: "default-model", is_default: true }],
+    conversationOpenRequestRef: { current: 0 },
     setConversationId: vi.fn(),
     setActiveConversationTitle: vi.fn(),
     setParentConversationId: vi.fn(),
@@ -126,6 +127,28 @@ describe("useOpenConversation", () => {
     ]);
     expect(props.messageCountRef.current).toBe(1);
     expect(props.autoSummaryLastMessageCountRef.current[7]).toBe(1);
+  });
+
+  it("ignores a late response after a pending conversation open is invalidated", async () => {
+    let resolvePending;
+    getConversation.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePending = resolve;
+        })
+    );
+
+    const props = createProps();
+    const { result } = renderHook(() => useOpenConversation(props));
+
+    const pending = result.current.openConversation(42);
+    props.conversationOpenRequestRef.current += 1;
+    resolvePending(conversationData(42));
+    await pending;
+
+    expect(props.setActiveConversationTitle).not.toHaveBeenCalled();
+    expect(props.setMessages).not.toHaveBeenCalled();
+    expect(props.setWorkspaceShare).not.toHaveBeenCalled();
   });
 
   it("ignores stale responses when a newer conversation opens", async () => {

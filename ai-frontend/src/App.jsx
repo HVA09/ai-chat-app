@@ -214,6 +214,7 @@ export default function App() {
   const [retryableUserMessage, setRetryableUserMessage] = useState(null);
   const [toolActivity, setToolActivity] = useState(null);
   const bottomRef = useRef(null);
+  const conversationOpenRequestRef = useRef(0);
   const streamAbortRef = useRef(null);
   const autoSummaryInFlightRef = useRef(false);
   const autoSummaryLastMessageCountRef = useRef({});
@@ -240,7 +241,8 @@ export default function App() {
   }, [messages]);
 
   const logout = useCallback(async () => {
-    // Invalidate pending user-scoped list loads before waiting for logout.
+    // Invalidate pending conversation opens and user-scoped list loads before waiting for logout.
+    conversationOpenRequestRef.current += 1;
     folderRequestGenerationRef.current += 1;
     projectRequestGenerationRef.current += 1;
     assistantRequestGenerationRef.current += 1;
@@ -414,6 +416,7 @@ export default function App() {
 
   const { openConversation } = useOpenConversation({
     aiModels,
+    conversationOpenRequestRef,
     setConversationId,
     setActiveConversationTitle,
     setParentConversationId,
@@ -460,6 +463,7 @@ export default function App() {
   const { startNewChat } = useStartNewChat({
     t,
     messageCountRef,
+    conversationOpenRequestRef,
     resetChatAttachments,
     setToolActivity,
     setShowShareManager,
