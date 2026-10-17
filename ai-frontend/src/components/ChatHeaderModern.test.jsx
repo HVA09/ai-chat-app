@@ -90,3 +90,19 @@ describe("ChatHeaderModern contextual conversation actions", () => {
     expect(screen.getByRole("button", { name: "Export JSON" })).toBeInTheDocument();
   });
 });
+
+describe("ChatHeaderModern mobile navigation", () => {
+  it("dispatches the sidebar-open event from the mobile menu button", async () => {
+    const user = userEvent.setup();
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    renderHeader();
+
+    await user.click(screen.getByRole("button", { name: "Open navigation" }));
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "app:open-sidebar" })
+    );
+    dispatchSpy.mockRestore();
+  });
+});
