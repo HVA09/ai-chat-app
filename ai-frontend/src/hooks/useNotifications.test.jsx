@@ -338,6 +338,76 @@ describe("useNotifications", () => {
     expect(setToast).not.toHaveBeenCalled();
   });
 
+  it("does not apply a pending mark-read success to notifications after reset", async () => {
+    const previousSession = [{ id: 42, title: "Previous session", is_read: false }];
+    const currentSession = [{ id: 42, title: "Current session", is_read: false }];
+    listNotifications.mockResolvedValueOnce(previousSession);
+    let resolveMarkRead;
+    markNotificationRead.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveMarkRead = resolve;
+      })
+    );
+    const { result, setToast } = setupHook();
+
+    await act(async () => {
+      await result.current.refreshNotifications();
+    });
+
+    let pendingAction;
+    act(() => {
+      pendingAction = result.current.handleMarkNotificationRead(42);
+    });
+    act(() => {
+      result.current.resetNotifications();
+    });
+
+    listNotifications.mockResolvedValueOnce(currentSession);
+    await act(async () => {
+      await result.current.refreshNotifications();
+    });
+
+    await act(async () => {
+      resolveMarkRead();
+      await pendingAction;
+    });
+
+    expect(result.current.notifications).toEqual(currentSession);
+    expect(setToast).not.toHaveBeenCalled();
+  });
+
+  it("ignores a pending mark-all failure after notifications are reset", async () => {
+    const previousSession = [{ id: 42, title: "Previous session", is_read: false }];
+    listNotifications.mockResolvedValueOnce(previousSession);
+    let rejectMarkAll;
+    markAllNotificationsRead.mockImplementationOnce(
+      () => new Promise((_resolve, reject) => {
+        rejectMarkAll = reject;
+      })
+    );
+    const { result, setToast } = setupHook();
+
+    await act(async () => {
+      await result.current.refreshNotifications();
+    });
+
+    let pendingAction;
+    act(() => {
+      pendingAction = result.current.handleMarkAllNotificationsRead();
+    });
+    act(() => {
+      result.current.resetNotifications();
+    });
+
+    await act(async () => {
+      rejectMarkAll(new Error("previous session failed"));
+      await pendingAction;
+    });
+
+    expect(result.current.notifications).toEqual([]);
+    expect(setToast).not.toHaveBeenCalled();
+  });
+
   it("adds valid realtime notifications and only shows the success toast when enabled", async () => {
     const { result, setToast } = setupHook({ authed: true, realtimeToasts: true });
     const socket = MockWebSocket.instances[0];
