@@ -75,8 +75,10 @@ export default function useNotifications({
   useEffect(() => {
     if (!authed) return;
 
+    let active = true;
     const ws = new WebSocket(buildNotificationsWebSocketUrl());
     ws.onmessage = (event) => {
+      if (!active) return;
       let notification;
       try {
         notification = JSON.parse(event.data);
@@ -103,9 +105,15 @@ export default function useNotifications({
         setToast({ message: notification.title, type: "success" });
       }
     };
-    ws.onerror = showRealtimeError;
+    ws.onerror = () => {
+      if (active) showRealtimeError();
+    };
 
-    return () => ws.close();
+    return () => {
+      // Ignore queued socket events after logout or when replacing this socket.
+      active = false;
+      ws.close();
+    };
   }, [
     authed,
     notificationPreferences.realtimeToasts,
