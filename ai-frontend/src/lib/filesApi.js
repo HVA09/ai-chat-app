@@ -13,17 +13,26 @@ export async function uploadFile(
   if (conversationId) params.conversation_id = conversationId;
   if (workspaceId) params.workspace_id = workspaceId;
   if (projectId) params.project_id = projectId;
-  const { data } = await api.post("/files/upload", formData, {
+
+  const config = {
     // The shared Axios instance defaults to JSON. Clear it for FormData so the
     // browser can add the multipart boundary required by FastAPI UploadFile.
     headers: { "Content-Type": null },
     params,
-    onUploadProgress: (event) => {
-      if (onProgress && event.total) {
+  };
+
+  // Upload progress listeners on XMLHttpRequest can trigger a cross-origin
+  // preflight. Chat attachments do not request progress, so only add the
+  // listener when a caller actually needs progress updates.
+  if (typeof onProgress === "function") {
+    config.onUploadProgress = (event) => {
+      if (event.total) {
         onProgress(Math.round((event.loaded / event.total) * 100));
       }
-    },
-  });
+    };
+  }
+
+  const { data } = await api.post("/files/upload", formData, config);
   return data;
 }
 
