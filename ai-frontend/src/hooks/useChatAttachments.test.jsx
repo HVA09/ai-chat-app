@@ -157,6 +157,7 @@ describe("useChatAttachments", () => {
       await oldUpload;
     });
     expect(result.current.chatAttachments).toEqual([]);
+    expect(deleteFile).toHaveBeenCalledWith(12);
     expect(result.current.chatAttachmentUploading).toBe(true);
     expect(setToast).not.toHaveBeenCalled();
 
@@ -234,6 +235,55 @@ describe("useChatAttachments", () => {
     });
 
     expect(result.current.chatAttachments).toEqual([]);
-    expect(setToast).toHaveBeenCalledTimes(toastCountBeforeRemove);
+    expect(setToast).toH
+  it("attempts to clean up a stale upload after the draft resets even if cleanup fails", async () => {
+    let resolveUpload;
+    uploadFile.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveUpload = resolve;
+      })
+    );
+    deleteFile.mockRejectedValueOnce(new Error("cleanup failed"));
+
+    const setToast = vi.fn();
+    const { result } = renderHook(() =>
+      useChatAttachments({
+        conversationId: 7,
+        selectedWorkspaceId: null,
+        selectedProjectId: null,
+        loading: false,
+        readOnlyConversation: false,
+        editingMessageIndex: null,
+        setToast,
+        t,
+      })
+    );
+
+    let pendingUpload;
+    act(() => {
+      pendingUpload = result.current.handleAttachFiles([createFile("stale.txt")]);
+    });
+    expect(result.current.chatAttachmentUploading).toBe(true);
+
+    act(() => {
+      result.current.resetChatAttachments();
+    });
+
+    await act(async () => {
+      resolveUpload({
+        id: 88,
+        original_filename: "stale.txt",
+        content_type: "text/plain",
+        size_bytes: 4,
+      });
+      await pendingUpload;
+    });
+
+    expect(deleteFile).toHaveBeenCalledWith(88);
+    expect(result.current.chatAttachments).toEqual([]);
+    expect(result.current.chatAttachmentUploading).toBe(false);
+    expect(setToast).not.toHaveBeenCalled();
+  });
+aveBeenCalledTimes(toastCountBeforeRemove);
   });
 });
