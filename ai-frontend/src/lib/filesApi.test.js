@@ -31,6 +31,7 @@ describe("filesApi regression coverage", () => {
       project_id: 9,
     });
     expect(config.headers).toEqual({ "Content-Type": null });
+    expect(config).not.toHaveProperty("onUploadProgress");
   });
 
   it("preserves the current conversation scope when IDs are omitted", async () => {
@@ -42,6 +43,23 @@ describe("filesApi regression coverage", () => {
 
     const [, , config] = api.post.mock.calls[0];
     expect(config.params).toEqual({});
+    expect(config).not.toHaveProperty("onUploadProgress");
+  });
+
+  it("reports upload progress only when a progress callback is supplied", async () => {
+    const onProgress = vi.fn();
+    api.post.mockImplementation(async (_url, _formData, config) => {
+      config.onUploadProgress({ loaded: 25, total: 100 });
+      return { data: { id: 44 } };
+    });
+
+    const { uploadFile } = await import("./filesApi");
+    const file = new File(["hello"], "notes.txt", { type: "text/plain" });
+    await uploadFile(file, onProgress);
+
+    const [, , config] = api.post.mock.calls[0];
+    expect(config.onUploadProgress).toBeTypeOf("function");
+    expect(onProgress).toHaveBeenCalledWith(25);
   });
 
   it("sends file_ids in the regular chat payload", async () => {
