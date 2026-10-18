@@ -12,26 +12,32 @@ const DEFAULT_PREFERENCES = {
 /**
  * Owns persisted notification preferences for the authenticated user.
  *
- * The hook subscribes to the existing global preference event so settings
- * changes from other UI surfaces remain synchronized.
+ * Preferences return to defaults outside an authenticated session, and the
+ * global change event is observed only while a user is active. Settings
+ * changes from other UI surfaces remain synchronized within that session.
  */
 export default function useNotificationPreferences({ authed, userId }) {
   const [notificationPreferences, setNotificationPreferences] =
     useState(DEFAULT_PREFERENCES);
 
   useEffect(() => {
-    if (!authed || !userId) return;
+    if (!authed || !userId) {
+      setNotificationPreferences(DEFAULT_PREFERENCES);
+      return;
+    }
     setNotificationPreferences(loadNotificationPreferences(userId));
   }, [authed, userId]);
 
   useEffect(() => {
+    if (!authed || !userId) return;
+
     const handlePreferenceChange = (event) => {
       if (event.detail) {
         setNotificationPreferences((current) => ({
           ...current,
           ...event.detail,
         }));
-      } else if (userId) {
+      } else {
         setNotificationPreferences(loadNotificationPreferences(userId));
       }
     };
@@ -42,17 +48,17 @@ export default function useNotificationPreferences({ authed, userId }) {
         NOTIFICATION_PREFERENCE_EVENT,
         handlePreferenceChange
       );
-  }, [userId]);
+  }, [authed, userId]);
 
   const setRealtimeToastsEnabled = useCallback(
     (enabled) => {
-      if (!userId) return;
+      if (!authed || !userId) return;
 
       const next = { realtimeToasts: enabled };
       setNotificationPreferences(next);
       saveNotificationPreferences(userId, next);
     },
-    [userId]
+    [authed, userId]
   );
 
   const resetNotificationPreferences = useCallback(() => {
