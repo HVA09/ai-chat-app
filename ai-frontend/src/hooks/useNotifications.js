@@ -16,6 +16,7 @@ export default function useNotifications({
   const { t } = useTranslation();
   const [notifications, setNotifications] = useState([]);
   const refreshRequestRef = useRef(0);
+  const sessionGenerationRef = useRef(0);
 
   const refreshNotifications = useCallback(async () => {
     const requestId = ++refreshRequestRef.current;
@@ -34,12 +35,15 @@ export default function useNotifications({
   }, [setToast, t]);
 
   const handleMarkNotificationRead = useCallback(async (id) => {
+    const sessionGeneration = sessionGenerationRef.current;
     try {
       await markNotificationRead(id);
+      if (sessionGeneration !== sessionGenerationRef.current) return;
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
       );
     } catch (err) {
+      if (sessionGeneration !== sessionGenerationRef.current) return;
       setToast({
         message: getErrorMessage(err, t("app.notificationReadError")),
         type: "error",
@@ -48,10 +52,13 @@ export default function useNotifications({
   }, [setToast, t]);
 
   const handleMarkAllNotificationsRead = useCallback(async () => {
+    const sessionGeneration = sessionGenerationRef.current;
     try {
       await markAllNotificationsRead();
+      if (sessionGeneration !== sessionGenerationRef.current) return;
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     } catch (err) {
+      if (sessionGeneration !== sessionGenerationRef.current) return;
       setToast({
         message: getErrorMessage(err, t("app.notificationsReadAllError")),
         type: "error",
@@ -122,7 +129,8 @@ export default function useNotifications({
   ]);
 
   const resetNotifications = useCallback(() => {
-    // Invalidate in-flight loads before clearing user-scoped notification state.
+    // Invalidate all pending requests before clearing user-scoped notification state.
+    sessionGenerationRef.current += 1;
     refreshRequestRef.current += 1;
     setNotifications([]);
   }, []);
