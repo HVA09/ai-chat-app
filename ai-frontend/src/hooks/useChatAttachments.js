@@ -71,7 +71,19 @@ export default function useChatAttachments({
               selectedWorkspaceId,
               selectedProjectId
             );
-            if (operationGeneration !== attachmentGenerationRef.current) break;
+            if (operationGeneration !== attachmentGenerationRef.current) {
+              // The draft was reset while this upload was in flight. The API has
+              // already persisted the file, so make a best-effort cleanup instead
+              // of leaving an invisible attachment linked to the previous draft.
+              if (result?.id != null) {
+                try {
+                  await deleteFile(result.id);
+                } catch {
+                  // Do not surface a stale cleanup error in the active draft/session.
+                }
+              }
+              break;
+            }
             uploadedAny = true;
             setChatAttachments((current) => [
               ...current,
