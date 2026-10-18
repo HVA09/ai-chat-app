@@ -288,6 +288,39 @@ describe("useNotifications", () => {
     });
   });
 
+  it("ignores queued realtime events from a socket after logout", async () => {
+    let authed = true;
+    const setToast = vi.fn();
+    const { result, rerender } = renderHook(() =>
+      useNotifications({
+        authed,
+        notificationPreferences: { realtimeToasts: true },
+        setToast,
+      })
+    );
+    const socket = MockWebSocket.instances[0];
+
+    await act(async () => {
+      await result.current.refreshNotifications();
+    });
+
+    act(() => {
+      authed = false;
+      rerender();
+    });
+    expect(socket.close).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      socket.emitMessage(
+        JSON.stringify({ id: 99, title: "Late update", is_read: false })
+      );
+      socket.emitError();
+    });
+
+    expect(result.current.notifications).toEqual([]);
+    expect(setToast).not.toHaveBeenCalled();
+  });
+
   it("reports malformed or incomplete realtime payloads without throwing", async () => {
     const { result, setToast } = setupHook({ authed: true });
     const socket = MockWebSocket.instances[0];
