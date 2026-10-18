@@ -235,7 +235,8 @@ describe("useChatAttachments", () => {
     });
 
     expect(result.current.chatAttachments).toEqual([]);
-    expect(setToast).toH
+    expect(setToast).toHaveBeenCalledTimes(toastCountBeforeRemove);
+  });
   it("attempts to clean up a stale upload after the draft resets even if cleanup fails", async () => {
     let resolveUpload;
     uploadFile.mockImplementationOnce(
@@ -284,6 +285,5 @@ describe("useChatAttachments", () => {
     expect(result.current.chatAttachmentUploading).toBe(false);
     expect(setToast).not.toHaveBeenCalled();
   });
-aveBeenCalledTimes(toastCountBeforeRemove);
-  });
+
 });
