@@ -237,6 +237,7 @@ describe("useChatAttachments", () => {
     expect(result.current.chatAttachments).toEqual([]);
     expect(setToast).toHaveBeenCalledTimes(toastCountBeforeRemove);
   });
+
   it("attempts to clean up a stale upload after the draft resets even if cleanup fails", async () => {
     let resolveUpload;
     uploadFile.mockImplementationOnce(
