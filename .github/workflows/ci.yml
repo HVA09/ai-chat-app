@@ -1,7 +1,9 @@
 name: CI
 
 on:
+  # Run feature-branch CI through pull_request; reserve push-triggered CI for post-merge main checks.
   push:
+    branches: [main]
   pull_request:
 
 concurrency:
@@ -14,6 +16,7 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         # PostgreSQL 16 image with pgvector pre-installed; avoids the exhausted ECR Public data allowance.
@@ -77,7 +80,7 @@ jobs:
         working-directory: ai-frontend
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
       - name: Cache npm download data
@@ -110,7 +113,7 @@ jobs:
         working-directory: sdk/python
         run: pytest -q
 
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
 
