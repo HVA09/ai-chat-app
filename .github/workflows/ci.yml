@@ -16,6 +16,7 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         # PostgreSQL 16 image with pgvector pre-installed; avoids the exhausted ECR Public data allowance.
