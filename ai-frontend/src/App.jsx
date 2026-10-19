@@ -267,7 +267,6 @@ export default function App() {
     resetAiModels();
     resetNotificationPreferences();
     resetConversationPreferences();
-    setSelectedFolderId(null);
     setSelectedAssistantId(null);
     setConversationId(null);
     setParentConversationId(null);
@@ -280,6 +279,15 @@ export default function App() {
     setRetryableUserMessage(null);
     setError("");
     resetCurrentUser();
+    // Discard user-scoped overlays and filters so a subsequent login starts clean.
+    setShowAssistantEditor(false);
+    setEditingAssistantId(null);
+    setShowProjectEditor(false);
+    setEditingProjectId(null);
+    setShowModelCompare(false);
+    setCommandPaletteOpen(false);
+    setShowArchivedConversations(false);
+    setConversationSearch("");
     setShowAccountSettings(false);
     setShowFiles(false);
     setShowAdmin(false);
@@ -291,8 +299,6 @@ export default function App() {
     setReadOnlyConversation(false);
     setShowWorkspaceComments(false);
     setShowTrashConversations(false);
-    setConversationSummary(null);
-    setConversationSummaryUpdatedAt(null);
     setSummaryLoading(false);
     autoSummaryLastMessageCountRef.current = {};
     messageCountRef.current = 1;
