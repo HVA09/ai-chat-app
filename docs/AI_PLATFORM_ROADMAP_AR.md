@@ -912,3 +912,12 @@ F5.1 وF5.2 وF5.3 مغلقة ومتحققة على `main`.
 - **النشر الحي:** Frontend Render أصبح `live` على `262f243b`. لم يتغير Backend؛ آخر نشر وظيفي مسجل هو `920c1876b1208b220826d0f8144750528e027cc9`. آخر فحص مباشر أعاد `/health = status:ok,database:ok` و`/ready = status:ready,database:ok,redis:ok`.
 - **المتبقي في H:** قبول الهاتف الفعلي، والاختبار الكامل لرحلة الملف من الرفع إلى القراءة والتحليل والفشل وإعادة المحاولة، وتفعيل حماية فرع `main` (ما زال `protected=false`)، وحسم اختلاف `autoDeployTrigger=commit` في Render الحي عن `checksPass` في `render.yaml`. لم تُعدّل هذه الإعدادات الحساسة في هذا التغيير.
 - **حالة المعمارية:** `App.jsx` بقي نحو 1,646 سطرًا بعد هذا الإصلاح، لأن التعديل اقتصر على Hook تفضيلات الإشعارات واختباراته؛ التفكيك المعماري ما زال جزئيًا.
+
+### متابعة الإصدار v1.1.0 — 2026-10-20 بعد PR #588
+
+- **آخر main:** `3a2d1a902d0d9efba3a7b94d5d560df8ba9e5dfe`، commit توثيقي يسجل حالة المرحلة H بعد إصلاح PR #588.
+- **تحديث واجهة المستخدم:** PR [#588](https://github.com/HVA09/ai-chat-app/pull/588) أغلق تسرب حالة الواجهة بين الجلسات؛ يُمسح محرر المساعد والمشروع ومقارنة النماذج وCommand Palette ومرشحات البحث/الأرشيف عند الخروج.
+- **التحقق على أحدث main:** نجحت CI [#5484](https://github.com/HVA09/ai-chat-app/actions/runs/39270173761)، وCodeQL [#1142](https://github.com/HVA09/ai-chat-app/actions/runs/39270173770)، وProduction Smoke [#367](https://github.com/HVA09/ai-chat-app/actions/runs/39270173752)، ونشر صورة Backend [#534](https://github.com/HVA09/ai-chat-app/actions/runs/39270173700).
+- **النشر المباشر:** Frontend Render ما زال `live` على `74174c60cdcdc971fc998a2b41038fd218722cd6`، وBackend على آخر نشر وظيفي مسجل `920c1876b1208b220826d0f8144750528e027cc9`. الفحص الحالي يعيد `/health = status:ok,database:ok` و`/ready = status:ready,database:ok,redis:ok`.
+- **المتبقي في H:** لم يُنفذ قبول الهاتف اليدوي، ولم تُثبت رحلة الملف الإنتاجية كاملة، وحماية `main` لا تزال معطلة (`protected=false` بلا Rulesets فعالة)، ولا تزال سياسة Auto Deploy غير موحدة بين Render الحي و`render.yaml`.
+- **قرار المتابعة:** لا نبدأ I قبل إغلاق هذه البوابات أو توثيق قرار صريح بتأجيل أي منها. لا تغييرات على قاعدة البيانات أو الأسرار أو خطط الخدمات؛ لا موارد مدفوعة جديدة.
