@@ -156,6 +156,7 @@ export default function useSendMessageGeneration({
           folderId: selectedFolderId,
           model: selectedModel || null,
           retryMode: failure.messagePersisted ? "regenerate" : "send",
+          isNewConversation,
         });
       },
     });
