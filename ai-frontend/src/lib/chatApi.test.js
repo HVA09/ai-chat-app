@@ -44,7 +44,10 @@ describe("chatApi streaming error handling", () => {
       streamChatMessage("hello", null, null, { onError })
     ).resolves.toBeUndefined();
 
-    expect(onError).toHaveBeenCalledWith("تعذر الاتصال بالخادم");
+    expect(onError).toHaveBeenCalledWith("تعذر الاتصال بالخادم", {
+      kind: "transport",
+      messagePersisted: true,
+    });
   });
 });
 

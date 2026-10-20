@@ -1,9 +1,10 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { streamRegenerateMessage } from "../lib/chatApi";
+import { streamChatMessage, streamRegenerateMessage } from "../lib/chatApi";
 import useRetryFailedGeneration from "./useRetryFailedGeneration";
 
 vi.mock("../lib/chatApi", () => ({
+  streamChatMessage: vi.fn(),
   streamRegenerateMessage: vi.fn(),
 }));
 
@@ -18,6 +19,8 @@ function makeProps(overrides = {}) {
   const props = {
     readOnlyConversation: false,
     loading: false,
+    selectedAssistantId: 12,
+    selectedModel: "model-1",
     retryableUserMessage: {
       conversationId: "conversation-1",
       text: "Question",
@@ -30,6 +33,9 @@ function makeProps(overrides = {}) {
     setMessages,
     streamAbortRef,
     setConversationId: vi.fn(),
+    resetChatAttachments: vi.fn(),
+    setToast: vi.fn(),
+    setActiveConversationTitle: vi.fn(),
     appendToLastMessage: (chunk) => {
       setMessages((prev) => {
         const next = [...prev];
@@ -46,7 +52,9 @@ function makeProps(overrides = {}) {
     conversationSearch: "report",
     showTrashConversations: false,
     selectedTagId: "tag-1",
+    maybeAutoGenerateConversationTitle: vi.fn(),
     maybeAutoSummarizeConversation: vi.fn(),
+    t: (key) => key,
     ...overrides,
   };
 
@@ -107,6 +115,62 @@ describe("useRetryFailedGeneration", () => {
     ]);
   });
 
+  it("retries a pre-stream failure by resending the original text and attachment IDs", async () => {
+    const { props, getMessages } = makeProps({
+      conversationId: null,
+      retryableUserMessage: {
+        conversationId: null,
+        text: "أرسل لي الملف المرفق وحلله.",
+        fileIds: [19, 20],
+        assistantId: 12,
+        workspaceId: "workspace-2",
+        projectId: null,
+        folderId: null,
+        model: "model-1",
+        retryMode: "send",
+      },
+    });
+    streamChatMessage.mockImplementationOnce(async (_text, _id, _assistantId, options) => {
+      await options.onConversationId("conversation-9");
+      options.onSources([{ title: "File result" }]);
+      options.onChunk("Analyzed");
+      await options.onDone();
+    });
+
+    const { result } = renderHook(() => useRetryFailedGeneration(props));
+    await act(async () => {
+      await result.current.retryFailedGeneration();
+    });
+
+    expect(streamChatMessage).toHaveBeenCalledWith(
+      "أرسل لي الملف المرفق وحلله.",
+      null,
+      12,
+      expect.objectContaining({
+        fileIds: [19, 20],
+        workspaceId: "workspace-2",
+        projectId: null,
+        model: "model-1",
+        signal: expect.any(AbortSignal),
+      })
+    );
+    expect(streamRegenerateMessage).not.toHaveBeenCalled();
+    expect(props.setConversationId).toHaveBeenCalledWith("conversation-9");
+    expect(props.resetChatAttachments).toHaveBeenCalledTimes(1);
+    expect(props.setRetryableUserMessage).toHaveBeenCalledWith(null);
+    expect(props.maybeAutoGenerateConversationTitle).toHaveBeenCalledWith("conversation-9");
+    expect(getMessages()).toEqual([
+      { role: "user", text: "Question" },
+      {
+        role: "assistant",
+        text: "Analyzed",
+        time: expect.any(String),
+        feedback: null,
+        sources: [{ title: "File result" }],
+      },
+    ]);
+  });
+
   it("removes the empty assistant placeholder and restores retry state after an error", async () => {
     const { props, getMessages } = makeProps();
     streamRegenerateMessage.mockImplementationOnce(async (_id, options) => {
@@ -126,6 +190,7 @@ describe("useRetryFailedGeneration", () => {
     expect(props.setRetryableUserMessage).toHaveBeenLastCalledWith({
       conversationId: "conversation-1",
       text: "Question",
+      retryMode: "regenerate",
     });
   });
 

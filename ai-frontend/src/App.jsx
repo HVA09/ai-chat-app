@@ -932,6 +932,8 @@ export default function App() {
     loading,
     retryableUserMessage,
     conversationId,
+    selectedAssistantId,
+    selectedModel,
     setError,
     setLoading,
     setRetryableUserMessage,
@@ -940,6 +942,9 @@ export default function App() {
     streamAbortRef,
     setConversationId,
     appendToLastMessage,
+    resetChatAttachments,
+    setToast,
+    setActiveConversationTitle,
     refreshConversations,
     showArchivedConversations,
     selectedFolderId,
@@ -948,7 +953,9 @@ export default function App() {
     conversationSearch,
     showTrashConversations,
     selectedTagId,
+    maybeAutoGenerateConversationTitle,
     maybeAutoSummarizeConversation,
+    t,
   });
 
   const { regenerateLastResponse } = useRegenerateLastResponse({

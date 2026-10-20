@@ -1248,10 +1248,15 @@ async def chat_stream(
                         continue
 
                     if agent_error is not None:
+                        # Agent failures occur before the user message is committed.
+                        # Tell the frontend to resend the original request, not regenerate
+                        # the previous turn in this conversation.
+                        yield "event: retry_mode\\ndata: send\\n\\n"
                         yield f"event: error\\ndata: {agent_error}\\n\\n"
                         return
 
                     if agent_result is None:
+                        yield "event: retry_mode\\ndata: send\\n\\n"
                         yield "event: error\\ndata: تعذر تشغيل وضع الوكيل\\n\\n"
                         return
 
