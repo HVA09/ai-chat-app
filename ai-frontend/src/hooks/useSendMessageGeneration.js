@@ -128,7 +128,7 @@ export default function useSendMessageGeneration({
           messageCountRef.current
         );
       },
-      onError: (message) => {
+      onError: (message, failure = {}) => {
         streamAbortRef.current = null;
         setLoading(false);
         setError(message);
@@ -142,13 +142,21 @@ export default function useSendMessageGeneration({
           messageCountRef.current = prev.length;
           return prev;
         });
+
+        // Preserve the exact request so a pre-stream HTTP/network failure can
+        // retry the original send instead of regenerating an older response.
         const failedConversationId = createdConversationId || conversationId;
-        if (failedConversationId) {
-          setRetryableUserMessage({
-            conversationId: failedConversationId,
-            text: submittedText,
-          });
-        }
+        setRetryableUserMessage({
+          conversationId: failedConversationId ?? null,
+          text: submittedText,
+          fileIds,
+          assistantId: selectedAssistantId,
+          workspaceId: selectedWorkspaceId,
+          projectId: selectedProjectId,
+          folderId: selectedFolderId,
+          model: selectedModel || null,
+          retryMode: failure.messagePersisted ? "regenerate" : "send",
+        });
       },
     });
   };
