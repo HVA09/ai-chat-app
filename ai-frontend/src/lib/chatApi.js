@@ -71,7 +71,7 @@ export async function streamChatMessage(
       onDone?.();
       return;
     }
-    onError?.(i18n.t("app.connectionError"));
+    onError?.(i18n.t("app.connectionError"), { kind: "transport", messagePersisted: false });
     return;
   }
 
@@ -81,7 +81,11 @@ export async function streamChatMessage(
       return;
     }
     const body = await response.json().catch(() => ({}));
-    onError?.(detailToMessage(body.detail, i18n.t("app.sendMessageError")));
+    onError?.(detailToMessage(body.detail, i18n.t("app.sendMessageError")), {
+      kind: "http",
+      status: response.status,
+      messagePersisted: false,
+    });
     return;
   }
 
@@ -111,7 +115,7 @@ export async function streamChatMessage(
         else if (eventType === "sources") onSources?.(JSON.parse(data));
         else if (eventType === "tool") onToolEvent?.(JSON.parse(data));
         else if (eventType === "chunk") onChunk?.(data.replace(/\\n/g, "\n"));
-        else if (eventType === "error") onError?.(data);
+        else if (eventType === "error") onError?.(data, { kind: "stream", messagePersisted: true });
         else if (eventType === "done") onDone?.();
       }
     }
@@ -125,7 +129,7 @@ export async function streamChatMessage(
       onDone?.();
       return;
     }
-    onError?.(i18n.t("app.connectionError"));
+    onError?.(i18n.t("app.connectionError"), { kind: "transport", messagePersisted: true });
   }
 }
 
