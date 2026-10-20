@@ -320,7 +320,8 @@ export default function ChatComposer({
                 type="file"
                 multiple
                 accept=".txt,.csv,.pdf,.docx,.xlsx,image/*"
-                className="hidden"
+                className="sr-only"
+                aria-label={t("tools.attachFiles")}
                 onChange={handleFileSelection}
                 disabled={attachmentUploading}
               />
