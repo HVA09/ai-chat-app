@@ -1,6 +1,7 @@
 """اختبارات وضع الوكيل واستدعاء الأدوات الآمنة."""
 from app.services.ai_providers.base import AIToolCall, AIToolReply
 from app.services.ai_providers.openai_provider import OpenAICompatibleProvider
+from app.routers import chat as chat_router_module
 
 
 def _register_and_login(client, email="agent@example.com"):
@@ -79,6 +80,27 @@ def test_agent_mode_streams_final_answer(client, monkeypatch):
     assert '"type": "start"' in response.text
     assert '"type": "result"' in response.text
     assert '"name": "calculator"' in response.text
+
+
+def test_agent_stream_failure_marks_original_request_safe_to_resend(client, monkeypatch):
+    async def fail_agent(*args, **kwargs):
+        raise RuntimeError("agent failure before persistence")
+
+    monkeypatch.setattr(chat_router_module, "run_agent", fail_agent)
+    token = _register_and_login(client, "agent-stream-failure@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/chat/stream",
+        json={"message": "/agent try the tool again"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert "event: retry_mode" in response.text
+    assert "data: send" in response.text
+    assert "event: error" in response.text
+    assert "event: done" not in response.text
 
 
 def test_agent_command_requires_a_task(client):
