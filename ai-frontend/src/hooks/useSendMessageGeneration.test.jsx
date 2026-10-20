@@ -161,6 +161,7 @@ describe("useSendMessageGeneration", () => {
       folderId: null,
       model: "model-1",
       retryMode: "send",
+      isNewConversation: false,
     });
   });
 
@@ -185,6 +186,7 @@ describe("useSendMessageGeneration", () => {
       folderId: null,
       model: "model-1",
       retryMode: "regenerate",
+      isNewConversation: false,
     });
   });
 
@@ -216,6 +218,41 @@ describe("useSendMessageGeneration", () => {
       folderId: null,
       model: "model-1",
       retryMode: "send",
+      isNewConversation: false,
+    });
+  });
+
+  it("preserves new-conversation state when Agent fails after the server assigns an ID", async () => {
+    const { props, getMessages } = makeProps({ selectedProjectId: null, selectedFolderId: null });
+    streamChatMessage.mockImplementationOnce(async (_text, _id, _assistantId, options) => {
+      await options.onConversationId("conversation-agent-1");
+      options.onError("Agent failed before user message was persisted", {
+        kind: "stream",
+        messagePersisted: false,
+      });
+    });
+
+    const { result } = renderHook(() => useSendMessageGeneration(props));
+    await act(async () => {
+      await result.current.sendMessage();
+    });
+
+    expect(getMessages()).toEqual([{
+      role: "user",
+      text: "Check this file",
+      time: expect.any(String),
+    }]);
+    expect(props.setRetryableUserMessage).toHaveBeenLastCalledWith({
+      conversationId: "conversation-agent-1",
+      text: "Check this file",
+      fileIds: [7],
+      assistantId: 12,
+      workspaceId: 3,
+      projectId: null,
+      folderId: null,
+      model: "model-1",
+      retryMode: "send",
+      isNewConversation: true,
     });
   });
 

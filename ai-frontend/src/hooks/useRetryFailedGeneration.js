@@ -65,7 +65,7 @@ export default function useRetryFailedGeneration({
     const requestFileIds = Array.isArray(retryableUserMessage.fileIds)
       ? retryableUserMessage.fileIds
       : [];
-    const isNewConversation = !targetConversationId;
+    const isNewConversation = requestField("isNewConversation", !targetConversationId) === true;
 
     setError("");
     setLoading(true);
@@ -123,7 +123,7 @@ export default function useRetryFailedGeneration({
       setRetryableUserMessage(null);
       resetChatAttachments?.();
 
-      if (retryMode === "send" && isNewConversation && createdConversationId) {
+      if (isNewConversation && createdConversationId) {
         setActiveConversationTitle?.(requestText.slice(0, 50));
         refreshConversations(
           showArchivedConversations,
