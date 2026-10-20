@@ -157,6 +157,30 @@ describe("useSendMessageGeneration", () => {
     });
   });
 
+  it("marks a streamed failure as regenerate-ready because the user message was persisted", async () => {
+    const { props } = makeProps({ conversationId: "conversation-1" });
+    streamChatMessage.mockImplementationOnce(async (_text, _id, _assistantId, options) => {
+      options.onError("provider timed out", { kind: "stream", messagePersisted: true });
+    });
+
+    const { result } = renderHook(() => useSendMessageGeneration(props));
+    await act(async () => {
+      await result.current.sendMessage();
+    });
+
+    expect(props.setRetryableUserMessage).toHaveBeenLastCalledWith({
+      conversationId: "conversation-1",
+      text: "Check this file",
+      fileIds: [7],
+      assistantId: 12,
+      workspaceId: 3,
+      projectId: null,
+      folderId: null,
+      model: "model-1",
+      retryMode: "regenerate",
+    });
+  });
+
   it("rolls back an empty placeholder and restores retry state when generation fails", async () => {
     const { props, getMessages } = makeProps({ conversationId: "conversation-1" });
     streamChatMessage.mockImplementationOnce(async (_text, _id, _assistantId, options) => {
@@ -178,6 +202,13 @@ describe("useSendMessageGeneration", () => {
     expect(props.setRetryableUserMessage).toHaveBeenLastCalledWith({
       conversationId: "conversation-1",
       text: "Check this file",
+      fileIds: [7],
+      assistantId: 12,
+      workspaceId: 3,
+      projectId: null,
+      folderId: null,
+      model: "model-1",
+      retryMode: "send",
     });
   });
 
