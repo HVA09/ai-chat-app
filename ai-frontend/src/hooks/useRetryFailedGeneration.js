@@ -65,7 +65,7 @@ export default function useRetryFailedGeneration({
     const requestFileIds = Array.isArray(retryableUserMessage.fileIds)
       ? retryableUserMessage.fileIds
       : [];
-    const isNewConversation = !targetConversationId;
+    const isNewConversation = requestField("isNewConversation", !targetConversationId) === true;
 
     setError("");
     setLoading(true);
