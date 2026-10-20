@@ -27,7 +27,7 @@
 
 | المرحلة | المحور | الحالة عند إنشاء المسودة |
 |---|---|---|
-| H | الاستقرار بعد v1.0.0 وإغلاق مخاطر v1.1.0 | **آخر تحقق على `main` `3a2d1a902d0d9efba3a7b94d5d560df8ba9e5dfe` (2026-10-20): CI #5484 وCodeQL #1142 وProduction Smoke #367 ونشر صورة Backend #534 كلها `success`. Frontend Render `live` على commit `74174c60`، وآخر Backend deploy وظيفي `live` على `920c1876`. فحوص `/health` و`/ready` سليمة؛ قبول الهاتف ورحلة الملف وحماية `main` ومراجعة Auto Deploy ما زالت مفتوحة.** |
+| H | الاستقرار بعد v1.0.0 وإغلاق مخاطر v1.1.0 | **آخر تحقق على `main` `c20b173006ec877f8f178543f06b7c3b39af0a55` (2026-10-20): CI #5493 وCodeQL #1147 وProduction Smoke #369 ونشر صورة Backend #536 كلها `success`. Frontend Render `live` على `74174c60`، وآخر Backend deploy وظيفي `live` على `920c1876`. حدثت استجابة `503` عابرة أثناء الاستيقاظ ثم عاد `/health` و`/ready` إلى `200` في 2026-10-20؛ قبول الهاتف ورحلة الملف وحماية `main` ومراجعة Auto Deploy ما زالت مفتوحة.** |
 | I | تجربة الهاتف، قابلية الاستخدام وإمكانية الوصول | مخططة |
 | J | استكمال تنظيم الواجهة والمعمارية | مخططة، بعد مطابقة ما أُنجز |
 | K | الأداء والاستجابة واستهلاك الموارد | مخططة |
@@ -513,10 +513,10 @@
 
 ## تحقق حديث من حالة الإصدار — 2026-10-20
 
-- **مرجع main:** `3a2d1a902d0d9efba3a7b94d5d560df8ba9e5dfe`، وهو تحديث توثيق فقط بعد دمج PR #588؛ لذلك لم يغيّر نشر التطبيق نفسه.
-- **فحوص GitHub على أحدث main:** [CI #5484](https://github.com/HVA09/ai-chat-app/actions/runs/39270173761)، [CodeQL #1142](https://github.com/HVA09/ai-chat-app/actions/runs/39270173770)، [Production Smoke #367](https://github.com/HVA09/ai-chat-app/actions/runs/39270173752)، و[Publish Backend Image #534](https://github.com/HVA09/ai-chat-app/actions/runs/39270173700) كلها ناجحة.
-- **Render الحي:** الواجهة منشورة على commit `74174c60cdcdc971fc998a2b41038fd218722cd6` وتعرض صفحة تسجيل الدخول. آخر نشر Backend وظيفي مسجّل هو `920c1876b1208b220826d0f8144750528e027cc9`.
-- **الصحة والجاهزية:** الفحص المباشر الحالي أعاد `/health = {status:ok,database:ok}` و`/ready = {status:ready,database:ok,redis:ok}`. هذا يثبت جاهزية الخدمة وقت الفحص، وليس إكمال سيناريو تسجيل الدخول/المحادثة/الملف.
+- **مرجع main الحالي — 2026-10-20:** `c20b173006ec877f8f178543f06b7c3b39af0a55`، ناتج عن PR [#591](https://github.com/HVA09/ai-chat-app/pull/591). التغيير في `.github/workflows/ci.yml` فقط: يجعل push-triggered CI على `main` ويترك فحوص الفروع عبر `pull_request`، ويحدد مهلة 20 دقيقة لاختبارات Backend، ويحدث تثبيت `actions/setup-node` إلى v7.1.0. لم يتغير كود التطبيق في هذا الـcommit.
+- **فحوص GitHub على أحدث main:** [CI #5493](https://github.com/HVA09/ai-chat-app/actions/runs/39339814013)، [CodeQL #1147](https://github.com/HVA09/ai-chat-app/actions/runs/39339814005)، [Production Smoke #369](https://github.com/HVA09/ai-chat-app/actions/runs/39339814006)، و[Publish Backend Image #536](https://github.com/HVA09/ai-chat-app/actions/runs/39339813997) كلها `success` على `c20b1730`.
+- **Render الحي:** الواجهة منشورة `live` على commit `74174c60cdcdc971fc998a2b41038fd218722cd6` وتعرض صفحة تسجيل الدخول. آخر نشر Backend وظيفي مسجّل `live` على `920c1876b1208b220826d0f8144750528e027cc9`. commit `c20b1730` غيّر CI فقط، ولم ينشر كود تطبيق جديد.
+- **الصحة والجاهزية — 2026-10-20:** أعاد الفحص الأولي `503` على `/health` و`/ready`. سجلات Render أظهرت `Warm shutdown` عند `00:17:20 UTC` ثم بدء instance جديد عند `01:36:53 UTC`، وبعدها أعاد `/health = 200` و`/ready = 200` (قاعدة البيانات وRedis `ok`) عند `01:37:18 UTC` مع استمرار طلبات الصحة الناجحة. الخدمة تعافت؛ يرجح ارتباط الواقعة بالاستيقاظ/إعادة التشغيل على الخطة المجانية، لكن لا نسجل السبب النهائي على أنه مثبت. هذه الفحوص لا تثبت إكمال تسجيل الدخول أو المحادثة أو رحلة الملف.
 - **حماية المستودع:** قراءة GitHub ما زالت تعرض `main.protected=false`، وواجهة Rulesets لا تعرض قواعد نشطة. لا تُعتبر هذه البوابة مغلقة حتى تُفعّل حماية `main` وفحوص الحالة المطلوبة عبر صلاحيات إعدادات المستودع.
 - **Auto Deploy:** الخدمتان الحيتان تضبطان `autoDeployTrigger=commit` بينما `render.yaml` يحدد `checksPass`. لم نغيّر أي إعداد إنتاجي؛ المطلوب اعتماد القرار ثم مواءمة إعداد Render الحي والـBlueprint في تغيير مستقل.
 - **بوابات الإغلاق المتبقية:** اختبار يدوي على هاتف فعلي لتسجيل الدخول والقائمة وCommand Palette وتبديل المحادثة والإرسال والرفع؛ تجربة ملف بحساب فعلي من الرفع إلى القراءة والتحليل والفشل وإعادة المحاولة؛ حماية `main`؛ وحسم سياسة Auto Deploy. لا نعلن اكتمال المرحلة H حتى تُسجّل النتائج.
