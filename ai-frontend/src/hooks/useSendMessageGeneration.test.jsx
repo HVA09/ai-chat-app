@@ -161,6 +161,7 @@ describe("useSendMessageGeneration", () => {
       folderId: null,
       model: "model-1",
       retryMode: "send",
+      isNewConversation: false,
     });
   });
 
@@ -185,6 +186,7 @@ describe("useSendMessageGeneration", () => {
       folderId: null,
       model: "model-1",
       retryMode: "regenerate",
+      isNewConversation: false,
     });
   });
 
@@ -216,6 +218,7 @@ describe("useSendMessageGeneration", () => {
       folderId: null,
       model: "model-1",
       retryMode: "send",
+      isNewConversation: false,
     });
   });
 
