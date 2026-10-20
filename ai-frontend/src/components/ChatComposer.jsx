@@ -313,14 +313,14 @@ export default function ChatComposer({
             <label
               className="cursor-pointer rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus-within:ring-2 focus-within:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
               title={t("tools.attachFiles")}
-              aria-label={t("tools.attachFiles")}
             >
               📎
               <input
                 type="file"
                 multiple
                 accept=".txt,.csv,.pdf,.docx,.xlsx,image/*"
-                className="hidden"
+                className="sr-only"
+                aria-label={t("tools.attachFiles")}
                 onChange={handleFileSelection}
                 disabled={attachmentUploading}
               />

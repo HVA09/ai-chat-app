@@ -279,6 +279,28 @@ describe("ChatComposer attachments", () => {
     expect(onAttachFiles).toHaveBeenCalledWith([file]);
   });
 
+  it("keeps the attachment picker keyboard-accessible", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onAttachFiles={vi.fn()}
+        attachments={[]}
+      />
+    );
+
+    const textarea = screen.getByPlaceholderText("اكتب رسالتك هنا...");
+    const input = screen.getByLabelText("إرفاق ملفات");
+    textarea.focus();
+    await user.tab();
+
+    expect(input).toHaveFocus();
+  });
+
   it("يتيح إعادة اختيار الملف نفسه بعد الاختيار الأول", async () => {
     const user = userEvent.setup();
     const onAttachFiles = vi.fn();
