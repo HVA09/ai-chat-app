@@ -212,6 +212,45 @@ describe("useRetryFailedGeneration", () => {
     expect(getMessages().at(-1)).toEqual(expect.objectContaining({ role: "assistant", text: "Analyzed" }));
   });
 
+  it("finalizes a new conversation after a persisted-message retry", async () => {
+    const { props, getMessages } = makeProps({
+      conversationId: "conversation-10",
+      selectedProjectId: null,
+      retryableUserMessage: {
+        conversationId: "conversation-10",
+        text: "Analyze the attached file",
+        fileIds: [19],
+        assistantId: 12,
+        workspaceId: "workspace-2",
+        projectId: null,
+        folderId: null,
+        model: "model-1",
+        retryMode: "regenerate",
+        isNewConversation: true,
+      },
+    });
+    streamRegenerateMessage.mockImplementationOnce(async (_id, options) => {
+      await options.onConversationId("conversation-10");
+      options.onChunk("Regenerated");
+      await options.onDone();
+    });
+
+    const { result } = renderHook(() => useRetryFailedGeneration(props));
+    await act(async () => {
+      await result.current.retryFailedGeneration();
+    });
+
+    expect(streamRegenerateMessage).toHaveBeenCalledWith(
+      "conversation-10",
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+    expect(streamChatMessage).not.toHaveBeenCalled();
+    expect(props.setActiveConversationTitle).toHaveBeenCalledWith("Analyze the attached file");
+    expect(props.maybeAutoGenerateConversationTitle).toHaveBeenCalledWith("conversation-10");
+    expect(props.refreshConversations).toHaveBeenCalledWith(false, null, "workspace-2", null);
+    expect(getMessages().at(-1)).toEqual(expect.objectContaining({ role: "assistant", text: "Regenerated" }));
+  });
+
   it("removes the empty assistant placeholder and restores retry state after an error", async () => {
     const { props, getMessages } = makeProps();
     streamRegenerateMessage.mockImplementationOnce(async (_id, options) => {
