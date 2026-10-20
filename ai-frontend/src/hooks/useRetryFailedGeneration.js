@@ -123,7 +123,7 @@ export default function useRetryFailedGeneration({
       setRetryableUserMessage(null);
       resetChatAttachments?.();
 
-      if (retryMode === "send" && isNewConversation && createdConversationId) {
+      if (isNewConversation && createdConversationId) {
         setActiveConversationTitle?.(requestText.slice(0, 50));
         refreshConversations(
           showArchivedConversations,
