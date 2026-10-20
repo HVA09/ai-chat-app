@@ -154,6 +154,13 @@ describe("useSendMessageGeneration", () => {
     expect(props.setRetryableUserMessage).toHaveBeenCalledWith({
       conversationId: "conversation-1",
       text: "أرسل لي الملف المرفق وحلله.",
+      fileIds: [19],
+      assistantId: 12,
+      workspaceId: 3,
+      projectId: null,
+      folderId: null,
+      model: "model-1",
+      retryMode: "send",
     });
   });
 
