@@ -529,3 +529,11 @@
 - **النشر والصحة:** Render Frontend أصبح `live` على `d0228288`. آخر نشر Backend وظيفي ما زال على `920c1876b1208b220826d0f8144750528e027cc9`. ظهرت `503` مؤقتة أثناء بدء instance جديد ثم تعافت الخدمة؛ آخر تحقق مباشر أعاد `/health = {status:ok,database:ok}` و`/ready = {status:ready,database:ok,redis:ok}`.
 - **بوابات H المتبقية بلا تغيير:** قبول يدوي من هاتف فعلي لتسجيل الدخول والقائمة الجانبية وCommand Palette وتبديل المحادثة والإرسال وإرفاق ملف؛ رحلة ملف حقيقية بحساب مستخدم من الرفع إلى القراءة والتحليل والفشل وإعادة المحاولة؛ حماية `main` (ما زال `protected=false` بلا قواعد حماية نشطة)؛ ومراجعة الفرق بين `autoDeployTrigger=commit` في Render الحي و`checksPass` في `render.yaml`.
 - **السلامة والتكلفة:** التغيير Frontend واختبارات فقط. لم تُعدّل قاعدة البيانات أو الأسرار أو إعدادات الخدمة الحساسة، ولم تُضف موارد مدفوعة. نجاح CI وSmoke لا يغلق قبول الهاتف أو رحلة الملف اليدوية.
+
+## تحديث H — 2026-10-20 بعد PR #595 (إعادة محاولة الإرسال والمرفقات)
+
+- **التغيير على main:** d804f37c58a176d85ccb714290def474bc44aecc. أصلح [PR #595](https://github.com/HVA09/ai-chat-app/pull/595) إعادة محاولة الرسالة: طلب الإرسال الذي فشل قبل حفظ رسالة المستخدم يُرسل مجددًا مع معرّفات الملفات والسياق الأصلي؛ أما فشل التوليد بعد حفظ رسالة المستخدم فيستخدم مسار إعادة التوليد لتفادي إنشاء رسالة مستخدم مكررة. أضيف أيضًا حدث صريح لوضع إعادة المحاولة عند فشل Agent قبل الحفظ.
+- **الأدلة الآلية:** CI [#5504](https://github.com/HVA09/ai-chat-app/actions/runs/39467122427)، CodeQL [#1158](https://github.com/HVA09/ai-chat-app/actions/runs/39467122429)، Production Smoke [#374](https://github.com/HVA09/ai-chat-app/actions/runs/39467122434)، ونشر صورة Backend [#540](https://github.com/HVA09/ai-chat-app/actions/runs/39467122444) كلها success.
+- **Render الحي:** Frontend live على d804f37c58a176d85ccb714290def474bc44aecc، وBackend live على d804f37c58a176d85ccb714290def474bc44aecc. الفحص الحالي يعرض صفحة تسجيل الدخول؛ /health = {status:ok,database:ok} و/ready = {status:ready,database:ok,redis:ok}.
+- **الخطوات التي لا تزال تمنع إغلاق H:** قبول هاتف فعلي؛ اختبار دورة ملف فعلية بعد النشر؛ حماية main (حاليًا protected=false ولا توجد Rulesets نشطة)؛ ومواءمة Auto Deploy بين commit في إعداد Render الحي وchecksPass في render.yaml. لا ندّعي إنجازًا يدويًا لم يحدث.
+- **التكلفة:** لا موارد مدفوعة أو تغييرات قواعد بيانات/أسرار أُضيفت في هذا التحديث الوثائقي.
