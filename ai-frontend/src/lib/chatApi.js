@@ -89,6 +89,10 @@ export async function streamChatMessage(
     return;
   }
 
+  // The normal chat route persists the user message before streaming. The agent
+  // branch is different: it persists only after the agent succeeds, so the server
+  // can explicitly mark an error as safe to resend.
+  let messagePersisted = true;
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -114,8 +118,9 @@ export async function streamChatMessage(
         if (eventType === "conversation") onConversationId?.(Number(data));
         else if (eventType === "sources") onSources?.(JSON.parse(data));
         else if (eventType === "tool") onToolEvent?.(JSON.parse(data));
+        else if (eventType === "retry_mode") messagePersisted = data !== "send";
         else if (eventType === "chunk") onChunk?.(data.replace(/\\n/g, "\n"));
-        else if (eventType === "error") onError?.(data, { kind: "stream", messagePersisted: true });
+        else if (eventType === "error") onError?.(data, { kind: "stream", messagePersisted });
         else if (eventType === "done") onDone?.();
       }
     }
