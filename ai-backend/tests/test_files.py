@@ -11,6 +11,18 @@ def _register_and_login(client, email="files@example.com", password="StrongPass1
     return client.cookies.get("access_token")
 
 
+def _disable_object_storage(monkeypatch):
+    """Keep route tests deterministic and independent of any real S3 endpoint."""
+    for name in (
+        "S3_BUCKET",
+        "S3_ENDPOINT_URL",
+        "S3_REGION",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.setattr(app_settings, name, "")
+
+
 def test_upload_file_success(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client)
@@ -366,6 +378,7 @@ def test_upload_failure_cleans_partial_file_and_allows_retry(
     client, db_session, tmp_path, monkeypatch
 ):
     """A transient durable-write failure must clean up before retrying."""
+    _disable_object_storage(monkeypatch)
     from app.models.file_attachment import FileAttachment
     from app.models.user import User
     from app.routers import files as files_router
@@ -422,6 +435,7 @@ def test_upload_preserves_original_file_when_text_extraction_fails(
     client, db_session, tmp_path, monkeypatch
 ):
     """Text extraction failure is reported internally but must not destroy the upload."""
+    _disable_object_storage(monkeypatch)
     from app.models.file_attachment import FileAttachment
     from app.routers import files as files_router
     from app.services.file_text_extractor import FileTextExtractionError
