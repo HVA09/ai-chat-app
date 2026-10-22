@@ -362,34 +362,35 @@ def test_object_storage_upload_download_delete_survives_local_file_loss(
     assert [operation[0] for operation in operations] == ["put", "get", "delete"]
 
 
-def test_upload_returns_503_and_cleans_partial_local_file(
+def test_upload_failure_cleans_partial_file_and_allows_retry(
     client, db_session, tmp_path, monkeypatch
 ):
-    """A failed durable write must not leave a local file or metadata row."""
+    """A transient durable-write failure must clean up before retrying."""
     from app.models.file_attachment import FileAttachment
     from app.models.user import User
     from app.routers import files as files_router
     from app.services.storage import StorageError
 
-    payload = b"file content that must not remain after storage failure"
+    payload = b"file content that should survive a successful retry"
+    attempts = 0
 
-    def fail_put_file(path, object_key, content_type):
+    def fail_first_put_file(path, object_key, content_type):
+        nonlocal attempts
+        attempts += 1
         assert path.read_bytes() == payload
         assert object_key.startswith("users/")
         assert content_type == "text/plain"
-        raise StorageError("simulated object-storage outage")
+        if attempts == 1:
+            raise StorageError("simulated temporary object-storage outage")
 
-    monkeypatch.setattr(files_router, "put_file", fail_put_file)
+    monkeypatch.setattr(files_router, "put_file", fail_first_put_file)
     token = _register_and_login(client, "files-storage-failure@example.com")
     headers = {"Authorization": f"Bearer {token}"}
+    upload = {"file": ("retry-me.txt", payload, "text/plain")}
 
-    response = client.post(
-        "/files/upload",
-        files={"file": ("retry-me.txt", payload, "text/plain")},
-        headers=headers,
-    )
+    failed = client.post("/files/upload", files=upload, headers=headers)
 
-    assert response.status_code == 503
+    assert failed.status_code == 503
     user = db_session.query(User).filter_by(
         email="files-storage-failure@example.com"
     ).one()
@@ -400,6 +401,21 @@ def test_upload_returns_503_and_cleans_partial_local_file(
         == 0
     )
     assert not any(path.is_file() for path in tmp_path.rglob("*"))
+
+    retried = client.post("/files/upload", files=upload, headers=headers)
+    assert retried.status_code == 201
+    assert attempts == 2
+    file_id = retried.json()["id"]
+
+    assert (
+        db_session.query(FileAttachment)
+        .filter(FileAttachment.user_id == user.id)
+        .count()
+        == 1
+    )
+    downloaded = client.get(f"/files/{file_id}", headers=headers)
+    assert downloaded.status_code == 200
+    assert downloaded.content == payload
 
 
 def test_upload_preserves_original_file_when_text_extraction_fails(
