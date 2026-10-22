@@ -41,4 +41,16 @@ describe("SidebarModern mobile navigation", () => {
     });
     expect(sidebar).not.toHaveClass("modern-sidebar-open");
   });
+  it("uses the translated label for both mobile close controls", () => {
+    const { container } = renderSidebar();
+
+    act(() => {
+      window.dispatchEvent(new Event("app:open-sidebar"));
+    });
+
+    expect(
+      container.querySelectorAll('button[aria-label="sidebar.closeNavigation"]')
+    ).toHaveLength(2);
+  });
+
 });
