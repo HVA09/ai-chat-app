@@ -3,23 +3,34 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 from pathlib import Path
+from uuid import uuid4
 
-os.environ.setdefault("ENVIRONMENT", "development")
-os.environ.setdefault("DATABASE_URL", "postgresql://smoke:smoke@127.0.0.1:5432/smoke")
-os.environ.setdefault("JWT_SECRET_KEY", "smoke-jwt-secret")
-os.environ.setdefault("AI_API_KEY", "smoke-ai-key")
-os.environ.setdefault("S3_BUCKET", os.environ.get("B2_BUCKET", ""))
-os.environ.setdefault("S3_ENDPOINT_URL", os.environ.get("B2_ENDPOINT_URL", ""))
-os.environ.setdefault("S3_REGION", os.environ.get("B2_REGION", ""))
-os.environ.setdefault("S3_ACCESS_KEY_ID", os.environ.get("B2_KEY_ID", ""))
-os.environ.setdefault("S3_SECRET_ACCESS_KEY", os.environ.get("B2_APPLICATION_KEY", ""))
 
-from app.services.storage import StorageError, check_connection, delete_file, open_file, put_file
+def _configure_environment() -> None:
+    # Configure safe defaults before importing application settings.
+    os.environ.setdefault("ENVIRONMENT", "development")
+    os.environ.setdefault("DATABASE_URL", "postgresql://smoke:smoke@127.0.0.1:5432/smoke")
+    os.environ.setdefault("JWT_SECRET_KEY", "smoke-jwt-secret")
+    os.environ.setdefault("AI_API_KEY", "smoke-ai-key")
+    os.environ.setdefault("S3_BUCKET", os.environ.get("B2_BUCKET", ""))
+    os.environ.setdefault("S3_ENDPOINT_URL", os.environ.get("B2_ENDPOINT_URL", ""))
+    os.environ.setdefault("S3_REGION", os.environ.get("B2_REGION", ""))
+    os.environ.setdefault("S3_ACCESS_KEY_ID", os.environ.get("B2_KEY_ID", ""))
+    os.environ.setdefault("S3_SECRET_ACCESS_KEY", os.environ.get("B2_APPLICATION_KEY", ""))
+
+
+def _load_storage():
+    # Import lazily so importing this script for tests has no application/env side effects.
+    from app.services import storage
+
+    return storage
 
 
 def main() -> int:
+    _configure_environment()
     required = (
         "S3_BUCKET",
         "S3_ENDPOINT_URL",
@@ -31,27 +42,42 @@ def main() -> int:
     if missing:
         raise SystemExit("Missing storage configuration: " + ", ".join(missing))
 
-    check_connection()
+    storage = _load_storage()
+    storage.check_connection()
 
     with tempfile.TemporaryDirectory() as tmp:
         source = Path(tmp) / "storage-smoke.txt"
         fallback = Path(tmp) / "fallback.txt"
         payload = b"ai-chat-app backblaze b2 storage smoke test"
         source.write_bytes(payload)
-        object_key = "smoke/ai-chat-app-storage-smoke.txt"
+        # Unique keys avoid collisions between concurrent/manual smoke runs.
+        object_key = f"smoke/ai-chat-app-storage-smoke-{uuid4().hex}.txt"
 
-        put_file(source, object_key, "text/plain")
-
-        remote = open_file(object_key, fallback)
         try:
-            received = remote.read()
-        finally:
-            remote.close()
+            storage.put_file(source, object_key, "text/plain")
 
-        if received != payload:
-            raise StorageError("Object Storage read-back payload mismatch")
+            remote = storage.open_file(object_key, fallback)
+            try:
+                received = remote.read()
+            finally:
+                remote.close()
 
-        delete_file(object_key, fallback)
+            if received != payload:
+                raise storage.StorageError("Object Storage read-back payload mismatch")
+        except BaseException:
+            # Cleanup is best-effort when the smoke itself already failed.
+            # Preserve the original exception so it remains the primary signal.
+            try:
+                storage.delete_file(object_key, fallback)
+            except Exception as cleanup_error:
+                print(
+                    f"WARNING: failed to clean up smoke object: {cleanup_error}",
+                    file=sys.stderr,
+                )
+            raise
+        else:
+            # A cleanup failure after a successful round-trip should fail the smoke.
+            storage.delete_file(object_key, fallback)
 
     print("Object Storage smoke PASSED: upload -> read-back -> delete")
     return 0
