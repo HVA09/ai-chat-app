@@ -166,8 +166,9 @@ def test_uploaded_text_file_flows_through_download_and_chat_context(
     conversation_id = started.json()["conversation_id"]
 
     original_bytes = (
-        "Release note: ATTACHMENT_E2E_CODENAME=NEBULA-48\\n"
-        "This marker must reach the assistant as untrusted file context.\\n"
+        """Release note: ATTACHMENT_E2E_CODENAME=NEBULA-48
+This marker must reach the assistant as untrusted file context.
+"""
     ).encode("utf-8")
     uploaded = client.post(
         "/files/upload",
