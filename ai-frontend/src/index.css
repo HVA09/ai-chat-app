@@ -1342,3 +1342,37 @@ html.dark .chat-message-user {
     overflow-wrap: anywhere;
   }
 }
+
+/* Keep the tools menu readable and within the viewport on mobile. */
+.chat-composer .chat-tools-popover {
+  width: min(20rem, calc(100vw - 24px));
+  min-width: 0;
+  max-width: calc(100vw - 24px);
+}
+.chat-composer .chat-tools-popover button {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  gap: 8px;
+}
+.chat-composer .chat-tools-popover button svg { flex: 0 0 auto; }
+.chat-composer .chat-tools-popover button span { min-width: 0; }
+@media (max-width: 767px) {
+  .chat-composer .chat-tools-popover {
+    position: fixed !important;
+    inset-inline-start: 12px !important;
+    inset-inline-end: 12px !important;
+    left: 12px !important;
+    right: 12px !important;
+    top: auto !important;
+    bottom: calc(env(safe-area-inset-bottom) + 68px) !important;
+    translate: none !important;
+    width: auto !important;
+    min-width: 0;
+    max-width: none;
+    max-height: min(60dvh, 420px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    z-index: 70;
+  }
+}
