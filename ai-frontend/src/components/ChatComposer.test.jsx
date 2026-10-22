@@ -430,3 +430,41 @@ describe("ChatComposer command autocomplete", () => {
     expect(textarea).toHaveValue("/search ");
   });
 });
+
+
+describe("ChatComposer responsive tools menu", () => {
+  it("renders the tools menu in a dedicated responsive popover", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onInsertCalculator={vi.fn()}
+        onInsertWebSearch={vi.fn()}
+        onInsertDataAnalysis={vi.fn()}
+        onInsertAgent={vi.fn()}
+        onInsertPython={vi.fn()}
+        onCompareModels={vi.fn()}
+        models={[
+          { id: "model-a", label: "Model A" },
+          { id: "model-b", label: "Model B" },
+        ]}
+      />
+    );
+
+    await user.click(screen.getByTitle("tools.mobileMenu"));
+    const popover = screen.getByTitle("الآلة الحاسبة").closest(".chat-tools-popover");
+
+    expect(popover).toBeInTheDocument();
+    expect(popover).toHaveClass("ui-popover");
+    expect(screen.getByTitle("بحث الويب")).toBeInTheDocument();
+    expect(screen.getByTitle("تحليل البيانات")).toBeInTheDocument();
+    expect(screen.getByTitle("وضع الوكيل")).toBeInTheDocument();
+    expect(screen.getByTitle("مفسّر بايثون آمن")).toBeInTheDocument();
+    expect(screen.getByTitle("tools.compareModels")).toBeInTheDocument();
+  });
+});
+
