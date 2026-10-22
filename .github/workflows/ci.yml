@@ -90,7 +90,7 @@ jobs:
           key: ${{ runner.os }}-node24-npm-${{ hashFiles('ai-frontend/package.json') }}
           restore-keys: |
             ${{ runner.os }}-node24-npm-
-      - run: npm install --no-audit --no-fund
+      - run: npm install --prefer-online --no-audit --no-fund
       - run: npm test
       - run: npm run build
 
