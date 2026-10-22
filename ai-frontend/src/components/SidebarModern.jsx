@@ -157,7 +157,7 @@ export default function SidebarModern({
       {mobileOpen ? (
         <button
           type="button"
-          aria-label="Close sidebar"
+          aria-label={t("sidebar.closeNavigation")}
           onClick={() => setMobileOpen(false)}
           className="modern-sidebar-backdrop md:hidden"
         />
@@ -171,7 +171,7 @@ export default function SidebarModern({
               <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{t("appName")}</p>
               <p className="truncate text-[11px] text-slate-400">{sidebarTitle}</p>
             </div>
-            <button type="button" onClick={() => setMobileOpen(false)} className="modern-icon-button md:hidden" aria-label="Close navigation">
+            <button type="button" onClick={() => setMobileOpen(false)} className="modern-icon-button md:hidden" aria-label={t("sidebar.closeNavigation")}>
               <Icon name="close" size={17} />
             </button>
           </div>
@@ -309,7 +309,7 @@ export default function SidebarModern({
                 <button type="button" onClick={() => { closeMobile(); onSelectProject(null); }} className={`modern-library-item ${selectedProjectId === null ? "active" : ""}`}><Icon name="project" size={14} /><span>{t("sidebar.allProjects")}</span></button>
                 {visibleProjects.map((project) => (
                   <div key={project.id} className="modern-library-item-group">
-                    <button type="button" onClick={() => onSelectProject(project.id)} className={`modern-library-item ${selectedProjectId === project.id ? "active" : ""}`}><Icon name="project" size={14} /><span className="truncate">{project.name}</span></button>
+                    <button type="button" onClick={() => { closeMobile(); onSelectProject(project.id); }} className={`modern-library-item ${selectedProjectId === project.id ? "active" : ""}`}><Icon name="project" size={14} /><span className="truncate">{project.name}</span></button>
                     {(
                       Number(project.owner_id) === Number(currentUserId) ||
                       selectedWorkspaceRole === "owner" ||
@@ -337,7 +337,7 @@ export default function SidebarModern({
                 <button type="button" onClick={() => { closeMobile(); onSelectFolder(null); }} className={`modern-library-item ${selectedFolderId === null ? "active" : ""}`}><Icon name="folder" size={14} /><span>{t("sidebar.allConversations")}</span></button>
                 {visibleFolders.map((folder) => (
                   <div key={folder.id} className="modern-library-item-group">
-                    <button type="button" onClick={() => onSelectFolder(folder.id)} className={`modern-library-item ${selectedFolderId === folder.id ? "active" : ""}`}><span className={`h-2.5 w-2.5 rounded-full bg-slate-400`} /><span className="truncate">{folder.name}</span></button>
+                    <button type="button" onClick={() => { closeMobile(); onSelectFolder(folder.id); }} className={`modern-library-item ${selectedFolderId === folder.id ? "active" : ""}`}><span className={`h-2.5 w-2.5 rounded-full bg-slate-400`} /><span className="truncate">{folder.name}</span></button>
                     <div className="flex items-center">
                       <button type="button" className="modern-item-action" onClick={() => onRenameFolder(folder.id, folder.name, folder.color ?? "slate")} title={t("sidebar.renameFolderTitle")}><Icon name="edit" size={13} /></button>
                       <button type="button" className="modern-item-action danger" onClick={() => onDeleteFolder(folder.id)} title={t("sidebar.deleteFolderTitle")}><Icon name="trash" size={13} /></button>
@@ -350,7 +350,7 @@ export default function SidebarModern({
                 <button type="button" onClick={() => { closeMobile(); onSelectAssistant(null); }} className={`modern-library-item ${selectedAssistantId === null ? "active" : ""}`}><Icon name="robot" size={14} /><span>{t("sidebar.defaultAssistant")}</span></button>
                 {visibleAssistants.map((assistant) => (
                   <div key={assistant.id} className="modern-library-item-group">
-                    <button type="button" onClick={() => onSelectAssistant(assistant.id)} className={`modern-library-item ${selectedAssistantId === assistant.id ? "active" : ""}`}><Icon name="robot" size={14} /><span className="truncate">{assistant.name}</span></button>
+                    <button type="button" onClick={() => { closeMobile(); onSelectAssistant(assistant.id); }} className={`modern-library-item ${selectedAssistantId === assistant.id ? "active" : ""}`}><Icon name="robot" size={14} /><span className="truncate">{assistant.name}</span></button>
                     {assistant.can_edit !== false ? (
                       <div className="flex items-center">
                         <button type="button" className="modern-item-action" onClick={() => onEditAssistant(assistant.id)} title={t("sidebar.editAssistantTitle")}><Icon name="edit" size={13} /></button>
@@ -365,7 +365,7 @@ export default function SidebarModern({
                 <button type="button" onClick={() => { closeMobile(); onSelectTag(null); }} className={`modern-library-item ${selectedTagId === null ? "active" : ""}`}><Icon name="tag" size={14} /><span>{t("sidebar.allTags")}</span></button>
                 {visibleTags.map((tag) => (
                   <div key={tag.id} className="modern-library-item-group">
-                    <button type="button" onClick={() => onSelectTag(tag.id)} className={`modern-library-item ${selectedTagId === tag.id ? "active" : ""}`}><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tag.color }} /><span className="truncate">{tag.name}</span></button>
+                    <button type="button" onClick={() => { closeMobile(); onSelectTag(tag.id); }} className={`modern-library-item ${selectedTagId === tag.id ? "active" : ""}`}><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tag.color }} /><span className="truncate">{tag.name}</span></button>
                     <div className="flex items-center">
                       <button type="button" className="modern-item-action" onClick={() => onRenameTag(tag.id, tag.name, tag.color)} title={t("sidebar.renameTagTitle")}><Icon name="edit" size={13} /></button>
                       <button type="button" className="modern-item-action danger" onClick={() => onDeleteTag(tag.id, tag.name)} title={t("sidebar.deleteTagTitle")}><Icon name="trash" size={13} /></button>
@@ -376,7 +376,7 @@ export default function SidebarModern({
 
               <Section title={t("bookmarks.title")} icon="bookmark" open={openSection === "bookmarks"} onToggle={() => toggleSection("bookmarks")}>
                 {bookmarkedMessages.length ? bookmarkedMessages.slice(0, 8).map((item) => (
-                  <button key={item.message_id} type="button" onClick={() => onOpenBookmarkedMessage(item)} className="modern-library-item block text-start">
+                  <button key={item.message_id} type="button" onClick={() => { closeMobile(); onOpenBookmarkedMessage(item); }} className="modern-library-item block text-start">
                     <Icon name="bookmark" size={14} /><span className="min-w-0 truncate">{item.conversation_title}</span>
                   </button>
                 )) : <p className="px-2 py-2 text-xs text-slate-400">{t("bookmarks.empty")}</p>}
@@ -385,7 +385,7 @@ export default function SidebarModern({
               <Section title={t("sidebar.savedPromptsTitle")} icon="edit" open={openSection === "prompts"} onToggle={() => toggleSection("prompts")} action={<button type="button" className="modern-section-add" onClick={onCreateSavedPrompt}>+</button>}>
                 {savedPrompts.map((prompt) => (
                   <div key={prompt.id} className="modern-library-item-group">
-                    <button type="button" onClick={() => onUseSavedPrompt(prompt.content)} className="modern-library-item"><Icon name="edit" size={14} /><span className="truncate">{prompt.name}</span></button>
+                    <button type="button" onClick={() => { closeMobile(); onUseSavedPrompt(prompt.content); }} className="modern-library-item"><Icon name="edit" size={14} /><span className="truncate">{prompt.name}</span></button>
                     <button type="button" className="modern-item-action" onClick={() => onRenameSavedPrompt(prompt.id, prompt.name, prompt.content)} title={t("sidebar.editSavedPromptTitle")}><Icon name="edit" size={13} /></button>
                   </div>
                 ))}

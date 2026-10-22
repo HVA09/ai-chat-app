@@ -36,4 +36,10 @@ describe("i18n language namespaces", () => {
     expect(i18n.getResource("en", "translation", "assistantEditor.createTitle")).toBe("Create assistant");
     expect(i18n.getResource("en", "translation", "assistantEditor.publicTitle")).toBe("Public link");
   });
+
+  it("keeps mobile sidebar close labels translated in Arabic and English", () => {
+    expect(i18n.getResource("ar", "translation", "sidebar.closeNavigation")).toBe("إغلاق القائمة الجانبية");
+    expect(i18n.getResource("en", "translation", "sidebar.closeNavigation")).toBe("Close sidebar");
+  });
+
 });
