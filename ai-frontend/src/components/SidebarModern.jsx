@@ -157,7 +157,7 @@ export default function SidebarModern({
       {mobileOpen ? (
         <button
           type="button"
-          aria-label="Close sidebar"
+          aria-label={t("sidebar.closeNavigation")}
           onClick={() => setMobileOpen(false)}
           className="modern-sidebar-backdrop md:hidden"
         />
@@ -171,7 +171,7 @@ export default function SidebarModern({
               <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{t("appName")}</p>
               <p className="truncate text-[11px] text-slate-400">{sidebarTitle}</p>
             </div>
-            <button type="button" onClick={() => setMobileOpen(false)} className="modern-icon-button md:hidden" aria-label="Close navigation">
+            <button type="button" onClick={() => setMobileOpen(false)} className="modern-icon-button md:hidden" aria-label={t("sidebar.closeNavigation")}>
               <Icon name="close" size={17} />
             </button>
           </div>
