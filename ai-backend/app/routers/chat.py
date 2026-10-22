@@ -1258,7 +1258,7 @@ async def chat_stream(
     """
     نفس /chat لكن الرد يوصل تدريجيًا (Server-Sent Events).
     أحداث SSE: conversation (رقم المحادثة) → chunk (جزء نص، مرارًا) → done | error
-    الأسطر الجديدة داخل chunk تُستبدل بـ \\n نصية عشان ما تكسر صيغة السطر الواحد لكل حدث.
+    الأسطر الجديدة داخل chunk تُستبدل بـ \\\n نصية عشان ما تكسر صيغة السطر الواحد لكل حدث.
     """
     conversation = _get_or_create_conversation(payload, current_user, db)
     _attach_requested_files(payload.file_ids, conversation, current_user, db)
@@ -1351,7 +1351,7 @@ async def chat_stream(
                     )
                     db.commit()
 
-                    safe_reply = agent_reply.replace("\n", "\\\n")
+                    safe_reply = agent_reply.replace("\\n", "\\\\n")
                     safe_sources = json.dumps(sources, ensure_ascii=False)
                     yield f"event: sources\ndata: {safe_sources}\n\n"
                     yield f"event: chunk\ndata: {safe_reply}\n\n"
@@ -1385,7 +1385,7 @@ async def chat_stream(
             Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
         )
         db.commit()
-        safe_calculator_result = calculator_result.replace("\n", "\n")
+        safe_calculator_result = calculator_result.replace("\n", "\\n")
 
         async def calculator_event_generator():
             yield f"event: conversation\ndata: {conversation.id}\n\n"
@@ -1434,7 +1434,7 @@ async def chat_stream(
             )
         )
         db.commit()
-        safe_code_result = code_result.replace("\n", "\n")
+        safe_code_result = code_result.replace("\n", "\\n")
 
         async def python_event_generator():
             yield f"event: conversation\ndata: {conversation.id}\n\n"
@@ -1499,7 +1499,7 @@ async def chat_stream(
             Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
         )
         db.commit()
-        safe_analysis_result = analysis_result.replace("\n", "\n")
+        safe_analysis_result = analysis_result.replace("\n", "\\n")
         sources = [
             {
                 "id": "D1",
@@ -1549,7 +1549,7 @@ async def chat_stream(
             Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
         )
         db.commit()
-        safe_search_reply = search_reply.replace("\n", "\n")
+        safe_search_reply = search_reply.replace("\n", "\\n")
         safe_sources = json.dumps(sources, ensure_ascii=False)
 
         async def web_search_event_generator():
@@ -1629,7 +1629,7 @@ async def chat_stream(
                     return
 
                 full_reply += chunk
-                safe_chunk = chunk.replace("\n", "\n")
+                safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
         except Exception:
             logger.exception("خطأ أثناء بث الرد لمحادثة %s", conversation.id)
@@ -1844,7 +1844,7 @@ async def regenerate_chat_stream(
                     return
 
                 full_reply += chunk
-                safe_chunk = chunk.replace("\n", "\n")
+                safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
         except Exception:
             logger.exception("خطأ أثناء إعادة توليد الرد لمحادثة %s", conversation.id)
@@ -1952,7 +1952,7 @@ async def edit_chat_stream(
                     return
 
                 full_reply += chunk
-                safe_chunk = chunk.replace("\n", "\n")
+                safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
         except Exception:
             logger.exception("خطأ أثناء تعديل رسالة لمحادثة %s", conversation.id)
