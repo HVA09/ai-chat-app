@@ -166,7 +166,7 @@ export default function ChatMessage({
   const regenerateLabel = document.documentElement.lang === "ar"
     ? "إعادة التوليد"
     : "Regenerate";
-  const branchLabel = t("chat.branchConversation");
+  const branchLabel = t("tools.branchConversation");
   const goodFeedbackLabel = t("feedback.helpful");
   const badFeedbackLabel = t("feedback.notHelpful");
   const bookmarkLabel = isBookmarked
@@ -233,23 +233,23 @@ export default function ChatMessage({
   };
 
   return (
-    <div className={`chat-message-row flex ${isUser ? "justify-end" : "justify-start"}`}>
+    <div className={`chat-message-row flex w-full min-w-0 ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`chat-message-bubble max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
+        className={`chat-message-bubble min-w-0 max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
           isUser
             ? "chat-message-user bg-slate-900 text-white"
             : "chat-message-assistant border border-slate-200 bg-white text-slate-900"
         }`}
       >
-        <div className="mb-2 flex items-center justify-between gap-3 text-xs opacity-70">
-          <div className="flex items-center gap-2">
+        <div className="chat-message-header mb-2 flex flex-wrap items-center justify-between gap-2 text-xs opacity-70">
+          <div className="chat-message-meta flex min-w-0 flex-wrap items-center gap-2">
             <span>{isUser ? t("you") : t("assistant")}</span>
             <span>•</span>
             <span>{time}</span>
           </div>
 
           {isUser && (canEdit || canDelete || canBranch || canRemember) ? (
-            <div className="flex items-center gap-1">
+            <div className="chat-message-actions flex min-w-0 max-w-full flex-wrap items-center gap-1">
               {canEdit && onEdit ? (
                 <button
                   type="button"
@@ -309,7 +309,7 @@ export default function ChatMessage({
           ) : null}
 
           {!isUser && text ? (
-            <div className="flex items-center gap-1">
+            <div className="chat-message-actions flex min-w-0 max-w-full flex-wrap items-center gap-1">
               <button
                 type="button"
                 onClick={toggleVoiceOutput}
