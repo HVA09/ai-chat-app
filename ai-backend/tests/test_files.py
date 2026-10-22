@@ -377,26 +377,51 @@ def test_object_storage_upload_download_delete_survives_local_file_loss(
 def test_upload_failure_cleans_partial_file_and_allows_retry(
     client, db_session, tmp_path, monkeypatch
 ):
-    """A transient durable-write failure must clean up before retrying."""
-    _disable_object_storage(monkeypatch)
+    """A remote storage outage cleans up the upload; a retry persists the original bytes."""
+    import io
+
     from app.models.file_attachment import FileAttachment
     from app.models.user import User
     from app.routers import files as files_router
     from app.services.storage import StorageError
 
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    for name, value in (
+        ("S3_BUCKET", "test-bucket"),
+        ("S3_ENDPOINT_URL", "https://objects.example.test"),
+        ("S3_REGION", "us-east-1"),
+        ("S3_ACCESS_KEY_ID", "test-access-key"),
+        ("S3_SECRET_ACCESS_KEY", "test-secret-key"),
+    ):
+        monkeypatch.setattr(app_settings, name, value)
+
     payload = b"file content that should survive a successful retry"
     attempts = 0
+    objects = {}
+    operations = []
 
-    def fail_first_put_file(path, object_key, content_type):
+    def fake_put_file(path, object_key, content_type):
         nonlocal attempts
         attempts += 1
         assert path.read_bytes() == payload
         assert object_key.startswith("users/")
         assert content_type == "text/plain"
         if attempts == 1:
+            operations.append(("put_failed", object_key))
             raise StorageError("simulated temporary object-storage outage")
+        objects[object_key] = path.read_bytes()
+        operations.append(("put", object_key, content_type))
 
-    monkeypatch.setattr(files_router, "put_file", fail_first_put_file)
+    def fake_open_file(object_key, fallback_path):
+        operations.append(("get", object_key))
+        try:
+            return io.BytesIO(objects[object_key])
+        except KeyError as exc:
+            raise FileNotFoundError(object_key) from exc
+
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(files_router, "open_file", fake_open_file)
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda db, file: 0)
     token = _register_and_login(client, "files-storage-failure@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     upload = {"file": ("retry-me.txt", payload, "text/plain")}
@@ -404,6 +429,7 @@ def test_upload_failure_cleans_partial_file_and_allows_retry(
     failed = client.post("/files/upload", files=upload, headers=headers)
 
     assert failed.status_code == 503
+    assert objects == {}
     user = db_session.query(User).filter_by(
         email="files-storage-failure@example.com"
     ).one()
@@ -420,15 +446,23 @@ def test_upload_failure_cleans_partial_file_and_allows_retry(
     assert attempts == 2
     file_id = retried.json()["id"]
 
+    attachment = db_session.get(FileAttachment, file_id)
+    assert attachment is not None
+    assert objects[attachment.object_key] == payload
     assert (
         db_session.query(FileAttachment)
         .filter(FileAttachment.user_id == user.id)
         .count()
         == 1
     )
+
+    # Prove retrieval comes from the remote object store, not the ephemeral disk copy.
+    local_path = tmp_path / str(attachment.user_id) / attachment.stored_filename
+    local_path.unlink()
     downloaded = client.get(f"/files/{file_id}", headers=headers)
     assert downloaded.status_code == 200
     assert downloaded.content == payload
+    assert [operation[0] for operation in operations] == ["put_failed", "put", "get"]
 
 
 def test_upload_preserves_original_file_when_text_extraction_fails(
