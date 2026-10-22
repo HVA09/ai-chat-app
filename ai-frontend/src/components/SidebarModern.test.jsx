@@ -41,6 +41,7 @@ describe("SidebarModern mobile navigation", () => {
     });
     expect(sidebar).not.toHaveClass("modern-sidebar-open");
   });
+
   it("uses the translated label for both mobile close controls", () => {
     const { container } = renderSidebar();
 
