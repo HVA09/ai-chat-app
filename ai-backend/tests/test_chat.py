@@ -882,6 +882,77 @@ def test_chat_context_keeps_explicit_upload_when_rag_returns_other_file(
     assert any(source["filename"] == "latest-upload.txt" for source in sources)
 
 
+def test_chat_context_reports_explicit_attachment_when_text_is_unavailable(
+    client, db_session, monkeypatch
+):
+    from app.models.conversation import Conversation
+    from app.models.conversation_file_link import ConversationFileLink
+    from app.models.file_attachment import FileAttachment
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="تم")),
+    )
+    token = _register_and_login(client, "unreadable-attachment@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    first = client.post("/chat", json={"message": "ابدأ"}, headers=headers)
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+    conversation = (
+        db_session.query(Conversation)
+        .filter(Conversation.id == conversation_id)
+        .one()
+    )
+    user = (
+        db_session.query(User)
+        .filter(User.email == "unreadable-attachment@example.com")
+        .one()
+    )
+
+    file = FileAttachment(
+        user_id=user.id,
+        workspace_id=None,
+        project_id=None,
+        original_filename="scanned-document.pdf",
+        stored_filename="scanned-document.pdf",
+        content_type="application/pdf",
+        size_bytes=1234,
+        extracted_text=None,
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(
+        ConversationFileLink(
+            conversation_id=conversation_id,
+            file_id=file.id,
+        )
+    )
+    db_session.commit()
+
+    async def no_relevant_chunks(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "retrieve_relevant_chunks",
+        no_relevant_chunks,
+    )
+
+    context, sources = asyncio.run(
+        chat_router_module._build_file_context(
+            conversation,
+            "أرسل لي الملف المرفق وحلله.",
+            db_session,
+        )
+    )
+
+    assert "scanned-document.pdf" in context
+    assert "no extracted text is available" in context
+    assert "Do not claim that no file was attached" in context
+    assert sources == []
+
+
 def test_chat_rejects_file_belonging_to_another_user(client, db_session, monkeypatch):
     monkeypatch.setattr(
         chat_router_module,
