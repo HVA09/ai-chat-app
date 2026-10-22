@@ -360,3 +360,78 @@ def test_object_storage_upload_download_delete_survives_local_file_loss(
     assert object_key not in objects
     assert client.get(f"/files/{file_id}", headers=headers).status_code == 404
     assert [operation[0] for operation in operations] == ["put", "get", "delete"]
+
+
+def test_upload_returns_503_and_cleans_partial_local_file(
+    client, db_session, tmp_path, monkeypatch
+):
+    """A failed durable write must not leave a local file or metadata row."""
+    from app.models.file_attachment import FileAttachment
+    from app.models.user import User
+    from app.routers import files as files_router
+    from app.services.storage import StorageError
+
+    payload = b"file content that must not remain after storage failure"
+
+    def fail_put_file(path, object_key, content_type):
+        assert path.read_bytes() == payload
+        assert object_key.startswith("users/")
+        assert content_type == "text/plain"
+        raise StorageError("simulated object-storage outage")
+
+    monkeypatch.setattr(files_router, "put_file", fail_put_file)
+    token = _register_and_login(client, "files-storage-failure@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/files/upload",
+        files={"file": ("retry-me.txt", payload, "text/plain")},
+        headers=headers,
+    )
+
+    assert response.status_code == 503
+    user = db_session.query(User).filter_by(
+        email="files-storage-failure@example.com"
+    ).one()
+    assert (
+        db_session.query(FileAttachment)
+        .filter(FileAttachment.user_id == user.id)
+        .count()
+        == 0
+    )
+    assert not any(path.is_file() for path in tmp_path.rglob("*"))
+
+
+def test_upload_preserves_original_file_when_text_extraction_fails(
+    client, db_session, tmp_path, monkeypatch
+):
+    """Text extraction failure is reported internally but must not destroy the upload."""
+    from app.models.file_attachment import FileAttachment
+    from app.routers import files as files_router
+    from app.services.file_text_extractor import FileTextExtractionError
+
+    payload = b"valid uploaded content; extraction will fail"
+
+    def fail_extract(*_args, **_kwargs):
+        raise FileTextExtractionError("simulated parser failure")
+
+    monkeypatch.setattr(files_router, "extract_text", fail_extract)
+    token = _register_and_login(client, "files-extraction-failure@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("notes.txt", payload, "text/plain")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+
+    attachment = db_session.get(FileAttachment, file_id)
+    assert attachment is not None
+    assert attachment.extracted_text is None
+
+    downloaded = client.get(f"/files/{file_id}", headers=headers)
+    assert downloaded.status_code == 200
+    assert downloaded.content == payload
+
