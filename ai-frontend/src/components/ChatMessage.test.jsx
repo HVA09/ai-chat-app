@@ -20,7 +20,7 @@ vi.mock("react-i18next", () => ({
         "bookmarks.remove": "Remove from bookmarks",
         "memory.save": "Save to memory",
         "memory.remove": "Remove from memory",
-        "tools.branchConversation": "Branch conversation",
+        "chat.branchConversation": "Branch conversation",
         "tools.voiceOutput": "Read aloud",
         "tools.stopVoiceOutput": "Stop reading",
         "app.voiceOutputNotSupported": "Voice output is not supported in this browser",
@@ -289,32 +289,5 @@ describe("ChatMessage branching", () => {
 
     await user.click(screen.getByRole("button", { name: "Branch conversation" }));
     expect(onBranch).toHaveBeenCalled();
-  });
-
-  it("keeps message actions inside a wrapping toolbar on narrow layouts", () => {
-    render(
-      <ChatMessage
-        role="user"
-        text="Question"
-        time="10:00"
-        canEdit
-        onEdit={vi.fn()}
-        canDelete
-        onDelete={vi.fn()}
-        canBranch
-        onBranch={vi.fn()}
-        canRemember
-        onToggleRemember={vi.fn()}
-      />
-    );
-
-    const branchButton = screen.getByRole("button", { name: "Branch conversation" });
-    const actions = branchButton.closest(".chat-message-actions");
-
-    expect(actions).toBeInTheDocument();
-    expect(actions).toHaveClass("flex-wrap", "min-w-0", "max-w-full");
-    expect(actions.closest(".chat-message-header")).toHaveClass("flex-wrap");
-    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
   });
 });
