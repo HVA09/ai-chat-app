@@ -92,6 +92,59 @@ describe("ChatHeaderModern contextual conversation actions", () => {
 });
 
 describe("ChatHeaderModern mobile navigation", () => {
+  it("closes the settings menu on Escape and restores focus to its trigger", async () => {
+    const user = userEvent.setup();
+    renderHeader();
+
+    const settingsButton = screen.getByRole("button", { name: "Settings" });
+    await user.click(settingsButton);
+    expect(screen.getByRole("button", { name: "Account" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("button", { name: "Account" })).not.toBeInTheDocument();
+    expect(settingsButton).toHaveAttribute("aria-expanded", "false");
+    expect(settingsButton).toHaveFocus();
+  });
+
+  it("closes conversation actions after an outside pointer interaction", async () => {
+    const user = userEvent.setup();
+    renderHeader({ canExportConversation: true });
+
+    const moreButton = screen.getByRole("button", { name: "More" });
+    await user.click(moreButton);
+    expect(screen.getByRole("button", { name: "Export Markdown" })).toBeInTheDocument();
+
+    await user.click(document.body);
+
+    expect(screen.queryByRole("button", { name: "Export Markdown" })).not.toBeInTheDocument();
+    expect(moreButton).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("keeps header popovers mutually exclusive and labels the branches control", async () => {
+    const user = userEvent.setup();
+    renderHeader({
+      canExportConversation: true,
+      conversationBranches: [{ id: 9, title: "A branch" }],
+    });
+
+    const settingsButton = screen.getByRole("button", { name: "Settings" });
+    const moreButton = screen.getByRole("button", { name: "More" });
+    const branchesButton = screen.getByRole("button", { name: "View branches" });
+
+    await user.click(settingsButton);
+    await user.click(moreButton);
+    expect(screen.queryByRole("button", { name: "Account" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export Markdown" })).toBeInTheDocument();
+
+    await user.click(branchesButton);
+    expect(screen.queryByRole("button", { name: "Export Markdown" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "A branch" })).toBeInTheDocument();
+    expect(branchesButton).toHaveAttribute("aria-expanded", "true");
+  });
+});
+
+describe("ChatHeaderModern mobile navigation", () => {
   it("dispatches the sidebar-open event from the mobile menu button", async () => {
     const user = userEvent.setup();
     const dispatchSpy = vi.spyOn(window, "dispatchEvent");

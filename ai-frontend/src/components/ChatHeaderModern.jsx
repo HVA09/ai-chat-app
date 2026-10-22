@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import LanguageToggle from "./LanguageToggle";
 import ThemeToggle from "./ThemeToggle";
@@ -45,6 +45,40 @@ export default function ChatHeaderModern({
   const [menuOpen, setMenuOpen] = useState(false);
   const [branchOpen, setBranchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const headerRef = useRef(null);
+  const settingsTriggerRef = useRef(null);
+  const branchTriggerRef = useRef(null);
+  const moreTriggerRef = useRef(null);
+
+  useEffect(() => {
+    const closeMenus = () => {
+      setMenuOpen(false);
+      setBranchOpen(false);
+      setSettingsOpen(false);
+    };
+
+    const handlePointerDown = (event) => {
+      if (!menuOpen && !branchOpen && !settingsOpen) return;
+      if (!headerRef.current?.contains(event.target)) closeMenus();
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape" || (!menuOpen && !branchOpen && !settingsOpen)) return;
+
+      event.preventDefault();
+      if (settingsOpen) settingsTriggerRef.current?.focus();
+      else if (menuOpen) moreTriggerRef.current?.focus();
+      else branchTriggerRef.current?.focus();
+      closeMenus();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [menuOpen, branchOpen, settingsOpen]);
 
   const hasConversationActions =
     canShareConversation ||
@@ -57,7 +91,7 @@ export default function ChatHeaderModern({
   const openSidebar = () => window.dispatchEvent(new CustomEvent("app:open-sidebar"));
 
   return (
-    <header className="modern-chat-header">
+    <header ref={headerRef} className="modern-chat-header">
       <button
         type="button"
         className="modern-header-mobile-menu md:hidden"
@@ -106,7 +140,8 @@ export default function ChatHeaderModern({
         <div className="relative">
           <button
             type="button"
-            onClick={() => { setSettingsOpen((value) => !value); setMenuOpen(false); }}
+            ref={settingsTriggerRef}
+            onClick={() => { setSettingsOpen((value) => !value); setMenuOpen(false); setBranchOpen(false); }}
             className="modern-header-icon-action"
             aria-label={lang === "ar" ? "الإعدادات" : "Settings"}
             aria-expanded={settingsOpen}
@@ -134,7 +169,7 @@ export default function ChatHeaderModern({
 
         {conversationBranches.length > 0 ? (
           <div className="relative hidden sm:block">
-            <button type="button" onClick={() => setBranchOpen((value) => !value)} className="modern-header-icon-action" title={t("chat.branchListTitle")}>
+            <button type="button" ref={branchTriggerRef} onClick={() => { setBranchOpen((value) => !value); setMenuOpen(false); setSettingsOpen(false); }} className="modern-header-icon-action" title={t("chat.branchListTitle")} aria-label={t("chat.branchListTitle")} aria-expanded={branchOpen}>
               <Icon name="gitBranch" size={18} />
             </button>
             {branchOpen ? (
@@ -152,7 +187,7 @@ export default function ChatHeaderModern({
 
         {hasConversationActions ? (
           <div className="relative">
-            <button type="button" onClick={() => { setMenuOpen((value) => !value); setSettingsOpen(false); }} className="modern-header-more" aria-label={t("header.more")} aria-expanded={menuOpen}>
+            <button type="button" ref={moreTriggerRef} onClick={() => { setMenuOpen((value) => !value); setSettingsOpen(false); setBranchOpen(false); }} className="modern-header-more" aria-label={t("header.more")} aria-expanded={menuOpen}>
               <Icon name="more" size={18} />
             </button>
             {menuOpen ? (
