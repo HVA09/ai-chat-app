@@ -532,6 +532,7 @@ const resources = {
 
       sidebar: {
         scheduledTasksTitle: "المهام المجدولة",
+        closeNavigation: "إغلاق القائمة الجانبية",
         renamePrompt: "اسم المحادثة الجديد:",
         renameTitle: "إعادة تسمية",
         duplicateTitle: "نسخ المحادثة",
@@ -1661,6 +1662,7 @@ const resources = {
 
       sidebar: {
         scheduledTasksTitle: "Scheduled tasks",
+        closeNavigation: "Close sidebar",
         renamePrompt: "New conversation name:",
         renameTitle: "Rename",
         duplicateTitle: "Duplicate conversation",
