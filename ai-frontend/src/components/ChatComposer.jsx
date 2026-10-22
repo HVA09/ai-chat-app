@@ -372,13 +372,12 @@ export default function ChatComposer({
                 title={t("tools.mobileMenu")}
                 aria-label={t("tools.mobileMenu")}
                 aria-expanded={toolsOpen}
-                aria-controls="chat-composer-tools"
                 className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700"
               >
                 <Icon name="plus" size={18} />
               </button>
               {toolsOpen ? (
-                <div id="chat-composer-tools" className="chat-tools-popover ui-popover absolute bottom-full end-0 z-30 mb-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                <div className="chat-tools-popover ui-popover absolute bottom-full end-0 z-30 mb-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
                   <div className="grid grid-cols-2 gap-2">
                     {models.length > 0 ? (
                       <label className="col-span-2 text-xs text-slate-500 dark:text-slate-400">
