@@ -1018,3 +1018,106 @@ def test_pro_plan_can_select_advanced_model(client, db_session, monkeypatch):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
+
+
+def test_chat_analyze_auto_selects_single_attached_csv_without_filename(
+    client, monkeypatch, db_session, tmp_path
+):
+    from pathlib import Path
+    from app.models.file_attachment import FileAttachment
+
+    monkeypatch.setattr(chat_router_module.settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تجريبي")),
+    )
+    token = _register_and_login(client, "analyze-single-file@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    first = client.post("/chat", json={"message": "ابدأ"}, headers=headers)
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+    user = client.get("/users/me", headers=headers).json()
+
+    content = "item,amount\nbook,10\npen,5\n"
+    user_upload_dir = Path(tmp_path) / str(user["id"])
+    user_upload_dir.mkdir(parents=True, exist_ok=True)
+    (user_upload_dir / "sales.csv").write_text(content, encoding="utf-8")
+    file = FileAttachment(
+        user_id=user["id"],
+        workspace_id=None,
+        original_filename="sales.csv",
+        stored_filename="sales.csv",
+        content_type="text/csv",
+        size_bytes=len(content.encode("utf-8")),
+        extracted_text=content,
+    )
+    db_session.add(file)
+    db_session.commit()
+    db_session.refresh(file)
+
+    response = client.post(
+        "/chat",
+        json={
+            "message": "/analyze",
+            "conversation_id": conversation_id,
+            "file_ids": [file.id],
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    reply = response.json()["reply"]
+    assert "sales.csv" in reply
+    assert "الصفوف: **2**" in reply
+    assert "الأعمدة: **2**" in reply
+
+
+def test_chat_analyze_asks_for_a_filename_when_multiple_data_files_are_attached(
+    client, monkeypatch, db_session
+):
+    from app.models.file_attachment import FileAttachment
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تجريبي")),
+    )
+    token = _register_and_login(client, "analyze-multiple-files@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    first = client.post("/chat", json={"message": "ابدأ"}, headers=headers)
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+    user = client.get("/users/me", headers=headers).json()
+
+    files = [
+        FileAttachment(
+            user_id=user["id"],
+            workspace_id=None,
+            original_filename=name,
+            stored_filename=name,
+            content_type="text/csv",
+            size_bytes=20,
+            extracted_text="item,amount\nbook,10\n",
+        )
+        for name in ("sales.csv", "expenses.csv")
+    ]
+    db_session.add_all(files)
+    db_session.commit()
+    for item in files:
+        db_session.refresh(item)
+
+    response = client.post(
+        "/chat",
+        json={
+            "message": "/analyze",
+            "conversation_id": conversation_id,
+            "file_ids": [item.id for item in files],
+        },
+        headers=headers,
+    )
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert "أرفقت أكثر من ملف بيانات" in detail
+    assert "sales.csv" in detail
+    assert "expenses.csv" in detail
+
