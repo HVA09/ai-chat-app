@@ -24,6 +24,13 @@ describe("i18n language namespaces", () => {
     expect(i18n.getResource("en", "translation", "app.voiceOutputNotSupported")).toBe("Voice output is not supported in this browser");
   });
 
+  it("keeps model selector labels translated in Arabic and English", () => {
+    expect(i18n.getResource("ar", "translation", "tools.modelSelector")).toBe("نموذج الذكاء الاصطناعي");
+    expect(i18n.getResource("en", "translation", "tools.modelSelector")).toBe("AI model");
+    expect(i18n.getResource("ar", "translation", "tools.defaultModel")).toBe("النموذج الافتراضي");
+    expect(i18n.getResource("en", "translation", "tools.defaultModel")).toBe("Default model");
+  });
+
   it("keeps assistant editor labels in the correct language", () => {
     expect(i18n.getResource("ar", "translation", "assistantEditor.createTitle")).toBe("إنشاء مساعد");
     expect(i18n.getResource("en", "translation", "assistantEditor.createTitle")).toBe("Create assistant");
