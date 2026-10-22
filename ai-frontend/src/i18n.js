@@ -1072,6 +1072,8 @@ const resources = {
         stopVoiceOutput: "إيقاف القراءة",
         attachFiles: "إرفاق ملفات",
         mobileMenu: "فتح أدوات الرسالة",
+        modelSelector: "نموذج الذكاء الاصطناعي",
+        defaultModel: "النموذج الافتراضي",
         calculatorShort: "آلة حاسبة",
         webSearchShort: "بحث الويب",
         dataAnalysisShort: "تحليل البيانات",
