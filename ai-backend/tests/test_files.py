@@ -469,6 +469,7 @@ def test_upload_preserves_original_file_when_text_extraction_fails(
     client, db_session, tmp_path, monkeypatch
 ):
     """Text extraction failure is reported internally but must not destroy the upload."""
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     _disable_object_storage(monkeypatch)
     from app.models.file_attachment import FileAttachment
     from app.routers import files as files_router
