@@ -133,3 +133,77 @@ def test_conversation_delete_removes_file_link_but_not_file(client, tmp_path, mo
         headers=headers,
     )
     assert remaining.status_code == 200
+
+
+def test_uploaded_text_file_flows_through_download_and_chat_context(
+    client, tmp_path, monkeypatch
+):
+    """Exercise one real API flow from upload through retrieval as chat context."""
+    from app.routers import files as files_router
+
+    mock_reply = AsyncMock(return_value=AIReply(text="تم تحليل الملف"))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda *_args, **_kwargs: 0)
+
+    async def no_semantic_results(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "retrieve_relevant_chunks",
+        no_semantic_results,
+    )
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+
+    token = _register_and_login(client, "upload-chat-roundtrip@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    started = client.post(
+        "/chat",
+        json={"message": "ابدأ اختبار تكامل الملفات"},
+        headers=headers,
+    )
+    assert started.status_code == 200
+    conversation_id = started.json()["conversation_id"]
+
+    original_bytes = (
+        """Release note: ATTACHMENT_E2E_CODENAME=NEBULA-48
+This marker must reach the assistant as untrusted file context.
+"""
+    ).encode("utf-8")
+    uploaded = client.post(
+        "/files/upload",
+        params={"conversation_id": conversation_id},
+        files={"file": ("release-notes.txt", original_bytes, "text/plain")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_payload = uploaded.json()
+    assert file_payload["is_attached"] is True
+    assert file_payload["content_type"] == "text/plain"
+
+    listed = client.get(
+        "/files",
+        params={"conversation_id": conversation_id},
+        headers=headers,
+    )
+    assert listed.status_code == 200
+    assert any(item["id"] == file_payload["id"] for item in listed.json())
+
+    downloaded = client.get(f"/files/{file_payload['id']}", headers=headers)
+    assert downloaded.status_code == 200
+    assert downloaded.content == original_bytes
+
+    chat_response = client.post(
+        "/chat",
+        json={
+            "message": "ما رمز الإطلاق الموجود في ملف الملاحظات المرفق؟",
+            "conversation_id": conversation_id,
+        },
+        headers=headers,
+    )
+    assert chat_response.status_code == 200
+
+    prompt = mock_reply.await_args.args[0]
+    assert "[SOURCE S1: release-notes.txt]" in prompt
+    assert "untrusted reference material" in prompt
+    assert "ATTACHMENT_E2E_CODENAME=NEBULA-48" in prompt
