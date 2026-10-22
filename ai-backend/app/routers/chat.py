@@ -461,11 +461,26 @@ async def _build_file_context(
         )
         context, sources = build_retrieval_context(rows)
         if context:
-            # Semantic retrieval can return chunks from an older or different file
-            # and skip a newly attached upload. Preserve useful RAG excerpts, but
-            # supplement them with directly attached text files not represented in
-            # the retrieved rows so the user's explicit upload is not silently lost.
+            # Keep files explicitly attached to this conversation available even
+            # when semantic top-k retrieval ranks other files above a new upload.
+            from sqlalchemy import and_, or_
+
             retrieved_file_ids = {file.id for _chunk, file in rows}
+            personal_scope = and_(
+                FileAttachment.workspace_id.is_(None),
+                FileAttachment.user_id == conversation.user_id,
+            )
+            workspace_scope = (
+                and_(
+                    FileAttachment.workspace_id == conversation.workspace_id,
+                    or_(
+                        FileAttachment.project_id.is_(None),
+                        FileAttachment.project_id == conversation.project_id,
+                    ),
+                )
+                if conversation.workspace_id is not None
+                else False
+            )
             attached_files = (
                 db.query(FileAttachment)
                 .join(
@@ -474,8 +489,8 @@ async def _build_file_context(
                 )
                 .filter(
                     ConversationFileLink.conversation_id == conversation.id,
-                    FileAttachment.user_id == conversation.user_id,
                     FileAttachment.extracted_text.isnot(None),
+                    or_(personal_scope, workspace_scope),
                 )
                 .order_by(
                     ConversationFileLink.created_at.asc(),
@@ -1296,7 +1311,7 @@ async def chat_stream(
                     await queue.put({"type": "finished"})
 
             task = asyncio.create_task(run_agent_task())
-            yield f"event: conversation\ndata: {conversation.id}\n\n"
+            yield f"event: conversation\\ndata: {conversation.id}\\n\\n"
 
             try:
                 while True:
@@ -1304,7 +1319,7 @@ async def chat_stream(
 
                     if event["type"] == "tool":
                         payload_json = json.dumps(event["payload"], ensure_ascii=False)
-                        yield f"event: tool\ndata: {payload_json}\n\n"
+                        yield f"event: tool\\ndata: {payload_json}\\n\\n"
                         continue
 
                     if event["type"] != "finished":
@@ -1314,13 +1329,13 @@ async def chat_stream(
                         # Agent failures occur before the user message is committed.
                         # Tell the frontend to resend the original request, not regenerate
                         # the previous turn in this conversation.
-                        yield "event: retry_mode\ndata: send\n\n"
-                        yield f"event: error\ndata: {agent_error}\n\n"
+                        yield "event: retry_mode\\ndata: send\\n\\n"
+                        yield f"event: error\\ndata: {agent_error}\\n\\n"
                         return
 
                     if agent_result is None:
-                        yield "event: retry_mode\ndata: send\n\n"
-                        yield "event: error\ndata: تعذر تشغيل وضع الوكيل\n\n"
+                        yield "event: retry_mode\\ndata: send\\n\\n"
+                        yield "event: error\\ndata: تعذر تشغيل وضع الوكيل\\n\\n"
                         return
 
                     agent_reply, sources, input_tokens, output_tokens = agent_result
@@ -1353,9 +1368,9 @@ async def chat_stream(
 
                     safe_reply = agent_reply.replace("\\n", "\\\\n")
                     safe_sources = json.dumps(sources, ensure_ascii=False)
-                    yield f"event: sources\ndata: {safe_sources}\n\n"
-                    yield f"event: chunk\ndata: {safe_reply}\n\n"
-                    yield "event: done\ndata: {}\n\n"
+                    yield f"event: sources\\ndata: {safe_sources}\\n\\n"
+                    yield f"event: chunk\\ndata: {safe_reply}\\n\\n"
+                    yield "event: done\\ndata: {}\\n\\n"
                     return
             finally:
                 if not task.done():
