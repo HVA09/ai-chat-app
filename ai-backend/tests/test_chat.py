@@ -786,6 +786,102 @@ def test_chat_attaches_requested_file_before_building_context(client, monkeypatc
     assert "[SOURCE S1: notes.txt]" in sent_message
 
 
+def test_chat_context_keeps_explicit_upload_when_rag_returns_other_file(
+    client, db_session, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from app.models.conversation import Conversation
+    from app.models.conversation_file_link import ConversationFileLink
+    from app.models.file_attachment import FileAttachment
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="تم")),
+    )
+    token = _register_and_login(client, "explicit-upload-context@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    first = client.post("/chat", json={"message": "ابدأ"}, headers=headers)
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+    conversation = (
+        db_session.query(Conversation)
+        .filter(Conversation.id == conversation_id)
+        .one()
+    )
+    user = (
+        db_session.query(User)
+        .filter(User.email == "explicit-upload-context@example.com")
+        .one()
+    )
+
+    earlier_file = FileAttachment(
+        user_id=user.id,
+        workspace_id=None,
+        project_id=None,
+        original_filename="earlier.txt",
+        stored_filename="earlier.txt",
+        content_type="text/plain",
+        size_bytes=32,
+        extracted_text="Earlier document content.",
+    )
+    newly_attached_file = FileAttachment(
+        user_id=user.id,
+        workspace_id=None,
+        project_id=None,
+        original_filename="latest-upload.txt",
+        stored_filename="latest-upload.txt",
+        content_type="text/plain",
+        size_bytes=42,
+        extracted_text="UNIQUE_CONTENT_FROM_THE_NEW_UPLOAD",
+    )
+    db_session.add_all([earlier_file, newly_attached_file])
+    db_session.flush()
+    db_session.add_all(
+        [
+            ConversationFileLink(
+                conversation_id=conversation_id,
+                file_id=earlier_file.id,
+            ),
+            ConversationFileLink(
+                conversation_id=conversation_id,
+                file_id=newly_attached_file.id,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    async def retrieve_only_the_earlier_file(*_args, **_kwargs):
+        return [
+            (
+                SimpleNamespace(
+                    chunk_index=0,
+                    content="retrieved excerpt from the earlier document",
+                ),
+                earlier_file,
+            )
+        ]
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "retrieve_relevant_chunks",
+        retrieve_only_the_earlier_file,
+    )
+
+    context, sources = asyncio.run(
+        chat_router_module._build_file_context(
+            conversation,
+            "Please summarize the latest uploaded file.",
+            db_session,
+        )
+    )
+
+    assert "retrieved excerpt from the earlier document" in context
+    assert "UNIQUE_CONTENT_FROM_THE_NEW_UPLOAD" in context
+    assert any(source["filename"] == "latest-upload.txt" for source in sources)
+
+
 def test_chat_rejects_file_belonging_to_another_user(client, db_session, monkeypatch):
     monkeypatch.setattr(
         chat_router_module,
@@ -1018,3 +1114,105 @@ def test_pro_plan_can_select_advanced_model(client, db_session, monkeypatch):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200
+
+
+def test_chat_analyze_auto_selects_single_attached_csv_without_filename(
+    client, monkeypatch, db_session, tmp_path
+):
+    from pathlib import Path
+    from app.models.file_attachment import FileAttachment
+
+    monkeypatch.setattr(chat_router_module.settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تجريبي")),
+    )
+    token = _register_and_login(client, "analyze-single-file@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    first = client.post("/chat", json={"message": "ابدأ"}, headers=headers)
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+    user = client.get("/users/me", headers=headers).json()
+
+    content = "item,amount\nbook,10\npen,5\n"
+    user_upload_dir = Path(tmp_path) / str(user["id"])
+    user_upload_dir.mkdir(parents=True, exist_ok=True)
+    (user_upload_dir / "sales.csv").write_text(content, encoding="utf-8")
+    file = FileAttachment(
+        user_id=user["id"],
+        workspace_id=None,
+        original_filename="sales.csv",
+        stored_filename="sales.csv",
+        content_type="text/csv",
+        size_bytes=len(content.encode("utf-8")),
+        extracted_text=content,
+    )
+    db_session.add(file)
+    db_session.commit()
+    db_session.refresh(file)
+
+    response = client.post(
+        "/chat",
+        json={
+            "message": "/analyze",
+            "conversation_id": conversation_id,
+            "file_ids": [file.id],
+        },
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    reply = response.json()["reply"]
+    assert "sales.csv" in reply
+    assert "الصفوف: **2**" in reply
+    assert "الأعمدة: **2**" in reply
+
+
+def test_chat_analyze_asks_for_a_filename_when_multiple_data_files_are_attached(
+    client, monkeypatch, db_session
+):
+    from app.models.file_attachment import FileAttachment
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تجريبي")),
+    )
+    token = _register_and_login(client, "analyze-multiple-files@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    first = client.post("/chat", json={"message": "ابدأ"}, headers=headers)
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+    user = client.get("/users/me", headers=headers).json()
+
+    files = [
+        FileAttachment(
+            user_id=user["id"],
+            workspace_id=None,
+            original_filename=name,
+            stored_filename=name,
+            content_type="text/csv",
+            size_bytes=20,
+            extracted_text="item,amount\nbook,10\n",
+        )
+        for name in ("sales.csv", "expenses.csv")
+    ]
+    db_session.add_all(files)
+    db_session.commit()
+    for item in files:
+        db_session.refresh(item)
+
+    response = client.post(
+        "/chat",
+        json={
+            "message": "/analyze",
+            "conversation_id": conversation_id,
+            "file_ids": [item.id for item in files],
+        },
+        headers=headers,
+    )
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert "أرفقت أكثر من ملف بيانات" in detail
+    assert "sales.csv" in detail
+    assert "expenses.csv" in detail

@@ -1270,19 +1270,109 @@ html.dark .chat-message-user {
 .dark .modern-sidebar-section-toggle:hover,.dark .modern-library-toggle:hover{background:rgba(255,255,255,.06)}
 .chat-composer .ui-popover{min-width:290px;max-width:min(94vw,340px);border-radius:16px!important}
 .chat-composer .ui-popover button{min-height:40px;border-radius:11px}
-@media (min-width:768px){
-.chat-composer> .flex.items-end.gap-3{max-width:960px;margin-inline:auto;padding:6px;border:1px solid rgba(17,24,39,.11);border-radius:20px;background:#fff;box-shadow:0 6px 24px rgba(0,0,0,.06)}
-.dark .chat-composer> .flex.items-end.gap-3{background:#212121;border-color:rgba(255,255,255,.1);box-shadow:0 6px 24px rgba(0,0,0,.18)}
-.chat-composer-input .chat-textarea{border:0!important;background:transparent!important;box-shadow:none!important}
-.chat-composer> .flex.items-end.gap-3>label,.chat-composer> .flex.items-end.gap-3> .relative>button,.chat-composer> .flex.items-end.gap-3>button{min-width:42px;min-height:42px;border-radius:13px!important}
-}
-
-/* Keep the send/stop action comfortably tappable on narrow phones. The
-   four-column control row may be too narrow for the icon + Arabic label. */
-@media (max-width: 420px) {
+/* Match the current ChatComposer DOM; these rules previously targeted
+   an obsolete flex-row selector and silently missed the real composer row. */
+@media (min-width: 768px) {
+  .chat-composer-row {
+    max-width: 960px;
+    margin-inline: auto;
+    padding: 6px;
+    border: 1px solid rgba(17, 24, 39, .11);
+    border-radius: 20px;
+    background: #fff;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, .06);
+  }
+  .dark .chat-composer-row {
+    background: #212121;
+    border-color: rgba(255, 255, 255, .1);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, .18);
+  }
+  .chat-composer-input .chat-textarea {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  .chat-composer-controls > label,
+  .chat-composer-controls > .relative > button,
   .chat-composer-controls > .chat-send-button,
   .chat-composer-controls > .chat-stop-button {
-    grid-column: span 2;
+    min-width: 42px;
+    min-height: 42px;
+    border-radius: 13px !important;
+  }
+}
+
+/* Mobile: three clear utility controls, then a full-width send/stop action.
+   Keep the tools popover inside the viewport and scrollable on short screens. */
+@media (max-width: 767px) {
+  .chat-composer-controls {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+  }
+  .chat-composer-controls > label,
+  .chat-composer-controls > .chat-composer-control,
+  .chat-composer-controls > .relative > button {
+    min-width: 0;
+    width: 100%;
+  }
+  .chat-composer-controls > .chat-send-button,
+  .chat-composer-controls > .chat-stop-button {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
     padding-inline: 0.75rem;
+  }
+  .chat-composer-controls > .relative {
+    min-width: 0;
+    position: relative;
+  }
+  .chat-composer-controls > .relative > .ui-popover {
+    min-width: 0;
+    width: min(92vw, 320px);
+    max-width: calc(100vw - 24px);
+    max-height: min(62dvh, 480px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    z-index: 70;
+  }
+  .chat-composer-controls .ui-popover button {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Keep the tools menu readable and within the viewport on mobile. */
+.chat-composer .chat-tools-popover {
+  width: min(20rem, calc(100vw - 24px));
+  min-width: 0;
+  max-width: calc(100vw - 24px);
+}
+.chat-composer .chat-tools-popover button {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  gap: 8px;
+}
+.chat-composer .chat-tools-popover button svg { flex: 0 0 auto; }
+.chat-composer .chat-tools-popover button span { min-width: 0; }
+@media (max-width: 767px) {
+  .chat-composer .chat-tools-popover {
+    position: fixed !important;
+    inset-inline-start: 12px !important;
+    inset-inline-end: 12px !important;
+    left: 12px !important;
+    right: 12px !important;
+    top: auto !important;
+    bottom: calc(env(safe-area-inset-bottom) + 68px) !important;
+    translate: none !important;
+    width: auto !important;
+    min-width: 0;
+    max-width: none;
+    max-height: min(60dvh, 420px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    z-index: 70;
   }
 }

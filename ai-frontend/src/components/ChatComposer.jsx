@@ -349,7 +349,7 @@ export default function ChatComposer({
                 <Icon name="plus" size={18} />
               </button>
               {toolsOpen ? (
-                <div className="ui-popover absolute bottom-full end-0 z-30 mb-2 w-[min(92vw,20rem)] rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                <div className="chat-tools-popover ui-popover absolute bottom-full end-0 z-30 mb-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
                   <div className="grid grid-cols-2 gap-2">
                     {models.length > 0 ? (
                       <label className="col-span-2 text-xs text-slate-500 dark:text-slate-400">
@@ -374,7 +374,7 @@ export default function ChatComposer({
                       title={t("tools.calculator")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
-                      <Icon name="calculator" size={16} /> {t("tools.calculatorShort")}
+                      <Icon name="calculator" size={16} /> <span>{t("tools.calculatorShort")}</span>
                     </button>
                     <button
                       type="button"
@@ -382,7 +382,7 @@ export default function ChatComposer({
                       title={t("tools.webSearch")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
-                      <Icon name="search" size={16} /> {t("tools.webSearchShort")}
+                      <Icon name="search" size={16} /> <span>{t("tools.webSearchShort")}</span>
                     </button>
                     <button
                       type="button"
@@ -390,7 +390,7 @@ export default function ChatComposer({
                       title={t("tools.dataAnalysis")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
-                      <Icon name="chart" size={16} /> {t("tools.dataAnalysisShort")}
+                      <Icon name="chart" size={16} /> <span>{t("tools.dataAnalysisShort")}</span>
                     </button>
                     <button
                       type="button"
@@ -398,7 +398,7 @@ export default function ChatComposer({
                       title={t("tools.agent")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
-                      <Icon name="robot" size={16} /> {t("tools.agentShort")}
+                      <Icon name="robot" size={16} /> <span>{t("tools.agentShort")}</span>
                     </button>
                     <button
                       type="button"
@@ -407,7 +407,7 @@ export default function ChatComposer({
                       title={t("tools.compareModels")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
-                      <Icon name="scale" size={16} /> {t("tools.compareModelsShort")}
+                      <Icon name="scale" size={16} /> <span>{t("tools.compareModelsShort")}</span>
                     </button>
                     <button
                       type="button"
@@ -415,7 +415,7 @@ export default function ChatComposer({
                       title={t("tools.python")}
                       className="rounded-xl border border-slate-200 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
                     >
-                      <Icon name="code" size={16} /> {t("tools.pythonShort")}
+                      <Icon name="code" size={16} /> <span>{t("tools.pythonShort")}</span>
                     </button>
                   </div>
                 </div>
