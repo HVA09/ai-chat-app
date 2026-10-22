@@ -143,35 +143,10 @@ html.dark .sidebar-header {
 }
 .chat-message-row {
   animation: ui-fade-up 220ms ease both;
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
 }
 .chat-message-bubble {
-  min-width: 0;
-  overflow-wrap: anywhere;
   border-color: var(--ui-border) !important;
   box-shadow: 0 8px 26px rgba(15,23,42,0.06);
-}
-.chat-message-header {
-  min-width: 0;
-  max-width: 100%;
-}
-.chat-message-meta {
-  min-width: 0;
-}
-.chat-message-actions {
-  display: flex;
-  flex-wrap: wrap;
-  min-width: 0;
-  max-width: 100%;
-  gap: 4px;
-}
-.chat-message-actions button {
-  min-width: 0;
-  max-width: 100%;
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
 .chat-message-bubble:hover {
   box-shadow: 0 12px 34px rgba(15,23,42,0.09);
@@ -1272,12 +1247,8 @@ html.dark .chat-message-user {
   .chat-composer-controls>.chat-send-button,
   .chat-composer-controls>.chat-stop-button{grid-column:span 1;min-width:0}
   .chat-composer-control,.chat-send-button,.chat-stop-button{min-height:42px}
-  .chat-message-bubble{max-width:96%!important;min-width:0;box-sizing:border-box;padding:8px 10px!important;font-size:14px;line-height:1.55}
+  .chat-message-bubble{max-width:96%!important;padding:8px 10px!important;font-size:14px;line-height:1.55}
   .chat-message-user{max-width:92%}
-  .chat-message-header{align-items:flex-start;gap:6px 8px!important}
-  .chat-message-meta{flex:0 1 auto;flex-wrap:wrap}
-  .chat-message-actions{flex:1 1 100%;width:100%;justify-content:flex-start}
-  .chat-message-actions button{padding-inline:6px!important}
   .chat-surface{padding-inline:2px!important}
 }
 
