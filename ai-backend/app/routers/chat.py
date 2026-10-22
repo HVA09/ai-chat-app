@@ -676,9 +676,6 @@ def _get_attached_data_attachment(
     db: Session,
 ) -> FileAttachment:
     requested_name = filename.strip()
-    if not requested_name:
-        raise DataAnalysisError("اكتب اسم الملف بعد /analyze، مثل: /analyze sales.csv")
-
     attachments = (
         db.query(FileAttachment)
         .join(
@@ -692,6 +689,39 @@ def _get_attached_data_attachment(
         .order_by(ConversationFileLink.created_at.asc())
         .all()
     )
+
+    if not requested_name:
+        if not attachments:
+            raise DataAnalysisError(
+                "لا توجد ملفات مرفقة بهذه المحادثة. أرفق ملف CSV أو XLSX ثم أعد المحاولة."
+            )
+
+        supported_types = {
+            "text/csv",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }
+        data_attachments = [
+            item
+            for item in attachments
+            if Path(item.original_filename or "").suffix.lower() in {".csv", ".xlsx"}
+            or item.content_type in supported_types
+        ]
+        if len(data_attachments) == 1:
+            return data_attachments[0]
+
+        if len(data_attachments) > 1:
+            available = ", ".join(item.original_filename for item in data_attachments[:8])
+            raise DataAnalysisError(
+                "أرفقت أكثر من ملف بيانات. اكتب اسم الملف بعد /analyze. "
+                f"الملفات المتاحة: {available}."
+            )
+
+        available = ", ".join(item.original_filename for item in attachments[:8])
+        raise DataAnalysisError(
+            "أداة تحليل البيانات تدعم CSV وXLSX فقط. "
+            f"الملفات المرفقة: {available}. "
+            "يمكنك استخدام المحادثة العادية لتحليل الأنواع الأخرى."
+        )
 
     normalized = requested_name.casefold()
     attachment = next(
@@ -718,7 +748,6 @@ def _get_attached_data_attachment(
         raise DataAnalysisError(f"لم أجد الملف المطلوب.{suffix}")
 
     return attachment
-
 
 async def _augment_message(
     message: str, conversation: Conversation, db: Session
