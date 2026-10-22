@@ -93,3 +93,45 @@ describe("chatApi agent tool activity", () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe("chatApi file attachments", () => {
+  it("sends uploaded file IDs in the streaming request body", async () => {
+    const encoder = new TextEncoder();
+    let index = 0;
+    const chunks = ['event: done\\ndata: {}\\n\\n'];
+    const reader = {
+      read: vi.fn(async () => {
+        if (index >= chunks.length) return { done: true, value: undefined };
+        return { done: false, value: encoder.encode(chunks[index++]) };
+      }),
+    };
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    });
+    const onDone = vi.fn();
+
+    await streamChatMessage("Summarize this upload", null, null, {
+      fileIds: [41, 42],
+      onDone,
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/chat/stream"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          message: "Summarize this upload",
+          conversation_id: null,
+          assistant_id: null,
+          workspace_id: null,
+          project_id: null,
+          model: null,
+          file_ids: [41, 42],
+        }),
+      })
+    );
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+});
