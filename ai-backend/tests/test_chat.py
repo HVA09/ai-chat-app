@@ -786,6 +786,102 @@ def test_chat_attaches_requested_file_before_building_context(client, monkeypatc
     assert "[SOURCE S1: notes.txt]" in sent_message
 
 
+def test_chat_context_keeps_explicit_upload_when_rag_returns_other_file(
+    client, db_session, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from app.models.conversation import Conversation
+    from app.models.conversation_file_link import ConversationFileLink
+    from app.models.file_attachment import FileAttachment
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="تم")),
+    )
+    token = _register_and_login(client, "explicit-upload-context@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    first = client.post("/chat", json={"message": "ابدأ"}, headers=headers)
+    assert first.status_code == 200
+    conversation_id = first.json()["conversation_id"]
+    conversation = (
+        db_session.query(Conversation)
+        .filter(Conversation.id == conversation_id)
+        .one()
+    )
+    user = (
+        db_session.query(User)
+        .filter(User.email == "explicit-upload-context@example.com")
+        .one()
+    )
+
+    earlier_file = FileAttachment(
+        user_id=user.id,
+        workspace_id=None,
+        project_id=None,
+        original_filename="earlier.txt",
+        stored_filename="earlier.txt",
+        content_type="text/plain",
+        size_bytes=32,
+        extracted_text="Earlier document content.",
+    )
+    newly_attached_file = FileAttachment(
+        user_id=user.id,
+        workspace_id=None,
+        project_id=None,
+        original_filename="latest-upload.txt",
+        stored_filename="latest-upload.txt",
+        content_type="text/plain",
+        size_bytes=42,
+        extracted_text="UNIQUE_CONTENT_FROM_THE_NEW_UPLOAD",
+    )
+    db_session.add_all([earlier_file, newly_attached_file])
+    db_session.flush()
+    db_session.add_all(
+        [
+            ConversationFileLink(
+                conversation_id=conversation_id,
+                file_id=earlier_file.id,
+            ),
+            ConversationFileLink(
+                conversation_id=conversation_id,
+                file_id=newly_attached_file.id,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    async def retrieve_only_the_earlier_file(*_args, **_kwargs):
+        return [
+            (
+                SimpleNamespace(
+                    chunk_index=0,
+                    content="retrieved excerpt from the earlier document",
+                ),
+                earlier_file,
+            )
+        ]
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "retrieve_relevant_chunks",
+        retrieve_only_the_earlier_file,
+    )
+
+    context, sources = asyncio.run(
+        chat_router_module._build_file_context(
+            conversation,
+            "Please summarize the latest uploaded file.",
+            db_session,
+        )
+    )
+
+    assert "retrieved excerpt from the earlier document" in context
+    assert "UNIQUE_CONTENT_FROM_THE_NEW_UPLOAD" in context
+    assert any(source["filename"] == "latest-upload.txt" for source in sources)
+
+
 def test_chat_rejects_file_belonging_to_another_user(client, db_session, monkeypatch):
     monkeypatch.setattr(
         chat_router_module,
