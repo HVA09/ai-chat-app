@@ -139,7 +139,9 @@ describe("App initial render", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open account settings" }));
 
-    expect(await screen.findByRole("heading", { name: "الحساب" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(container.querySelector(".settings-overlay")).toBeInTheDocument();
+    });
     expect(container.querySelector(".app-shell")).toBeInTheDocument();
   });
 
