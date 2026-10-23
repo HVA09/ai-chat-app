@@ -288,6 +288,7 @@ export default function ChatComposer({
               }}
               onPaste={handlePaste}
             placeholder={t("placeholder")}
+            aria-label={t("placeholder")}
             rows={2}
             maxLength={MAX_MESSAGE_LENGTH}
             disabled={loading}

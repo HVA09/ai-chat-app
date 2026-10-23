@@ -29,6 +29,21 @@ vi.mock("react-i18next", () => ({
 }));
 
 describe("ChatComposer tools", () => {
+  it("provides an explicit accessible name for the message input", () => {
+    render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+      />
+    );
+
+    const textarea = screen.getByPlaceholderText("اكتب رسالتك هنا...");
+    expect(textarea).toHaveAttribute("aria-label", "اكتب رسالتك هنا...");
+    expect(screen.getByRole("textbox", { name: "اكتب رسالتك هنا..." })).toBe(textarea);
+  });
+
   it("زر بحث الويب يمرر المعالج", async () => {
     const user = userEvent.setup();
     const onInsertWebSearch = vi.fn();
