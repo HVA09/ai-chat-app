@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import WorkspaceSharedConversationsPanel from "./WorkspaceSharedConversationsPanel";
 import Icon from "./ui/Icon";
@@ -105,7 +106,9 @@ export default function SidebarModern({
   const [openSection, setOpenSection] = useState(null);
   const [contextOpenId, setContextOpenId] = useState(null);
   const [contextMenuPlacement, setContextMenuPlacement] = useState("below");
+  const [contextMenuPosition, setContextMenuPosition] = useState(null);
   const contextMenuRef = useRef(null);
+  const contextTriggerRef = useRef(null);
   const importRef = useRef(null);
   const projectImportRef = useRef(null);
 
@@ -122,10 +125,7 @@ export default function SidebarModern({
     const handleEscape = (event) => {
       if (event.key !== "Escape") return;
       setContextOpenId(null);
-      contextMenuRef.current
-        ?.closest(".modern-conversation-item")
-        ?.querySelector(".modern-conversation-more")
-        ?.focus();
+      contextTriggerRef.current?.focus();
     };
 
     document.addEventListener("pointerdown", handleOutsidePointer);
@@ -133,6 +133,61 @@ export default function SidebarModern({
     return () => {
       document.removeEventListener("pointerdown", handleOutsidePointer);
       document.removeEventListener("keydown", handleEscape);
+    };
+  }, [contextOpenId]);
+
+  useLayoutEffect(() => {
+    if (contextOpenId === null) return undefined;
+
+    const trigger = contextTriggerRef.current;
+    const menu = contextMenuRef.current;
+    if (!trigger || !menu) return undefined;
+
+    const updatePosition = () => {
+      const anchor = trigger.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const menuWidth = Math.min(menuRect.width, Math.max(0, viewportWidth - 16));
+      const availableBelow = viewportHeight - anchor.bottom - 8;
+      const availableAbove = anchor.top - 8;
+      const fitsBelow = menuRect.height <= availableBelow;
+      const fitsAbove = menuRect.height <= availableAbove;
+      const openAbove = !fitsBelow && (fitsAbove || availableAbove > availableBelow);
+
+      let top;
+      if (openAbove && fitsAbove) {
+        top = anchor.top - menuRect.height - 2;
+      } else if (fitsBelow) {
+        top = anchor.bottom + 2;
+      } else {
+        const preferredTop = openAbove
+          ? anchor.top - menuRect.height - 2
+          : anchor.bottom + 2;
+        top = Math.max(8, Math.min(preferredTop, viewportHeight - menuRect.height - 8));
+      }
+
+      const left = Math.max(
+        8,
+        Math.min(anchor.right - menuWidth, viewportWidth - menuWidth - 8)
+      );
+
+      setContextMenuPlacement(openAbove ? "above" : "below");
+      setContextMenuPosition({
+        top,
+        left,
+        maxHeight: Math.max(120, viewportHeight - 16),
+      });
+    };
+
+    updatePosition();
+
+    const dismissOnViewportChange = () => setContextOpenId(null);
+    document.addEventListener("scroll", dismissOnViewportChange, true);
+    window.addEventListener("resize", dismissOnViewportChange);
+    return () => {
+      document.removeEventListener("scroll", dismissOnViewportChange, true);
+      window.removeEventListener("resize", dismissOnViewportChange);
     };
   }, [contextOpenId]);
 
@@ -270,7 +325,7 @@ export default function SidebarModern({
               {recent.map((item) => {
                 const active = Number(item.id) === Number(selectedConversationId);
                 return (
-                  <div key={item.id} className={`modern-conversation-item ${active ? "active" : ""} ${contextOpenId === item.id ? "menu-open" : ""} ${contextOpenId === item.id && contextMenuPlacement === "above" ? "menu-open-up" : ""}`}>
+                  <div key={item.id} className={`modern-conversation-item ${active ? "active" : ""} ${contextOpenId === item.id ? "menu-open" : ""}`}>
                     <button
                       type="button"
                       onClick={() => { setContextOpenId(null); if (!showTrash) selectConversation(item.id); }}
@@ -307,35 +362,31 @@ export default function SidebarModern({
                           event.stopPropagation();
                           if (contextOpenId === item.id) {
                             setContextOpenId(null);
+                            setContextMenuPosition(null);
                             return;
                           }
-                          const row = event.currentTarget.closest(".modern-conversation-item");
-                          const scrollContainer = event.currentTarget.closest(".modern-conversation-scroll");
-                          if (row && scrollContainer) {
-                            const rowRect = row.getBoundingClientRect();
-                            const scrollRect = scrollContainer.getBoundingClientRect();
-                            const spaceAbove = rowRect.top - scrollRect.top;
-                            const spaceBelow = scrollRect.bottom - rowRect.bottom;
-                            setContextMenuPlacement(
-                              spaceBelow < 130 && spaceAbove > spaceBelow ? "above" : "below"
-                            );
-                          } else {
-                            setContextMenuPlacement("below");
-                          }
+                          contextTriggerRef.current = event.currentTarget;
+                          setContextMenuPlacement("below");
+                          setContextMenuPosition(null);
                           setContextOpenId(item.id);
                         }}
                       >
                         <Icon name="more" size={16} />
                       </button>
                     </div>
-                    {contextOpenId === item.id ? (
-                      <div
-                        id={`conversation-actions-${item.id}`}
-                        ref={contextMenuRef}
-                        className="modern-conversation-menu"
-                        role="group"
-                        aria-label={t("header.more")}
-                      >
+                    {contextOpenId === item.id
+                      ? createPortal(
+                          <div
+                            id={`conversation-actions-${item.id}`}
+                            ref={contextMenuRef}
+                            className={`modern-conversation-menu ${contextMenuPlacement === "above" ? "menu-open-up" : ""}`}
+                            role="group"
+                            aria-label={t("header.more")}
+                            style={{
+                              ...(contextMenuPosition || { top: 8, left: 8 }),
+                              visibility: contextMenuPosition ? "visible" : "hidden",
+                            }}
+                          >
                         {!showTrash ? (
                           <>
                             <button
@@ -485,8 +536,11 @@ export default function SidebarModern({
                         >
                           <Icon name="trash" size={14} />
                         </button>
-                      </div>
-                    ) : null}
+
+                          </div>,
+                          document.body
+                        )
+                      : null}
                   </div>
                 );
               })}
