@@ -73,6 +73,18 @@ describe("SidebarModern conversation actions", () => {
     expect(trigger).toHaveFocus();
   });
 
+  it("lets the more button toggle its own open menu closed", () => {
+    renderSidebar({ conversations: [sampleConversation] });
+    const trigger = screen.getByRole("button", { name: "header.more" });
+
+    fireEvent.click(trigger);
+    fireEvent.pointerDown(trigger);
+    fireEvent.click(trigger);
+
+    expect(screen.queryByRole("group", { name: "header.more" })).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("closes the action menu when the user taps outside it", () => {
     renderSidebar({ conversations: [sampleConversation] });
     fireEvent.click(screen.getByRole("button", { name: "header.more" }));
