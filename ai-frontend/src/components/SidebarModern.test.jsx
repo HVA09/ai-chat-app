@@ -83,6 +83,71 @@ describe("SidebarModern conversation actions", () => {
     expect(onMoveConversationToProject).toHaveBeenCalledWith(101, "34");
   });
 
+  it("adds and removes conversation tags through the action menu", () => {
+    const onSetConversationTags = vi.fn();
+    renderSidebar({
+      conversations: [sampleConversation],
+      tags: [{ id: 45, name: "Tag Alpha", color: "#123456" }],
+      onSetConversationTags,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "header.more" }));
+    fireEvent.click(screen.getByRole("button", { name: "sidebar.tagConversationTitle" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Tag Alpha" }));
+
+    expect(onSetConversationTags).toHaveBeenCalledWith(101, [45]);
+  });
+
+  it("moves a conversation to trash from the regular list without permanent deletion", () => {
+    const onToggleTrashConversation = vi.fn();
+    const onDeleteConversation = vi.fn();
+    renderSidebar({
+      conversations: [sampleConversation],
+      onToggleTrashConversation,
+      onDeleteConversation,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "header.more" }));
+    fireEvent.click(screen.getByRole("button", { name: "sidebar.trashTitle" }));
+
+    expect(onToggleTrashConversation).toHaveBeenCalledWith(101);
+    expect(onDeleteConversation).not.toHaveBeenCalled();
+  });
+
+  it("does not permanently delete a trashed conversation when confirmation is cancelled", () => {
+    const onDeleteConversation = vi.fn();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderSidebar({
+      conversations: [sampleConversation],
+      showTrash: true,
+      onDeleteConversation,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "header.more" }));
+    fireEvent.click(screen.getByRole("button", { name: "sidebar.deleteTitle" }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(onDeleteConversation).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("permanently deletes a trashed conversation only after confirmation", () => {
+    const onDeleteConversation = vi.fn();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderSidebar({
+      conversations: [sampleConversation],
+      showTrash: true,
+      onDeleteConversation,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "header.more" }));
+    fireEvent.click(screen.getByRole("button", { name: "sidebar.deleteTitle" }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(onDeleteConversation).toHaveBeenCalledWith(101);
+    confirmSpy.mockRestore();
+  });
+
   it("limits the action menu to permanent deletion while in the trash", () => {
     const { container } = renderSidebar({
       conversations: [sampleConversation],
