@@ -1349,16 +1349,6 @@ html.dark .chat-message-user {
     min-width: 0;
     position: relative;
   }
-  .chat-composer-controls > .relative > .ui-popover {
-    min-width: 0;
-    width: min(92vw, 320px);
-    max-width: calc(100vw - 24px);
-    max-height: min(62dvh, 480px);
-    overflow-x: hidden;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    z-index: 70;
-  }
   .chat-composer-controls .ui-popover button {
     min-width: 0;
     overflow-wrap: anywhere;
@@ -1379,25 +1369,6 @@ html.dark .chat-message-user {
 }
 .chat-composer .chat-tools-popover button svg { flex: 0 0 auto; }
 .chat-composer .chat-tools-popover button span { min-width: 0; }
-@media (max-width: 767px) {
-  .chat-composer .chat-tools-popover {
-    position: fixed !important;
-    inset-inline-start: 12px !important;
-    inset-inline-end: 12px !important;
-    left: 12px !important;
-    right: 12px !important;
-    top: auto !important;
-    bottom: calc(env(safe-area-inset-bottom) + 68px) !important;
-    translate: none !important;
-    width: auto !important;
-    min-width: 0;
-    max-width: none;
-    max-height: min(60dvh, 420px);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    z-index: 70;
-  }
-}
 
 
 /* Mobile layout hardening: keep the composer anchored and the message list as
@@ -1433,9 +1404,9 @@ html.dark .chat-message-user {
   background: rgba(100, 116, 139, .55);
 }
 
-/* Anchor the mobile tools popover to its utility button. A fixed bottom
-   offset placed it over the composer on short viewports and when the
-   on-screen keyboard changed the visible viewport height. */
+/* Anchor the mobile tools popover to its utility button. Keep a single
+   source of truth for its position and dimensions on short viewports and
+   when the on-screen keyboard changes the visible viewport height. */
 @media (max-width: 767px) {
   .chat-composer .chat-tools-popover {
     position: absolute !important;
