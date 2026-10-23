@@ -67,6 +67,17 @@ describe("SidebarModern conversation actions", () => {
       configurable: true,
       value: 600,
     });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 160,
+      left: 0,
+      right: 280,
+      width: 280,
+      height: 160,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
     vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
       top: 550,
       bottom: 580,
@@ -87,6 +98,7 @@ describe("SidebarModern conversation actions", () => {
         configurable: true,
         value: originalHeight,
       });
+      vi.restoreAllMocks();
     }
   });
 
@@ -237,8 +249,8 @@ describe("SidebarModern conversation actions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "header.more" }));
 
-    expect(container.querySelector(".modern-conversation-menu")).toBeInTheDocument();
-    expect(container.querySelector(".modern-conversation-menu select")).toBeNull();
+    expect(screen.getByRole("group", { name: "header.more" })).toBeInTheDocument();
+    expect(document.body.querySelector(".modern-conversation-menu select")).toBeNull();
     expect(screen.getByRole("button", { name: "sidebar.deleteTitle" })).toBeInTheDocument();
   });
 });
