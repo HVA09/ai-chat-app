@@ -552,7 +552,7 @@ html.dark .chat-message-user {
   top: 8px;
   left: 8px;
   z-index: 1000;
-  display: none;
+  display: flex;
   flex-wrap: wrap;
   max-height: calc(100dvh - 16px);
   overflow-y: auto;
@@ -567,9 +567,6 @@ html.dark .chat-message-user {
   color: #64748b;
   box-shadow: 0 15px 34px rgba(15,23,42,.12);
   backdrop-filter: blur(16px);
-}
-.modern-conversation-item.menu-open .modern-conversation-menu {
-  display: flex;
 }
 .dark .modern-conversation-menu {
   background: rgba(15,23,42,.98);
