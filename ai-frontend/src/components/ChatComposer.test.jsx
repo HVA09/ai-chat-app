@@ -466,5 +466,34 @@ describe("ChatComposer responsive tools menu", () => {
     expect(screen.getByTitle("مفسّر بايثون آمن")).toBeInTheDocument();
     expect(screen.getByTitle("tools.compareModels")).toBeInTheDocument();
   });
+
+  it("closes the tools menu with Escape and restores focus to its trigger", async () => {
+    const user = userEvent.setup();
+    render(<ChatComposer value="" setValue={vi.fn()} onSend={vi.fn()} onStop={vi.fn()} />);
+
+    const trigger = screen.getByTitle("tools.mobileMenu");
+    await user.click(trigger);
+    expect(screen.getByTitle("الآلة الحاسبة")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByTitle("الآلة الحاسبة")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveFocus();
+  });
+
+  it("closes the tools menu when the user clicks outside it", async () => {
+    const user = userEvent.setup();
+    render(<ChatComposer value="" setValue={vi.fn()} onSend={vi.fn()} onStop={vi.fn()} />);
+
+    const trigger = screen.getByTitle("tools.mobileMenu");
+    await user.click(trigger);
+    expect(screen.getByTitle("الآلة الحاسبة")).toBeInTheDocument();
+
+    await user.click(document.body);
+
+    expect(screen.queryByTitle("الآلة الحاسبة")).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
 });
 
