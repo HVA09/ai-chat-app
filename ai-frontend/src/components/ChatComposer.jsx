@@ -124,6 +124,23 @@ export default function ChatComposer({
     };
   }, []);
 
+  useEffect(() => {
+    if (!loading && !isEditing && !attachmentUploading) return;
+
+    const recognition = recognitionRef.current;
+    if (!recognition) return;
+
+    // Invalidate callbacks before stopping so late browser events cannot alter a
+    // message draft after sending begins, editing starts, or an attachment upload starts.
+    recognitionRef.current = null;
+    setIsListening(false);
+    try {
+      recognition.stop();
+    } catch {
+      // Recognition may already have stopped.
+    }
+  }, [attachmentUploading, isEditing, loading]);
+
   const handleFileSelection = (event) => {
     const files = Array.from(event.target.files || []);
     if (files.length) onAttachFiles?.(files);
@@ -145,7 +162,7 @@ export default function ChatComposer({
   };
 
   const toggleVoiceInput = () => {
-    if (loading || isEditing) return;
+    if (loading || isEditing || attachmentUploading) return;
 
     if (isListening) {
       recognitionRef.current?.stop();
@@ -165,17 +182,22 @@ export default function ChatComposer({
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => setIsListening(true);
+    recognition.onstart = () => {
+      if (recognitionRef.current === recognition) setIsListening(true);
+    };
     recognition.onend = () => {
+      if (recognitionRef.current !== recognition) return;
       setIsListening(false);
       recognitionRef.current = null;
     };
     recognition.onerror = () => {
+      if (recognitionRef.current !== recognition) return;
       setIsListening(false);
       recognitionRef.current = null;
       onVoiceError?.(t("app.voiceInputError"));
     };
     recognition.onresult = (event) => {
+      if (recognitionRef.current !== recognition) return;
       const transcript = Array.from(event.results)
         .map((result) => result[0]?.transcript || "")
         .join(" ")
@@ -365,7 +387,8 @@ export default function ChatComposer({
               title={voiceSupported ? (isListening ? t("tools.voiceStop") : t("tools.voiceInput")) : t("app.voiceInputNotSupported")}
               aria-label={voiceSupported ? (isListening ? t("tools.voiceStop") : t("tools.voiceInput")) : t("app.voiceInputNotSupported")}
               aria-pressed={isListening}
-              className={`chat-composer-control ${isListening ? "chat-composer-control-active" : ""}`}
+              disabled={attachmentUploading}
+              className={`chat-composer-control ${isListening ? "chat-composer-control-active" : ""} ${attachmentUploading ? "cursor-not-allowed opacity-50" : ""}`}
             >
               <Icon name={isListening ? "stop" : "mic"} size={18} />
             </button>

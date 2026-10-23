@@ -586,3 +586,108 @@ describe("ChatComposer attachment intake guards", () => {
     expect(onAttachFiles).not.toHaveBeenCalled();
   });
 });
+
+
+describe("ChatComposer voice recognition lifecycle", () => {
+  it.each([
+    ["sending a message", { loading: true }],
+    ["editing a message", { isEditing: true }],
+    ["uploading an attachment", { attachmentUploading: true }],
+  ])("stops active voice recognition when %s begins", async (_state, busyProps) => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(window, "SpeechRecognition");
+    const instances = [];
+    class MockRecognition {
+      constructor() {
+        this.stopCalls = 0;
+        instances.push(this);
+      }
+      start() {
+        this.onstart?.();
+      }
+      stop() {
+        this.stopCalls += 1;
+        this.onend?.();
+      }
+    }
+
+    Object.defineProperty(window, "SpeechRecognition", {
+      configurable: true,
+      writable: true,
+      value: MockRecognition,
+    });
+
+    try {
+      const user = userEvent.setup();
+      const setValue = vi.fn();
+      const props = {
+        value: "",
+        setValue,
+        onSend: vi.fn(),
+        onStop: vi.fn(),
+        onVoiceError: vi.fn(),
+      };
+      const { rerender } = render(<ChatComposer {...props} />);
+
+      await user.click(screen.getByTitle("إدخال صوتي"));
+      expect(instances).toHaveLength(1);
+      expect(instances[0].stopCalls).toBe(0);
+
+      rerender(<ChatComposer {...props} {...busyProps} />);
+      expect(instances[0].stopCalls).toBe(1);
+
+      // A late recognition event after stop must not mutate the next draft.
+      instances[0].onresult?.({
+        results: [[{ transcript: "نص متأخر" }]],
+      });
+      expect(setValue).not.toHaveBeenCalled();
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(window, "SpeechRecognition", originalDescriptor);
+      } else {
+        delete window.SpeechRecognition;
+      }
+    }
+  });
+
+  it("prevents starting voice recognition during an attachment upload", async () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(window, "SpeechRecognition");
+    const instances = [];
+    class MockRecognition {
+      constructor() {
+        instances.push(this);
+      }
+      start() {}
+      stop() {}
+    }
+
+    Object.defineProperty(window, "SpeechRecognition", {
+      configurable: true,
+      writable: true,
+      value: MockRecognition,
+    });
+
+    try {
+      const user = userEvent.setup();
+      render(
+        <ChatComposer
+          value=""
+          setValue={vi.fn()}
+          onSend={vi.fn()}
+          onStop={vi.fn()}
+          attachmentUploading
+        />
+      );
+
+      const voiceButton = screen.getByRole("button", { name: "إدخال صوتي" });
+      expect(voiceButton).toBeDisabled();
+      await user.click(voiceButton);
+      expect(instances).toHaveLength(0);
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(window, "SpeechRecognition", originalDescriptor);
+      } else {
+        delete window.SpeechRecognition;
+      }
+    }
+  });
+});
