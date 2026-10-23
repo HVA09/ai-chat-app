@@ -59,6 +59,39 @@ describe("SidebarModern conversation actions", () => {
     expect(container.querySelector(".modern-conversation-menu")).toBeInTheDocument();
   });
 
+  it("opens the action menu upward when the row is near the bottom of the scroll area", () => {
+    const { container } = renderSidebar({ conversations: [sampleConversation] });
+    const row = container.querySelector(".modern-conversation-item");
+    const scroll = container.querySelector(".modern-conversation-scroll");
+
+    vi.spyOn(row, "getBoundingClientRect").mockReturnValue({
+      top: 500,
+      bottom: 540,
+      left: 0,
+      right: 300,
+      width: 300,
+      height: 40,
+      x: 0,
+      y: 500,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(scroll, "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 600,
+      left: 0,
+      right: 300,
+      width: 300,
+      height: 600,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "header.more" }));
+
+    expect(row).toHaveClass("menu-open-up");
+  });
+
   it("closes the action menu on Escape and restores focus to its trigger", () => {
     renderSidebar({ conversations: [sampleConversation] });
     const trigger = screen.getByRole("button", { name: "header.more" });
