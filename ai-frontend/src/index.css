@@ -568,6 +568,10 @@ html.dark .chat-message-user {
 .modern-conversation-item.menu-open .modern-conversation-menu {
   display: flex;
 }
+.modern-conversation-item.menu-open-up .modern-conversation-menu {
+  top: auto;
+  bottom: calc(100% + 2px);
+}
 .dark .modern-conversation-menu {
   background: rgba(15,23,42,.98);
   color: #cbd5e1;
