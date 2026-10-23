@@ -29,7 +29,7 @@ export default function SidebarModern({
   onDeleteConversation,
   onTogglePinConversation,
   onDuplicateConversation = () => {},
-    onToggleArchiveConversation,
+  onToggleArchiveConversation,
   onToggleTrashConversation = () => {},
   onMoveConversationToFolder = () => {},
   onMoveConversationToProject = () => {},
