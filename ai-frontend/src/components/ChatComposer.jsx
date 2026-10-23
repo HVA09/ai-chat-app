@@ -124,6 +124,23 @@ export default function ChatComposer({
     };
   }, []);
 
+  useEffect(() => {
+    if (!loading && !isEditing) return;
+
+    const recognition = recognitionRef.current;
+    if (!recognition) return;
+
+    // Invalidate callbacks before stopping so late browser events cannot alter a
+    // message draft after sending begins or the composer enters edit mode.
+    recognitionRef.current = null;
+    setIsListening(false);
+    try {
+      recognition.stop();
+    } catch {
+      // Recognition may already have stopped.
+    }
+  }, [isEditing, loading]);
+
   const handleFileSelection = (event) => {
     const files = Array.from(event.target.files || []);
     if (files.length) onAttachFiles?.(files);
@@ -165,17 +182,22 @@ export default function ChatComposer({
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => setIsListening(true);
+    recognition.onstart = () => {
+      if (recognitionRef.current === recognition) setIsListening(true);
+    };
     recognition.onend = () => {
+      if (recognitionRef.current !== recognition) return;
       setIsListening(false);
       recognitionRef.current = null;
     };
     recognition.onerror = () => {
+      if (recognitionRef.current !== recognition) return;
       setIsListening(false);
       recognitionRef.current = null;
       onVoiceError?.(t("app.voiceInputError"));
     };
     recognition.onresult = (event) => {
+      if (recognitionRef.current !== recognition) return;
       const transcript = Array.from(event.results)
         .map((result) => result[0]?.transcript || "")
         .join(" ")
