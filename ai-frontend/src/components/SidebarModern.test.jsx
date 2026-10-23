@@ -35,6 +35,68 @@ function openMobileLibrarySection(container, sectionName) {
   return sidebar;
 }
 
+describe("SidebarModern conversation actions", () => {
+  const sampleConversation = {
+    id: 101,
+    title: "Example conversation",
+    folder_id: null,
+    project_id: null,
+    tags: [],
+    is_pinned: false,
+  };
+
+  it("opens the action menu when the more button is tapped", () => {
+    const { container } = renderSidebar({
+      conversations: [sampleConversation],
+      folders: [{ id: 23, name: "Folder Alpha" }],
+      projects: [{ id: 34, name: "Project Alpha" }],
+      tags: [{ id: 45, name: "Tag Alpha", color: "#123456" }],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "header.more" }));
+
+    expect(container.querySelector(".modern-conversation-item")).toHaveClass("menu-open");
+    expect(container.querySelector(".modern-conversation-menu")).toBeInTheDocument();
+  });
+
+  it("passes selected folder and project values to their handlers", () => {
+    const onMoveConversationToFolder = vi.fn();
+    const onMoveConversationToProject = vi.fn();
+    renderSidebar({
+      conversations: [sampleConversation],
+      folders: [{ id: 23, name: "Folder Alpha" }],
+      projects: [{ id: 34, name: "Project Alpha" }],
+      onMoveConversationToFolder,
+      onMoveConversationToProject,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "header.more" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "sidebar.moveFolderTitle" }), {
+      target: { value: "23" },
+    });
+    expect(onMoveConversationToFolder).toHaveBeenCalledWith(101, "23");
+
+    fireEvent.click(screen.getByRole("button", { name: "header.more" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "sidebar.moveProjectTitle" }), {
+      target: { value: "34" },
+    });
+    expect(onMoveConversationToProject).toHaveBeenCalledWith(101, "34");
+  });
+
+  it("limits the action menu to permanent deletion while in the trash", () => {
+    const { container } = renderSidebar({
+      conversations: [sampleConversation],
+      showTrash: true,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "header.more" }));
+
+    expect(container.querySelector(".modern-conversation-menu")).toBeInTheDocument();
+    expect(container.querySelector(".modern-conversation-menu select")).toBeNull();
+    expect(screen.getByRole("button", { name: "sidebar.deleteTitle" })).toBeInTheDocument();
+  });
+});
+
 describe("SidebarModern mobile navigation", () => {
   it("opens and closes in response to the global navigation events", () => {
     const { container } = renderSidebar();
