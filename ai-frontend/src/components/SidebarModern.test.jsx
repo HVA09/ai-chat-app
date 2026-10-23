@@ -128,6 +128,20 @@ describe("SidebarModern conversation actions", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 
+  it("keeps the action menu open while its own content scrolls, but closes when the chat list scrolls", () => {
+    const { container } = renderSidebar({ conversations: [sampleConversation] });
+    fireEvent.click(screen.getByRole("button", { name: "header.more" }));
+
+    const menu = document.body.querySelector(".modern-conversation-menu");
+    expect(menu).toBeInTheDocument();
+
+    fireEvent.scroll(menu);
+    expect(screen.getByRole("group", { name: "header.more" })).toBeInTheDocument();
+
+    fireEvent.scroll(container.querySelector(".modern-conversation-scroll"));
+    expect(screen.queryByRole("group", { name: "header.more" })).not.toBeInTheDocument();
+  });
+
   it("closes the action menu when the user taps outside it", () => {
     renderSidebar({ conversations: [sampleConversation] });
     fireEvent.click(screen.getByRole("button", { name: "header.more" }));
