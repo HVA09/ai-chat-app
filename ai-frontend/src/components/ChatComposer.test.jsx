@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { useState } from "react";
@@ -512,3 +512,77 @@ describe("ChatComposer responsive tools menu", () => {
   });
 });
 
+
+
+describe("ChatComposer attachment intake guards", () => {
+  const file = () => new File(["hello"], "notes.txt", { type: "text/plain" });
+
+  it("forwards dropped files when the composer is ready", () => {
+    const onAttachFiles = vi.fn();
+    const { container } = render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onAttachFiles={onAttachFiles}
+      />
+    );
+
+    fireEvent.drop(container.querySelector("form.chat-composer"), {
+      dataTransfer: { files: [file()] },
+    });
+
+    expect(onAttachFiles).toHaveBeenCalledWith([
+      expect.objectContaining({ name: "notes.txt" }),
+    ]);
+  });
+
+  it.each([
+    ["sending a message", { loading: true }],
+    ["editing a message", { isEditing: true }],
+    ["uploading another attachment", { attachmentUploading: true }],
+  ])("ignores dropped files while %s", (_state, props) => {
+    const onAttachFiles = vi.fn();
+    const { container } = render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onAttachFiles={onAttachFiles}
+        {...props}
+      />
+    );
+
+    fireEvent.drop(container.querySelector("form.chat-composer"), {
+      dataTransfer: { files: [file()] },
+    });
+
+    expect(onAttachFiles).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["sending a message", { loading: true }],
+    ["editing a message", { isEditing: true }],
+    ["uploading another attachment", { attachmentUploading: true }],
+  ])("ignores pasted files while %s", (_state, props) => {
+    const onAttachFiles = vi.fn();
+    render(
+      <ChatComposer
+        value=""
+        setValue={vi.fn()}
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        onAttachFiles={onAttachFiles}
+        {...props}
+      />
+    );
+
+    fireEvent.paste(screen.getByRole("textbox", { name: "اكتب رسالتك هنا..." }), {
+      clipboardData: { files: [file()] },
+    });
+
+    expect(onAttachFiles).not.toHaveBeenCalled();
+  });
+});
