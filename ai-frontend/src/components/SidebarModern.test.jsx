@@ -59,6 +59,29 @@ describe("SidebarModern conversation actions", () => {
     expect(container.querySelector(".modern-conversation-menu")).toBeInTheDocument();
   });
 
+  it("closes the action menu on Escape and restores focus to its trigger", () => {
+    renderSidebar({ conversations: [sampleConversation] });
+    const trigger = screen.getByRole("button", { name: "header.more" });
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByRole("group", { name: "header.more" })).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveFocus();
+  });
+
+  it("closes the action menu when the user taps outside it", () => {
+    renderSidebar({ conversations: [sampleConversation] });
+    fireEvent.click(screen.getByRole("button", { name: "header.more" }));
+
+    fireEvent.pointerDown(document.body);
+
+    expect(screen.queryByRole("group", { name: "header.more" })).not.toBeInTheDocument();
+  });
+
   it("passes selected folder and project values to their handlers", () => {
     const onMoveConversationToFolder = vi.fn();
     const onMoveConversationToProject = vi.fn();
