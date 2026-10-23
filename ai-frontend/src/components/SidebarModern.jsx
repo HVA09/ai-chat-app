@@ -113,6 +113,7 @@ export default function SidebarModern({
     if (contextOpenId === null) return undefined;
 
     const handleOutsidePointer = (event) => {
+      if (event.target.closest?.(".modern-conversation-more")) return;
       if (!contextMenuRef.current?.contains(event.target)) {
         setContextOpenId(null);
       }
