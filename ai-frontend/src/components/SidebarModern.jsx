@@ -104,6 +104,7 @@ export default function SidebarModern({
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [openSection, setOpenSection] = useState(null);
   const [contextOpenId, setContextOpenId] = useState(null);
+  const [contextMenuPlacement, setContextMenuPlacement] = useState("below");
   const importRef = useRef(null);
   const projectImportRef = useRef(null);
 
@@ -241,10 +242,10 @@ export default function SidebarModern({
               {recent.map((item) => {
                 const active = Number(item.id) === Number(selectedConversationId);
                 return (
-                  <div key={item.id} className={`modern-conversation-item ${active ? "active" : ""} ${contextOpenId === item.id ? "menu-open" : ""}`}>
+                  <div key={item.id} className={`modern-conversation-item ${active ? "active" : ""} ${contextOpenId === item.id ? "menu-open" : ""} ${contextOpenId === item.id && contextMenuPlacement === "above" ? "menu-open-up" : ""}`}>
                     <button
                       type="button"
-                      onClick={() => { if (!showTrash) selectConversation(item.id); }}
+                      onClick={() => { setContextOpenId(null); if (!showTrash) selectConversation(item.id); }}
                       className="modern-conversation-main"
                       aria-current={active ? "page" : undefined}
                     >
@@ -277,7 +278,24 @@ export default function SidebarModern({
                         aria-controls={`conversation-actions-${item.id}`}
                         onClick={(event) => {
                           event.stopPropagation();
-                          setContextOpenId((current) => current === item.id ? null : item.id);
+                          if (contextOpenId === item.id) {
+                            setContextOpenId(null);
+                            return;
+                          }
+                          const row = event.currentTarget.closest(".modern-conversation-item");
+                          const scrollContainer = event.currentTarget.closest(".modern-conversation-scroll");
+                          if (row && scrollContainer) {
+                            const rowRect = row.getBoundingClientRect();
+                            const scrollRect = scrollContainer.getBoundingClientRect();
+                            const spaceAbove = rowRect.top - scrollRect.top;
+                            const spaceBelow = scrollRect.bottom - rowRect.bottom;
+                            setContextMenuPlacement(
+                              spaceBelow < 130 && spaceAbove > spaceBelow ? "above" : "below"
+                            );
+                          } else {
+                            setContextMenuPlacement("below");
+                          }
+                          setContextOpenId(item.id);
                         }}
                       >
                         <Icon name="more" size={16} />
