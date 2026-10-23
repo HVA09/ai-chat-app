@@ -1264,14 +1264,7 @@ html.dark .chat-message-user {
 .chat-message-bubble > .mb-2{margin-bottom:6px!important;font-size:10px}
 @media (max-width:767px){
   .chat-composer-row{grid-template-columns:minmax(0,1fr);gap:7px}
-  .chat-composer-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));width:100%;gap:7px}
-  .chat-composer-controls>label,
-  .chat-composer-controls>.relative,
-  .chat-composer-controls>button{min-width:0;width:100%}
-  .chat-composer-controls>.relative>button{width:100%}
-  .chat-composer-controls>.chat-send-button,
-  .chat-composer-controls>.chat-stop-button{grid-column:span 1;min-width:0}
-  .chat-composer-control,.chat-send-button,.chat-stop-button{min-height:42px}
+  .chat-composer-controls{display:grid;width:100%;gap:7px}
   .chat-message-bubble{max-width:96%!important;min-width:0;box-sizing:border-box;padding:8px 10px!important;font-size:14px;line-height:1.55}
   .chat-message-user{max-width:92%}
   .chat-message-header{align-items:flex-start;gap:6px 8px!important}
