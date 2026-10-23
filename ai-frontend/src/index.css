@@ -547,12 +547,15 @@ html.dark .chat-message-user {
   z-index: 30;
 }
 .modern-conversation-menu {
-  position: absolute;
-  inset-inline-end: 8px;
-  top: calc(100% + 2px);
-  z-index: 60;
-  display: none;
+  position: fixed;
+  inset-inline-end: auto;
+  top: 8px;
+  left: 8px;
+  z-index: 1000;
+  display: flex;
   flex-wrap: wrap;
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
   align-items: center;
   gap: 4px;
   width: max-content;
@@ -564,13 +567,6 @@ html.dark .chat-message-user {
   color: #64748b;
   box-shadow: 0 15px 34px rgba(15,23,42,.12);
   backdrop-filter: blur(16px);
-}
-.modern-conversation-item.menu-open .modern-conversation-menu {
-  display: flex;
-}
-.modern-conversation-item.menu-open-up .modern-conversation-menu {
-  top: auto;
-  bottom: calc(100% + 2px);
 }
 .dark .modern-conversation-menu {
   background: rgba(15,23,42,.98);
