@@ -283,7 +283,9 @@ export default function SidebarModern({
                       <div className="modern-conversation-menu">
   <button
     type="button"
-    title={t("sidebar.pinTitle")}
+    title={item.is_pinned
+  ? t("sidebar.unpinTitle")
+  : t("sidebar.pinTitle")}
     onClick={() => {
       onTogglePinConversation(item.id);
       setContextOpenId(null);
