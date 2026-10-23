@@ -182,12 +182,18 @@ export default function SidebarModern({
 
     updatePosition();
 
-    const dismissOnViewportChange = () => setContextOpenId(null);
-    document.addEventListener("scroll", dismissOnViewportChange, true);
-    window.addEventListener("resize", dismissOnViewportChange);
+    const dismissOnConversationScroll = (event) => {
+      // Scrolling the tags panel or the menu itself must not dismiss the popover.
+      if (event.target?.closest?.(".modern-conversation-scroll")) {
+        setContextOpenId(null);
+      }
+    };
+    const dismissOnViewportResize = () => setContextOpenId(null);
+    document.addEventListener("scroll", dismissOnConversationScroll, true);
+    window.addEventListener("resize", dismissOnViewportResize);
     return () => {
-      document.removeEventListener("scroll", dismissOnViewportChange, true);
-      window.removeEventListener("resize", dismissOnViewportChange);
+      document.removeEventListener("scroll", dismissOnConversationScroll, true);
+      window.removeEventListener("resize", dismissOnViewportResize);
     };
   }, [contextOpenId]);
 
