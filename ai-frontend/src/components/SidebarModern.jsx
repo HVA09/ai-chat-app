@@ -105,8 +105,35 @@ export default function SidebarModern({
   const [openSection, setOpenSection] = useState(null);
   const [contextOpenId, setContextOpenId] = useState(null);
   const [contextMenuPlacement, setContextMenuPlacement] = useState("below");
+  const contextMenuRef = useRef(null);
   const importRef = useRef(null);
   const projectImportRef = useRef(null);
+
+  useEffect(() => {
+    if (contextOpenId === null) return undefined;
+
+    const handleOutsidePointer = (event) => {
+      if (!contextMenuRef.current?.contains(event.target)) {
+        setContextOpenId(null);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key !== "Escape") return;
+      setContextOpenId(null);
+      contextMenuRef.current
+        ?.closest(".modern-conversation-item")
+        ?.querySelector(".modern-conversation-more")
+        ?.focus();
+    };
+
+    document.addEventListener("pointerdown", handleOutsidePointer);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePointer);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [contextOpenId]);
 
   useEffect(() => {
     const handleOpen = () => setMobileOpen(true);
@@ -273,7 +300,6 @@ export default function SidebarModern({
                         className="modern-conversation-more"
                         title={t("header.more")}
                         aria-label={t("header.more")}
-                        aria-haspopup="true"
                         aria-expanded={contextOpenId === item.id}
                         aria-controls={`conversation-actions-${item.id}`}
                         onClick={(event) => {
@@ -304,6 +330,7 @@ export default function SidebarModern({
                     {contextOpenId === item.id ? (
                       <div
                         id={`conversation-actions-${item.id}`}
+                        ref={contextMenuRef}
                         className="modern-conversation-menu"
                         role="group"
                         aria-label={t("header.more")}
