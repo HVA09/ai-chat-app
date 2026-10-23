@@ -281,12 +281,179 @@ export default function SidebarModern({
                     </div>
                     {contextOpenId === item.id ? (
                       <div className="modern-conversation-menu">
-                        <button type="button" onClick={() => { onTogglePinConversation(item.id); setContextOpenId(null); }} title={item.is_pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}><Icon name="pin" size={14} /></button>
-                        <button type="button" onClick={() => { const title = window.prompt(t("sidebar.renamePrompt"), item.title); if (title?.trim()) onRenameConversation(item.id, title.trim()); setContextOpenId(null); }} title={t("sidebar.renameTitle")}><Icon name="edit" size={14} /></button>
-                        <button type="button" onClick={() => { onDuplicateConversation(item.id); setContextOpenId(null); }} title={t("sidebar.duplicateTitle")}><Icon name="copy" size={14} /></button>
-                        <button type="button" onClick={() => { onToggleArchiveConversation(item.id); setContextOpenId(null); }} title={showArchived ? t("sidebar.unarchiveTitle") : t("sidebar.archiveTitle")}><Icon name="archive" size={14} /></button>
-                        <button type="button" onClick={() => { onToggleTrashConversation(item.id); setContextOpenId(null); }} title={t("sidebar.trashTitle")}><Icon name="trash" size={14} /></button>
-                      </div>
+  <button
+    type="button"
+    title={t("sidebar.pinTitle")}
+    onClick={() => {
+      onTogglePinConversation(item.id);
+      setContextOpenId(null);
+    }}
+  >
+    <Icon name="pin" size={14} />
+  </button>
+
+  <button
+    type="button"
+    title={t("sidebar.renameTitle")}
+    onClick={() => {
+      const title = window.prompt(
+        t("sidebar.renamePrompt"),
+        item.title
+      );
+      if (title?.trim()) {
+        onRenameConversation(item.id, title.trim());
+      }
+      setContextOpenId(null);
+    }}
+  >
+    <Icon name="edit" size={14} />
+  </button>
+
+  <button
+    type="button"
+    title={t("sidebar.duplicateTitle")}
+    onClick={() => {
+      onDuplicateConversation(item.id);
+      setContextOpenId(null);
+    }}
+  >
+    <Icon name="copy" size={14} />
+  </button>
+
+  <button
+    type="button"
+    title={showArchived
+      ? t("sidebar.unarchiveTitle")
+      : t("sidebar.archiveTitle")}
+    onClick={() => {
+      onToggleArchiveConversation(item.id);
+      setContextOpenId(null);
+    }}
+  >
+    <Icon name="archive" size={14} />
+  </button>
+
+  <select
+    aria-label={t("sidebar.moveFolderTitle")}
+    title={t("sidebar.moveFolderTitle")}
+    value={item.folder_id ?? ""}
+    onChange={(event) => {
+      onMoveConversationToFolder(
+        item.id,
+        event.target.value
+      );
+      setContextOpenId(null);
+    }}
+  >
+    <option value="">
+      {t("sidebar.noFolder")}
+    </option>
+    {visibleFolders.map((folder) => (
+      <option key={folder.id} value={folder.id}>
+        {folder.name}
+      </option>
+    ))}
+  </select>
+
+  <select
+    aria-label={t("sidebar.moveProjectTitle")}
+    title={t("sidebar.moveProjectTitle")}
+    value={item.project_id ?? ""}
+    onChange={(event) => {
+      onMoveConversationToProject(
+        item.id,
+        event.target.value
+      );
+      setContextOpenId(null);
+    }}
+  >
+    <option value="">
+      {t("sidebar.noProject")}
+    </option>
+    {visibleProjects.map((project) => (
+      <option key={project.id} value={project.id}>
+        {project.name}
+      </option>
+    ))}
+  </select>
+
+  <details className="modern-conversation-tags">
+    <summary
+      title={t("sidebar.tagConversationTitle")}
+      aria-label={t("sidebar.tagConversationTitle")}
+    >
+      <Icon name="tag" size={14} />
+    </summary>
+
+    <div className="modern-conversation-tags-panel">
+      <p>{t("sidebar.tagPickerTitle")}</p>
+
+      {visibleTags.length === 0 ? (
+        <p>{t("sidebar.noTags")}</p>
+      ) : (
+        visibleTags.map((tag) => {
+          const checked = (item.tags || []).some(
+            (itemTag) => itemTag.id === tag.id
+          );
+
+          return (
+            <label key={tag.id}>
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => {
+                  const current = new Set(
+                    (item.tags || []).map(
+                      (itemTag) => itemTag.id
+                    )
+                  );
+
+                  if (current.has(tag.id)) {
+                    current.delete(tag.id);
+                  } else {
+                    current.add(tag.id);
+                  }
+
+                  onSetConversationTags(
+                    item.id,
+                    Array.from(current)
+                  );
+                }}
+              />
+              <span>{tag.name}</span>
+            </label>
+          );
+        })
+      )}
+    </div>
+  </details>
+
+  <button
+    type="button"
+    title={showTrash
+      ? t("sidebar.deleteTitle")
+      : t("sidebar.trashTitle")}
+    onClick={() => {
+      if (showTrash) {
+        const confirmed = window.confirm(
+          t("sidebar.permanentDeleteConfirm", {
+            title: item.title
+          })
+        );
+
+        if (confirmed) {
+          onDeleteConversation(item.id);
+        }
+      } else {
+        onToggleTrashConversation(item.id);
+      }
+
+      setContextOpenId(null);
+    }}
+  >
+    <Icon name="trash" size={14} />
+  </button>
+</div>
                     ) : null}
                   </div>
                 );
