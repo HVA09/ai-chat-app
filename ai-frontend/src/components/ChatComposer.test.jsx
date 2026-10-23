@@ -585,4 +585,21 @@ describe("ChatComposer attachment intake guards", () => {
 
     expect(onAttachFiles).not.toHaveBeenCalled();
   });
+  it("hides an active drop zone when an upload starts", () => {
+    const props = {
+      value: "",
+      setValue: vi.fn(),
+      onSend: vi.fn(),
+      onStop: vi.fn(),
+    };
+    const { container, rerender } = render(<ChatComposer {...props} />);
+    const form = container.querySelector("form.chat-composer");
+
+    fireEvent.dragOver(form);
+    expect(screen.getByText("أسقط الملفات هنا")).toBeInTheDocument();
+
+    rerender(<ChatComposer {...props} attachmentUploading />);
+    expect(screen.queryByText("أسقط الملفات هنا")).not.toBeInTheDocument();
+  });
+
 });
