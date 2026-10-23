@@ -83,16 +83,16 @@ describe("SidebarModern conversation actions", () => {
     expect(onMoveConversationToProject).toHaveBeenCalledWith(101, "34");
   });
 
-  it("adds and removes conversation tags through the action menu", () => {
+  it("adds a conversation tag through the action menu", () => {
     const onSetConversationTags = vi.fn();
-    renderSidebar({
+    const { container } = renderSidebar({
       conversations: [sampleConversation],
       tags: [{ id: 45, name: "Tag Alpha", color: "#123456" }],
       onSetConversationTags,
     });
 
     fireEvent.click(screen.getByRole("button", { name: "header.more" }));
-    fireEvent.click(screen.getByRole("button", { name: "sidebar.tagConversationTitle" }));
+    fireEvent.click(container.querySelector(".modern-conversation-tags summary"));
     fireEvent.click(screen.getByRole("checkbox", { name: "Tag Alpha" }));
 
     expect(onSetConversationTags).toHaveBeenCalledWith(101, [45]);
@@ -101,14 +101,14 @@ describe("SidebarModern conversation actions", () => {
   it("moves a conversation to trash from the regular list without permanent deletion", () => {
     const onToggleTrashConversation = vi.fn();
     const onDeleteConversation = vi.fn();
-    renderSidebar({
+    const { container } = renderSidebar({
       conversations: [sampleConversation],
       onToggleTrashConversation,
       onDeleteConversation,
     });
 
     fireEvent.click(screen.getByRole("button", { name: "header.more" }));
-    fireEvent.click(screen.getByRole("button", { name: "sidebar.trashTitle" }));
+    fireEvent.click(container.querySelector(".modern-conversation-menu .modern-menu-delete"));
 
     expect(onToggleTrashConversation).toHaveBeenCalledWith(101);
     expect(onDeleteConversation).not.toHaveBeenCalled();
