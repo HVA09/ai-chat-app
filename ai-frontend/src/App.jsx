@@ -37,6 +37,7 @@ import useToolActivity from "./hooks/useToolActivity";
 import useStopGeneration from "./hooks/useStopGeneration";
 import useConversationBranching from "./hooks/useConversationBranching";
 import useImageAnalysis from "./hooks/useImageAnalysis";
+import useChatAutoScroll from "./hooks/useChatAutoScroll";
 import useMessageFeedback from "./hooks/useMessageFeedback";
 import useAppendToLastMessage from "./hooks/useAppendToLastMessage";
 import useConversationSharing from "./hooks/useConversationSharing";
@@ -213,7 +214,8 @@ export default function App() {
   const [editingMessageIndex, setEditingMessageIndex] = useState(null);
   const [retryableUserMessage, setRetryableUserMessage] = useState(null);
   const [toolActivity, setToolActivity] = useState(null);
-  const bottomRef = useRef(null);
+  const { scrollContainerRef: chatScrollRef, handleScroll: handleChatScroll } =
+    useChatAutoScroll({ conversationId, messages, loading });
   const conversationOpenRequestRef = useRef(0);
   const streamAbortRef = useRef(null);
   const autoSummaryInFlightRef = useRef(false);
@@ -222,9 +224,6 @@ export default function App() {
   const appendToLastMessage = useAppendToLastMessage({ setMessages });
 
   useDirection();
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
 
   useEffect(() => {
     messageCountRef.current = messages.length;
@@ -394,6 +393,8 @@ export default function App() {
   const {
     autoGenerateTitles,
     autoGenerateSummaries,
+    setAutoGenerateTitlesEnabled,
+    setAutoGenerateSummariesEnabled,
     resetConversationPreferences,
   } = useConversationPreferences();
 
@@ -1287,7 +1288,11 @@ export default function App() {
             </div>
           ) : null}
 
-          <div className="chat-surface mx-auto flex flex-col w-full max-w-4xl flex-1 space-y-3 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <div
+            ref={chatScrollRef}
+            onScroll={handleChatScroll}
+            className="chat-surface mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col space-y-3 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"
+          >
             {empty ? (
               <div className="empty-state flex h-full flex-col items-center justify-center px-4 text-center">
                 <div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-slate-900 text-xs font-extrabold tracking-[0.12em] text-white shadow-lg dark:bg-slate-100 dark:text-slate-900">AI</div>
@@ -1418,7 +1423,6 @@ export default function App() {
               </div>
             )}
 
-            <div ref={bottomRef} />
           </div>
 
           {error && (
@@ -1536,9 +1540,9 @@ export default function App() {
             notificationToastsEnabled={notificationPreferences.realtimeToasts}
             onNotificationToastsChanged={handleNotificationToastsChanged}
             autoGenerateTitles={autoGenerateTitles}
-            onAutoGenerateTitlesChanged={setAutoGenerateTitles}
+            onAutoGenerateTitlesChanged={setAutoGenerateTitlesEnabled}
             autoGenerateSummaries={autoGenerateSummaries}
-            onAutoGenerateSummariesChanged={setAutoGenerateSummaries}
+            onAutoGenerateSummariesChanged={setAutoGenerateSummariesEnabled}
             onClose={() => setShowAccountSettings(false)}
             onUserUpdated={refreshCurrentUser}
             onAccountDeleted={logout}

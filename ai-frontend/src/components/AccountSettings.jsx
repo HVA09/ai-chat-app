@@ -12,6 +12,11 @@ import { listMemories, createMemory, updateMemory, deleteMemory } from "../lib/m
 import { listApiKeys, createApiKey, revokeApiKey, getApiKeyUsage } from "../lib/apiKeysApi";
 import { getErrorMessage } from "../lib/errors";
 
+function expectListResponse(value) {
+  if (Array.isArray(value)) return value;
+  throw new TypeError("Expected a list response from the account API");
+}
+
 function Section({ title, children }) {
   return (
     <div className="settings-section mb-4 rounded-2xl border border-slate-200 p-4">
@@ -77,7 +82,7 @@ export default function AccountSettings({
 
   const loadMemories = async () => {
     try {
-      setMemories(await listMemories());
+      setMemories(expectListResponse(await listMemories()));
     } catch (err) {
       showErrorToast(err, "account.memoryLoadError");
     }
@@ -85,7 +90,7 @@ export default function AccountSettings({
 
   const loadSessions = async () => {
     try {
-      setSessions(await listSessions());
+      setSessions(expectListResponse(await listSessions()));
     } catch (err) {
       showErrorToast(err, "account.sessionsLoadError");
     }
@@ -93,7 +98,7 @@ export default function AccountSettings({
 
   const loadApiKeys = async () => {
     try {
-      const keys = await listApiKeys();
+      const keys = expectListResponse(await listApiKeys());
       setApiKeys(keys);
       const usageEntries = await Promise.all(
         keys.map(async (item) => {

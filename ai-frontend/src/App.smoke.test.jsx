@@ -39,8 +39,11 @@ vi.mock("./components/AuthForm", () => ({
 }));
 
 vi.mock("./components/SidebarModern", () => ({
-  default: ({ onCreateAssistant }) => (
-    <button type="button" onClick={onCreateAssistant}>Open assistant editor</button>
+  default: ({ onCreateAssistant, onOpenSettings }) => (
+    <>
+      <button type="button" onClick={onCreateAssistant}>Open assistant editor</button>
+      <button type="button" onClick={onOpenSettings}>Open account settings</button>
+    </>
   ),
 }));
 
@@ -126,4 +129,20 @@ describe("App initial render", () => {
     expect(screen.getByTestId("command-palette")).toHaveAttribute("data-open", "false");
     expect(screen.queryByTestId("assistant-editor")).not.toBeInTheDocument();
   });
+  it("opens account settings without taking down the authenticated app", async () => {
+    restoreSession.mockResolvedValueOnce("test-token");
+
+    const { container } = render(<App />);
+    await waitFor(() => {
+      expect(container.querySelector(".app-shell")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open account settings" }));
+
+    await waitFor(() => {
+      expect(container.querySelector(".settings-overlay")).toBeInTheDocument();
+    });
+    expect(container.querySelector(".app-shell")).toBeInTheDocument();
+  });
+
 });

@@ -234,6 +234,36 @@ describe("AccountSettings", () => {
     await user.click(screen.getByText("تصدير بياناتي"));
     expect(exportAccountData).toHaveBeenCalledTimes(1);
   });
+  it("keeps the settings dialog mounted when account list endpoints return an invalid shape", async () => {
+    const { listMemories } = await import("../lib/memoriesApi");
+    const { listApiKeys } = await import("../lib/apiKeysApi");
+    listMemories.mockResolvedValueOnce({ items: [] });
+    listApiKeys.mockResolvedValueOnce({ items: [] });
+    listSessions.mockResolvedValueOnce({ items: [] });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(
+      <AccountSettings
+        user={{ full_name: "", avatar_url: "", is_email_verified: true, is_2fa_enabled: false }}
+        onClose={vi.fn()}
+        onUserUpdated={vi.fn()}
+        onAccountDeleted={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "الحساب" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(dispatchSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "app:toast",
+          detail: expect.objectContaining({ type: "error" }),
+        })
+      );
+    });
+    expect(screen.getByRole("heading", { name: "الحساب" })).toBeInTheDocument();
+    dispatchSpy.mockRestore();
+  });
+
 });
 
 

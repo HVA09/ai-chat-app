@@ -1398,3 +1398,64 @@ html.dark .chat-message-user {
     z-index: 70;
   }
 }
+
+
+/* Mobile layout hardening: keep the composer anchored and the message list as
+   the only scrolling region, even when a conversation contains many messages. */
+.app-shell {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+.app-main,
+.chat-stage,
+.chat-surface {
+  min-height: 0;
+}
+.chat-surface {
+  overscroll-behavior-y: contain;
+}
+.modern-library-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, .32) transparent;
+}
+.modern-library-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.modern-library-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.modern-library-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(100, 116, 139, .32);
+}
+.modern-library-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, .55);
+}
+
+/* Anchor the mobile tools popover to its utility button. A fixed bottom
+   offset placed it over the composer on short viewports and when the
+   on-screen keyboard changed the visible viewport height. */
+@media (max-width: 767px) {
+  .chat-composer .chat-tools-popover {
+    position: absolute !important;
+    top: auto !important;
+    bottom: calc(100% + 8px) !important;
+    left: auto !important;
+    right: 0 !important;
+    margin-bottom: 0 !important;
+    translate: none !important;
+    width: min(92vw, 320px) !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 24px) !important;
+    max-height: min(60dvh, 420px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    z-index: 70;
+  }
+  html[dir="rtl"] .chat-composer .chat-tools-popover {
+    left: 0 !important;
+    right: auto !important;
+  }
+}
