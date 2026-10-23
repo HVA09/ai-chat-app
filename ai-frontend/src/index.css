@@ -543,41 +543,46 @@ html.dark .chat-message-user {
 .modern-conversation-item.active .modern-conversation-more {
   opacity: 1;
 }
+.modern-conversation-item.menu-open {
+  z-index: 30;
+}
 .modern-conversation-menu {
   position: absolute;
   inset-inline-end: 8px;
   top: calc(100% + 2px);
+  z-index: 60;
   display: none;
-}
-.modern-conversation-more:focus + .modern-conversation-menu {
-  display: flex;
-}
-.modern-conversation-more:hover + .modern-conversation-menu,
-.modern-conversation-menu:hover {
-  display: flex;
-}
-.modern-conversation-menu {
-  gap: 3px;
-  padding: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  max-width: min(330px, calc(100vw - 32px));
+  padding: 6px;
   border: 1px solid var(--sidebar-border);
   border-radius: 10px;
   background: rgba(255,255,255,.97);
+  color: #64748b;
   box-shadow: 0 15px 34px rgba(15,23,42,.12);
   backdrop-filter: blur(16px);
 }
+.modern-conversation-item.menu-open .modern-conversation-menu {
+  display: flex;
+}
 .dark .modern-conversation-menu {
   background: rgba(15,23,42,.98);
+  color: #cbd5e1;
 }
 .modern-conversation-menu button,
 .modern-item-action {
   display: grid;
   width: 28px;
   height: 28px;
+  flex: 0 0 auto;
   place-items: center;
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #64748b;
+  color: inherit;
 }
 .modern-conversation-menu button:hover,
 .modern-item-action:hover {
@@ -587,6 +592,81 @@ html.dark .chat-message-user {
 .dark .modern-conversation-menu button:hover,
 .dark .modern-item-action:hover {
   color: #f8fafc;
+}
+.modern-menu-delete {
+  color: #dc2626 !important;
+}
+.modern-menu-select {
+  width: 128px;
+  min-width: 0;
+  max-width: calc(100vw - 56px);
+  height: 28px;
+  padding: 4px 18px 4px 6px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+}
+.modern-conversation-tags {
+  position: relative;
+  flex: 0 0 auto;
+}
+.modern-conversation-tags summary {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.modern-conversation-tags summary::-webkit-details-marker {
+  display: none;
+}
+.modern-conversation-tags summary:hover {
+  background: var(--sidebar-hover);
+}
+.modern-conversation-tags-panel {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + 6px);
+  z-index: 70;
+  width: min(220px, calc(100vw - 48px));
+  max-height: 240px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  box-shadow: 0 15px 34px rgba(15,23,42,.16);
+}
+.dark .modern-conversation-tags-panel {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+.modern-conversation-tags-panel p {
+  margin: 0 0 7px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+.modern-conversation-tags-panel label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 2px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.modern-conversation-tags-panel input {
+  flex: 0 0 auto;
+}
+@media (hover: none), (max-width: 768px) {
+  .modern-conversation-more {
+    opacity: 1;
+  }
 }
 .modern-item-action.danger:hover {
   color: #dc2626;
