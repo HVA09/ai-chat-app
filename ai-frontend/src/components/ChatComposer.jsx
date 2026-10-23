@@ -38,6 +38,33 @@ export default function ChatComposer({
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const toolsContainerRef = useRef(null);
+  const toolsTriggerRef = useRef(null);
+
+  useEffect(() => {
+    if (!toolsOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!toolsContainerRef.current?.contains(event.target)) {
+        setToolsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setToolsOpen(false);
+      toolsTriggerRef.current?.focus();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [toolsOpen]);
+
   const nearLimit = value.length > MAX_MESSAGE_LENGTH - 200;
   const activeToolCommand = value.match(/^\/(calc|search|analyze|agent|python)\s/i)?.[1] ?? null;
   const lang = document.documentElement.lang;
@@ -337,9 +364,10 @@ export default function ChatComposer({
               <Icon name={isListening ? "stop" : "mic"} size={18} />
             </button>
 
-            <div className="relative">
+            <div ref={toolsContainerRef} className="relative">
               <button
                 type="button"
+                ref={toolsTriggerRef}
                 onClick={() => setToolsOpen((open) => !open)}
                 title={t("tools.mobileMenu")}
                 aria-label={t("tools.mobileMenu")}
