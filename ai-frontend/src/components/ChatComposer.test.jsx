@@ -592,6 +592,7 @@ describe("ChatComposer voice recognition lifecycle", () => {
   it.each([
     ["sending a message", { loading: true }],
     ["editing a message", { isEditing: true }],
+    ["uploading an attachment", { attachmentUploading: true }],
   ])("stops active voice recognition when %s begins", async (_state, busyProps) => {
     const originalDescriptor = Object.getOwnPropertyDescriptor(window, "SpeechRecognition");
     const instances = [];
@@ -639,6 +640,48 @@ describe("ChatComposer voice recognition lifecycle", () => {
         results: [[{ transcript: "نص متأخر" }]],
       });
       expect(setValue).not.toHaveBeenCalled();
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(window, "SpeechRecognition", originalDescriptor);
+      } else {
+        delete window.SpeechRecognition;
+      }
+    }
+  });
+
+  it("prevents starting voice recognition during an attachment upload", async () => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(window, "SpeechRecognition");
+    const instances = [];
+    class MockRecognition {
+      constructor() {
+        instances.push(this);
+      }
+      start() {}
+      stop() {}
+    }
+
+    Object.defineProperty(window, "SpeechRecognition", {
+      configurable: true,
+      writable: true,
+      value: MockRecognition,
+    });
+
+    try {
+      const user = userEvent.setup();
+      render(
+        <ChatComposer
+          value=""
+          setValue={vi.fn()}
+          onSend={vi.fn()}
+          onStop={vi.fn()}
+          attachmentUploading
+        />
+      );
+
+      const voiceButton = screen.getByRole("button", { name: "إدخال صوتي" });
+      expect(voiceButton).toBeDisabled();
+      await user.click(voiceButton);
+      expect(instances).toHaveLength(0);
     } finally {
       if (originalDescriptor) {
         Object.defineProperty(window, "SpeechRecognition", originalDescriptor);
