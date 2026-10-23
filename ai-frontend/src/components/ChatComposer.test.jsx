@@ -585,6 +585,7 @@ describe("ChatComposer attachment intake guards", () => {
 
     expect(onAttachFiles).not.toHaveBeenCalled();
   });
+
   it("hides an active drop zone when an upload starts", () => {
     const props = {
       value: "",
