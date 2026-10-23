@@ -393,6 +393,8 @@ export default function App() {
   const {
     autoGenerateTitles,
     autoGenerateSummaries,
+    setAutoGenerateTitlesEnabled,
+    setAutoGenerateSummariesEnabled,
     resetConversationPreferences,
   } = useConversationPreferences();
 
@@ -1538,9 +1540,9 @@ export default function App() {
             notificationToastsEnabled={notificationPreferences.realtimeToasts}
             onNotificationToastsChanged={handleNotificationToastsChanged}
             autoGenerateTitles={autoGenerateTitles}
-            onAutoGenerateTitlesChanged={setAutoGenerateTitles}
+            onAutoGenerateTitlesChanged={setAutoGenerateTitlesEnabled}
             autoGenerateSummaries={autoGenerateSummaries}
-            onAutoGenerateSummariesChanged={setAutoGenerateSummaries}
+            onAutoGenerateSummariesChanged={setAutoGenerateSummariesEnabled}
             onClose={() => setShowAccountSettings(false)}
             onUserUpdated={refreshCurrentUser}
             onAccountDeleted={logout}
