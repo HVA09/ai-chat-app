@@ -148,6 +148,21 @@ describe("SidebarModern conversation actions", () => {
     confirmSpy.mockRestore();
   });
 
+  it("closes the action menu without opening a conversation from the trash", () => {
+    const onSelectConversation = vi.fn();
+    const { container } = renderSidebar({
+      conversations: [sampleConversation],
+      showTrash: true,
+      onSelectConversation,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "header.more" }));
+    fireEvent.click(screen.getByRole("button", { name: /Example conversation/ }));
+
+    expect(onSelectConversation).not.toHaveBeenCalled();
+    expect(container.querySelector(".modern-conversation-item")).not.toHaveClass("menu-open");
+  });
+
   it("limits the action menu to permanent deletion while in the trash", () => {
     const { container } = renderSidebar({
       conversations: [sampleConversation],
