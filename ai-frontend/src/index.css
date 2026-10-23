@@ -1439,12 +1439,10 @@ html.dark .chat-message-user {
 @media (max-width: 767px) {
   .chat-composer .chat-tools-popover {
     position: absolute !important;
-    inset-inline-start: auto !important;
-    inset-inline-end: 0 !important;
     top: auto !important;
     bottom: calc(100% + 8px) !important;
     left: auto !important;
-    right: auto !important;
+    right: 0 !important;
     margin-bottom: 0 !important;
     translate: none !important;
     width: min(92vw, 320px) !important;
@@ -1455,5 +1453,9 @@ html.dark .chat-message-user {
     overflow-y: auto;
     overscroll-behavior: contain;
     z-index: 70;
+  }
+  html[dir="rtl"] .chat-composer .chat-tools-popover {
+    left: 0 !important;
+    right: auto !important;
   }
 }
