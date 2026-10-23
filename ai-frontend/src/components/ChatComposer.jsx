@@ -256,7 +256,7 @@ export default function ChatComposer({
         </div>
       ) : null}
 
-      {dragOver && !loading && !isEditing ? (
+      {dragOver && !loading && !isEditing && !attachmentUploading ? (
         <div className="drop-zone mb-3 rounded-xl border border-dashed border-slate-400 bg-slate-50 px-3 py-2 text-center text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-300">
           {t("tools.dropFilesHere")}
         </div>
