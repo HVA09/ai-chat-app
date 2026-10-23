@@ -56,40 +56,38 @@ describe("SidebarModern conversation actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "header.more" }));
 
     expect(container.querySelector(".modern-conversation-item")).toHaveClass("menu-open");
-    expect(container.querySelector(".modern-conversation-menu")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "header.more" })).toBeInTheDocument();
   });
 
-  it("opens the action menu upward when the row is near the bottom of the scroll area", () => {
-    const { container } = renderSidebar({ conversations: [sampleConversation] });
-    const row = container.querySelector(".modern-conversation-item");
-    const scroll = container.querySelector(".modern-conversation-scroll");
-
-    vi.spyOn(row, "getBoundingClientRect").mockReturnValue({
-      top: 500,
-      bottom: 540,
-      left: 0,
-      right: 300,
-      width: 300,
-      height: 40,
-      x: 0,
-      y: 500,
-      toJSON: () => ({}),
+  it("opens the action menu upward when there is not enough viewport space below", () => {
+    renderSidebar({ conversations: [sampleConversation] });
+    const trigger = screen.getByRole("button", { name: "header.more" });
+    const originalHeight = window.innerHeight;
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 600,
     });
-    vi.spyOn(scroll, "getBoundingClientRect").mockReturnValue({
-      top: 0,
-      bottom: 600,
-      left: 0,
-      right: 300,
-      width: 300,
-      height: 600,
-      x: 0,
-      y: 0,
+    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
+      top: 550,
+      bottom: 580,
+      left: 220,
+      right: 250,
+      width: 30,
+      height: 30,
+      x: 220,
+      y: 550,
       toJSON: () => ({}),
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "header.more" }));
-
-    expect(row).toHaveClass("menu-open-up");
+    try {
+      fireEvent.click(trigger);
+      expect(screen.getByRole("group", { name: "header.more" })).toHaveClass("menu-open-up");
+    } finally {
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: originalHeight,
+      });
+    }
   });
 
   it("closes the action menu on Escape and restores focus to its trigger", () => {
@@ -160,7 +158,7 @@ describe("SidebarModern conversation actions", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "header.more" }));
-    fireEvent.click(container.querySelector(".modern-conversation-tags summary"));
+    fireEvent.click(document.body.querySelector(".modern-conversation-tags summary"));
     fireEvent.click(screen.getByRole("checkbox", { name: "Tag Alpha" }));
 
     expect(onSetConversationTags).toHaveBeenCalledWith(101, [45]);
@@ -176,7 +174,7 @@ describe("SidebarModern conversation actions", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "header.more" }));
-    fireEvent.click(container.querySelector(".modern-conversation-menu .modern-menu-delete"));
+    fireEvent.click(document.body.querySelector(".modern-conversation-menu .modern-menu-delete"));
 
     expect(onToggleTrashConversation).toHaveBeenCalledWith(101);
     expect(onDeleteConversation).not.toHaveBeenCalled();
