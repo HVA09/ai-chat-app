@@ -241,10 +241,10 @@ export default function SidebarModern({
               {recent.map((item) => {
                 const active = Number(item.id) === Number(selectedConversationId);
                 return (
-                  <div key={item.id} className={`modern-conversation-item ${active ? "active" : ""}`}>
+                  <div key={item.id} className={`modern-conversation-item ${active ? "active" : ""} ${contextOpenId === item.id ? "menu-open" : ""}`}>
                     <button
                       type="button"
-                      onClick={() => selectConversation(item.id)}
+                      onClick={() => { if (!showTrash) selectConversation(item.id); }}
                       className="modern-conversation-main"
                       aria-current={active ? "page" : undefined}
                     >
@@ -270,7 +270,11 @@ export default function SidebarModern({
                       <button
                         type="button"
                         className="modern-conversation-more"
-                        title={t("sidebar.renameTitle")}
+                        title={t("header.more")}
+                        aria-label={t("header.more")}
+                        aria-haspopup="true"
+                        aria-expanded={contextOpenId === item.id}
+                        aria-controls={`conversation-actions-${item.id}`}
                         onClick={(event) => {
                           event.stopPropagation();
                           setContextOpenId((current) => current === item.id ? null : item.id);
@@ -280,182 +284,162 @@ export default function SidebarModern({
                       </button>
                     </div>
                     {contextOpenId === item.id ? (
-                      <div className="modern-conversation-menu">
-  <button
-    type="button"
-    title={item.is_pinned
-  ? t("sidebar.unpinTitle")
-  : t("sidebar.pinTitle")}
-    onClick={() => {
-      onTogglePinConversation(item.id);
-      setContextOpenId(null);
-    }}
-  >
-    <Icon name="pin" size={14} />
-  </button>
+                      <div
+                        id={`conversation-actions-${item.id}`}
+                        className="modern-conversation-menu"
+                        role="group"
+                        aria-label={t("header.more")}
+                      >
+                        {!showTrash ? (
+                          <>
+                            <button
+                              type="button"
+                              title={item.is_pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}
+                              aria-label={item.is_pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}
+                              onClick={() => {
+                                onTogglePinConversation(item.id);
+                                setContextOpenId(null);
+                              }}
+                            >
+                              <Icon name="pin" size={14} />
+                            </button>
 
-  <button
-    type="button"
-    title={t("sidebar.renameTitle")}
-    onClick={() => {
-      const title = window.prompt(
-        t("sidebar.renamePrompt"),
-        item.title
-      );
-      if (title?.trim()) {
-        onRenameConversation(item.id, title.trim());
-      }
-      setContextOpenId(null);
-    }}
-  >
-    <Icon name="edit" size={14} />
-  </button>
+                            <button
+                              type="button"
+                              title={t("sidebar.renameTitle")}
+                              aria-label={t("sidebar.renameTitle")}
+                              onClick={() => {
+                                const title = window.prompt(t("sidebar.renamePrompt"), item.title);
+                                if (title?.trim()) onRenameConversation(item.id, title.trim());
+                                setContextOpenId(null);
+                              }}
+                            >
+                              <Icon name="edit" size={14} />
+                            </button>
 
-  <button
-    type="button"
-    title={t("sidebar.duplicateTitle")}
-    onClick={() => {
-      onDuplicateConversation(item.id);
-      setContextOpenId(null);
-    }}
-  >
-    <Icon name="copy" size={14} />
-  </button>
+                            <button
+                              type="button"
+                              title={t("sidebar.duplicateTitle")}
+                              aria-label={t("sidebar.duplicateTitle")}
+                              onClick={() => {
+                                onDuplicateConversation(item.id);
+                                setContextOpenId(null);
+                              }}
+                            >
+                              <Icon name="copy" size={14} />
+                            </button>
 
-  <button
-    type="button"
-    title={showArchived
-      ? t("sidebar.unarchiveTitle")
-      : t("sidebar.archiveTitle")}
-    onClick={() => {
-      onToggleArchiveConversation(item.id);
-      setContextOpenId(null);
-    }}
-  >
-    <Icon name="archive" size={14} />
-  </button>
+                            <button
+                              type="button"
+                              title={showArchived ? t("sidebar.unarchiveTitle") : t("sidebar.archiveTitle")}
+                              aria-label={showArchived ? t("sidebar.unarchiveTitle") : t("sidebar.archiveTitle")}
+                              onClick={() => {
+                                onToggleArchiveConversation(item.id);
+                                setContextOpenId(null);
+                              }}
+                            >
+                              <Icon name="archive" size={14} />
+                            </button>
 
-  <select
-    aria-label={t("sidebar.moveFolderTitle")}
-    title={t("sidebar.moveFolderTitle")}
-    value={item.folder_id ?? ""}
-    onChange={(event) => {
-      onMoveConversationToFolder(
-        item.id,
-        event.target.value
-      );
-      setContextOpenId(null);
-    }}
-  >
-    <option value="">
-      {t("sidebar.noFolder")}
-    </option>
-    {visibleFolders.map((folder) => (
-      <option key={folder.id} value={folder.id}>
-        {folder.name}
-      </option>
-    ))}
-  </select>
+                            <select
+                              className="modern-menu-select"
+                              aria-label={t("sidebar.moveFolderTitle")}
+                              title={t("sidebar.moveFolderTitle")}
+                              value={item.folder_id ?? ""}
+                              onChange={(event) => {
+                                onMoveConversationToFolder(item.id, event.target.value);
+                                setContextOpenId(null);
+                              }}
+                            >
+                              <option value="">{t("sidebar.noFolder")}</option>
+                              {visibleFolders.map((folder) => (
+                                <option key={folder.id} value={folder.id}>
+                                  {folder.name}
+                                </option>
+                              ))}
+                            </select>
 
-  <select
-    aria-label={t("sidebar.moveProjectTitle")}
-    title={t("sidebar.moveProjectTitle")}
-    value={item.project_id ?? ""}
-    onChange={(event) => {
-      onMoveConversationToProject(
-        item.id,
-        event.target.value
-      );
-      setContextOpenId(null);
-    }}
-  >
-    <option value="">
-      {t("sidebar.noProject")}
-    </option>
-    {visibleProjects.map((project) => (
-      <option key={project.id} value={project.id}>
-        {project.name}
-      </option>
-    ))}
-  </select>
+                            <select
+                              className="modern-menu-select"
+                              aria-label={t("sidebar.moveProjectTitle")}
+                              title={t("sidebar.moveProjectTitle")}
+                              value={item.project_id ?? ""}
+                              onChange={(event) => {
+                                onMoveConversationToProject(item.id, event.target.value);
+                                setContextOpenId(null);
+                              }}
+                            >
+                              <option value="">{t("sidebar.noProject")}</option>
+                              {visibleProjects.map((project) => (
+                                <option key={project.id} value={project.id}>
+                                  {project.name}
+                                </option>
+                              ))}
+                            </select>
 
-  <details className="modern-conversation-tags">
-    <summary
-      title={t("sidebar.tagConversationTitle")}
-      aria-label={t("sidebar.tagConversationTitle")}
-    >
-      <Icon name="tag" size={14} />
-    </summary>
+                            <details className="modern-conversation-tags">
+                              <summary
+                                title={t("sidebar.tagConversationTitle")}
+                                aria-label={t("sidebar.tagConversationTitle")}
+                              >
+                                <Icon name="tag" size={14} />
+                              </summary>
 
-    <div className="modern-conversation-tags-panel">
-      <p>{t("sidebar.tagPickerTitle")}</p>
+                              <div className="modern-conversation-tags-panel">
+                                <p>{t("sidebar.tagPickerTitle")}</p>
+                                {visibleTags.length === 0 ? (
+                                  <p>{t("sidebar.noTags")}</p>
+                                ) : (
+                                  visibleTags.map((tag) => {
+                                    const currentTagIds = new Set(
+                                      (item.tags || []).map((itemTag) => itemTag.id)
+                                    );
+                                    const checked = currentTagIds.has(tag.id);
 
-      {visibleTags.length === 0 ? (
-        <p>{t("sidebar.noTags")}</p>
-      ) : (
-        visibleTags.map((tag) => {
-          const checked = (item.tags || []).some(
-            (itemTag) => itemTag.id === tag.id
-          );
+                                    return (
+                                      <label key={tag.id}>
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => {
+                                            if (currentTagIds.has(tag.id)) {
+                                              currentTagIds.delete(tag.id);
+                                            } else {
+                                              currentTagIds.add(tag.id);
+                                            }
+                                            onSetConversationTags(item.id, Array.from(currentTagIds));
+                                          }}
+                                        />
+                                        <span>{tag.name}</span>
+                                      </label>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </details>
+                          </>
+                        ) : null}
 
-          return (
-            <label key={tag.id}>
-              <input
-                type="checkbox"
-                checked={checked}
-                onChange={() => {
-                  const current = new Set(
-                    (item.tags || []).map(
-                      (itemTag) => itemTag.id
-                    )
-                  );
-
-                  if (current.has(tag.id)) {
-                    current.delete(tag.id);
-                  } else {
-                    current.add(tag.id);
-                  }
-
-                  onSetConversationTags(
-                    item.id,
-                    Array.from(current)
-                  );
-                }}
-              />
-              <span>{tag.name}</span>
-            </label>
-          );
-        })
-      )}
-    </div>
-  </details>
-
-  <button
-    type="button"
-    title={showTrash
-      ? t("sidebar.deleteTitle")
-      : t("sidebar.trashTitle")}
-    onClick={() => {
-      if (showTrash) {
-        const confirmed = window.confirm(
-          t("sidebar.permanentDeleteConfirm", {
-            title: item.title
-          })
-        );
-
-        if (confirmed) {
-          onDeleteConversation(item.id);
-        }
-      } else {
-        onToggleTrashConversation(item.id);
-      }
-
-      setContextOpenId(null);
-    }}
-  >
-    <Icon name="trash" size={14} />
-  </button>
-</div>
+                        <button
+                          type="button"
+                          className="modern-menu-delete"
+                          title={showTrash ? t("sidebar.deleteTitle") : t("sidebar.trashTitle")}
+                          aria-label={showTrash ? t("sidebar.deleteTitle") : t("sidebar.trashTitle")}
+                          onClick={() => {
+                            if (showTrash) {
+                              const confirmed = window.confirm(
+                                t("sidebar.permanentDeleteConfirm", { title: item.title })
+                              );
+                              if (confirmed) onDeleteConversation(item.id);
+                            } else {
+                              onToggleTrashConversation(item.id);
+                            }
+                            setContextOpenId(null);
+                          }}
+                        >
+                          <Icon name="trash" size={14} />
+                        </button>
+                      </div>
                     ) : null}
                   </div>
                 );
