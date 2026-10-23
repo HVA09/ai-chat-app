@@ -133,12 +133,13 @@ export default function ChatComposer({
   const handleDrop = (event) => {
     event.preventDefault();
     setDragOver(false);
+    if (loading || isEditing || attachmentUploading) return;
     const files = Array.from(event.dataTransfer.files || []);
     if (files.length) onAttachFiles?.(files);
   };
 
   const handlePaste = (event) => {
-    if (loading || isEditing) return;
+    if (loading || isEditing || attachmentUploading) return;
     const files = Array.from(event.clipboardData?.files || []);
     if (files.length) onAttachFiles?.(files);
   };
@@ -205,7 +206,11 @@ export default function ChatComposer({
       }}
       onDragOver={(e) => {
         e.preventDefault();
-        if (!loading && !isEditing) setDragOver(true);
+        if (!loading && !isEditing && !attachmentUploading) {
+          setDragOver(true);
+        } else {
+          setDragOver(false);
+        }
       }}
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
