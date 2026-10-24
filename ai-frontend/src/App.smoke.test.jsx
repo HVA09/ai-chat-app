@@ -157,7 +157,6 @@ describe("App initial render", () => {
   });
 
   it("offers a retry when the backend is temporarily unavailable during startup", async () => {
-    const user = userEvent.setup();
     restoreSession
       .mockReset()
       .mockRejectedValueOnce({ response: { status: 503 } })
@@ -166,7 +165,7 @@ describe("App initial render", () => {
     render(<App />);
 
     const retryButton = await screen.findByRole("button", { name: "إعادة المحاولة" });
-    await user.click(retryButton);
+    fireEvent.click(retryButton);
 
     expect(
       await screen.findByRole("button", { name: "Authenticate test session" })
