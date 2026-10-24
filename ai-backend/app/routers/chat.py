@@ -5,6 +5,8 @@ import asyncio
 import base64
 import json
 import time
+
+import httpx
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -70,6 +72,22 @@ MAX_SUMMARY_CONTEXT_CHARS = 8_000
 MAX_FILE_CONTEXT_CHARS = 24_000
 MAX_FILE_CONTEXT_PER_FILE_CHARS = 8_000
 MAX_MEMORY_CONTEXT_CHARS = 6_000
+
+
+def _chat_stream_error_message(exc: Exception, default_message: str) -> str:
+    """Return a safe, actionable message for known upstream AI provider failures."""
+    if not isinstance(exc, httpx.HTTPStatusError):
+        return default_message
+
+    status_code = exc.response.status_code
+    if status_code == 429:
+        return (
+            "رفض مزوّد الذكاء الاصطناعي الطلب بسبب حد الاستخدام أو معدل الطلبات. "
+            "انتظر قليلًا ثم أعد المحاولة؛ إذا استمرت المشكلة، تحقق من حصة المزوّد."
+        )
+    if status_code in {502, 503, 504}:
+        return "مزوّد الذكاء الاصطناعي غير متاح مؤقتًا. أعد المحاولة لاحقًا."
+    return default_message
 
 
 @router.post("/compare", response_model=ChatCompareResponse)
@@ -1724,9 +1742,10 @@ async def chat_stream(
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
-        except Exception:
+        except Exception as exc:
             logger.exception("خطأ أثناء بث الرد لمحادثة %s", conversation.id)
-            yield "event: error\ndata: حدث خطأ أثناء توليد الرد\n\n"
+            message = _chat_stream_error_message(exc, "حدث خطأ أثناء توليد الرد")
+            yield f"event: error\ndata: {message}\n\n"
             return
         finally:
             close_iterator = getattr(stream_iterator, "aclose", None)
@@ -1939,9 +1958,10 @@ async def regenerate_chat_stream(
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
-        except Exception:
+        except Exception as exc:
             logger.exception("خطأ أثناء إعادة توليد الرد لمحادثة %s", conversation.id)
-            yield "event: error\ndata: حدث خطأ أثناء إعادة توليد الرد\n\n"
+            message = _chat_stream_error_message(exc, "حدث خطأ أثناء إعادة توليد الرد")
+            yield f"event: error\ndata: {message}\n\n"
             return
         finally:
             close_iterator = getattr(stream_iterator, "aclose", None)
@@ -2047,9 +2067,10 @@ async def edit_chat_stream(
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
-        except Exception:
+        except Exception as exc:
             logger.exception("خطأ أثناء تعديل رسالة لمحادثة %s", conversation.id)
-            yield "event: error\ndata: حدث خطأ أثناء تعديل الرسالة\n\n"
+            message = _chat_stream_error_message(exc, "حدث خطأ أثناء تعديل الرسالة")
+            yield f"event: error\ndata: {message}\n\n"
             return
         finally:
             close_iterator = getattr(stream_iterator, "aclose", None)
