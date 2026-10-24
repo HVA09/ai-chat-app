@@ -121,6 +121,19 @@ export default function AccountSettings({
     loadSessions();
   }, []);
 
+  // Keep a reliable keyboard exit on mobile and desktop, even when the
+  // settings content itself is the active scroll container.
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose?.();
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   useEffect(() => {
     setAutoGenerateTitles(Boolean(autoGenerateTitlesProp));
   }, [autoGenerateTitlesProp]);
@@ -303,10 +316,15 @@ export default function AccountSettings({
     });
 
   return (
-    <div className="settings-overlay fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/30 p-4">
-      <div className="settings-dialog my-8 w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-lg">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">{t("account.title")}</h2>
+    <div className="settings-overlay fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain bg-black/30 p-2 sm:items-center sm:p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="account-settings-title"
+        className="settings-dialog my-2 max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-3xl border border-slate-200 bg-white p-4 shadow-lg sm:my-8 sm:max-h-[calc(100dvh-2rem)] sm:p-6"
+      >
+        <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-4 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95 sm:-mx-6 sm:-mt-6 sm:px-6">
+          <h2 id="account-settings-title" className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t("account.title")}</h2>
           <button
             onClick={onClose}
             className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
