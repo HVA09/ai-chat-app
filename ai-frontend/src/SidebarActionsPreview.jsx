@@ -315,18 +315,18 @@ export default function SidebarActionsPreview() {
 
       {settingsOpen ? (
         <div
-          className="settings-overlay fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/40 p-3"
+          className="settings-overlay fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto overscroll-contain bg-black/40 p-2 sm:items-center sm:p-4"
           onClick={(event) => {
             if (event.target === event.currentTarget) setSettingsOpen(false);
           }}
         >
           <section
-            className="settings-dialog my-8 w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-lg"
+            className="settings-dialog my-2 w-full max-w-md rounded-3xl border border-slate-200 bg-white p-4 shadow-lg sm:my-8 sm:p-6"
             role="dialog"
             aria-modal="true"
             aria-labelledby="preview-settings-title"
           >
-            <div className="mb-4 flex items-center justify-between">
+            <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-4 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900 sm:-mx-6 sm:-mt-6 sm:px-6">
               <h2 id="preview-settings-title" className="text-lg font-semibold">إعدادات المعاينة</h2>
               <button
                 type="button"
