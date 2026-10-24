@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import SidebarModern from "./components/SidebarModern";
+import ChatComposer from "./components/ChatComposer";
 
 const sampleConversations = [
   {
@@ -82,6 +83,27 @@ export default function SidebarActionsPreview() {
   const [showArchived, setShowArchived] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [status, setStatus] = useState("هذه معاينة واجهة معزولة؛ الإجراءات تغيّر بيانات تجريبية محلية فقط.");
+  const [composerValue, setComposerValue] = useState("");
+  const [selectedModel, setSelectedModel] = useState("demo-fast");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!settingsOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setSettingsOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [settingsOpen]);
+
+  const appendCommand = (command) => {
+    setComposerValue((current) => {
+      const prefix = current.trim();
+      return `${prefix ? `${prefix} ` : ""}/${command} `;
+    });
+  };
 
   const activeList = showTrash
     ? trashedConversations
@@ -211,7 +233,7 @@ export default function SidebarActionsPreview() {
         onSelectWorkspace={() => setStatus("مساحة تجريبية محلية فقط.")}
         onShowArchived={handleSelectArchived}
         onShowTrash={handleSelectTrash}
-        onOpenSettings={() => setStatus("الإعدادات غير متصلة في هذه المعاينة.")}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <main className="sidebar-preview-main">
@@ -222,6 +244,13 @@ export default function SidebarActionsPreview() {
             onClick={() => window.dispatchEvent(new Event("app:open-sidebar"))}
           >
             ☰ فتح القائمة
+          </button>
+          <button
+            type="button"
+            className="sidebar-preview-settings-button"
+            onClick={() => setSettingsOpen(true)}
+          >
+            ⚙️ اختبار الإعدادات
           </button>
           <span className="sidebar-preview-badge">معاينة آمنة — بيانات وهمية</span>
         </header>
@@ -256,12 +285,97 @@ export default function SidebarActionsPreview() {
             جميع التغييرات تختفي عند تحديث الصفحة.
           </p>
         </section>
+
+        <div className="sidebar-preview-composer">
+          <ChatComposer
+            value={composerValue}
+            setValue={setComposerValue}
+            onSend={() => {
+              const sent = composerValue.trim();
+              setStatus(sent ? `رسالة تجريبية محلية فقط: ${sent.slice(0, 90)}` : "لا توجد رسالة تجريبية.");
+              setComposerValue("");
+            }}
+            onStop={() => setStatus("تم إيقاف الإجراء التجريبي فقط.")}
+            onInsertCalculator={() => appendCommand("calc")}
+            onInsertWebSearch={() => appendCommand("search")}
+            onInsertDataAnalysis={() => appendCommand("analyze")}
+            onInsertAgent={() => appendCommand("agent")}
+            onInsertPython={() => appendCommand("python")}
+            onCompareModels={() => setStatus("مقارنة النماذج هنا شكلية ولا تستدعي أي خدمة.")}
+            models={[
+              { id: "demo-fast", label: "نموذج تجريبي سريع" },
+              { id: "demo-reasoning", label: "نموذج تجريبي للاستدلال" },
+            ]}
+            selectedModel={selectedModel}
+            onSelectModel={setSelectedModel}
+            onVoiceError={(message) => setStatus(message)}
+          />
+        </div>
       </main>
+
+      {settingsOpen ? (
+        <div
+          className="settings-overlay fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/40 p-3"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setSettingsOpen(false);
+          }}
+        >
+          <section
+            className="settings-dialog my-8 w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-lg"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="preview-settings-title"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 id="preview-settings-title" className="text-lg font-semibold">إعدادات المعاينة</h2>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(false)}
+                aria-label="إغلاق الإعدادات"
+                className="rounded-lg px-3 py-2 text-slate-500 hover:bg-slate-100"
+              >
+                ✕
+              </button>
+            </div>
+            {[
+              "الملف الشخصي — تجريبي",
+              "تفضيلات الإشعارات — تجريبية",
+              "عناوين المحادثات — تجريبي",
+              "التلخيص التلقائي — تجريبي",
+              "الذاكرة — تجريبية",
+              "مفاتيح API — عرض وهمي فقط",
+              "الجلسات — تجريبية",
+              "الأمان والتحقق بخطوتين — تجريبي",
+              "تصدير البيانات — غير متصل",
+              "إدارة الحساب — غير متصلة",
+            ].map((title, index) => (
+              <div key={title} className="settings-section mb-4 rounded-2xl border border-slate-200 p-4">
+                <p className="mb-2 text-sm font-medium">{title}</p>
+                {index < 4 ? (
+                  <label className="flex items-start gap-3 text-sm">
+                    <input type="checkbox" />
+                    <span>خيار شكلي لا يحفظ أي إعدادات حقيقية.</span>
+                  </label>
+                ) : (
+                  <p className="text-xs leading-6 text-slate-500">قسم تجريبي لا يتصل بالخادم أو قاعدة البيانات.</p>
+                )}
+              </div>
+            ))}
+            <p className="text-xs leading-6 text-slate-500">
+              هذه نافذة اختبار فقط. جرّب التمرير إلى النهاية، ثم العودة إلى الأعلى، أو الإغلاق بزر ✕ أو Escape أو بالضغط خارج النافذة.
+            </p>
+          </section>
+        </div>
+      ) : null}
 
       <style>{`
         #root { min-height: 100%; }
         .sidebar-preview-shell { display: flex; height: 100dvh; min-height: 100dvh; overflow: hidden; color: #0f172a; }
-        .sidebar-preview-main { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; overflow: auto; background: linear-gradient(145deg, #f8fafc, #eef2ff 55%, #f8fafc); }
+        .sidebar-preview-main { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: linear-gradient(145deg, #f8fafc, #eef2ff 55%, #f8fafc); }
+        .sidebar-preview-settings-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #cbd5e1; border-radius: 10px; padding: 9px 12px; background: #fff; color: #334155; font-size: 12px; font-weight: 700; }
+        .sidebar-preview-composer { flex: 0 0 auto; min-width: 0; border-top: 1px solid rgba(148,163,184,.24); background: #f8fafc; }
+        .sidebar-preview-composer .chat-composer { border-top: 0; }
+        .sidebar-preview-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
         .sidebar-preview-header { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px clamp(14px, 3vw, 28px); border-bottom: 1px solid rgba(148,163,184,.25); background: rgba(255,255,255,.78); backdrop-filter: blur(16px); }
         .sidebar-preview-open-button { display: none; border: 1px solid #dbe3ef; border-radius: 10px; padding: 9px 12px; background: white; color: #334155; font-size: 13px; font-weight: 600; }
         .sidebar-preview-badge { display: inline-flex; align-items: center; border: 1px solid #bbf7d0; border-radius: 999px; padding: 5px 10px; background: #f0fdf4; color: #166534; font-size: 11px; font-weight: 700; }
