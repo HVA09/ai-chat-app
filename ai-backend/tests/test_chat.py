@@ -59,6 +59,34 @@ def test_chat_stream_error_message_keeps_generic_for_other_http_statuses():
     ) == "حدث خطأ أثناء توليد الرد"
 
 
+def test_chat_stream_error_message_localizes_safe_fallback_for_unknown_exception():
+    message = chat_router_module._chat_stream_error_message(
+        RuntimeError("internal provider details must not be exposed"),
+        "حدث خطأ أثناء توليد الرد",
+        "en-US,en;q=0.9",
+        "An error occurred while generating the response.",
+    )
+
+    assert message == "An error occurred while generating the response."
+    assert "internal provider details" not in message
+
+
+def test_chat_stream_error_message_localizes_safe_fallback_for_other_http_statuses():
+    request = httpx.Request("POST", "https://provider.example/v1/chat/completions")
+    response = httpx.Response(500, request=request)
+    exc = httpx.HTTPStatusError("internal provider details", request=request, response=response)
+
+    message = chat_router_module._chat_stream_error_message(
+        exc,
+        "حدث خطأ أثناء توليد الرد",
+        "en",
+        "An error occurred while generating the response.",
+    )
+
+    assert message == "An error occurred while generating the response."
+    assert "internal provider details" not in message
+
+
 def test_chat_stream_error_message_supports_english_locale():
     request = httpx.Request("POST", "https://provider.example/v1/chat/completions")
     response = httpx.Response(429, request=request)
