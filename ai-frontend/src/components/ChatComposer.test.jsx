@@ -480,6 +480,8 @@ describe("ChatComposer responsive tools menu", () => {
     expect(screen.getByTitle("وضع الوكيل")).toBeInTheDocument();
     expect(screen.getByTitle("مفسّر بايثون آمن")).toBeInTheDocument();
     expect(screen.getByTitle("tools.compareModels")).toBeInTheDocument();
+    expect(popover).toHaveAttribute("role", "group");
+    expect(popover).toHaveAttribute("aria-label", "أدوات الرسالة");
   });
 
   it("closes the tools menu with Escape and restores focus to its trigger", async () => {
