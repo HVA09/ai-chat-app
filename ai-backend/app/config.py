@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     DATABASE_URL: str
+    # Bounded SQLAlchemy pool for constrained external session poolers.
+    DATABASE_POOL_SIZE: int = 2
+    DATABASE_MAX_OVERFLOW: int = 1
+    DATABASE_POOL_TIMEOUT_SECONDS: int = 15
 
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
@@ -129,6 +133,27 @@ class Settings(BaseSettings):
     CMS_COVERAGE_BASE_URL: str = "https://api.coverage.cms.gov"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("DATABASE_POOL_SIZE")
+    @classmethod
+    def validate_database_pool_size(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("DATABASE_POOL_SIZE must be at least 1")
+        return value
+
+    @field_validator("DATABASE_MAX_OVERFLOW")
+    @classmethod
+    def validate_database_max_overflow(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("DATABASE_MAX_OVERFLOW cannot be negative")
+        return value
+
+    @field_validator("DATABASE_POOL_TIMEOUT_SECONDS")
+    @classmethod
+    def validate_database_pool_timeout(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("DATABASE_POOL_TIMEOUT_SECONDS must be at least 1")
+        return value
 
     @field_validator("PREVIEW_BUILD_TIMEOUT_SECONDS")
     @classmethod
