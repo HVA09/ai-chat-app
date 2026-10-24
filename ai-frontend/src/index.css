@@ -1623,7 +1623,7 @@ html.dark .modern-sidebar {
   border-color: var(--ui-border);
   transform: translateY(-1px);
 }
-.modern-conversation-item[aria-current="page"],
+.modern-conversation-item.active,
 .modern-conversation-item[aria-selected="true"] {
   border-color: var(--ui-border-strong);
   background: linear-gradient(110deg, rgba(99,102,241,.15), rgba(14,165,233,.08)) !important;
