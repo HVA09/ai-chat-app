@@ -12,7 +12,7 @@ vi.mock("./lib/api", () => {
       delete: request(),
       request: request(),
     },
-    restoreSession: vi.fn().mockRejectedValue(new Error("No active test session")),
+    restoreSession: vi.fn().mockRejectedValue({ response: { status: 401 } }),
   };
 });
 
@@ -69,7 +69,7 @@ describe("App initial render", () => {
       dispatchEvent: vi.fn(),
     }));
     restoreSession.mockReset();
-    restoreSession.mockRejectedValue(new Error("No active test session"));
+    restoreSession.mockRejectedValue({ response: { status: 401 } });
   });
 
   it("renders before session restoration without a temporal-dead-zone error", async () => {
@@ -143,6 +143,35 @@ describe("App initial render", () => {
       expect(container.querySelector(".settings-overlay")).toBeInTheDocument();
     });
     expect(container.querySelector(".app-shell")).toBeInTheDocument();
+  });
+
+
+  it("shows a startup status instead of the login form while restoring a session", () => {
+    restoreSession.mockReset();
+    restoreSession.mockImplementation(() => new Promise(() => {}));
+
+    render(<App />);
+
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Authenticate test session" })).not.toBeInTheDocument();
+  });
+
+  it("offers a retry when the backend is temporarily unavailable during startup", async () => {
+    const user = userEvent.setup();
+    restoreSession
+      .mockReset()
+      .mockRejectedValueOnce({ response: { status: 503 } })
+      .mockRejectedValueOnce({ response: { status: 401 } });
+
+    render(<App />);
+
+    const retryButton = await screen.findByRole("button", { name: "إعادة المحاولة" });
+    await user.click(retryButton);
+
+    expect(
+      await screen.findByRole("button", { name: "Authenticate test session" })
+    ).toBeInTheDocument();
+    expect(restoreSession).toHaveBeenCalledTimes(2);
   });
 
 });
