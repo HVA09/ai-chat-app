@@ -77,12 +77,9 @@ def _chat_stream_error_message(
     exc: Exception,
     default_message: str,
     language: str = "ar",
+    default_message_en: str | None = None,
 ) -> str:
-    """Return safe, localized messages for known upstream provider failures."""
-    if not isinstance(exc, httpx.HTTPStatusError):
-        return default_message
-
-    status_code = exc.response.status_code
+    """Return safe, localized messages without exposing upstream exception details."""
     primary_language = (
         (language or "ar")
         .split(",", 1)[0]
@@ -92,6 +89,15 @@ def _chat_stream_error_message(
         .lower()
     )
     is_english = primary_language == "en"
+    fallback_message = (
+        default_message_en
+        if is_english and default_message_en
+        else default_message
+    )
+    if not isinstance(exc, httpx.HTTPStatusError):
+        return fallback_message
+
+    status_code = exc.response.status_code
 
     if status_code == 429:
         if is_english:
@@ -108,7 +114,7 @@ def _chat_stream_error_message(
         if is_english:
             return "The AI provider is temporarily unavailable. Please try again later."
         return "مزوّد الذكاء الاصطناعي غير متاح مؤقتًا. أعد المحاولة لاحقًا."
-    return default_message
+    return fallback_message
 
 
 @router.post("/compare", response_model=ChatCompareResponse)
@@ -1769,6 +1775,7 @@ async def chat_stream(
                 exc,
                 "حدث خطأ أثناء توليد الرد",
                 request.headers.get("accept-language", "ar"),
+                "An error occurred while generating the response.",
             )
             yield f"event: error\ndata: {message}\n\n"
             return
@@ -1989,6 +1996,7 @@ async def regenerate_chat_stream(
                 exc,
                 "حدث خطأ أثناء إعادة توليد الرد",
                 request.headers.get("accept-language", "ar"),
+                "An error occurred while regenerating the response.",
             )
             yield f"event: error\ndata: {message}\n\n"
             return
@@ -2102,6 +2110,7 @@ async def edit_chat_stream(
                 exc,
                 "حدث خطأ أثناء تعديل الرسالة",
                 request.headers.get("accept-language", "ar"),
+                "An error occurred while editing the message.",
             )
             yield f"event: error\ndata: {message}\n\n"
             return
