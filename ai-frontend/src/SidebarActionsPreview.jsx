@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import SidebarModern from "./components/SidebarModern";
+import ChatHeaderModern from "./components/ChatHeaderModern";
+import ChatMessage from "./components/ChatMessage";
 import ChatComposer from "./components/ChatComposer";
 
 const sampleConversations = [
@@ -85,7 +87,15 @@ export default function SidebarActionsPreview() {
   const [status, setStatus] = useState("هذه معاينة واجهة معزولة؛ الإجراءات تغيّر بيانات تجريبية محلية فقط.");
   const [composerValue, setComposerValue] = useState("");
   const [selectedModel, setSelectedModel] = useState("demo-fast");
+  const [previewLang, setPreviewLang] = useState(document.documentElement.lang || "ar");
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const handlePreviewLanguageChange = (nextLang) => {
+    setPreviewLang(nextLang);
+    document.documentElement.lang = nextLang;
+    document.documentElement.dir = nextLang === "ar" ? "rtl" : "ltr";
+    setStatus("تم تغيير لغة المعاينة فقط.");
+  };
 
   useEffect(() => {
     if (!settingsOpen) return undefined;
@@ -236,106 +246,95 @@ export default function SidebarActionsPreview() {
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
-      <main className="sidebar-preview-main">
-        <header className="sidebar-preview-header">
-          <button
-            type="button"
-            className="sidebar-preview-open-button"
-            onClick={() => window.dispatchEvent(new Event("app:open-sidebar"))}
-          >
-            ☰ فتح القائمة
-          </button>
-          <button
-            type="button"
-            className="sidebar-preview-settings-button"
-            onClick={() => setSettingsOpen(true)}
-          >
-            ⚙️ اختبار الإعدادات
-          </button>
-          <span className="sidebar-preview-badge">معاينة آمنة — بيانات وهمية</span>
-        </header>
+      <main className="app-main flex min-w-0 min-h-0 flex-1 flex-col">
+        <ChatHeaderModern
+          conversationTitle="مراجعة خطة المشروع"
+          lang={previewLang}
+          setLang={handlePreviewLanguageChange}
+          onLogout={() => setStatus("تسجيل الخروج غير متصل في المعاينة.")}
+          onOpenAccount={() => setSettingsOpen(true)}
+          onOpenFiles={() => setStatus("إدارة الملفات غير متصلة في المعاينة.")}
+          onOpenAdmin={() => setStatus("لوحة الإدارة غير متصلة في المعاينة.")}
+          onOpenBilling={() => setStatus("الفوترة غير متصلة في المعاينة.")}
+          onShareConversation={() => setStatus("المشاركة غير متصلة في المعاينة.")}
+          canShareConversation
+          onManageShares={() => setStatus("إدارة المشاركات غير متصلة في المعاينة.")}
+          canManageShares
+          onToggleWorkspaceShare={() => setStatus("مشاركة مساحة العمل غير متصلة في المعاينة.")}
+          canShareWithWorkspace
+          workspaceShareActive={false}
+          onExportConversation={() => setStatus("التصدير غير متصل في المعاينة.")}
+          canExportConversation
+          onSummarizeConversation={() => setStatus("التلخيص غير متصل في المعاينة.")}
+          canSummarizeConversation
+          onGenerateConversationTitle={() => setStatus("توليد العنوان غير متصل في المعاينة.")}
+          canGenerateConversationTitle
+          notifications={[]}
+          onMarkNotificationRead={() => {}}
+          onMarkAllNotificationsRead={() => {}}
+          projectName="AI Chat App"
+        />
 
-        <section className="sidebar-preview-content">
-          <div className="sidebar-preview-chat-heading">
-            <div className="sidebar-preview-ai-mark" aria-hidden="true">✦</div>
-            <div className="min-w-0">
-              <h1>مساعد في البرمجة</h1>
-              <p><span className="sidebar-preview-live-dot" /> متصل الآن · نموذج تجريبي</p>
-            </div>
-            <span className="sidebar-preview-concept-tag">التصميم ٣</span>
+        <section className="chat-stage flex min-h-0 flex-1 flex-col p-3 sm:p-4">
+          <div className="chat-surface mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col space-y-3 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+            <ChatMessage
+              role="user"
+              text="أريد أن تكون واجهة AI Chat App أكثر احترافية، مع دعم جيد للعربية والهاتف."
+              time="الآن"
+              canEdit
+              onEdit={() => setStatus("تحرير الرسالة غير متصل في المعاينة.")}
+              canDelete
+              onDelete={() => setStatus("الحذف غير متصل في المعاينة.")}
+              canBranch
+              onBranch={() => setStatus("تفريع المحادثة غير متصل في المعاينة.")}
+              canRemember
+              onToggleRemember={() => setStatus("الذاكرة غير متصلة في المعاينة.")}
+              onToggleBookmark={() => setStatus("الحفظ في العلامات غير متصل في المعاينة.")}
+            />
+            <ChatMessage
+              role="assistant"
+              text={"أهلًا بك! أنا مساعدك الذكي. يمكنني مساعدتك في البرمجة، وتحليل الأفكار، وبناء مشروعك خطوة بخطوة.\n\n**اكتب ما تريد إنجازه، وسنبدأ معًا.**"}
+              time="الآن"
+              canDelete
+              onDelete={() => setStatus("حذف الرسالة غير متصل في المعاينة.")}
+              canFeedback
+              onFeedback={() => setStatus("التقييم تجريبي ومحلي فقط.")}
+              canRegenerate
+              onRegenerate={() => setStatus("إعادة التوليد غير متصلة في المعاينة.")}
+              onToggleBookmark={() => setStatus("الحفظ في العلامات غير متصل في المعاينة.")}
+            />
           </div>
-
-          <div className="sidebar-preview-transcript" aria-label="محادثة تجريبية">
-            <div className="sidebar-preview-message sidebar-preview-user-message">
-              <div className="sidebar-preview-user-bubble">مرحبًا، كيف يمكنني مساعدتك اليوم؟</div>
-              <span className="sidebar-preview-message-time">أنت · الآن</span>
-            </div>
-
-            <div className="sidebar-preview-message sidebar-preview-assistant-message">
-              <div className="sidebar-preview-ai-avatar" aria-hidden="true">✦</div>
-              <div className="sidebar-preview-assistant-content">
-                <div className="sidebar-preview-assistant-bubble">
-                  <p>أهلًا بك! أنا مساعدك الذكي. يمكنني مساعدتك في البرمجة، وتحليل الأفكار، وبناء مشروعك خطوة بخطوة.</p>
-                  <p>اكتب ما تريد إنجازه، وسنبدأ معًا.</p>
-                </div>
-                <div className="sidebar-preview-suggestion-row">
-                  <span>اكتب كودًا</span>
-                  <span>حلّل ملفًا</span>
-                  <span>خطّط لمشروع</span>
-                </div>
-                <span className="sidebar-preview-message-time">المساعد · الآن</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="sidebar-preview-status-card" role="status" aria-live="polite">
-            <span className="sidebar-preview-status-dot" />
-            <div>
-              <strong>حالة المعاينة</strong>
-              <p>{status}</p>
-            </div>
-          </div>
-
-          <details className="sidebar-preview-checks">
-            <summary>اختبارات الواجهة والقائمة</summary>
-            <p>١. اضغط «المزيد» بجانب محادثة تجريبية، ثم أغلق القائمة بالنقر خارجها أو بمفتاح Escape.</p>
-            <p>٢. جرّب فتح القائمة قرب أسفل الشريط الجانبي؛ يجب أن تتكيف مع مساحة الشاشة.</p>
-            <p>٣. جرّب نقل محادثة إلى مجلد أو مشروع، وتعديل الوسوم، والتثبيت، والأرشفة.</p>
-            <p>٤. افتح الإعدادات من الشريط الجانبي أو من زر «اختبار الإعدادات» في الأعلى، ثم اختبر التمرير والإغلاق.</p>
-          </details>
-
-          <div className="sidebar-preview-status-line">{countLabel}</div>
-          <p className="sidebar-preview-safety-note">
-            معاينة مستقلة ببيانات وهمية فقط. لا يوجد اتصال بالخادم أو Supabase، ولا تسجّل دخولًا أو تضع بيانات حقيقية. التغييرات تختفي عند تحديث الصفحة.
-          </p>
         </section>
 
-        <div className="sidebar-preview-composer">
-          <ChatComposer
-            value={composerValue}
-            setValue={setComposerValue}
-            onSend={() => {
-              const sent = composerValue.trim();
-              setStatus(sent ? `رسالة تجريبية محلية فقط: ${sent.slice(0, 90)}` : "لا توجد رسالة تجريبية.");
-              setComposerValue("");
-            }}
-            onStop={() => setStatus("تم إيقاف الإجراء التجريبي فقط.")}
-            onInsertCalculator={() => appendCommand("calc")}
-            onInsertWebSearch={() => appendCommand("search")}
-            onInsertDataAnalysis={() => appendCommand("analyze")}
-            onInsertAgent={() => appendCommand("agent")}
-            onInsertPython={() => appendCommand("python")}
-            onCompareModels={() => setStatus("مقارنة النماذج هنا شكلية ولا تستدعي أي خدمة.")}
-            models={[
-              { id: "demo-fast", label: "نموذج تجريبي سريع" },
-              { id: "demo-reasoning", label: "نموذج تجريبي للاستدلال" },
-            ]}
-            selectedModel={selectedModel}
-            onSelectModel={setSelectedModel}
-            onVoiceError={(message) => setStatus(message)}
-          />
-        </div>
+        <ChatComposer
+          value={composerValue}
+          setValue={setComposerValue}
+          onSend={() => {
+            const sent = composerValue.trim();
+            setStatus(sent ? `رسالة تجريبية محلية فقط: ${sent.slice(0, 90)}` : "لا توجد رسالة تجريبية.");
+            setComposerValue("");
+          }}
+          onStop={() => setStatus("تم إيقاف الإجراء التجريبي فقط.")}
+          onInsertCalculator={() => appendCommand("calc")}
+          onInsertWebSearch={() => appendCommand("search")}
+          onInsertDataAnalysis={() => appendCommand("analyze")}
+          onInsertAgent={() => appendCommand("agent")}
+          onInsertPython={() => appendCommand("python")}
+          onCompareModels={() => setStatus("مقارنة النماذج هنا شكلية ولا تستدعي أي خدمة.")}
+          models={[
+            { id: "demo-fast", label: "نموذج تجريبي سريع" },
+            { id: "demo-reasoning", label: "نموذج تجريبي للاستدلال" },
+          ]}
+          selectedModel={selectedModel}
+          onSelectModel={setSelectedModel}
+          onVoiceError={(message) => setStatus(message)}
+        />
       </main>
+
+      <div className="sidebar-preview-notice" role="status" aria-live="polite">
+        <strong>معاينة آمنة · بيانات وهمية</strong>
+        <span>{status}</span>
+      </div>
 
       {settingsOpen ? (
         <div
@@ -393,74 +392,33 @@ export default function SidebarActionsPreview() {
       ) : null}
 
       <style>{`
-        #root { min-height: 100%; }
-        .sidebar-preview-shell { display: flex; height: 100dvh; min-height: 100dvh; overflow: hidden; color: #0f172a; }
-        .sidebar-preview-main { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: linear-gradient(145deg, #f8fafc, #eef2ff 55%, #f8fafc); }
-        .sidebar-preview-settings-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #cbd5e1; border-radius: 10px; padding: 9px 12px; background: #fff; color: #334155; font-size: 12px; font-weight: 700; }
-        .sidebar-preview-composer { flex: 0 0 auto; min-width: 0; border-top: 1px solid rgba(148,163,184,.24); background: #f8fafc; }
-        .sidebar-preview-composer .chat-composer { border-top: 0; }
-        .sidebar-preview-content { flex: 1 1 auto; min-height: 0; width: 100%; overflow-y: auto; overscroll-behavior: contain; margin: 0 auto; padding: clamp(16px, 3vw, 30px) clamp(14px, 3vw, 28px) 28px; }
-        .sidebar-preview-header { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px clamp(12px, 3vw, 24px); border-bottom: 1px solid rgba(148,163,184,.25); background: rgba(255,255,255,.78); backdrop-filter: blur(16px); }
-        .sidebar-preview-open-button { display: none; border: 1px solid #dbe3ef; border-radius: 10px; padding: 9px 12px; background: white; color: #334155; font-size: 13px; font-weight: 600; }
-        .sidebar-preview-badge { display: inline-flex; align-items: center; border: 1px solid rgba(129,140,248,.25); border-radius: 999px; padding: 5px 10px; background: rgba(99,102,241,.08); color: #5145cd; font-size: 11px; font-weight: 700; }
-        .sidebar-preview-chat-heading { display: flex; align-items: center; gap: 12px; width: min(920px, 100%); margin: 0 auto 24px; padding: 12px 2px 18px; border-bottom: 1px solid rgba(129,140,248,.17); }
-        .sidebar-preview-ai-mark { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border-radius: 15px; background: linear-gradient(135deg,#7c6cf2,#2ea7dd); color: white; font-size: 24px; box-shadow: 0 8px 22px rgba(99,102,241,.22); }
-        .sidebar-preview-chat-heading h1 { margin: 0; color: #172554; font-size: 17px; font-weight: 800; line-height: 1.4; }
-        .sidebar-preview-chat-heading p { display: flex; align-items: center; gap: 6px; margin-top: 3px; color: #64748b; font-size: 11px; }
-        .sidebar-preview-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.10); }
-        .sidebar-preview-concept-tag { margin-inline-start: auto; border: 1px solid rgba(99,102,241,.18); border-radius: 999px; padding: 5px 9px; color: #6254e8; background: rgba(99,102,241,.07); font-size: 10px; font-weight: 800; white-space: nowrap; }
-        .sidebar-preview-transcript { display: grid; gap: 24px; width: min(820px, 100%); margin: 0 auto; padding: 4px 0 18px; }
-        .sidebar-preview-message { display: flex; gap: 10px; }
-        .sidebar-preview-user-message { align-items: flex-end; flex-direction: column; }
-        .sidebar-preview-user-bubble { max-width: 84%; border: 1px solid rgba(255,255,255,.28); border-radius: 20px 20px 7px 20px; padding: 13px 16px; background: linear-gradient(135deg,#7568ef,#398de8); color: white; font-size: 14px; line-height: 1.8; box-shadow: 0 8px 24px rgba(79,70,229,.16); }
-        .sidebar-preview-message-time { color: #94a3b8; font-size: 10px; }
-        .sidebar-preview-assistant-message { align-items: flex-start; }
-        .sidebar-preview-ai-avatar { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(99,102,241,.19); border-radius: 11px; background: linear-gradient(135deg,rgba(14,165,233,.16),rgba(129,140,248,.17)); color: #5145cd; font-size: 17px; }
-        .sidebar-preview-assistant-content { display: grid; justify-items: start; gap: 10px; min-width: 0; max-width: calc(100% - 40px); }
-        .sidebar-preview-assistant-bubble { border: 1px solid rgba(129,140,248,.16); border-radius: 7px 20px 20px 20px; padding: 16px 18px; background: rgba(255,255,255,.84); color: #334155; font-size: 14px; line-height: 1.9; box-shadow: 0 8px 28px rgba(49,46,129,.05); }
-        .sidebar-preview-assistant-bubble p + p { margin-top: 8px; }
-        .sidebar-preview-suggestion-row { display: flex; flex-wrap: wrap; gap: 7px; }
-        .sidebar-preview-suggestion-row span { border: 1px solid rgba(99,102,241,.18); border-radius: 999px; padding: 6px 10px; background: rgba(255,255,255,.65); color: #5b5da8; font-size: 10px; }
-        .sidebar-preview-status-card { display: flex; align-items: flex-start; gap: 10px; width: min(820px, 100%); margin: 10px auto 0; border: 1px solid rgba(129,140,248,.18); border-radius: 15px; padding: 12px 14px; background: rgba(255,255,255,.58); }
-        .sidebar-preview-status-card strong { color: #334155; font-size: 11px; }
-        .sidebar-preview-status-card p { margin-top: 3px; color: #64748b; font-size: 11px; line-height: 1.6; }
-        .sidebar-preview-status-dot { width: 8px; height: 8px; flex: 0 0 auto; margin-top: 4px; border-radius: 50%; background: #16a34a; box-shadow: 0 0 0 4px rgba(22,163,74,.1); }
-        .sidebar-preview-checks { width: min(820px, 100%); margin: 16px auto 0; border: 1px solid rgba(129,140,248,.17); border-radius: 15px; padding: 12px 14px; background: rgba(255,255,255,.55); }
-        .sidebar-preview-checks summary { cursor: pointer; color: #5145cd; font-size: 12px; font-weight: 800; }
-        .sidebar-preview-checks p { margin-top: 10px; color: #64748b; font-size: 11px; line-height: 1.8; }
-        .sidebar-preview-status-line { width: min(820px, 100%); margin: 12px auto 0; color: #64748b; font-size: 10px; font-weight: 700; }
-        .sidebar-preview-safety-note { width: min(820px, 100%); margin: 12px auto 0; border-inline-start: 3px solid rgba(99,102,241,.35); padding-inline-start: 10px; color: #94a3b8; font-size: 10px; line-height: 1.7; }
-        .dark .sidebar-preview-chat-heading h1 { color: #eef2ff; }
-        .dark .sidebar-preview-assistant-bubble { border-color: rgba(129,140,248,.18); background: rgba(15,26,51,.76); color: #dbeafe; }
-        .dark .sidebar-preview-user-bubble { background: linear-gradient(135deg,#4c43b9,#245bb5); }
-        .dark .sidebar-preview-suggestion-row span { background: rgba(15,26,51,.6); color: #c4c5ff; }
-        .dark .sidebar-preview-status-card, .dark .sidebar-preview-checks { background: rgba(15,26,51,.58); border-color: rgba(129,140,248,.18); }
-        .dark .sidebar-preview-status-card strong { color: #e2e8f0; }
-        .dark .sidebar-preview-status-card p, .dark .sidebar-preview-checks p { color: #a8b4d0; }
-        .dark .sidebar-preview-chat-heading p { color: #a8b4d0; }
-        .dark .sidebar-preview-concept-tag { background: rgba(129,116,255,.13); color: #c4b5fd; }
-        .sidebar-preview-status-card { display: flex; gap: 12px; align-items: flex-start; margin-top: 28px; border: 1px solid #dbeafe; border-radius: 16px; padding: 16px; background: rgba(255,255,255,.88); box-shadow: 0 10px 30px rgba(15,23,42,.045); }
-        .sidebar-preview-status-dot { width: 10px; height: 10px; flex: 0 0 auto; margin-top: 5px; border-radius: 50%; background: #16a34a; box-shadow: 0 0 0 5px rgba(22,163,74,.1); }
-        .sidebar-preview-status-card strong { font-size: 13px; }
-        .sidebar-preview-status-card p { margin-top: 5px; color: #475569; font-size: 13px; line-height: 1.8; }
-        .sidebar-preview-checks { display: grid; gap: 12px; margin-top: 24px; border: 1px solid #e2e8f0; border-radius: 16px; padding: 18px; background: rgba(255,255,255,.72); }
-        .sidebar-preview-checks h2 { font-size: 15px; font-weight: 800; }
-        .sidebar-preview-checks p { color: #475569; font-size: 13px; line-height: 1.85; }
-        .sidebar-preview-status-line { margin-top: 20px; color: #64748b; font-size: 12px; font-weight: 700; }
-        .sidebar-preview-safety-note { margin-top: 16px; border-inline-start: 3px solid #94a3b8; padding-inline-start: 12px; color: #64748b; font-size: 11px; line-height: 1.8; }
+        #root { height: 100dvh; min-height: 0; }
+        .sidebar-preview-shell { display: flex; width: 100%; height: 100dvh; min-height: 0; overflow: hidden; color: #0f172a; }
+        .sidebar-preview-notice {
+          position: fixed;
+          inset-inline-start: 12px;
+          bottom: calc(92px + env(safe-area-inset-bottom));
+          z-index: 25;
+          display: grid;
+          gap: 3px;
+          max-width: min(360px, calc(100vw - 24px));
+          border: 1px solid var(--ui-border-strong);
+          border-radius: 13px;
+          padding: 8px 11px;
+          background: color-mix(in srgb, var(--ui-surface-solid) 94%, transparent);
+          box-shadow: var(--ui-shadow-sm);
+          color: var(--ui-text-muted);
+          font-size: 10px;
+          line-height: 1.5;
+          pointer-events: none;
+        }
+        .sidebar-preview-notice strong { color: var(--ui-accent); font-size: 10px; }
+        .sidebar-preview-notice span { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+        .dark .sidebar-preview-shell { color: #e2e8f0; }
         @media (max-width: 767px) {
-          .sidebar-preview-open-button { display: inline-flex; }
           .modern-sidebar { width: min(286px, 88vw) !important; min-width: min(286px, 88vw) !important; }
           .modern-conversation-menu { max-width: calc(100vw - 40px); }
-          .sidebar-preview-content { padding-top: 12px; padding-bottom: 18px; }
-          .sidebar-preview-chat-heading { margin-bottom: 16px; padding-bottom: 12px; }
-          .sidebar-preview-ai-mark { width: 36px; height: 36px; border-radius: 12px; }
-          .sidebar-preview-chat-heading h1 { font-size: 15px; }
-          .sidebar-preview-transcript { gap: 18px; }
-          .sidebar-preview-user-bubble { max-width: 92%; font-size: 13px; padding: 11px 13px; }
-          .sidebar-preview-assistant-bubble { padding: 13px; font-size: 13px; line-height: 1.8; }
-          .sidebar-preview-concept-tag { font-size: 9px; }
-          .sidebar-preview-badge { max-width: 120px; font-size: 9px; }
+          .sidebar-preview-notice { bottom: calc(92px + env(safe-area-inset-bottom)); max-width: min(290px, calc(100vw - 24px)); }
         }
       `}</style>
     </div>
