@@ -53,6 +53,17 @@ export default function AccountSettings({
   };
 
 
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose?.();
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
   const [fullName, setFullName] = useState(user?.full_name || "");
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || "");
   const [autoGenerateTitles, setAutoGenerateTitles] = useState(Boolean(autoGenerateTitlesProp));
@@ -303,12 +314,24 @@ export default function AccountSettings({
     });
 
   return (
-    <div className="settings-overlay fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/30 p-4">
-      <div className="settings-dialog my-8 w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-lg">
+    <div
+      className="settings-overlay fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/30 p-4"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose?.();
+      }}
+    >
+      <div
+        className="settings-dialog my-8 w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-lg"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="account-settings-title"
+      >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-900">{t("account.title")}</h2>
+          <h2 id="account-settings-title" className="text-lg font-semibold text-slate-900">{t("account.title")}</h2>
           <button
+            type="button"
             onClick={onClose}
+            aria-label={document.documentElement.lang === "ar" ? "إغلاق الإعدادات" : "Close settings"}
             className="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
           >
             ✕
