@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.security import decode_token
 from app.config import settings
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.dependencies import get_current_user
 from app.models.notification import Notification
 from app.models.user import User
@@ -63,7 +63,7 @@ def mark_all_notifications_read(
 
 
 @router.websocket("/ws/notifications")
-async def notifications_websocket(websocket: WebSocket, db: Session = Depends(get_db)):
+async def notifications_websocket(websocket: WebSocket):
     """WebSocket authenticated with the HttpOnly access-token cookie; no JWT in the URL."""
     origin = websocket.headers.get("origin")
     if origin not in settings.CORS_ORIGINS:
@@ -82,8 +82,14 @@ async def notifications_websocket(websocket: WebSocket, db: Session = Depends(ge
         await websocket.close(code=4001)
         return
 
-    user = db.get(User, user_id)
-    if user is None or not user.is_active:
+    # Keep database access short-lived; a WebSocket can remain open for hours.
+    # Holding this session inside the receive loop also holds a pooler client and
+    # can leave a transaction idle for the full lifetime of the socket.
+    with SessionLocal() as db:
+        user = db.get(User, user_id)
+        is_active = user is not None and user.is_active
+
+    if not is_active:
         await websocket.close(code=4001)
         return
 
