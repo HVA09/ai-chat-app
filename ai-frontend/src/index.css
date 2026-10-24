@@ -1002,10 +1002,6 @@ html.dark .chat-message-user {
 .modern-row-tools input {
   accent-color: #2563eb;
 }
-.modern-conversation-item .modern-conversation-menu {
-  top: calc(100% + 3px);
-  inset-inline-end: 8px;
-}
 
 /* Conversation canvas and composer refinements */
 .chat-surface {
@@ -1117,9 +1113,6 @@ html.dark .chat-message-user {
 .dark .modern-sidebar .text-slate-400 {
   color: #94a3b8 !important;
 }
-.modern-conversation-menu {
-  z-index: 80;
-}
 
 @media (max-width: 767px) {
   html,
@@ -1208,10 +1201,6 @@ html.dark .chat-message-user {
     opacity: 1 !important;
     width: 32px;
     height: 32px;
-  }
-  .modern-conversation-menu {
-    inset-inline-end: 5px;
-    top: calc(100% - 1px);
   }
   .modern-library-scroll {
     max-height: 28dvh;
