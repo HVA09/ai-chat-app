@@ -301,3 +301,47 @@ describe("AccountSettings", () => {
     expect(await screen.findByText("Chrome on Android")).toBeInTheDocument();
     expect(screen.getByText("الحالية")).toBeInTheDocument();
   });
+
+
+describe("AccountSettings mobile dialog behavior", () => {
+  const userProfile = {
+    full_name: "",
+    avatar_url: "",
+    is_email_verified: true,
+    is_2fa_enabled: false,
+  };
+
+  it("exposes the settings as a dialog and closes it with Escape", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+
+    render(
+      <AccountSettings
+        user={userProfile}
+        onClose={onClose}
+        onUserUpdated={vi.fn()}
+        onAccountDeleted={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("dialog", { name: "الحساب" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes settings when the backdrop is tapped", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const { container } = render(
+      <AccountSettings
+        user={userProfile}
+        onClose={onClose}
+        onUserUpdated={vi.fn()}
+        onAccountDeleted={vi.fn()}
+      />
+    );
+
+    await user.click(container.querySelector(".settings-overlay"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
