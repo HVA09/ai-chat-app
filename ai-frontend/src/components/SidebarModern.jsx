@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import WorkspaceSharedConversationsPanel from "./WorkspaceSharedConversationsPanel";
 import Icon from "./ui/Icon";
@@ -31,6 +32,9 @@ export default function SidebarModern({
   onDuplicateConversation = () => {},
   onToggleArchiveConversation,
   onToggleTrashConversation = () => {},
+  onMoveConversationToFolder = () => {},
+  onMoveConversationToProject = () => {},
+  onSetConversationTags = () => {},
   showTrash = false,
   assistants = [],
   selectedAssistantId = null,
@@ -101,8 +105,97 @@ export default function SidebarModern({
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [openSection, setOpenSection] = useState(null);
   const [contextOpenId, setContextOpenId] = useState(null);
+  const [contextMenuPlacement, setContextMenuPlacement] = useState("below");
+  const [contextMenuPosition, setContextMenuPosition] = useState(null);
+  const contextMenuRef = useRef(null);
+  const contextTriggerRef = useRef(null);
   const importRef = useRef(null);
   const projectImportRef = useRef(null);
+
+  useEffect(() => {
+    if (contextOpenId === null) return undefined;
+
+    const handleOutsidePointer = (event) => {
+      if (event.target.closest?.(".modern-conversation-more")) return;
+      if (!contextMenuRef.current?.contains(event.target)) {
+        setContextOpenId(null);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key !== "Escape") return;
+      setContextOpenId(null);
+      contextTriggerRef.current?.focus();
+    };
+
+    document.addEventListener("pointerdown", handleOutsidePointer);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePointer);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [contextOpenId]);
+
+  useLayoutEffect(() => {
+    if (contextOpenId === null) return undefined;
+
+    const trigger = contextTriggerRef.current;
+    const menu = contextMenuRef.current;
+    if (!trigger || !menu) return undefined;
+
+    const updatePosition = () => {
+      const anchor = trigger.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const menuWidth = Math.min(menuRect.width, Math.max(0, viewportWidth - 16));
+      const availableBelow = viewportHeight - anchor.bottom - 8;
+      const availableAbove = anchor.top - 8;
+      const fitsBelow = menuRect.height <= availableBelow;
+      const fitsAbove = menuRect.height <= availableAbove;
+      const openAbove = !fitsBelow && (fitsAbove || availableAbove > availableBelow);
+
+      let top;
+      if (openAbove && fitsAbove) {
+        top = anchor.top - menuRect.height - 2;
+      } else if (fitsBelow) {
+        top = anchor.bottom + 2;
+      } else {
+        const preferredTop = openAbove
+          ? anchor.top - menuRect.height - 2
+          : anchor.bottom + 2;
+        top = Math.max(8, Math.min(preferredTop, viewportHeight - menuRect.height - 8));
+      }
+
+      const left = Math.max(
+        8,
+        Math.min(anchor.right - menuWidth, viewportWidth - menuWidth - 8)
+      );
+
+      setContextMenuPlacement(openAbove ? "above" : "below");
+      setContextMenuPosition({
+        top,
+        left,
+        maxHeight: Math.max(120, viewportHeight - 16),
+      });
+    };
+
+    updatePosition();
+
+    const dismissOnConversationScroll = (event) => {
+      // Scrolling the tags panel or the menu itself must not dismiss the popover.
+      if (event.target?.closest?.(".modern-conversation-scroll")) {
+        setContextOpenId(null);
+      }
+    };
+    const dismissOnViewportResize = () => setContextOpenId(null);
+    document.addEventListener("scroll", dismissOnConversationScroll, true);
+    window.addEventListener("resize", dismissOnViewportResize);
+    return () => {
+      document.removeEventListener("scroll", dismissOnConversationScroll, true);
+      window.removeEventListener("resize", dismissOnViewportResize);
+    };
+  }, [contextOpenId]);
 
   useEffect(() => {
     const handleOpen = () => setMobileOpen(true);
@@ -238,10 +331,10 @@ export default function SidebarModern({
               {recent.map((item) => {
                 const active = Number(item.id) === Number(selectedConversationId);
                 return (
-                  <div key={item.id} className={`modern-conversation-item ${active ? "active" : ""}`}>
+                  <div key={item.id} className={`modern-conversation-item ${active ? "active" : ""} ${contextOpenId === item.id ? "menu-open" : ""}`}>
                     <button
                       type="button"
-                      onClick={() => selectConversation(item.id)}
+                      onClick={() => { setContextOpenId(null); if (!showTrash) selectConversation(item.id); }}
                       className="modern-conversation-main"
                       aria-current={active ? "page" : undefined}
                     >
@@ -267,24 +360,193 @@ export default function SidebarModern({
                       <button
                         type="button"
                         className="modern-conversation-more"
-                        title={t("sidebar.renameTitle")}
+                        title={t("header.more")}
+                        aria-label={t("header.more")}
+                        aria-expanded={contextOpenId === item.id}
+                        aria-controls={`conversation-actions-${item.id}`}
                         onClick={(event) => {
                           event.stopPropagation();
-                          setContextOpenId((current) => current === item.id ? null : item.id);
+                          if (contextOpenId === item.id) {
+                            setContextOpenId(null);
+                            setContextMenuPosition(null);
+                            return;
+                          }
+                          contextTriggerRef.current = event.currentTarget;
+                          setContextMenuPlacement("below");
+                          setContextMenuPosition(null);
+                          setContextOpenId(item.id);
                         }}
                       >
                         <Icon name="more" size={16} />
                       </button>
                     </div>
-                    {contextOpenId === item.id ? (
-                      <div className="modern-conversation-menu">
-                        <button type="button" onClick={() => { onTogglePinConversation(item.id); setContextOpenId(null); }} title={item.is_pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}><Icon name="pin" size={14} /></button>
-                        <button type="button" onClick={() => { const title = window.prompt(t("sidebar.renamePrompt"), item.title); if (title?.trim()) onRenameConversation(item.id, title.trim()); setContextOpenId(null); }} title={t("sidebar.renameTitle")}><Icon name="edit" size={14} /></button>
-                        <button type="button" onClick={() => { onDuplicateConversation(item.id); setContextOpenId(null); }} title={t("sidebar.duplicateTitle")}><Icon name="copy" size={14} /></button>
-                        <button type="button" onClick={() => { onToggleArchiveConversation(item.id); setContextOpenId(null); }} title={showArchived ? t("sidebar.unarchiveTitle") : t("sidebar.archiveTitle")}><Icon name="archive" size={14} /></button>
-                        <button type="button" onClick={() => { onToggleTrashConversation(item.id); setContextOpenId(null); }} title={t("sidebar.trashTitle")}><Icon name="trash" size={14} /></button>
-                      </div>
-                    ) : null}
+                    {contextOpenId === item.id
+                      ? createPortal(
+                          <div
+                            id={`conversation-actions-${item.id}`}
+                            ref={contextMenuRef}
+                            className={`modern-conversation-menu ${contextMenuPlacement === "above" ? "menu-open-up" : ""}`}
+                            role="group"
+                            aria-label={t("header.more")}
+                            style={{
+                              ...(contextMenuPosition || { top: 8, left: 8 }),
+                              visibility: contextMenuPosition ? "visible" : "hidden",
+                            }}
+                          >
+                        {!showTrash ? (
+                          <>
+                            <button
+                              type="button"
+                              title={item.is_pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}
+                              aria-label={item.is_pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}
+                              onClick={() => {
+                                onTogglePinConversation(item.id);
+                                setContextOpenId(null);
+                              }}
+                            >
+                              <Icon name="pin" size={14} />
+                            </button>
+
+                            <button
+                              type="button"
+                              title={t("sidebar.renameTitle")}
+                              aria-label={t("sidebar.renameTitle")}
+                              onClick={() => {
+                                const title = window.prompt(t("sidebar.renamePrompt"), item.title);
+                                if (title?.trim()) onRenameConversation(item.id, title.trim());
+                                setContextOpenId(null);
+                              }}
+                            >
+                              <Icon name="edit" size={14} />
+                            </button>
+
+                            <button
+                              type="button"
+                              title={t("sidebar.duplicateTitle")}
+                              aria-label={t("sidebar.duplicateTitle")}
+                              onClick={() => {
+                                onDuplicateConversation(item.id);
+                                setContextOpenId(null);
+                              }}
+                            >
+                              <Icon name="copy" size={14} />
+                            </button>
+
+                            <button
+                              type="button"
+                              title={showArchived ? t("sidebar.unarchiveTitle") : t("sidebar.archiveTitle")}
+                              aria-label={showArchived ? t("sidebar.unarchiveTitle") : t("sidebar.archiveTitle")}
+                              onClick={() => {
+                                onToggleArchiveConversation(item.id);
+                                setContextOpenId(null);
+                              }}
+                            >
+                              <Icon name="archive" size={14} />
+                            </button>
+
+                            <select
+                              className="modern-menu-select"
+                              aria-label={t("sidebar.moveFolderTitle")}
+                              title={t("sidebar.moveFolderTitle")}
+                              value={item.folder_id ?? ""}
+                              onChange={(event) => {
+                                onMoveConversationToFolder(item.id, event.target.value);
+                                setContextOpenId(null);
+                              }}
+                            >
+                              <option value="">{t("sidebar.noFolder")}</option>
+                              {visibleFolders.map((folder) => (
+                                <option key={folder.id} value={folder.id}>
+                                  {folder.name}
+                                </option>
+                              ))}
+                            </select>
+
+                            <select
+                              className="modern-menu-select"
+                              aria-label={t("sidebar.moveProjectTitle")}
+                              title={t("sidebar.moveProjectTitle")}
+                              value={item.project_id ?? ""}
+                              onChange={(event) => {
+                                onMoveConversationToProject(item.id, event.target.value);
+                                setContextOpenId(null);
+                              }}
+                            >
+                              <option value="">{t("sidebar.noProject")}</option>
+                              {visibleProjects.map((project) => (
+                                <option key={project.id} value={project.id}>
+                                  {project.name}
+                                </option>
+                              ))}
+                            </select>
+
+                            <details className="modern-conversation-tags">
+                              <summary
+                                title={t("sidebar.tagConversationTitle")}
+                                aria-label={t("sidebar.tagConversationTitle")}
+                              >
+                                <Icon name="tag" size={14} />
+                              </summary>
+
+                              <div className="modern-conversation-tags-panel">
+                                <p>{t("sidebar.tagPickerTitle")}</p>
+                                {visibleTags.length === 0 ? (
+                                  <p>{t("sidebar.noTags")}</p>
+                                ) : (
+                                  visibleTags.map((tag) => {
+                                    const currentTagIds = new Set(
+                                      (item.tags || []).map((itemTag) => itemTag.id)
+                                    );
+                                    const checked = currentTagIds.has(tag.id);
+
+                                    return (
+                                      <label key={tag.id}>
+                                        <input
+                                          type="checkbox"
+                                          checked={checked}
+                                          onChange={() => {
+                                            if (currentTagIds.has(tag.id)) {
+                                              currentTagIds.delete(tag.id);
+                                            } else {
+                                              currentTagIds.add(tag.id);
+                                            }
+                                            onSetConversationTags(item.id, Array.from(currentTagIds));
+                                          }}
+                                        />
+                                        <span>{tag.name}</span>
+                                      </label>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </details>
+                          </>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          className="modern-menu-delete"
+                          title={showTrash ? t("sidebar.deleteTitle") : t("sidebar.trashTitle")}
+                          aria-label={showTrash ? t("sidebar.deleteTitle") : t("sidebar.trashTitle")}
+                          onClick={() => {
+                            if (showTrash) {
+                              const confirmed = window.confirm(
+                                t("sidebar.permanentDeleteConfirm", { title: item.title })
+                              );
+                              if (confirmed) onDeleteConversation(item.id);
+                            } else {
+                              onToggleTrashConversation(item.id);
+                            }
+                            setContextOpenId(null);
+                          }}
+                        >
+                          <Icon name="trash" size={14} />
+                        </button>
+
+                          </div>,
+                          document.body
+                        )
+                      : null}
                   </div>
                 );
               })}
