@@ -95,11 +95,29 @@ def test_websocket_closes_database_session_before_waiting_for_messages(client, m
         assert session.user_id is not None
 
 
-def test_websocket_receives_realtime_notification_on_subscription_activated(client, monkeypatch):
+def test_websocket_receives_realtime_notification_on_subscription_activated(
+    client, monkeypatch, db_session
+):
+    from app.models.user import User
+
     token = _register_and_login(client, "wsuser@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     me = client.get("/users/me", headers=headers).json()
     pro_plan = next(p for p in client.get("/billing/plans").json() if p["name"] == "Pro")
+
+    # WebSocket auth runs outside the get_db test override's transaction. Reuse
+    # that transaction for the DB lookup so the just-created test user is visible.
+    class SessionProbe:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def get(self, model, user_id):
+            return db_session.get(model, user_id)
+
+    monkeypatch.setattr(notifications_router_module, "SessionLocal", lambda: SessionProbe())
 
     with client.websocket_connect(
         "/ws/notifications",
