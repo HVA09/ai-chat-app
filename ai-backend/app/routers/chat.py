@@ -7,6 +7,7 @@ import json
 import time
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -1724,9 +1725,18 @@ async def chat_stream(
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
-        except Exception:
+        except Exception as exc:
             logger.exception("خطأ أثناء بث الرد لمحادثة %s", conversation.id)
-            yield "event: error\ndata: حدث خطأ أثناء توليد الرد\n\n"
+            if (
+                isinstance(exc, httpx.HTTPStatusError)
+                and exc.response.status_code == 429
+            ):
+                yield (
+                    "event: error\ndata: رفض مزوّد الذكاء الاصطناعي الطلب بسبب حدّ الطلبات "
+                    "(429). جرّب بعد قليل؛ إذا استمر الخطأ فقد تكون حصة المزوّد قد استُنفدت.\n\n"
+                )
+            else:
+                yield "event: error\ndata: حدث خطأ أثناء توليد الرد\n\n"
             return
         finally:
             close_iterator = getattr(stream_iterator, "aclose", None)
