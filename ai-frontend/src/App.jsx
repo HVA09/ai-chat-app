@@ -116,6 +116,9 @@ export default function App() {
   const { i18n, t } = useTranslation();
   const [authed, setAuthed] = useState(false);
   const [sessionChecking, setSessionChecking] = useState(true);
+  const [sessionCheckSlow, setSessionCheckSlow] = useState(false);
+  const [sessionCheckError, setSessionCheckError] = useState(false);
+  const [sessionCheckAttempt, setSessionCheckAttempt] = useState(0);
   const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
   const [lang, setLang] = useState("ar");
   const [messages, setMessages] = useState(() => [getWelcomeMessage(t)]);
@@ -305,8 +308,38 @@ export default function App() {
   }, [resetCurrentUser, t]);
 
   useEffect(() => {
-    restoreSession().then(() => setAuthed(true)).catch(() => setAuthed(false)).finally(() => setSessionChecking(false));
-  }, []);
+    let active = true;
+
+    setSessionChecking(true);
+    setSessionCheckSlow(false);
+    setSessionCheckError(false);
+
+    const slowTimer = window.setTimeout(() => {
+      if (active) setSessionCheckSlow(true);
+    }, 12000);
+
+    restoreSession()
+      .then(() => {
+        if (active) setAuthed(true);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setAuthed(false);
+        // 401 is the normal "no saved session" case. Other errors mean the
+        // API could not be reached, including Render's temporary cold-start page.
+        setSessionCheckError(error.response?.status !== 401);
+      })
+      .finally(() => {
+        if (!active) return;
+        window.clearTimeout(slowTimer);
+        setSessionChecking(false);
+      });
+
+    return () => {
+      active = false;
+      window.clearTimeout(slowTimer);
+    };
+  }, [sessionCheckAttempt]);
 
 
 
@@ -1063,6 +1096,62 @@ export default function App() {
       <Suspense fallback={<PageLoadingFallback />}>
         <BillingCancelPage />
       </Suspense>
+    );
+  }
+
+  if (sessionChecking) {
+    const isArabic = document.documentElement.lang === "ar";
+    return (
+      <main className="app-startup-screen" role="status" aria-live="polite">
+        <div className="app-startup-brand" aria-hidden="true">AI</div>
+        <div className="app-startup-spinner" aria-hidden="true" />
+        <h1>{t("appName")}</h1>
+        <p>
+          {sessionCheckSlow
+            ? isArabic
+              ? "الخادم يستيقظ الآن. قد يستغرق الاتصال الأول نحو دقيقة."
+              : "The server is waking up. The first connection can take about a minute."
+            : isArabic
+              ? "جارٍ الاتصال بالخادم وتجهيز جلستك..."
+              : "Connecting to the server and restoring your session..."}
+        </p>
+        {sessionCheckSlow ? (
+          <p className="app-startup-hint">
+            {isArabic
+              ? "اترك الصفحة مفتوحة؛ سنعيد المحاولة تلقائيًا."
+              : "Keep this page open; we are retrying automatically."}
+          </p>
+        ) : null}
+      </main>
+    );
+  }
+
+  if (!authed && sessionCheckError) {
+    const isArabic = document.documentElement.lang === "ar";
+    return (
+      <main className="app-startup-screen" role="alert">
+        <div className="app-startup-brand" aria-hidden="true">AI</div>
+        <h1>
+          {isArabic ? "تعذر الاتصال بالخادم" : "Could not connect to the server"}
+        </h1>
+        <p>
+          {isArabic
+            ? "لم يستجب الخادم بعد عدة محاولات. تحقق من اتصال الإنترنت ثم أعد المحاولة."
+            : "The server did not respond after several attempts. Check your internet connection and retry."}
+        </p>
+        <button
+          type="button"
+          className="app-startup-retry"
+          onClick={() => {
+            setSessionChecking(true);
+            setSessionCheckSlow(false);
+            setSessionCheckError(false);
+            setSessionCheckAttempt((attempt) => attempt + 1);
+          }}
+        >
+          {isArabic ? "إعادة المحاولة" : "Try again"}
+        </button>
+      </main>
     );
   }
 
