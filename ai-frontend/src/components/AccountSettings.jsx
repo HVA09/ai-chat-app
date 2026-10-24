@@ -323,7 +323,7 @@ export default function AccountSettings({
         aria-labelledby="account-settings-title"
         className="settings-dialog my-2 w-full max-w-md overflow-y-auto overscroll-contain rounded-3xl border border-slate-200 bg-white p-4 shadow-lg sm:my-8 sm:p-6"
       >
-        <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-4 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95 sm:-mx-6 sm:-mt-6 sm:px-6">
+        <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-4 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900 sm:-mx-6 sm:-mt-6 sm:px-6">
           <h2 id="account-settings-title" className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t("account.title")}</h2>
           <button
             onClick={onClose}
