@@ -1524,8 +1524,8 @@ html.dark .chat-message-user {
   }
 }
 
-/* Creative Aurora design direction — isolated visual layer.
-   Preserve existing component behavior and override only presentation tokens. */
+/* Creative Aurora — consolidated production theme.
+   One presentation layer shared by the real chat components, in both themes. */
 :root {
   --ui-bg: #f1f5ff;
   --ui-surface: rgba(255, 255, 255, 0.82);
@@ -1562,6 +1562,20 @@ html.dark body {
     radial-gradient(ellipse at 100% 8%, rgba(8, 145, 178, .13), transparent 30%),
     var(--ui-bg);
 }
+.app-shell { background: transparent !important; }
+.app-main {
+  min-width: 0;
+  background:
+    radial-gradient(ellipse at 88% 0%, rgba(14, 165, 233, .10), transparent 34%),
+    radial-gradient(ellipse at 0% 18%, rgba(99, 102, 241, .10), transparent 38%),
+    transparent !important;
+}
+html.dark .app-main {
+  background:
+    radial-gradient(ellipse at 90% 0%, rgba(8, 145, 178, .13), transparent 34%),
+    radial-gradient(ellipse at 0% 18%, rgba(99, 102, 241, .19), transparent 38%),
+    transparent !important;
+}
 .modern-sidebar {
   border-color: var(--ui-border) !important;
   background: linear-gradient(180deg, rgba(255,255,255,.94), rgba(244,247,255,.90)) !important;
@@ -1571,12 +1585,19 @@ html.dark .modern-sidebar {
   background: linear-gradient(180deg, rgba(13,23,46,.98), rgba(9,16,34,.98)) !important;
   box-shadow: 8px 0 36px rgba(0,0,0,.16);
 }
-.modern-chat-header,
-.chat-header {
-  border-color: var(--ui-border) !important;
-  background: var(--ui-surface) !important;
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
+.modern-brand-mark {
+  border-radius: 13px !important;
+  background: linear-gradient(135deg, #7565ed, #3392e9) !important;
+  box-shadow: 0 8px 20px rgba(79,70,229,.24);
+}
+.modern-new-chat {
+  border-color: var(--ui-border-strong) !important;
+  background: linear-gradient(120deg, rgba(255,255,255,.96), rgba(241,245,255,.96)) !important;
+  box-shadow: 0 4px 14px rgba(79,70,229,.06);
+}
+html.dark .modern-new-chat {
+  background: linear-gradient(120deg, #172442, #101b34) !important;
+  box-shadow: none;
 }
 .modern-conversation-item {
   border: 1px solid transparent;
@@ -1587,65 +1608,219 @@ html.dark .modern-sidebar {
   border-color: var(--ui-border);
   transform: translateY(-1px);
 }
-.modern-conversation-item.active,
-.modern-conversation-item[aria-selected="true"] {
-  border-color: var(--ui-border-strong);
-  background: linear-gradient(110deg, rgba(99,102,241,.15), rgba(14,165,233,.08)) !important;
+.modern-conversation-item.active {
+  border-color: var(--ui-border-strong) !important;
+  background: linear-gradient(110deg, rgba(99,102,241,.16), rgba(14,165,233,.09)) !important;
 }
+html.dark .modern-conversation-item.active {
+  background: linear-gradient(110deg, rgba(99,102,241,.23), rgba(14,165,233,.12)) !important;
+}
+.modern-chat-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--ui-border) !important;
+  background: color-mix(in srgb, var(--ui-surface-solid) 84%, transparent) !important;
+  box-shadow: 0 5px 22px rgba(49,46,129,.035);
+}
+html.dark .modern-chat-header {
+  background: color-mix(in srgb, var(--ui-surface-solid) 90%, transparent) !important;
+  border-bottom-color: var(--ui-border) !important;
+  box-shadow: 0 5px 22px rgba(0,0,0,.14);
+}
+.modern-header-icon-action,
+.modern-header-more {
+  border: 1px solid var(--ui-border) !important;
+  border-radius: 12px !important;
+  background: var(--ui-surface) !important;
+  transition: background-color .16s ease, border-color .16s ease, transform .16s ease;
+}
+.modern-header-icon-action:hover,
+.modern-header-more:hover {
+  border-color: var(--ui-border-strong) !important;
+  background: var(--ui-accent-soft) !important;
+}
+.chat-stage { gap: 12px; background: transparent !important; }
+.chat-surface {
+  width: min(100%, 980px) !important;
+  max-width: 980px !important;
+  padding: clamp(10px, 2vw, 22px) !important;
+  border: 1px solid var(--ui-border) !important;
+  border-radius: 28px !important;
+  background: color-mix(in srgb, var(--ui-surface-solid) 38%, transparent) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.18);
+}
+html.dark .chat-surface {
+  background: rgba(8,15,34,.22) !important;
+  border-color: rgba(129,140,248,.11) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+}
+.chat-message-row { padding-inline: 2px; }
 .chat-message-bubble {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--ui-border) !important;
   border-radius: 20px !important;
-  box-shadow: 0 5px 18px rgba(30,41,59,.035);
+  box-shadow: 0 8px 26px rgba(49,46,129,.065) !important;
 }
-.chat-message-user {
-  background: linear-gradient(135deg, #635bdf, #467de8) !important;
+.chat-message-bubble.chat-message-assistant {
+  border-color: var(--ui-border) !important;
+  background: color-mix(in srgb, var(--ui-surface-solid) 86%, rgba(238,242,255,.28)) !important;
+  color: #334155 !important;
+  backdrop-filter: blur(10px);
+}
+html.dark .chat-message-bubble.chat-message-assistant {
+  border-color: rgba(129,140,248,.20) !important;
+  background: rgba(15,26,51,.82) !important;
+  color: #dbeafe !important;
+  box-shadow: 0 10px 28px rgba(0,0,0,.20) !important;
+}
+.chat-message-bubble.chat-message-user {
+  border-radius: 20px 20px 6px 20px !important;
+  background: linear-gradient(135deg, #635bdf, #3986e8) !important;
+  border-color: rgba(255,255,255,.25) !important;
+  box-shadow: 0 10px 26px rgba(79,70,229,.20) !important;
   color: #fff !important;
-  border: 1px solid rgba(255,255,255,.18);
 }
-html.dark .chat-message-user {
+html[dir="rtl"] .chat-message-bubble.chat-message-user {
+  border-radius: 20px 20px 20px 6px !important;
+}
+html.dark .chat-message-bubble.chat-message-user {
   background: linear-gradient(135deg, #4c43b9, #245bb5) !important;
+  box-shadow: 0 10px 28px rgba(0,0,0,.24) !important;
+}
+.chat-message-header {
+  gap: 8px 12px !important;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(148,163,184,.13);
+}
+.chat-message-bubble p,
+.chat-message-bubble li { line-height: 1.8; }
+.chat-message-actions { gap: 4px; }
+.chat-message-actions button {
+  border-radius: 9px !important;
+  color: inherit;
+}
+.chat-message-actions button:hover { background: var(--ui-accent-soft) !important; }
+.empty-state { max-width: 840px; margin-inline: auto; }
+.empty-state > div:first-child {
+  width: 64px !important;
+  height: 64px !important;
+  border-radius: 20px !important;
+  background: linear-gradient(135deg, #7565ed, #3392e9) !important;
+  box-shadow: 0 14px 30px rgba(79,70,229,.24) !important;
+}
+.empty-state h3 {
+  background: linear-gradient(100deg, #5145cd, #2782d5);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  letter-spacing: -.025em;
+}
+html.dark .empty-state h3 { background-image: linear-gradient(100deg, #c4b5fd, #7dd3fc); }
+.empty-state > p { max-width: 560px; line-height: 1.9 !important; }
+.empty-state .grid > button {
+  min-height: 64px;
+  border-color: var(--ui-border) !important;
+  border-radius: 17px !important;
+  background: color-mix(in srgb, var(--ui-surface-solid) 84%, transparent) !important;
+  box-shadow: 0 8px 24px rgba(49,46,129,.045) !important;
+  backdrop-filter: blur(10px);
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.empty-state .grid > button:hover {
+  border-color: var(--ui-border-strong) !important;
+  box-shadow: var(--ui-shadow-sm) !important;
+}
+html.dark .empty-state .grid > button { background: rgba(15,26,51,.74) !important; }
+.chat-composer {
+  padding: 10px clamp(10px, 2vw, 22px) calc(10px + env(safe-area-inset-bottom)) !important;
+  border-top: 0 !important;
+  background: transparent !important;
 }
 .chat-composer-row {
+  width: min(100%, 980px);
+  margin-inline: auto;
   border: 1px solid var(--ui-border-strong) !important;
-  border-radius: 24px !important;
-  background: var(--ui-surface-solid) !important;
-  box-shadow: 0 12px 34px rgba(49,46,129,.10) !important;
+  border-radius: 25px !important;
+  background: color-mix(in srgb, var(--ui-surface-solid) 96%, transparent) !important;
+  box-shadow: 0 12px 35px rgba(49,46,129,.11) !important;
 }
 html.dark .chat-composer-row {
   background: #101b34 !important;
+  border-color: rgba(129,140,248,.26) !important;
   box-shadow: 0 12px 34px rgba(0,0,0,.25) !important;
 }
-.chat-composer .chat-tools-popover {
-  border: 1px solid var(--ui-border-strong);
-  border-radius: 18px;
-  box-shadow: var(--ui-shadow-md);
+.chat-composer-input .chat-textarea {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
-.chat-send-button {
+.chat-composer .chat-send-button {
+  border-radius: 15px !important;
   background: linear-gradient(135deg, #6d5ce7, #3984ee) !important;
-  box-shadow: 0 5px 14px rgba(79,70,229,.24);
+  box-shadow: 0 6px 16px rgba(79,70,229,.24);
 }
+.chat-composer .chat-composer-control,
+.chat-composer .chat-composer-controls > label {
+  border-radius: 14px !important;
+  border-color: var(--ui-border) !important;
+  background: color-mix(in srgb, var(--ui-surface-solid) 90%, transparent) !important;
+}
+html.dark .chat-composer .chat-composer-control,
+html.dark .chat-composer .chat-composer-controls > label { background: #172442 !important; }
 .settings-dialog {
   border-color: var(--ui-border-strong) !important;
   border-radius: 24px !important;
+  background: color-mix(in srgb, var(--ui-surface-solid) 96%, transparent) !important;
   box-shadow: var(--ui-shadow-md) !important;
 }
+html.dark .settings-dialog { background: #101b34 !important; color: #e5e7eb; }
 :where(button, input, textarea, select):focus-visible {
   outline: 2px solid var(--ui-accent);
   outline-offset: 2px;
 }
-@media (prefers-reduced-motion: reduce) {
-  .modern-conversation-item { transition: none !important; }
-  .modern-conversation-item:hover { transform: none; }
-}
 @media (max-width: 767px) {
-  .chat-message-bubble { border-radius: 17px !important; }
-  .chat-composer-row { border-radius: 21px !important; }
-  .modern-chat-header, .chat-header {
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+  .app-main {
+    background:
+      radial-gradient(ellipse at 90% 0%, rgba(14,165,233,.08), transparent 36%),
+      radial-gradient(ellipse at 0% 20%, rgba(99,102,241,.08), transparent 42%),
+      var(--ui-bg) !important;
   }
+  .modern-chat-header,
+  .chat-header { backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .chat-stage { padding: 8px 8px 4px !important; }
+  .chat-surface {
+    padding: 10px !important;
+    border-radius: 22px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  /* Avoid per-message GPU blur on narrow/touch devices. */
+  .chat-message-bubble.chat-message-assistant {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .chat-message-bubble.chat-message-assistant,
+  .chat-message-bubble.chat-message-user {
+    max-width: 96% !important;
+    border-radius: 18px !important;
+    padding: 12px 13px !important;
+  }
+  /* Keep the directional user-message corner on touch screens as well. */
+  .chat-message-bubble.chat-message-user {
+    border-radius: 18px 18px 6px 18px !important;
+  }
+  html[dir="rtl"] .chat-message-bubble.chat-message-user {
+    border-radius: 18px 18px 18px 6px !important;
+  }
+  .chat-message-header { padding-bottom: 5px; }
+  .empty-state { padding: 20px 4px !important; }
+  .empty-state .grid > button { min-height: 54px; padding: 12px !important; }
+  .chat-composer { padding: 6px 8px calc(7px + env(safe-area-inset-bottom)) !important; }
+  .chat-composer-row { border-radius: 21px !important; }
+  .settings-dialog { max-width: 100% !important; }
 }
-
-
 
 /* Startup resilience UI for free hosts that may need a cold start. */
 .app-startup-screen {
@@ -1736,6 +1911,12 @@ html.dark .app-startup-screen .app-startup-hint {
 @keyframes app-startup-spin {
   to { transform: rotate(360deg); }
 }
+
 @media (prefers-reduced-motion: reduce) {
+  .modern-conversation-item,
+  .modern-header-icon-action,
+  .modern-header-more,
+  .empty-state .grid > button { transition: none !important; }
+  .modern-conversation-item:hover { transform: none; }
   .app-startup-spinner { animation: none; }
 }
