@@ -1522,3 +1522,40 @@ html.dark .chat-message-user {
     color: #f9fafb;
   }
 }
+
+
+/* Mobile QA hardening: avoid text rasterization artifacts in the tools menu
+   and make long settings content scroll within the visible viewport. */
+.chat-tools-popover {
+  animation: none !important;
+  background: var(--ui-surface-solid) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  isolation: isolate;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.dark .chat-tools-popover {
+  background: #0f172a !important;
+}
+.settings-dialog {
+  max-height: calc(100dvh - 1rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+@media (min-width: 640px) {
+  .settings-dialog { max-height: calc(100dvh - 2rem); }
+}
+@media (max-width: 767px) {
+  .settings-dialog,
+  .settings-overlay {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .settings-dialog {
+    animation: none !important;
+    background: var(--ui-surface-solid) !important;
+  }
+}
