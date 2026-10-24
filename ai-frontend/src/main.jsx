@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import SidebarActionsPreview from "./SidebarActionsPreview";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./index.css";
+import "./styles/creative-aurora.css";
 import "./i18n";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
