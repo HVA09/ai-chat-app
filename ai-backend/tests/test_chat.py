@@ -1363,3 +1363,36 @@ def test_chat_analyze_asks_for_a_filename_when_multiple_data_files_are_attached(
     assert "أرفقت أكثر من ملف بيانات" in detail
     assert "sales.csv" in detail
     assert "expenses.csv" in detail
+
+def test_chat_stream_sends_localized_provider_rate_limit_message(client, monkeypatch):
+    token = _register_and_login(client, "provider-rate-limit-stream@example.com")
+    request = httpx.Request("POST", "https://provider.example/v1/chat/completions")
+    provider_response = httpx.Response(429, request=request)
+    provider_error = httpx.HTTPStatusError(
+        "too many requests",
+        request=request,
+        response=provider_response,
+    )
+
+    async def rate_limited_stream(*args, **kwargs):
+        if False:
+            yield ""
+        raise provider_error
+
+    monkeypatch.setattr(chat_router_module, "stream_ai_reply", rate_limited_stream)
+
+    response = client.post(
+        "/chat/stream",
+        json={"message": "Explain rate limits"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept-Language": "en",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "event: error" in response.text
+    assert "usage limit or request rate" in response.text
+    assert "check the provider's quota" in response.text
+    assert "too many requests" not in response.text
+
