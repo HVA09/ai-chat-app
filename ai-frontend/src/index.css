@@ -1320,6 +1320,20 @@ html.dark .chat-message-user {
 .chat-composer .chat-tools-popover button svg { flex: 0 0 auto; }
 .chat-composer .chat-tools-popover button span { min-width: 0; }
 
+/* Avoid mobile GPU/compositing artifacts in the tools popover. The menu is
+   intentionally opaque and unanimated so its labels remain legible on Android. */
+.chat-tools-popover {
+  animation: none !important;
+  background: var(--ui-surface-solid) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  isolation: isolate;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+.dark .chat-tools-popover {
+  background: #0f172a !important;
+}
 
 /* Mobile layout hardening: keep the composer anchored and the message list as
    the only scrolling region, even when a conversation contains many messages. */
