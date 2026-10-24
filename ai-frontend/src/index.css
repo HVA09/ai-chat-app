@@ -1380,3 +1380,77 @@ html.dark .chat-message-user {
     right: auto !important;
   }
 }
+
+
+/* Mobile overlay safety: avoid GPU-heavy blur/scale composition on touch
+   browsers and give tall account settings a bounded, independently scrolling
+   viewport. These overrides intentionally apply only to narrow screens. */
+@media (max-width: 767px) {
+  .chat-composer .chat-tools-popover {
+    animation: none !important;
+    transform: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: #ffffff !important;
+    border: 1px solid rgba(148, 163, 184, .35) !important;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .24) !important;
+    width: min(20rem, calc(100vw - 24px)) !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 24px) !important;
+    max-height: min(58dvh, 380px) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    isolation: isolate;
+  }
+
+  .dark .chat-composer .chat-tools-popover {
+    background: #111827 !important;
+    border-color: rgba(148, 163, 184, .32) !important;
+    color: #e5e7eb;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .42) !important;
+  }
+
+  .settings-overlay {
+    align-items: flex-start !important;
+    justify-content: center !important;
+    padding: calc(12px + env(safe-area-inset-top))
+      12px calc(12px + env(safe-area-inset-bottom)) !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .settings-dialog {
+    width: 100%;
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+    min-height: 0;
+    margin: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    animation: none !important;
+    transform: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    scrollbar-gutter: stable;
+  }
+
+  .settings-dialog > div:first-child {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    margin: -1.5rem -1.5rem 1rem;
+    padding: 1rem 1.5rem .75rem;
+    border-bottom: 1px solid var(--ui-border, rgba(148, 163, 184, .24));
+    background: #ffffff;
+  }
+
+  .dark .settings-dialog > div:first-child {
+    background: #111827;
+    color: #f9fafb;
+  }
+}
