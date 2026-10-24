@@ -1644,3 +1644,98 @@ html.dark .chat-composer-row {
     -webkit-backdrop-filter: none;
   }
 }
+
+
+
+/* Startup resilience UI for free hosts that may need a cold start. */
+.app-startup-screen {
+  display: flex;
+  min-height: 100dvh;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 28px 22px;
+  text-align: center;
+  color: #1e293b;
+  background:
+    radial-gradient(ellipse at 0% 0%, rgba(99, 102, 241, .12), transparent 38%),
+    radial-gradient(ellipse at 100% 100%, rgba(14, 165, 233, .10), transparent 34%),
+    #f8faff;
+}
+.app-startup-screen h1 {
+  margin: 4px 0 0;
+  font-size: clamp(20px, 4vw, 26px);
+  font-weight: 750;
+  letter-spacing: -.025em;
+}
+.app-startup-screen > p {
+  max-width: 34rem;
+  margin: 0;
+  color: #52617a;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.app-startup-screen .app-startup-hint {
+  color: #7c8aa5;
+  font-size: 12px;
+}
+.app-startup-brand {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, .6);
+  border-radius: 20px;
+  background: linear-gradient(135deg, #765de9, #368eea);
+  box-shadow: 0 12px 30px rgba(91, 83, 215, .22);
+  color: white;
+  font-size: 19px;
+  font-weight: 850;
+  letter-spacing: -.04em;
+}
+.app-startup-spinner {
+  width: 25px;
+  height: 25px;
+  margin-top: 5px;
+  border: 3px solid rgba(99, 102, 241, .18);
+  border-top-color: #655ce8;
+  border-radius: 50%;
+  animation: app-startup-spin .8s linear infinite;
+}
+.app-startup-retry {
+  min-height: 44px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 13px;
+  padding: 10px 22px;
+  background: linear-gradient(135deg, #6d5ce7, #3984ee);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgba(79, 70, 229, .20);
+}
+.app-startup-retry:focus-visible {
+  outline: 3px solid rgba(99, 102, 241, .45);
+  outline-offset: 3px;
+}
+html.dark .app-startup-screen {
+  color: #f1f5f9;
+  background:
+    radial-gradient(ellipse at 0% 0%, rgba(99, 102, 241, .19), transparent 38%),
+    radial-gradient(ellipse at 100% 100%, rgba(14, 165, 233, .13), transparent 34%),
+    #080f22;
+}
+html.dark .app-startup-screen > p {
+  color: #b8c3d9;
+}
+html.dark .app-startup-screen .app-startup-hint {
+  color: #8b9ab7;
+}
+@keyframes app-startup-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-startup-spinner { animation: none; }
+}
