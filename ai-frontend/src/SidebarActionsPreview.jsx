@@ -256,12 +256,37 @@ export default function SidebarActionsPreview() {
         </header>
 
         <section className="sidebar-preview-content">
-          <p className="sidebar-preview-kicker">AI CHAT APP · UI PREVIEW</p>
-          <h1>اختبار قائمة إجراءات المحادثة</h1>
-          <p className="sidebar-preview-copy">
-            افتح القائمة الجانبية، ثم اضغط زر «المزيد» بجانب أي محادثة تجريبية.
-            اختبر النقل إلى مجلد أو مشروع، والوسوم، والتثبيت، والأرشفة، وسلة المحذوفات.
-          </p>
+          <div className="sidebar-preview-chat-heading">
+            <div className="sidebar-preview-ai-mark" aria-hidden="true">✦</div>
+            <div className="min-w-0">
+              <h1>مساعد في البرمجة</h1>
+              <p><span className="sidebar-preview-live-dot" /> متصل الآن · نموذج تجريبي</p>
+            </div>
+            <span className="sidebar-preview-concept-tag">التصميم ٣</span>
+          </div>
+
+          <div className="sidebar-preview-transcript" aria-label="محادثة تجريبية">
+            <div className="sidebar-preview-message sidebar-preview-user-message">
+              <div className="sidebar-preview-user-bubble">مرحبًا، كيف يمكنني مساعدتك اليوم؟</div>
+              <span className="sidebar-preview-message-time">أنت · الآن</span>
+            </div>
+
+            <div className="sidebar-preview-message sidebar-preview-assistant-message">
+              <div className="sidebar-preview-ai-avatar" aria-hidden="true">✦</div>
+              <div className="sidebar-preview-assistant-content">
+                <div className="sidebar-preview-assistant-bubble">
+                  <p>أهلًا بك! أنا مساعدك الذكي. يمكنني مساعدتك في البرمجة، وتحليل الأفكار، وبناء مشروعك خطوة بخطوة.</p>
+                  <p>اكتب ما تريد إنجازه، وسنبدأ معًا.</p>
+                </div>
+                <div className="sidebar-preview-suggestion-row">
+                  <span>اكتب كودًا</span>
+                  <span>حلّل ملفًا</span>
+                  <span>خطّط لمشروع</span>
+                </div>
+                <span className="sidebar-preview-message-time">المساعد · الآن</span>
+              </div>
+            </div>
+          </div>
 
           <div className="sidebar-preview-status-card" role="status" aria-live="polite">
             <span className="sidebar-preview-status-dot" />
@@ -271,18 +296,17 @@ export default function SidebarActionsPreview() {
             </div>
           </div>
 
-          <div className="sidebar-preview-checks">
-            <h2>ما الذي تختبره؟</h2>
-            <p>١. اضغط «المزيد» على محادثة، ثم جرّب إغلاق القائمة بالنقر خارجها أو بمفتاح Escape.</p>
-            <p>٢. افتح قائمة محادثة قرب أسفل القائمة بعد التمرير؛ يجب أن تظهر للأعلى إذا كانت المساحة أسفلها غير كافية.</p>
-            <p>٣. غيّر المجلد والمشروع، وافتح أداة الوسوم، وجرّب نقل محادثة إلى سلة المحذوفات.</p>
-            <p>٤. داخل سلة المحذوفات، جرّب الحذف النهائي مع إلغاء التأكيد أولًا. كل ما تفعله هنا محلي فقط.</p>
-          </div>
+          <details className="sidebar-preview-checks">
+            <summary>اختبارات الواجهة والقائمة</summary>
+            <p>١. اضغط «المزيد» بجانب محادثة تجريبية، ثم أغلق القائمة بالنقر خارجها أو بمفتاح Escape.</p>
+            <p>٢. جرّب فتح القائمة قرب أسفل الشريط الجانبي؛ يجب أن تتكيف مع مساحة الشاشة.</p>
+            <p>٣. جرّب نقل محادثة إلى مجلد أو مشروع، وتعديل الوسوم، والتثبيت، والأرشفة.</p>
+            <p>٤. افتح الإعدادات من الشريط الجانبي أو من زر «اختبار الإعدادات» في الأعلى، ثم اختبر التمرير والإغلاق.</p>
+          </details>
 
           <div className="sidebar-preview-status-line">{countLabel}</div>
           <p className="sidebar-preview-safety-note">
-            هذه صفحة معاينة مستقلة بلا اتصال بالخادم أو Supabase. لا تسجّل دخولًا ولا تضع بيانات حقيقية.
-            جميع التغييرات تختفي عند تحديث الصفحة.
+            معاينة مستقلة ببيانات وهمية فقط. لا يوجد اتصال بالخادم أو Supabase، ولا تسجّل دخولًا أو تضع بيانات حقيقية. التغييرات تختفي عند تحديث الصفحة.
           </p>
         </section>
 
@@ -375,14 +399,46 @@ export default function SidebarActionsPreview() {
         .sidebar-preview-settings-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid #cbd5e1; border-radius: 10px; padding: 9px 12px; background: #fff; color: #334155; font-size: 12px; font-weight: 700; }
         .sidebar-preview-composer { flex: 0 0 auto; min-width: 0; border-top: 1px solid rgba(148,163,184,.24); background: #f8fafc; }
         .sidebar-preview-composer .chat-composer { border-top: 0; }
-        .sidebar-preview-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-        .sidebar-preview-header { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px clamp(14px, 3vw, 28px); border-bottom: 1px solid rgba(148,163,184,.25); background: rgba(255,255,255,.78); backdrop-filter: blur(16px); }
+        .sidebar-preview-content { flex: 1 1 auto; min-height: 0; width: 100%; overflow-y: auto; overscroll-behavior: contain; margin: 0 auto; padding: clamp(16px, 3vw, 30px) clamp(14px, 3vw, 28px) 28px; }
+        .sidebar-preview-header { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px clamp(12px, 3vw, 24px); border-bottom: 1px solid rgba(148,163,184,.25); background: rgba(255,255,255,.78); backdrop-filter: blur(16px); }
         .sidebar-preview-open-button { display: none; border: 1px solid #dbe3ef; border-radius: 10px; padding: 9px 12px; background: white; color: #334155; font-size: 13px; font-weight: 600; }
-        .sidebar-preview-badge { display: inline-flex; align-items: center; border: 1px solid #bbf7d0; border-radius: 999px; padding: 5px 10px; background: #f0fdf4; color: #166534; font-size: 11px; font-weight: 700; }
-        .sidebar-preview-content { width: min(880px, 100%); margin: 0 auto; padding: clamp(22px, 5vw, 54px) clamp(14px, 3vw, 30px) 36px; }
-        .sidebar-preview-kicker { color: #64748b; font-size: 11px; font-weight: 800; letter-spacing: .14em; }
-        .sidebar-preview-content h1 { margin-top: 8px; font-size: clamp(25px, 4vw, 42px); font-weight: 800; line-height: 1.25; letter-spacing: -.03em; }
-        .sidebar-preview-copy { max-width: 720px; margin-top: 14px; color: #475569; font-size: 15px; line-height: 1.9; }
+        .sidebar-preview-badge { display: inline-flex; align-items: center; border: 1px solid rgba(129,140,248,.25); border-radius: 999px; padding: 5px 10px; background: rgba(99,102,241,.08); color: #5145cd; font-size: 11px; font-weight: 700; }
+        .sidebar-preview-chat-heading { display: flex; align-items: center; gap: 12px; width: min(920px, 100%); margin: 0 auto 24px; padding: 12px 2px 18px; border-bottom: 1px solid rgba(129,140,248,.17); }
+        .sidebar-preview-ai-mark { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border-radius: 15px; background: linear-gradient(135deg,#7c6cf2,#2ea7dd); color: white; font-size: 24px; box-shadow: 0 8px 22px rgba(99,102,241,.22); }
+        .sidebar-preview-chat-heading h1 { margin: 0; color: #172554; font-size: 17px; font-weight: 800; line-height: 1.4; }
+        .sidebar-preview-chat-heading p { display: flex; align-items: center; gap: 6px; margin-top: 3px; color: #64748b; font-size: 11px; }
+        .sidebar-preview-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.10); }
+        .sidebar-preview-concept-tag { margin-inline-start: auto; border: 1px solid rgba(99,102,241,.18); border-radius: 999px; padding: 5px 9px; color: #6254e8; background: rgba(99,102,241,.07); font-size: 10px; font-weight: 800; white-space: nowrap; }
+        .sidebar-preview-transcript { display: grid; gap: 24px; width: min(820px, 100%); margin: 0 auto; padding: 4px 0 18px; }
+        .sidebar-preview-message { display: flex; gap: 10px; }
+        .sidebar-preview-user-message { align-items: flex-end; flex-direction: column; }
+        .sidebar-preview-user-bubble { max-width: 84%; border: 1px solid rgba(255,255,255,.28); border-radius: 20px 20px 7px 20px; padding: 13px 16px; background: linear-gradient(135deg,#7568ef,#398de8); color: white; font-size: 14px; line-height: 1.8; box-shadow: 0 8px 24px rgba(79,70,229,.16); }
+        .sidebar-preview-message-time { color: #94a3b8; font-size: 10px; }
+        .sidebar-preview-assistant-message { align-items: flex-start; }
+        .sidebar-preview-ai-avatar { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(99,102,241,.19); border-radius: 11px; background: linear-gradient(135deg,rgba(14,165,233,.16),rgba(129,140,248,.17)); color: #5145cd; font-size: 17px; }
+        .sidebar-preview-assistant-content { display: grid; justify-items: start; gap: 10px; min-width: 0; max-width: calc(100% - 40px); }
+        .sidebar-preview-assistant-bubble { border: 1px solid rgba(129,140,248,.16); border-radius: 7px 20px 20px 20px; padding: 16px 18px; background: rgba(255,255,255,.84); color: #334155; font-size: 14px; line-height: 1.9; box-shadow: 0 8px 28px rgba(49,46,129,.05); }
+        .sidebar-preview-assistant-bubble p + p { margin-top: 8px; }
+        .sidebar-preview-suggestion-row { display: flex; flex-wrap: wrap; gap: 7px; }
+        .sidebar-preview-suggestion-row span { border: 1px solid rgba(99,102,241,.18); border-radius: 999px; padding: 6px 10px; background: rgba(255,255,255,.65); color: #5b5da8; font-size: 10px; }
+        .sidebar-preview-status-card { display: flex; align-items: flex-start; gap: 10px; width: min(820px, 100%); margin: 10px auto 0; border: 1px solid rgba(129,140,248,.18); border-radius: 15px; padding: 12px 14px; background: rgba(255,255,255,.58); }
+        .sidebar-preview-status-card strong { color: #334155; font-size: 11px; }
+        .sidebar-preview-status-card p { margin-top: 3px; color: #64748b; font-size: 11px; line-height: 1.6; }
+        .sidebar-preview-status-dot { width: 8px; height: 8px; flex: 0 0 auto; margin-top: 4px; border-radius: 50%; background: #16a34a; box-shadow: 0 0 0 4px rgba(22,163,74,.1); }
+        .sidebar-preview-checks { width: min(820px, 100%); margin: 16px auto 0; border: 1px solid rgba(129,140,248,.17); border-radius: 15px; padding: 12px 14px; background: rgba(255,255,255,.55); }
+        .sidebar-preview-checks summary { cursor: pointer; color: #5145cd; font-size: 12px; font-weight: 800; }
+        .sidebar-preview-checks p { margin-top: 10px; color: #64748b; font-size: 11px; line-height: 1.8; }
+        .sidebar-preview-status-line { width: min(820px, 100%); margin: 12px auto 0; color: #64748b; font-size: 10px; font-weight: 700; }
+        .sidebar-preview-safety-note { width: min(820px, 100%); margin: 12px auto 0; border-inline-start: 3px solid rgba(99,102,241,.35); padding-inline-start: 10px; color: #94a3b8; font-size: 10px; line-height: 1.7; }
+        .dark .sidebar-preview-chat-heading h1 { color: #eef2ff; }
+        .dark .sidebar-preview-assistant-bubble { border-color: rgba(129,140,248,.18); background: rgba(15,26,51,.76); color: #dbeafe; }
+        .dark .sidebar-preview-user-bubble { background: linear-gradient(135deg,#4c43b9,#245bb5); }
+        .dark .sidebar-preview-suggestion-row span { background: rgba(15,26,51,.6); color: #c4c5ff; }
+        .dark .sidebar-preview-status-card, .dark .sidebar-preview-checks { background: rgba(15,26,51,.58); border-color: rgba(129,140,248,.18); }
+        .dark .sidebar-preview-status-card strong { color: #e2e8f0; }
+        .dark .sidebar-preview-status-card p, .dark .sidebar-preview-checks p { color: #a8b4d0; }
+        .dark .sidebar-preview-chat-heading p { color: #a8b4d0; }
+        .dark .sidebar-preview-concept-tag { background: rgba(129,116,255,.13); color: #c4b5fd; }
         .sidebar-preview-status-card { display: flex; gap: 12px; align-items: flex-start; margin-top: 28px; border: 1px solid #dbeafe; border-radius: 16px; padding: 16px; background: rgba(255,255,255,.88); box-shadow: 0 10px 30px rgba(15,23,42,.045); }
         .sidebar-preview-status-dot { width: 10px; height: 10px; flex: 0 0 auto; margin-top: 5px; border-radius: 50%; background: #16a34a; box-shadow: 0 0 0 5px rgba(22,163,74,.1); }
         .sidebar-preview-status-card strong { font-size: 13px; }
@@ -396,8 +452,15 @@ export default function SidebarActionsPreview() {
           .sidebar-preview-open-button { display: inline-flex; }
           .modern-sidebar { width: min(286px, 88vw) !important; min-width: min(286px, 88vw) !important; }
           .modern-conversation-menu { max-width: calc(100vw - 40px); }
-          .sidebar-preview-content { padding-top: 25px; }
-          .sidebar-preview-copy { font-size: 14px; }
+          .sidebar-preview-content { padding-top: 12px; padding-bottom: 18px; }
+          .sidebar-preview-chat-heading { margin-bottom: 16px; padding-bottom: 12px; }
+          .sidebar-preview-ai-mark { width: 36px; height: 36px; border-radius: 12px; }
+          .sidebar-preview-chat-heading h1 { font-size: 15px; }
+          .sidebar-preview-transcript { gap: 18px; }
+          .sidebar-preview-user-bubble { max-width: 92%; font-size: 13px; padding: 11px 13px; }
+          .sidebar-preview-assistant-bubble { padding: 13px; font-size: 13px; line-height: 1.8; }
+          .sidebar-preview-concept-tag { font-size: 9px; }
+          .sidebar-preview-badge { max-width: 120px; font-size: 9px; }
         }
       `}</style>
     </div>
