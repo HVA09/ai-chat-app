@@ -1,5 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
+
+import httpx
 """
 اختبارات مسار المحادثة — يتم عمل mock لاستدعاء محرك AI بدل الاتصال الحقيقي بالإنترنت
 """
@@ -629,6 +631,38 @@ def test_stream_idle_timeout_does_not_persist_partial_reply(client, monkeypatch,
     assert [(message.role, message.content) for message in messages] == [
         (MessageRole.user, "اختبار مهلة البث"),
     ]
+
+
+def test_stream_provider_rate_limit_returns_actionable_error(client, monkeypatch):
+    async def rate_limited_stream(message, history=None, model=None, on_provider_selected=None):
+        request = httpx.Request("POST", "https://example.test/chat/completions")
+        response = httpx.Response(429, request=request)
+        raise httpx.HTTPStatusError(
+            "429 Too Many Requests",
+            request=request,
+            response=response,
+        )
+        yield "unreachable"
+
+    monkeypatch.setattr(chat_router_module, "stream_ai_reply", rate_limited_stream)
+    token = _register_and_login(client, "rate-limit-stream@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with client.stream(
+        "POST",
+        "/chat/stream",
+        json={"message": "اختبار حدّ الطلبات"},
+        headers=headers,
+    ) as response:
+        response.read()
+        body = response.text
+
+    assert response.status_code == 200
+    assert "event: error" in body
+    assert "حدّ الطلبات" in body
+    assert "429" in body
+    assert "جرّب بعد قليل" in body
+    assert "event: done" not in body
 
 
 def test_chat_requires_authentication(client):
