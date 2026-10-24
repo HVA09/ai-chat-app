@@ -59,6 +59,35 @@ def test_chat_stream_error_message_keeps_generic_for_other_http_statuses():
     ) == "حدث خطأ أثناء توليد الرد"
 
 
+def test_chat_stream_error_message_supports_english_locale():
+    request = httpx.Request("POST", "https://provider.example/v1/chat/completions")
+    response = httpx.Response(429, request=request)
+    exc = httpx.HTTPStatusError("too many requests", request=request, response=response)
+
+    message = chat_router_module._chat_stream_error_message(
+        exc, "generic error", "en-US,en;q=0.9"
+    )
+
+    assert "usage limit or request rate" in message
+    assert "try again" in message
+    assert "generic error" not in message
+
+
+def test_chat_stream_error_message_localizes_temporary_provider_failures():
+    for status_code in (502, 503, 504):
+        request = httpx.Request("POST", "https://provider.example/v1/chat/completions")
+        response = httpx.Response(status_code, request=request)
+        exc = httpx.HTTPStatusError(
+            "upstream unavailable",
+            request=request,
+            response=response,
+        )
+
+        assert chat_router_module._chat_stream_error_message(
+            exc, "حدث خطأ أثناء توليد الرد", "en"
+        ) == "The AI provider is temporarily unavailable. Please try again later."
+
+
 def _register_and_login(client, email="chat@example.com", password="StrongPass123"):
     client.post("/auth/register", json={"email": email, "password": password})
     login_response = client.post("/auth/login", json={"email": email, "password": password})

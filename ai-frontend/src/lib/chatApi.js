@@ -53,6 +53,7 @@ export async function streamChatMessage(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Accept-Language": i18n.language,
       },
       credentials: "include",
       body: JSON.stringify({
@@ -154,6 +155,7 @@ export async function streamRegenerateMessage(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Accept-Language": i18n.language,
       },
       credentials: "include",
       body: JSON.stringify({}),
@@ -238,6 +240,7 @@ export async function streamEditMessage(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Accept-Language": i18n.language,
       },
       credentials: "include",
       body: JSON.stringify({ message_index: messageIndex, message }),

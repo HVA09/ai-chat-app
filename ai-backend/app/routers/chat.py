@@ -73,18 +73,40 @@ MAX_FILE_CONTEXT_PER_FILE_CHARS = 8_000
 MAX_MEMORY_CONTEXT_CHARS = 6_000
 
 
-def _chat_stream_error_message(exc: Exception, default_message: str) -> str:
-    """Return safe, actionable messages for known upstream provider failures."""
+def _chat_stream_error_message(
+    exc: Exception,
+    default_message: str,
+    language: str = "ar",
+) -> str:
+    """Return safe, localized messages for known upstream provider failures."""
     if not isinstance(exc, httpx.HTTPStatusError):
         return default_message
 
     status_code = exc.response.status_code
+    primary_language = (
+        (language or "ar")
+        .split(",", 1)[0]
+        .split(";", 1)[0]
+        .split("-", 1)[0]
+        .strip()
+        .lower()
+    )
+    is_english = primary_language == "en"
+
     if status_code == 429:
+        if is_english:
+            return (
+                "The AI provider rejected this request because of a usage limit "
+                "or request rate. Wait a moment and try again; if the problem "
+                "continues, check the provider's quota."
+            )
         return (
             "رفض مزوّد الذكاء الاصطناعي الطلب بسبب حد الاستخدام أو معدل الطلبات. "
             "انتظر قليلًا ثم أعد المحاولة؛ إذا استمرت المشكلة، تحقق من حصة المزوّد."
         )
     if status_code in {502, 503, 504}:
+        if is_english:
+            return "The AI provider is temporarily unavailable. Please try again later."
         return "مزوّد الذكاء الاصطناعي غير متاح مؤقتًا. أعد المحاولة لاحقًا."
     return default_message
 
@@ -1743,7 +1765,11 @@ async def chat_stream(
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
         except Exception as exc:
             logger.exception("خطأ أثناء بث الرد لمحادثة %s", conversation.id)
-            message = _chat_stream_error_message(exc, "حدث خطأ أثناء توليد الرد")
+            message = _chat_stream_error_message(
+                exc,
+                "حدث خطأ أثناء توليد الرد",
+                request.headers.get("accept-language", "ar"),
+            )
             yield f"event: error\ndata: {message}\n\n"
             return
         finally:
@@ -1959,7 +1985,11 @@ async def regenerate_chat_stream(
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
         except Exception as exc:
             logger.exception("خطأ أثناء إعادة توليد الرد لمحادثة %s", conversation.id)
-            message = _chat_stream_error_message(exc, "حدث خطأ أثناء إعادة توليد الرد")
+            message = _chat_stream_error_message(
+                exc,
+                "حدث خطأ أثناء إعادة توليد الرد",
+                request.headers.get("accept-language", "ar"),
+            )
             yield f"event: error\ndata: {message}\n\n"
             return
         finally:
@@ -2068,7 +2098,11 @@ async def edit_chat_stream(
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
         except Exception as exc:
             logger.exception("خطأ أثناء تعديل رسالة لمحادثة %s", conversation.id)
-            message = _chat_stream_error_message(exc, "حدث خطأ أثناء تعديل الرسالة")
+            message = _chat_stream_error_message(
+                exc,
+                "حدث خطأ أثناء تعديل الرسالة",
+                request.headers.get("accept-language", "ar"),
+            )
             yield f"event: error\ndata: {message}\n\n"
             return
         finally:
