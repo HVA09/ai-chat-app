@@ -218,11 +218,29 @@ html.dark .chat-message-user {
   backdrop-filter: blur(18px);
 }
 .settings-dialog {
+  max-height: calc(100dvh - 1rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   animation: ui-scale-in 180ms cubic-bezier(.2,.8,.2,1) both;
   border-color: var(--ui-border) !important;
   background: color-mix(in srgb, var(--ui-surface-solid) 94%, transparent) !important;
   box-shadow: 0 28px 80px rgba(15,23,42,0.20) !important;
   backdrop-filter: blur(20px);
+}
+@media (min-width: 640px) {
+  .settings-dialog { max-height: calc(100dvh - 2rem); }
+}
+@media (max-width: 767px) {
+  .settings-dialog,
+  .settings-overlay {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .settings-dialog {
+    animation: none !important;
+    background: var(--ui-surface-solid) !important;
+  }
 }
 .settings-overlay {
   background: rgba(2, 6, 23, 0.44) !important;
@@ -1320,6 +1338,20 @@ html.dark .chat-message-user {
 .chat-composer .chat-tools-popover button svg { flex: 0 0 auto; }
 .chat-composer .chat-tools-popover button span { min-width: 0; }
 
+/* Avoid mobile GPU/compositing artifacts in the tools popover. The menu is
+   intentionally opaque and unanimated so its labels remain legible on Android. */
+.chat-tools-popover {
+  animation: none !important;
+  background: var(--ui-surface-solid) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  isolation: isolate;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+.dark .chat-tools-popover {
+  background: #0f172a !important;
+}
 
 /* Mobile layout hardening: keep the composer anchored and the message list as
    the only scrolling region, even when a conversation contains many messages. */

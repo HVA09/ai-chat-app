@@ -301,3 +301,25 @@ describe("AccountSettings", () => {
     expect(await screen.findByText("Chrome on Android")).toBeInTheDocument();
     expect(screen.getByText("الحالية")).toBeInTheDocument();
   });
+
+it("keeps account settings scrollable and closes the dialog with Escape", async () => {
+  const user = userEvent.setup();
+  const onClose = vi.fn();
+
+  render(
+    <AccountSettings
+      user={{ full_name: "", avatar_url: "", is_email_verified: true, is_2fa_enabled: false }}
+      onClose={onClose}
+      onUserUpdated={vi.fn()}
+      onAccountDeleted={vi.fn()}
+    />
+  );
+
+  const dialog = screen.getByRole("dialog", { name: "الحساب" });
+  expect(dialog).toHaveClass("settings-dialog", "overflow-y-auto", "overscroll-contain");
+  expect(dialog.querySelector(".sticky")).toBeInTheDocument();
+
+  await user.keyboard("{Escape}");
+  expect(onClose).toHaveBeenCalledTimes(1);
+});
+
