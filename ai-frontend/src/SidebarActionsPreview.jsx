@@ -81,7 +81,7 @@ export default function SidebarActionsPreview() {
   const [conversations, setConversations] = useState(sampleConversations);
   const [archivedConversations, setArchivedConversations] = useState([]);
   const [trashedConversations, setTrashedConversations] = useState([]);
-  const [selectedConversationId, setSelectedConversationId] = useState(101);
+  const [selectedConversationId, setSelectedConversationId] = useState(null);
   const [showArchived, setShowArchived] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [status, setStatus] = useState("هذه معاينة واجهة معزولة؛ الإجراءات تغيّر بيانات تجريبية محلية فقط.");
@@ -222,7 +222,7 @@ export default function SidebarActionsPreview() {
           setSelectedConversationId(id);
           setStatus("تم اختيار محادثة تجريبية؛ لا توجد بيانات حقيقية متصلة.");
         }}
-        onNewChat={() => setStatus("هذا إجراء تجريبي محلي ولا ينشئ محادثة حقيقية.")}
+        onNewChat={() => { setSelectedConversationId(null); setStatus("محادثة جديدة تجريبية؛ لا يتم إرسال أي طلب إلى الخادم."); }}
         onRenameConversation={handleRename}
         onDeleteConversation={handlePermanentDelete}
         onTogglePinConversation={handlePin}
@@ -248,7 +248,7 @@ export default function SidebarActionsPreview() {
 
       <main className="app-main flex min-w-0 min-h-0 flex-1 flex-col">
         <ChatHeaderModern
-          conversationTitle="مراجعة خطة المشروع"
+          conversationTitle={selectedConversationId === null ? "محادثة جديدة" : (activeList.find((item) => item.id === selectedConversationId)?.title || "محادثة تجريبية")}
           lang={previewLang}
           setLang={handlePreviewLanguageChange}
           onLogout={() => setStatus("تسجيل الخروج غير متصل في المعاينة.")}
@@ -275,35 +275,70 @@ export default function SidebarActionsPreview() {
           projectName="AI Chat App"
         />
 
-        <section className="chat-stage flex min-h-0 flex-1 flex-col p-3 sm:p-4">
-          <div className="chat-surface mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col space-y-3 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-            <ChatMessage
-              role="user"
-              text="أريد أن تكون واجهة AI Chat App أكثر احترافية، مع دعم جيد للعربية والهاتف."
-              time="الآن"
-              canEdit
-              onEdit={() => setStatus("تحرير الرسالة غير متصل في المعاينة.")}
-              canDelete
-              onDelete={() => setStatus("الحذف غير متصل في المعاينة.")}
-              canBranch
-              onBranch={() => setStatus("تفريع المحادثة غير متصل في المعاينة.")}
-              canRemember
-              onToggleRemember={() => setStatus("الذاكرة غير متصلة في المعاينة.")}
-              onToggleBookmark={() => setStatus("الحفظ في العلامات غير متصل في المعاينة.")}
-            />
-            <ChatMessage
-              role="assistant"
-              text={"أهلًا بك! أنا مساعدك الذكي. يمكنني مساعدتك في البرمجة، وتحليل الأفكار، وبناء مشروعك خطوة بخطوة.\n\n**اكتب ما تريد إنجازه، وسنبدأ معًا.**"}
-              time="الآن"
-              canDelete
-              onDelete={() => setStatus("حذف الرسالة غير متصل في المعاينة.")}
-              canFeedback
-              onFeedback={() => setStatus("التقييم تجريبي ومحلي فقط.")}
-              canRegenerate
-              onRegenerate={() => setStatus("إعادة التوليد غير متصلة في المعاينة.")}
-              onToggleBookmark={() => setStatus("الحفظ في العلامات غير متصل في المعاينة.")}
-            />
-          </div>
+        <section className="chat-stage flex min-h-0 flex-1 flex-col overflow-y-auto p-3 sm:p-4">
+          {selectedConversationId === null ? (
+            <div className="empty-state mx-auto flex w-full flex-1 flex-col items-center justify-center gap-5 px-2 py-6 text-center sm:gap-6 sm:py-10">
+              <div className="flex items-center justify-center text-3xl font-light text-white" aria-hidden="true">✦</div>
+              <div className="max-w-2xl">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-[.22em] text-slate-400">AI CHAT APP</p>
+                <h3 className="text-3xl font-bold leading-tight sm:text-4xl">أهلًا بك، كيف أساعدك اليوم؟</h3>
+                <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-slate-500 dark:text-slate-300 sm:text-base">
+                  ابدأ بفكرة بسيطة، وسنحوّلها معًا إلى خطوات واضحة. اسأل، تعلّم، ابتكر، أو اطلب مساعدة في مشروعك.
+                </p>
+              </div>
+              <div className="grid w-full max-w-3xl grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+                {[
+                  { icon: "🪄", title: "طوّر تطبيقك", desc: "حوّل فكرتك إلى خطة تطوير منظمة", prompt: "ساعدني في تطوير تطبيق دردشة احترافي بخطة واضحة." },
+                  { icon: "💻", title: "تعلّم البرمجة", desc: "اشرح لي موضوعًا برمجيًا خطوة بخطوة", prompt: "اشرح لي مفهومًا برمجيًا خطوة بخطوة وبالعربية." },
+                  { icon: "🗺️", title: "خطّط لمشروع", desc: "رتّب الأفكار إلى مهام قابلة للتنفيذ", prompt: "حوّل فكرة مشروعي إلى خطة تنفيذ ومراحل واضحة." },
+                  { icon: "📊", title: "حلّل البيانات", desc: "افهم ملفًا أو مجموعة بيانات", prompt: "ساعدني في تحليل بياناتي واستخراج أهم النتائج." },
+                ].map((item) => (
+                  <button
+                    key={item.title}
+                    type="button"
+                    onClick={() => { setComposerValue(item.prompt); setStatus("تم وضع اقتراح في مربع الكتابة؛ لن يُرسل تلقائيًا."); }}
+                    className="group flex min-h-20 items-start gap-3 rounded-2xl border border-slate-200 bg-white/80 p-4 text-start shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-md dark:border-slate-700 dark:bg-slate-900/75"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-xl dark:bg-indigo-950/60">{item.icon}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-slate-800 group-hover:text-indigo-700 dark:text-slate-100 dark:group-hover:text-indigo-300">{item.title}</span>
+                      <span className="mt-1 block text-xs leading-5 text-slate-500 dark:text-slate-400">{item.desc}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400">اختَر اقتراحًا أو اكتب سؤالك في الأسفل</p>
+            </div>
+          ) : (
+            <div className="chat-surface mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col space-y-3 overflow-y-auto rounded-3xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+              <ChatMessage
+                role="user"
+                text="أريد أن تكون واجهة AI Chat App أكثر احترافية، مع دعم جيد للعربية والهاتف."
+                time="الآن"
+                canEdit
+                onEdit={() => setStatus("تحرير الرسالة غير متصل في المعاينة.")}
+                canDelete
+                onDelete={() => setStatus("الحذف غير متصل في المعاينة.")}
+                canBranch
+                onBranch={() => setStatus("تفريع المحادثة غير متصل في المعاينة.")}
+                canRemember
+                onToggleRemember={() => setStatus("الذاكرة غير متصلة في المعاينة.")}
+                onToggleBookmark={() => setStatus("الحفظ في العلامات غير متصل في المعاينة.")}
+              />
+              <ChatMessage
+                role="assistant"
+                text={"أهلًا بك! أنا مساعدك الذكي. يمكنني مساعدتك في البرمجة، وتحليل الأفكار، وبناء مشروعك خطوة بخطوة.\n\n**اكتب ما تريد إنجازه، وسنبدأ معًا.**"}
+                time="الآن"
+                canDelete
+                onDelete={() => setStatus("حذف الرسالة غير متصل في المعاينة.")}
+                canFeedback
+                onFeedback={() => setStatus("التقييم تجريبي ومحلي فقط.")}
+                canRegenerate
+                onRegenerate={() => setStatus("إعادة التوليد غير متصلة في المعاينة.")}
+                onToggleBookmark={() => setStatus("الحفظ في العلامات غير متصل في المعاينة.")}
+              />
+            </div>
+          )}
         </section>
 
         <ChatComposer
