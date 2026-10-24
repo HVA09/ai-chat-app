@@ -1807,6 +1807,13 @@ html.dark .settings-dialog { background: #101b34 !important; color: #e5e7eb; }
     border-radius: 18px !important;
     padding: 12px 13px !important;
   }
+  /* Keep the directional user-message corner on touch screens as well. */
+  .chat-message-bubble.chat-message-user {
+    border-radius: 18px 18px 6px 18px !important;
+  }
+  html[dir="rtl"] .chat-message-bubble.chat-message-user {
+    border-radius: 18px 18px 18px 6px !important;
+  }
   .chat-message-header { padding-bottom: 5px; }
   .empty-state { padding: 20px 4px !important; }
   .empty-state .grid > button { min-height: 54px; padding: 12px !important; }
