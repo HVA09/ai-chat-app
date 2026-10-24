@@ -1100,7 +1100,6 @@ export default function App() {
   }
 
   if (sessionChecking) {
-    const isArabic = document.documentElement.lang === "ar";
     return (
       <main className="app-startup-screen" role="status" aria-live="polite">
         <div className="app-startup-brand" aria-hidden="true">AI</div>
@@ -1108,18 +1107,12 @@ export default function App() {
         <h1>{t("appName")}</h1>
         <p>
           {sessionCheckSlow
-            ? isArabic
-              ? "الخادم يستيقظ الآن. قد يستغرق الاتصال الأول نحو دقيقة."
-              : "The server is waking up. The first connection can take about a minute."
-            : isArabic
-              ? "جارٍ الاتصال بالخادم وتجهيز جلستك..."
-              : "Connecting to the server and restoring your session..."}
+            ? t("app.startupServerWaking")
+            : t("app.startupConnecting")}
         </p>
         {sessionCheckSlow ? (
           <p className="app-startup-hint">
-            {isArabic
-              ? "اترك الصفحة مفتوحة؛ سنعيد المحاولة تلقائيًا."
-              : "Keep this page open; we are retrying automatically."}
+            {t("app.startupRetryHint")}
           </p>
         ) : null}
       </main>
@@ -1127,17 +1120,14 @@ export default function App() {
   }
 
   if (!authed && sessionCheckError) {
-    const isArabic = document.documentElement.lang === "ar";
     return (
       <main className="app-startup-screen" role="alert">
         <div className="app-startup-brand" aria-hidden="true">AI</div>
         <h1>
-          {isArabic ? "تعذر الاتصال بالخادم" : "Could not connect to the server"}
+          {t("app.startupConnectionErrorTitle")}
         </h1>
         <p>
-          {isArabic
-            ? "لم يستجب الخادم بعد عدة محاولات. تحقق من اتصال الإنترنت ثم أعد المحاولة."
-            : "The server did not respond after several attempts. Check your internet connection and retry."}
+          {t("app.startupConnectionErrorDescription")}
         </p>
         <button
           type="button"
@@ -1149,7 +1139,7 @@ export default function App() {
             setSessionCheckAttempt((attempt) => attempt + 1);
           }}
         >
-          {isArabic ? "إعادة المحاولة" : "Try again"}
+          {t("app.startupRetry")}
         </button>
       </main>
     );
