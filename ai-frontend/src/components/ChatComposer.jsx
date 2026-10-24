@@ -40,12 +40,16 @@ export default function ChatComposer({
   const [toolsOpen, setToolsOpen] = useState(false);
   const toolsContainerRef = useRef(null);
   const toolsTriggerRef = useRef(null);
+  const toolsPopoverRef = useRef(null);
 
   useEffect(() => {
     if (!toolsOpen) return undefined;
 
     const handlePointerDown = (event) => {
-      if (!toolsContainerRef.current?.contains(event.target)) {
+      if (
+        !toolsContainerRef.current?.contains(event.target) &&
+        !toolsPopoverRef.current?.contains(event.target)
+      ) {
         setToolsOpen(false);
       }
     };
@@ -406,7 +410,12 @@ export default function ChatComposer({
                 <Icon name="plus" size={18} />
               </button>
               {toolsOpen ? (
-                <div className="chat-tools-popover ui-popover absolute bottom-full end-0 z-30 mb-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                <div
+                  ref={toolsPopoverRef}
+                  role="group"
+                  aria-label={lang === "ar" ? "أدوات الرسالة" : "Message tools"}
+                  className="chat-tools-popover ui-popover absolute bottom-full end-0 z-30 mb-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                >
                   <div className="grid grid-cols-2 gap-2">
                     {models.length > 0 ? (
                       <label className="col-span-2 text-xs text-slate-500 dark:text-slate-400">
