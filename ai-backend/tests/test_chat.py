@@ -5,11 +5,34 @@ from datetime import datetime, timezone
 """
 from unittest.mock import AsyncMock
 
+import httpx
+
 from app.config import settings as app_settings
 from app.models.conversation import Message, MessageRole
 from app.models.user import User
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
+
+
+def test_chat_stream_error_message_explains_rate_limit():
+    request = httpx.Request("POST", "https://provider.example/v1/chat/completions")
+    response = httpx.Response(429, request=request)
+    exc = httpx.HTTPStatusError("too many requests", request=request, response=response)
+
+    message = chat_router_module._chat_stream_error_message(exc, "generic error")
+
+    assert "حد الاستخدام أو معدل الطلبات" in message
+    assert "أعد المحاولة" in message
+    assert "generic error" not in message
+
+
+def test_chat_stream_error_message_keeps_generic_for_unhandled_errors():
+    message = chat_router_module._chat_stream_error_message(
+        RuntimeError("internal detail"),
+        "حدث خطأ أثناء توليد الرد",
+    )
+
+    assert message == "حدث خطأ أثناء توليد الرد"
 
 
 def _register_and_login(client, email="chat@example.com", password="StrongPass123"):
