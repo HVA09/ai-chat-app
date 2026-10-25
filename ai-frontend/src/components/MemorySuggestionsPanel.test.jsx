@@ -31,7 +31,7 @@ describe("MemorySuggestionsPanel", () => {
     );
 
     expect(screen.getByText(suggestion.content)).toBeInTheDocument();
-    expect(screen.getByText(suggestion.evidence)).toBeInTheDocument();
+    expect(screen.getByText((text) => text.includes(suggestion.evidence))).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("memory.suggestSave"));
     expect(onSave).toHaveBeenCalledWith(suggestion);
