@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import httpx
 
 from app.config import settings
+from app.models.file_chunk import EMBEDDING_DIMENSIONS as STORED_EMBEDDING_DIMENSIONS
 
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
@@ -115,6 +116,12 @@ def _resolve_embedding_config() -> EmbeddingConfig:
         )
     if settings.EMBEDDING_DIMENSIONS <= 0:
         raise EmbeddingServiceError("EMBEDDING_DIMENSIONS يجب أن يكون عددًا موجبًا.")
+    if settings.EMBEDDING_DIMENSIONS != STORED_EMBEDDING_DIMENSIONS:
+        raise EmbeddingServiceError(
+            "EMBEDDING_DIMENSIONS يجب أن يطابق بُعد المتجهات المحفوظة "
+            f"في قاعدة البيانات ({STORED_EMBEDDING_DIMENSIONS}). "
+            "تغييره يتطلب ترحيل المخطط وإعادة فهرسة الملفات أولًا."
+        )
 
     if provider == "gemini":
         if configured_base_url:
