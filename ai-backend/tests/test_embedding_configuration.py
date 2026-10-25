@@ -55,22 +55,19 @@ def test_embedding_provider_can_use_separate_gemini_credentials_and_base_url(mon
     assert config.model == "gemini-embedding-001"
 
 
-def test_legacy_gemini_model_uses_native_gemini_embeddings_endpoint(monkeypatch):
+def test_mismatched_legacy_model_fails_closed_without_rerouting_chat_key(
+    monkeypatch,
+):
     _set_embedding_settings(
         monkeypatch,
         AI_PROVIDER="openai",
+        AI_API_KEY="openai-chat-secret",
         AI_API_BASE_URL="https://api.openai.com/v1",
         EMBEDDING_MODEL="gemini-embedding-001",
     )
 
-    config = embeddings._resolve_embedding_config()
-
-    assert config.provider == "gemini"
-    assert config.base_url == "https://generativelanguage.googleapis.com/v1beta"
-    assert embeddings._embedding_url(config, "embedContent") == (
-        "https://generativelanguage.googleapis.com/v1beta/"
-        "models/gemini-embedding-001:embedContent"
-    )
+    with pytest.raises(embeddings.EmbeddingServiceError, match="EMBEDDING_PROVIDER=gemini"):
+        embeddings._resolve_embedding_config()
 
 
 def test_unsupported_explicit_embedding_provider_is_rejected(monkeypatch):
