@@ -273,3 +273,13 @@ def test_document_embeddings_use_native_gemini_batch_endpoint(monkeypatch):
         "taskType": "RETRIEVAL_DOCUMENT",
         "outputDimensionality": 3,
     }
+
+
+@pytest.mark.parametrize("chat_provider", ["anthropic", "deepseek"])
+def test_unsupported_chat_provider_requires_explicit_embedding_provider(
+    monkeypatch, chat_provider
+):
+    _set_embedding_settings(monkeypatch, AI_PROVIDER=chat_provider)
+
+    with pytest.raises(embeddings.EmbeddingServiceError, match="لا يوجد تكامل embeddings"):
+        embeddings._resolve_embedding_config()
