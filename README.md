@@ -8,6 +8,7 @@ Thank you for your purchase.
 - `ai-frontend/` — React + Vite UI
 - `LICENSE.txt` — license terms
 - `README.md` — this file
+- `ROADMAP.md` — development roadmap for the specialized AI assistant (networking, Linux, programming, cybersecurity, and cloud).
 
 ## Quick start
 
