@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { streamChatMessage } from "./chatApi";
+import { streamChatMessage, streamRegenerateMessage, streamEditMessage } from "./chatApi";
+import i18n from "../i18n";
 
 describe("chatApi streaming error handling", () => {
   const originalFetch = globalThis.fetch;
@@ -8,8 +9,9 @@ describe("chatApi streaming error handling", () => {
     vi.restoreAllMocks();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     globalThis.fetch = originalFetch;
+    await i18n.changeLanguage("ar");
   });
 
   it("calls onDone when the request is aborted", async () => {
@@ -26,6 +28,31 @@ describe("chatApi streaming error handling", () => {
     });
 
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the active UI language with all streaming requests", async () => {
+    await i18n.changeLanguage("en");
+
+    const requestFunctions = [
+      () => streamChatMessage("hello", null, null, { onError: vi.fn() }),
+      () => streamRegenerateMessage(7, { onError: vi.fn() }),
+      () => streamEditMessage(7, 1, "updated", { onError: vi.fn() }),
+    ];
+
+    for (const invoke of requestFunctions) {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: vi.fn().mockResolvedValue({ detail: "provider error" }),
+      });
+
+      await invoke();
+
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(globalThis.fetch.mock.calls[0][1].headers).toMatchObject({
+        "Accept-Language": "en",
+      });
+    }
   });
 
   it("reports a reader transport error instead of rejecting", async () => {

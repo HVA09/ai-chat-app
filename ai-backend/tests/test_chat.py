@@ -5,11 +5,115 @@ from datetime import datetime, timezone
 """
 from unittest.mock import AsyncMock
 
+import httpx
+
 from app.config import settings as app_settings
 from app.models.conversation import Message, MessageRole
 from app.models.user import User
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
+
+
+def test_chat_stream_error_message_explains_rate_limit():
+    request = httpx.Request("POST", "https://provider.example/v1/chat/completions")
+    response = httpx.Response(429, request=request)
+    exc = httpx.HTTPStatusError("too many requests", request=request, response=response)
+
+    message = chat_router_module._chat_stream_error_message(exc, "generic error")
+
+    assert "حد الاستخدام أو معدل الطلبات" in message
+    assert "أعد المحاولة" in message
+    assert "generic error" not in message
+
+
+def test_chat_stream_error_message_explains_temporary_provider_failures():
+    for status_code in (502, 503, 504):
+        request = httpx.Request("POST", "https://provider.example/v1/chat/completions")
+        response = httpx.Response(status_code, request=request)
+        exc = httpx.HTTPStatusError(
+            "upstream unavailable",
+            request=request,
+            response=response,
+        )
+
+        assert chat_router_module._chat_stream_error_message(
+            exc, "حدث خطأ أثناء توليد الرد"
+        ) == "مزوّد الذكاء الاصطناعي غير متاح مؤقتًا. أعد المحاولة لاحقًا."
+
+
+def test_chat_stream_error_message_keeps_generic_for_unclassified_exception():
+    assert chat_router_module._chat_stream_error_message(
+        RuntimeError("internal detail"),
+        "حدث خطأ أثناء توليد الرد",
+    ) == "حدث خطأ أثناء توليد الرد"
+
+
+def test_chat_stream_error_message_keeps_generic_for_other_http_statuses():
+    request = httpx.Request("POST", "https://provider.example/v1/chat/completions")
+    response = httpx.Response(500, request=request)
+    exc = httpx.HTTPStatusError("internal error", request=request, response=response)
+
+    assert chat_router_module._chat_stream_error_message(
+        exc,
+        "حدث خطأ أثناء توليد الرد",
+    ) == "حدث خطأ أثناء توليد الرد"
+
+
+def test_chat_stream_error_message_localizes_safe_fallback_for_unknown_exception():
+    message = chat_router_module._chat_stream_error_message(
+        RuntimeError("internal provider details must not be exposed"),
+        "حدث خطأ أثناء توليد الرد",
+        "en-US,en;q=0.9",
+        "An error occurred while generating the response.",
+    )
+
+    assert message == "An error occurred while generating the response."
+    assert "internal provider details" not in message
+
+
+def test_chat_stream_error_message_localizes_safe_fallback_for_other_http_statuses():
+    request = httpx.Request("POST", "https://provider.example/v1/chat/completions")
+    response = httpx.Response(500, request=request)
+    exc = httpx.HTTPStatusError("internal provider details", request=request, response=response)
+
+    message = chat_router_module._chat_stream_error_message(
+        exc,
+        "حدث خطأ أثناء توليد الرد",
+        "en",
+        "An error occurred while generating the response.",
+    )
+
+    assert message == "An error occurred while generating the response."
+    assert "internal provider details" not in message
+
+
+def test_chat_stream_error_message_supports_english_locale():
+    request = httpx.Request("POST", "https://provider.example/v1/chat/completions")
+    response = httpx.Response(429, request=request)
+    exc = httpx.HTTPStatusError("too many requests", request=request, response=response)
+
+    message = chat_router_module._chat_stream_error_message(
+        exc, "generic error", "en-US,en;q=0.9"
+    )
+
+    assert "usage limit or request rate" in message
+    assert "try again" in message
+    assert "generic error" not in message
+
+
+def test_chat_stream_error_message_localizes_temporary_provider_failures():
+    for status_code in (502, 503, 504):
+        request = httpx.Request("POST", "https://provider.example/v1/chat/completions")
+        response = httpx.Response(status_code, request=request)
+        exc = httpx.HTTPStatusError(
+            "upstream unavailable",
+            request=request,
+            response=response,
+        )
+
+        assert chat_router_module._chat_stream_error_message(
+            exc, "حدث خطأ أثناء توليد الرد", "en"
+        ) == "The AI provider is temporarily unavailable. Please try again later."
 
 
 def _register_and_login(client, email="chat@example.com", password="StrongPass123"):
@@ -1287,3 +1391,36 @@ def test_chat_analyze_asks_for_a_filename_when_multiple_data_files_are_attached(
     assert "أرفقت أكثر من ملف بيانات" in detail
     assert "sales.csv" in detail
     assert "expenses.csv" in detail
+
+def test_chat_stream_sends_localized_provider_rate_limit_message(client, monkeypatch):
+    token = _register_and_login(client, "provider-rate-limit-stream@example.com")
+    request = httpx.Request("POST", "https://provider.example/v1/chat/completions")
+    provider_response = httpx.Response(429, request=request)
+    provider_error = httpx.HTTPStatusError(
+        "too many requests",
+        request=request,
+        response=provider_response,
+    )
+
+    async def rate_limited_stream(*args, **kwargs):
+        if False:
+            yield ""
+        raise provider_error
+
+    monkeypatch.setattr(chat_router_module, "stream_ai_reply", rate_limited_stream)
+
+    response = client.post(
+        "/chat/stream",
+        json={"message": "Explain rate limits"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept-Language": "en",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "event: error" in response.text
+    assert "usage limit or request rate" in response.text
+    assert "check the provider's quota" in response.text
+    assert "too many requests" not in response.text
+
