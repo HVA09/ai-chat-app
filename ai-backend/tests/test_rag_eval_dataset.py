@@ -364,3 +364,64 @@ def test_evaluator_checks_embedding_configuration_before_requests(monkeypatch):
 
     assert events == ["resolve_config", "embed_documents", "embed_query"]
     assert report["embedding_model"] == "test-model"
+
+
+def test_rag_default_mode_is_offline_and_never_calls_provider(monkeypatch, capsys):
+    runner = _load_rag_evaluation_runner()
+
+    def unexpected_provider_call(*_args, **_kwargs):
+        pytest.fail("The default benchmark command must not call an embedding provider")
+
+    async def unexpected_async_provider_call(*_args, **_kwargs):
+        pytest.fail("The default benchmark command must not call an embedding provider")
+
+    monkeypatch.setattr(runner.sys, "argv", ["evaluate_rag_retrieval.py"])
+    monkeypatch.setattr(runner, "embed_documents_sync", unexpected_provider_call)
+    monkeypatch.setattr(runner, "embed_query", unexpected_async_provider_call)
+    monkeypatch.setattr(runner, "_resolve_embedding_config", unexpected_provider_call)
+
+    assert runner.main() == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["validation_only"] is True
+    assert summary["live_embedding_requests_sent"] is False
+    assert summary["case_count"] == 12
+
+
+def test_live_benchmark_runs_only_after_explicit_opt_in(monkeypatch, capsys):
+    runner = _load_rag_evaluation_runner()
+    seen = {}
+
+    def fake_evaluate_dataset(dataset, top_k):
+        seen["case_count"] = len(dataset["cases"])
+        seen["top_k"] = top_k
+        return {"benchmark": "test", "live_embedding_requests_sent": True}
+
+    def unexpected_offline_summary(_dataset):
+        pytest.fail("--run-live must not return an offline-only summary")
+
+    monkeypatch.setattr(
+        runner.sys,
+        "argv",
+        ["evaluate_rag_retrieval.py", "--run-live", "--top-k", "2"],
+    )
+    monkeypatch.setattr(runner, "evaluate_dataset", fake_evaluate_dataset)
+    monkeypatch.setattr(runner, "dataset_validation_summary", unexpected_offline_summary)
+
+    assert runner.main() == 0
+    report = json.loads(capsys.readouterr().out)
+    assert seen == {"case_count": 12, "top_k": 2}
+    assert report["live_embedding_requests_sent"] is True
+
+
+def test_live_and_validate_only_modes_cannot_be_combined(monkeypatch):
+    runner = _load_rag_evaluation_runner()
+    monkeypatch.setattr(
+        runner.sys,
+        "argv",
+        ["evaluate_rag_retrieval.py", "--validate-only", "--run-live"],
+    )
+
+    with pytest.raises(SystemExit) as error:
+        runner.main()
+
+    assert error.value.code == 2
