@@ -265,6 +265,46 @@ def test_chat_does_not_include_another_users_saved_memory(client, monkeypatch):
     assert "[USER MEMORY]" not in sent_message
 
 
+
+def test_project_memory_is_not_loaded_when_access_is_denied(
+    client, monkeypatch, db_session
+):
+    token = _register_and_login(client, "project-memory-acl@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_response = client.post(
+        "/workspaces",
+        json={"name": "Memory ACL workspace"},
+        headers=headers,
+    )
+    assert workspace_response.status_code == 201
+    workspace_id = workspace_response.json()["id"]
+
+    project_response = client.post(
+        "/projects",
+        json={"workspace_id": workspace_id, "name": "Memory ACL project"},
+        headers=headers,
+    )
+    assert project_response.status_code == 201
+    project_id = project_response.json()["id"]
+
+    created = client.post(
+        f"/projects/{project_id}/memories",
+        json={"content": "PROJECT-MEMORY-ACL-MUST-NOT-LEAK"},
+        headers=headers,
+    )
+    assert created.status_code == 201
+
+    user = client.get("/users/me", headers=headers).json()
+    monkeypatch.setattr(chat_router_module, "can_read_project", lambda *_args: False)
+
+    context = chat_router_module._build_memory_context(
+        user["id"], project_id, db_session
+    )
+
+    assert "[PROJECT MEMORY]" not in context
+    assert "PROJECT-MEMORY-ACL-MUST-NOT-LEAK" not in context
+
+
 def test_chat_includes_conversation_summary_in_ai_context(client, monkeypatch, db_session):
     mock_reply = AsyncMock(return_value=AIReply(text="رد"))
     monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
