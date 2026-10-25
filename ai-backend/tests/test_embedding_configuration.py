@@ -212,3 +212,64 @@ def test_document_embeddings_use_openai_compatible_endpoint_and_separate_key(
     assert captured["json"]["model"] == "text-embedding-3-small"
     assert captured["json"]["dimensions"] == 3
     assert captured["json"]["input"] == ["Linux", "TCP/IP"]
+
+
+def test_document_embeddings_use_native_gemini_batch_endpoint(monkeypatch):
+    _set_embedding_settings(
+        monkeypatch,
+        AI_PROVIDER="openai",
+        AI_API_KEY="chat-secret",
+        EMBEDDING_PROVIDER="gemini",
+        EMBEDDING_API_KEY="embedding-secret",
+        EMBEDDING_MODEL="gemini-embedding-001",
+        EMBEDDING_DIMENSIONS=3,
+    )
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "embeddings": [
+                    {"values": [1.0, 0.0, 0.0]},
+                    {"values": [0.0, 1.0, 0.0]},
+                ]
+            }
+
+    class FakeSyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def post(self, url, *, headers, json):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["json"] = json
+            return FakeResponse()
+
+    monkeypatch.setattr(embeddings.httpx, "Client", FakeSyncClient)
+
+    vectors = embeddings.embed_documents_sync(["Linux", "TCP/IP"])
+
+    assert len(vectors) == 2
+    assert captured["url"] == (
+        "https://generativelanguage.googleapis.com/v1beta/"
+        "models/gemini-embedding-001:batchEmbedContents"
+    )
+    assert captured["headers"]["x-goog-api-key"] == "embedding-secret"
+    assert "Authorization" not in captured["headers"]
+    first_request = captured["json"]["requests"][0]
+    assert first_request["model"] == "models/gemini-embedding-001"
+    assert first_request["embedContentConfig"] == {
+        "taskType": "RETRIEVAL_DOCUMENT",
+        "outputDimensionality": 3,
+    }
