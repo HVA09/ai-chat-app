@@ -146,7 +146,18 @@ def test_retrieval_metrics_calculate_recall_precision_and_reciprocal_rank():
 
     assert scores["recall_at_3"] == pytest.approx(1.0)
     assert scores["precision_at_3"] == pytest.approx(2 / 3)
+    assert 0.0 < scores["ndcg_at_3"] < 1.0
     assert scores["reciprocal_rank"] == pytest.approx(0.5)
+
+
+def test_retrieval_ndcg_is_one_for_perfect_graded_ranking():
+    scores = score_ranked_results(
+        ["high", "partial", "negative"],
+        {"high": 2, "partial": 1, "negative": 0},
+        k=3,
+    )
+
+    assert scores["ndcg_at_3"] == pytest.approx(1.0)
 
 
 def test_retrieval_metrics_allow_no_relevant_documents_without_division_error():
@@ -158,6 +169,7 @@ def test_retrieval_metrics_allow_no_relevant_documents_without_division_error():
 
     assert scores["recall_at_3"] == 0.0
     assert scores["precision_at_3"] == 0.0
+    assert scores["ndcg_at_3"] == 0.0
     assert scores["reciprocal_rank"] == 0.0
 
 
@@ -170,6 +182,9 @@ def test_retrieval_metrics_reject_bad_k_duplicates_and_missing_labels():
 
     with pytest.raises(ValueError, match="Missing relevance labels"):
         score_ranked_results(["unknown"], {}, k=1)
+
+    with pytest.raises(ValueError, match="integer grades 0, 1, or 2"):
+        score_ranked_results(["doc"], {"doc": 3}, k=1)
 
 
 def test_benchmark_runner_calculates_metrics_without_live_provider_calls(monkeypatch):
