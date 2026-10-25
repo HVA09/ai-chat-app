@@ -2,9 +2,10 @@
 import json
 from unittest.mock import AsyncMock
 
-from app.models.conversation import Conversation
 from app.routers import memories as memories_router_module
 from app.services.ai_providers.base import AIReply
+
+
 def _register_and_login(client, email, password="StrongPass123"):
     client.post("/auth/register", json={"email": email, "password": password})
     response = client.post("/auth/login", json={"email": email, "password": password})
