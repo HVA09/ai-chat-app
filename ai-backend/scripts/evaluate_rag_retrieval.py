@@ -206,11 +206,22 @@ def evaluate_dataset(dataset: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--top-k", type=int, default=3, help="Cutoff for Recall@k and Precision@k.")
     parser.add_argument(
+        "--top-k",
+        type=int,
+        default=3,
+        help="Cutoff for Recall@k and Precision@k (used with --run-live).",
+    )
+    run_mode = parser.add_mutually_exclusive_group()
+    run_mode.add_argument(
         "--validate-only",
         action="store_true",
-        help="Validate the fixture and summarize it offline; do not call the embedding provider.",
+        help="Validate and summarize the local fixture without calling the provider (default).",
+    )
+    run_mode.add_argument(
+        "--run-live",
+        action="store_true",
+        help="Explicitly request live embeddings from the configured provider; this may consume quota or cost money.",
     )
     parser.add_argument(
         "--output",
@@ -221,10 +232,11 @@ def main() -> int:
 
     try:
         dataset = load_dataset()
+        # Safety first: no provider calls occur unless the user explicitly opts in.
         report = (
-            dataset_validation_summary(dataset)
-            if args.validate_only
-            else evaluate_dataset(dataset, top_k=args.top_k)
+            evaluate_dataset(dataset, top_k=args.top_k)
+            if args.run_live
+            else dataset_validation_summary(dataset)
         )
     except (OSError, ValueError, KeyError, json.JSONDecodeError, EmbeddingServiceError) as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr)
@@ -238,6 +250,7 @@ def main() -> int:
     else:
         print(rendered)
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
