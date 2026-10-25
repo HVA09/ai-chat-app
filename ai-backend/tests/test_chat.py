@@ -6,12 +6,33 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import httpx
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import QueuePool
 
 from app.config import settings as app_settings
 from app.models.conversation import Message, MessageRole
 from app.models.user import User
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
+
+
+def test_stream_connection_is_released_before_streaming():
+    """A long SSE response should not reserve a connection during external work."""
+    engine = create_engine("sqlite://", poolclass=QueuePool)
+    db = sessionmaker(bind=engine)()
+
+    try:
+        db.execute(text("SELECT 1")).scalar_one()
+        assert engine.pool.checkedout() == 1
+
+        chat_router_module._release_db_connection_before_streaming(db)
+
+        assert engine.pool.checkedout() == 0
+        assert db.expire_on_commit is False
+    finally:
+        db.close()
+        engine.dispose()
 
 
 def test_chat_stream_error_message_explains_rate_limit():
