@@ -349,9 +349,8 @@ describe("FilesPanel project knowledge", () => {
     expect(listFiles).toHaveBeenCalledTimes(2);
   });
 
-});
 
-  it("keeps image indexing retry available after provider failure", async () => {
+  it("keeps image indexing retry available after provider failure, async () => {
     const file = {
       id: 89,
       original_filename: "retry-chart.png",
@@ -410,4 +409,4 @@ describe("FilesPanel project knowledge", () => {
   });
 
 
-}
+});
