@@ -205,9 +205,10 @@ def _file_response(
         )
         .first()
     )
-    response.is_ai_indexed = has_embedding or (
-        file.content_type.startswith("image/") and file.extracted_text is not None
-    )
+    # "AI indexed" means semantic chunks exist. A saved image description without
+    # embeddings is still available to the text fallback, but must remain retryable
+    # from the UI so the user can complete semantic indexing when the provider recovers.
+    response.is_ai_indexed = has_embedding
     return response
 
 
