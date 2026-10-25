@@ -68,14 +68,12 @@ logger = get_logger("chat")
 
 
 def _release_db_connection_before_streaming(db: Session) -> None:
-    """Release the request's current DB connection before an SSE stream waits on external work.
+    """Return a checked-out connection before a non-Agent SSE stream waits externally.
 
-    FastAPI keeps request-scoped dependencies alive until a StreamingResponse ends.
-    Commit the prepared state before yielding events and preserve loaded ORM values,
-    so simple field access does not silently check out another connection mid-stream.
-    Any later database operation will acquire a connection only when it is needed.
+    The endpoint sets expire_on_commit=False before its first transaction so loaded
+    scalar ORM values remain available after this commit without a lazy refresh.
+    Any later database write acquires a connection only when persistence is needed.
     """
-    db.expire_on_commit = False
     db.commit()
 
 MAX_HISTORY_MESSAGES = 20  # يحدّ من نمو الاستعلام وتكلفة/زمن استدعاء AI بمحادثة طويلة جدًا
@@ -1410,11 +1408,16 @@ async def chat_stream(
     أحداث SSE: conversation (رقم المحادثة) → chunk (جزء نص، مرارًا) → done | error
     الأسطر الجديدة داخل chunk تُستبدل بـ \\\n نصية عشان ما تكسر صيغة السطر الواحد لكل حدث.
     """
+    agent_task = extract_agent_request(payload.message)
+    if agent_task is None:
+        # Set this before any commit; otherwise loaded ORM values may expire and
+        # trigger a new checkout from the bounded pool while the stream is open.
+        db.expire_on_commit = False
+
     conversation = _get_or_create_conversation(payload, current_user, db)
     _attach_requested_files(payload.file_ids, conversation, current_user, db)
     if conversation.workspace_id is not None:
         enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
-    agent_task = extract_agent_request(payload.message)
     if agent_task is not None:
         async def agent_event_generator():
             queue: asyncio.Queue[dict] = asyncio.Queue()
@@ -1944,6 +1947,7 @@ async def regenerate_chat_stream(
     db: Session = Depends(get_db),
 ):
     """إعادة توليد آخر رد مساعد بدون إضافة رسالة مستخدم مكررة."""
+    db.expire_on_commit = False
     conversation = (
         db.query(Conversation)
         .filter(
@@ -2063,6 +2067,7 @@ async def edit_chat_stream(
     db: Session = Depends(get_db),
 ):
     """تعديل رسالة مستخدم سابقة ثم إعادة توليد بقية المحادثة من موقع التعديل."""
+    db.expire_on_commit = False
     conversation = (
         db.query(Conversation)
         .filter(
