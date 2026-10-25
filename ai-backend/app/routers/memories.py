@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_current_user
+from app.dependencies import (
+    enforce_daily_ai_limit,
+    enforce_workspace_daily_ai_limit,
+    get_current_user,
+  )
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.usage_log import UsageLog
 from app.models.user import User
@@ -32,8 +36,10 @@ MAX_SUGGESTIONS = 5
 _SECRET_OR_IDENTIFIER_PATTERNS = (
     re.compile(
         r"(?i)\b(?:password|passwd|passphrase|api[ _-]*key|client[ _-]*secret|"
-        r"access[ _-]*token|refresh[ _-]*token|private[ _-]*key|authorization|bearer)\b"
+        r"access[ _-]*token|refresh[ _-]*token|private[ _-]*key|authorization)\b"
+        r"\s*[:=]\s*\S+"
     ),
+    re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/=-]{16,}\b"),
     re.compile(r"(?i)\bsk-[a-z0-9_-]{12,}\b"),
     re.compile(r"(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b"),
     re.compile(r"\+?\d[\d\s().-]{8,}\d"),
@@ -68,7 +74,9 @@ def _parse_memory_suggestions(
             detail="وصلت اقتراحات الذاكرة بصيغة غير صالحة؛ أعد المحاولة.",
         )
 
-    normalized_existing = {" ".join(item.split()).casefold() for item in existing_contents}
+    normalized_existing = {
+        " ".join(item.split()).casefold() for item in existing_contents
+    }
     accepted: list[MemorySuggestion] = []
     seen = set(normalized_existing)
 
@@ -80,7 +88,11 @@ def _parse_memory_suggestions(
 
         content = item.content
         evidence = item.evidence
-        if not any(evidence in message for message in user_messages):
+        normalized_evidence = " ".join(evidence.split())
+        if not any(
+            normalized_evidence in " ".join(message.split())
+            for message in user_messages
+        ):
             continue
         if _contains_sensitive_memory_data(content) or _contains_sensitive_memory_data(evidence):
             continue
@@ -162,7 +174,11 @@ async def suggest_memories(
         remaining -= len(content)
     selected.reverse()
 
-    user_messages = [content for role, content in selected if role == MessageRole.user.value]
+    user_messages = [
+        content
+        for role, content in selected
+        if role == MessageRole.user.value
+    ]
     if not user_messages:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -193,13 +209,14 @@ async def suggest_memories(
         "\nEND UNTRUSTED TRANSCRIPT"
     )
 
-    reply = await get_ai_reply(prompt, history=[], model=conversation.ai_model or settings.AI_MODEL)
+    model = conversation.ai_model or settings.AI_MODEL
+    reply = await get_ai_reply(prompt, history=[], model=model)
     db.add(
         UsageLog(
             user_id=current_user.id,
             workspace_id=conversation.workspace_id,
             endpoint="/memories/suggest",
-            model=conversation.ai_model or settings.AI_MODEL,
+            model=model,
             input_tokens=reply.input_tokens,
             output_tokens=reply.output_tokens,
             provider=reply.provider,
