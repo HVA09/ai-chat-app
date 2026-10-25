@@ -4,6 +4,7 @@
   "metrics": [
     "recall_at_3",
     "precision_at_3",
+    "ndcg_at_3",
     "reciprocal_rank"
   ],
   "cases": [
