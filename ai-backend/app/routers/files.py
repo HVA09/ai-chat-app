@@ -569,6 +569,43 @@ async def index_image_for_rag(
         )
 
     if attachment.extracted_text:
+        has_embedding = (
+            db.query(FileChunk.id)
+            .filter(
+                FileChunk.file_id == attachment.id,
+                FileChunk.embedding.is_not(None),
+            )
+            .first()
+        )
+        if has_embedding:
+            return _file_response(attachment, current_user, db)
+
+        # A previous attempt may have saved the image description but failed
+        # to generate embeddings. Retry indexing the stored text without
+        # calling the vision model again or charging for another image analysis.
+        try:
+            indexed_chunks = index_file_chunks(db, attachment)
+        except EmbeddingServiceError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="تعذر فهرسة وصف الصورة الآن. أعد المحاولة لاحقًا.",
+            ) from exc
+
+        if indexed_chunks < 1:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="لا يوجد نص قابل للفهرسة في وصف الصورة.",
+            )
+
+        db.commit()
+        db.refresh(attachment)
+        log_event(
+            db,
+            "file_rag_indexed",
+            f"إعادة فهرسة وصف الصورة: {attachment.original_filename} ({indexed_chunks} مقطع)",
+            current_user.id,
+        )
         return _file_response(attachment, current_user, db)
 
     enforce_daily_ai_limit(current_user, db)
