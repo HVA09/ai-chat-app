@@ -1,7 +1,9 @@
 """Offline integrity and metric tests for the RAG retrieval evaluation benchmark."""
+import importlib.util
 import json
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -168,3 +170,65 @@ def test_retrieval_metrics_reject_bad_k_duplicates_and_missing_labels():
 
     with pytest.raises(ValueError, match="Missing relevance labels"):
         score_ranked_results(["unknown"], {}, k=1)
+
+
+def test_benchmark_runner_calculates_metrics_without_live_provider_calls(monkeypatch):
+    runner_path = Path(__file__).parents[1] / "scripts" / "evaluate_rag_retrieval.py"
+    spec = importlib.util.spec_from_file_location("rag_retrieval_eval_runner", runner_path)
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    def fake_embed_documents(texts):
+        return [
+            [1.0, 0.0] if "relevant" in text else [0.0, 1.0]
+            for text in texts
+        ]
+
+    async def fake_embed_query(_query):
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(runner, "embed_documents_sync", fake_embed_documents)
+    monkeypatch.setattr(runner, "embed_query", fake_embed_query)
+    monkeypatch.setattr(
+        runner,
+        "_resolve_embedding_config",
+        lambda: SimpleNamespace(provider="test", model="test-model"),
+    )
+
+    report = runner.evaluate_dataset(
+        {
+            "schema_version": 1,
+            "cases": [
+                {
+                    "id": "UNIT-001",
+                    "domain": "programming",
+                    "query": "find the relevant document",
+                    "documents": [
+                        {
+                            "id": "relevant",
+                            "relevance": 2,
+                            "title": "Relevant",
+                            "text": "This relevant document answers the query.",
+                        },
+                        {
+                            "id": "negative",
+                            "relevance": 0,
+                            "title": "Negative",
+                            "text": "This unrelated negative document talks about cooking.",
+                        },
+                    ],
+                    "critical_failure": "Rank the irrelevant document first.",
+                }
+            ],
+        },
+        top_k=2,
+    )
+
+    assert report["embedding_provider"] == "test"
+    assert report["embedding_model"] == "test-model"
+    assert report["case_count"] == 1
+    assert report["cases"][0]["ranked_documents"][0]["id"] == "relevant"
+    assert report["macro_average"]["recall_at_2"] == pytest.approx(1.0)
+    assert report["macro_average"]["precision_at_2"] == pytest.approx(0.5)
+    assert report["macro_average"]["reciprocal_rank"] == pytest.approx(1.0)
