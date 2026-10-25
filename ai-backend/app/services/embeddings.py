@@ -35,10 +35,23 @@ class EmbeddingConfig:
 
 
 def _normalize(vector: Sequence[float]) -> list[float]:
-    values = [float(value) for value in vector]
+    try:
+        values = [float(value) for value in vector]
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise EmbeddingServiceError(
+            "تحتوي استجابة embeddings على قيم غير رقمية"
+        ) from exc
+
+    if not values or any(not math.isfinite(value) for value in values):
+        raise EmbeddingServiceError(
+            "تحتوي استجابة embeddings على قيم غير منتهية أو فارغة"
+        )
+
     norm = math.sqrt(sum(value * value for value in values))
+    if not math.isfinite(norm):
+        raise EmbeddingServiceError("معيار embedding خارج النطاق الرقمي")
     if norm == 0:
-        return values
+        raise EmbeddingServiceError("أعاد مزوّد embeddings متجهًا صفريًا غير صالح")
     return [value / norm for value in values]
 
 
@@ -224,6 +237,12 @@ def _validate_embedding_vectors(
                 "أبعاد embedding لا تطابق مخطط قاعدة البيانات: "
                 f"المتوقع {expected_dimensions}، والمستلم {len(vector)}."
             )
+        if any(not math.isfinite(value) for value in vector):
+            raise EmbeddingServiceError(
+                "يحتوي embedding على قيم غير منتهية أو غير صالحة"
+            )
+        if not any(value != 0 for value in vector):
+            raise EmbeddingServiceError("متجه embedding الصفري غير صالح للاسترجاع")
     return vectors
 
 
