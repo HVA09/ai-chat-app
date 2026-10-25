@@ -2,6 +2,7 @@
 import json
 from unittest.mock import AsyncMock
 
+from app.routers import chat as chat_router_module
 from app.routers import memories as memories_router_module
 from app.services.ai_providers.base import AIReply
 
@@ -99,6 +100,11 @@ def test_suggest_memories_returns_reviewable_candidates_without_saving(
     monkeypatch.setattr(
         memories_router_module, "get_ai_reply", mock_reply
     )
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تجريبي")),
+    )
 
     token = _register_and_login(client, "memory-suggestions@example.com")
     headers = {"Authorization": f"Bearer {token}"}
@@ -134,6 +140,11 @@ def test_suggest_memories_cannot_read_another_users_conversation(
     mock_reply = AsyncMock(return_value=AIReply(text='{"suggestions": []}'))
     monkeypatch.setattr(
         memories_router_module, "get_ai_reply", mock_reply
+    )
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تجريبي")),
     )
 
     owner_token = _register_and_login(client, "memory-suggest-owner@example.com")
