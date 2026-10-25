@@ -1,20 +1,35 @@
-"""خدمة embeddings لاستخدامها في فهرسة الملفات واسترجاع RAG."""
+"""خدمة embeddings مستقلة عن مزوّد المحادثة، لفهرسة الملفات واسترجاع RAG."""
 from __future__ import annotations
 
 import math
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import httpx
 
 from app.config import settings
 
-DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001"
-DEFAULT_EMBEDDING_DIMENSIONS = 768
+
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+DEFAULT_EMBEDDING_MODELS = {
+    "gemini": "gemini-embedding-001",
+    "openai": "text-embedding-3-small",
+    "openai-compatible": "text-embedding-3-small",
+}
+SUPPORTED_EMBEDDING_PROVIDERS = frozenset(DEFAULT_EMBEDDING_MODELS)
 MAX_EMBEDDING_BATCH = 32
 
 
 class EmbeddingServiceError(RuntimeError):
-    """خطأ قابل للعرض في اللوق عند فشل توليد embeddings."""
+    """خطأ آمن نسبيًا يمكن تسجيله عند فشل خدمة embeddings."""
+
+
+@dataclass(frozen=True)
+class EmbeddingConfig:
+    provider: str
+    api_key: str
+    base_url: str
+    model: str
 
 
 def _normalize(vector: Sequence[float]) -> list[float]:
@@ -25,14 +40,114 @@ def _normalize(vector: Sequence[float]) -> list[float]:
     return [value / norm for value in values]
 
 
-def _gemini_url(action: str) -> str:
-    base = settings.AI_API_BASE_URL.rstrip("/")
+def _normalize_gemini_base_url(base_url: str) -> str:
+    """Convert a Gemini API root or OpenAI-compat URL to its native REST root."""
+    base = base_url.strip().rstrip("/")
+    if not base:
+        return GEMINI_BASE_URL
     if base.endswith("/openai"):
         base = base[: -len("/openai")].rstrip("/")
-    return f"{base}/models/{settings.EMBEDDING_MODEL}:{action}"
+    if base.endswith("/v1beta"):
+        return base
+    return f"{base}/v1beta"
+
+
+def _resolve_embedding_config() -> EmbeddingConfig:
+    """Resolve independent embedding settings while preserving older deployments.
+
+    EMBEDDING_PROVIDER can override the chat provider. If omitted, provider
+    selection follows AI_PROVIDER, except when an explicitly configured model
+    clearly identifies the Gemini or OpenAI embedding family.
+    """
+    configured_provider = (settings.EMBEDDING_PROVIDER or "").strip().lower()
+    configured_model = (settings.EMBEDDING_MODEL or "").strip()
+    chat_provider = (settings.AI_PROVIDER or "").strip().lower()
+
+    if configured_provider:
+        provider = configured_provider
+    elif configured_model.startswith("gemini-embedding-"):
+        provider = "gemini"
+    elif configured_model.startswith("text-embedding-"):
+        provider = "openai"
+    else:
+        provider = chat_provider
+
+    if configured_provider and provider not in SUPPORTED_EMBEDDING_PROVIDERS:
+        supported = ", ".join(sorted(SUPPORTED_EMBEDDING_PROVIDERS))
+        raise EmbeddingServiceError(
+            f"EMBEDDING_PROVIDER غير مدعوم. الخيارات المتاحة: {supported}"
+        )
+
+    # Historically, all non-Gemini providers used the OpenAI-compatible
+    # /embeddings endpoint. Keep that behavior for old configurations.
+    if provider not in SUPPORTED_EMBEDDING_PROVIDERS:
+        provider = "openai-compatible"
+
+    model = configured_model or DEFAULT_EMBEDDING_MODELS[provider]
+    api_key = (
+        (settings.EMBEDDING_API_KEY or "").strip()
+        or (settings.AI_API_KEY or "").strip()
+    )
+    configured_base_url = (settings.EMBEDDING_API_BASE_URL or "").strip()
+    chat_base_url = (settings.AI_API_BASE_URL or "").strip()
+
+    if not api_key:
+        raise EmbeddingServiceError(
+            "مفتاح embeddings غير مضبوط. عيّن EMBEDDING_API_KEY أو AI_API_KEY."
+        )
+    if settings.EMBEDDING_DIMENSIONS <= 0:
+        raise EmbeddingServiceError("EMBEDDING_DIMENSIONS يجب أن يكون عددًا موجبًا.")
+
+    if provider == "gemini":
+        if configured_base_url:
+            base_url = _normalize_gemini_base_url(configured_base_url)
+        elif (
+            not configured_provider
+            and "generativelanguage.googleapis.com" in chat_base_url
+        ):
+            # Preserve existing Gemini-compatible deployments that put
+            # /v1beta/openai in AI_API_BASE_URL.
+            base_url = _normalize_gemini_base_url(chat_base_url)
+        else:
+            base_url = GEMINI_BASE_URL
+    else:
+        base_url = (configured_base_url or chat_base_url).rstrip("/")
+        if not base_url:
+            raise EmbeddingServiceError(
+                "عنوان خدمة embeddings غير مضبوط. عيّن EMBEDDING_API_BASE_URL أو AI_API_BASE_URL."
+            )
+
+    return EmbeddingConfig(
+        provider=provider,
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+    )
+
+
+def _embedding_headers(config: EmbeddingConfig) -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    if config.provider == "gemini":
+        headers["x-goog-api-key"] = config.api_key
+    else:
+        headers["Authorization"] = f"Bearer {config.api_key}"
+    return headers
+
+
+def _embedding_url(config: EmbeddingConfig, gemini_action: str) -> str:
+    if config.provider == "gemini":
+        return f"{config.base_url}/models/{config.model}:{gemini_action}"
+    return f"{config.base_url}/embeddings"
 
 
 def _extract_embedding_vectors(data: dict) -> list[list[float]]:
+    """Read both Gemini's singular embedContent response and batch/OpenAI responses."""
+    single_embedding = data.get("embedding")
+    if isinstance(single_embedding, dict) and isinstance(
+        single_embedding.get("values"), list
+    ):
+        return [_normalize(single_embedding["values"])]
+
     embeddings = data.get("embeddings")
     if isinstance(embeddings, list):
         vectors = []
@@ -54,107 +169,110 @@ def _extract_embedding_vectors(data: dict) -> list[list[float]]:
     raise EmbeddingServiceError("صيغة embeddings غير متوقعة من مزوّد الذكاء الاصطناعي")
 
 
-def _gemini_headers() -> dict[str, str]:
-    return {
-        "Content-Type": "application/json",
-        "x-goog-api-key": settings.AI_API_KEY,
-    }
+def _validate_embedding_vectors(
+    vectors: list[list[float]], expected_count: int
+) -> list[list[float]]:
+    if len(vectors) != expected_count:
+        raise EmbeddingServiceError("عدد embeddings لا يطابق عدد المدخلات")
+
+    expected_dimensions = settings.EMBEDDING_DIMENSIONS
+    for vector in vectors:
+        if len(vector) != expected_dimensions:
+            raise EmbeddingServiceError(
+                "أبعاد embedding لا تطابق مخطط قاعدة البيانات: "
+                f"المتوقع {expected_dimensions}، والمستلم {len(vector)}."
+            )
+    return vectors
 
 
-def _openai_headers() -> dict[str, str]:
+def _gemini_embedding_config(task_type: str) -> dict[str, str | int]:
     return {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {settings.AI_API_KEY}",
+        "taskType": task_type,
+        "outputDimensionality": settings.EMBEDDING_DIMENSIONS,
     }
 
 
 def embed_documents_sync(texts: Sequence[str]) -> list[list[float]]:
-    """يولّد embeddings للمقاطع. الإخراج دائمًا بحجم EMBEDDING_DIMENSIONS."""
+    """Generate document embeddings with the configured embedding provider."""
     if not texts:
         return []
 
-    provider = settings.AI_PROVIDER.lower().strip()
+    config = _resolve_embedding_config()
     all_vectors: list[list[float]] = []
 
-    with httpx.Client(timeout=45.0) as client:
-        for start in range(0, len(texts), MAX_EMBEDDING_BATCH):
-            batch = list(texts[start : start + MAX_EMBEDDING_BATCH])
-            if provider == "gemini":
-                payload = {
-                    "requests": [
-                        {
-                            "model": f"models/{settings.EMBEDDING_MODEL}",
-                            "content": {"parts": [{"text": text}]},
-                            "taskType": "RETRIEVAL_DOCUMENT",
-                            "output_dimensionality": settings.EMBEDDING_DIMENSIONS,
-                        }
-                        for text in batch
-                    ]
-                }
-                response = client.post(
-                    _gemini_url("batchEmbedContents"),
-                    headers=_gemini_headers(),
-                    json=payload,
-                )
-            else:
-                payload = {
-                    "model": settings.EMBEDDING_MODEL,
-                    "input": batch,
-                }
-                if settings.EMBEDDING_DIMENSIONS:
-                    payload["dimensions"] = settings.EMBEDDING_DIMENSIONS
-                response = client.post(
-                    f"{settings.AI_API_BASE_URL.rstrip('/')}/embeddings",
-                    headers=_openai_headers(),
-                    json=payload,
-                )
+    try:
+        with httpx.Client(timeout=45.0) as client:
+            for start in range(0, len(texts), MAX_EMBEDDING_BATCH):
+                batch = list(texts[start : start + MAX_EMBEDDING_BATCH])
+                if config.provider == "gemini":
+                    payload = {
+                        "requests": [
+                            {
+                                "model": f"models/{config.model}",
+                                "content": {"parts": [{"text": text}]},
+                                "embedContentConfig": _gemini_embedding_config(
+                                    "RETRIEVAL_DOCUMENT"
+                                ),
+                            }
+                            for text in batch
+                        ]
+                    }
+                    response = client.post(
+                        _embedding_url(config, "batchEmbedContents"),
+                        headers=_embedding_headers(config),
+                        json=payload,
+                    )
+                else:
+                    payload = {
+                        "model": config.model,
+                        "input": batch,
+                        "dimensions": settings.EMBEDDING_DIMENSIONS,
+                    }
+                    response = client.post(
+                        _embedding_url(config, "embedContent"),
+                        headers=_embedding_headers(config),
+                        json=payload,
+                    )
 
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                raise EmbeddingServiceError(
-                    f"فشل توليد embeddings: HTTP {response.status_code}"
-                ) from exc
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    raise EmbeddingServiceError(
+                        f"فشل توليد embeddings: HTTP {response.status_code}"
+                    ) from exc
 
-            vectors = _extract_embedding_vectors(response.json())
-            if len(vectors) != len(batch):
-                raise EmbeddingServiceError("عدد embeddings لا يطابق عدد المقاطع")
-            all_vectors.extend(vectors)
+                vectors = _extract_embedding_vectors(response.json())
+                all_vectors.extend(_validate_embedding_vectors(vectors, len(batch)))
+    except httpx.RequestError as exc:
+        raise EmbeddingServiceError("تعذر الاتصال بمزوّد embeddings") from exc
 
     return all_vectors
 
 
 async def embed_query(text: str) -> list[float]:
-    """يولّد embedding لسؤال المستخدم باستخدام مهمة الاسترجاع."""
-    provider = settings.AI_PROVIDER.lower().strip()
+    """Generate an embedding for a query using the same provider/model as indexing."""
+    config = _resolve_embedding_config()
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            if provider == "gemini":
+            if config.provider == "gemini":
                 payload = {
-                    "model": f"models/{settings.EMBEDDING_MODEL}",
+                    "model": f"models/{config.model}",
                     "content": {"parts": [{"text": text}]},
-                    "taskType": "RETRIEVAL_QUERY",
-                    "outputDimensionality": settings.EMBEDDING_DIMENSIONS,
+                    "embedContentConfig": _gemini_embedding_config("RETRIEVAL_QUERY"),
                 }
-                response = await client.post(
-                    _gemini_url("embedContent"),
-                    headers=_gemini_headers(),
-                    json=payload,
-                )
             else:
                 payload = {
-                    "model": settings.EMBEDDING_MODEL,
+                    "model": config.model,
                     "input": text,
+                    "dimensions": settings.EMBEDDING_DIMENSIONS,
                 }
-                if settings.EMBEDDING_DIMENSIONS:
-                    payload["dimensions"] = settings.EMBEDDING_DIMENSIONS
-                response = await client.post(
-                    f"{settings.AI_API_BASE_URL.rstrip('/')}/embeddings",
-                    headers=_openai_headers(),
-                    json=payload,
-                )
 
+            response = await client.post(
+                _embedding_url(config, "embedContent"),
+                headers=_embedding_headers(config),
+                json=payload,
+            )
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
@@ -163,10 +281,9 @@ async def embed_query(text: str) -> list[float]:
                 ) from exc
 
             vectors = _extract_embedding_vectors(response.json())
-            if len(vectors) != 1:
-                raise EmbeddingServiceError("المزوّد لم يُرجع embedding واحدًا للسؤال")
-            return vectors[0]
+            validated = _validate_embedding_vectors(vectors, 1)
+            return validated[0]
     except httpx.RequestError as exc:
-        # Timeouts and transport errors must trigger the chat route's existing
-        # full-text file-context fallback instead of aborting the chat request.
+        # The chat route can use its existing full-text fallback if embeddings
+        # cannot be reached; do not expose upstream credentials or response data.
         raise EmbeddingServiceError("تعذر الاتصال بمزوّد embeddings") from exc
