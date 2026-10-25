@@ -1492,3 +1492,63 @@ def test_chat_stream_sends_localized_provider_rate_limit_message(client, monkeyp
     assert "check the provider's quota" in response.text
     assert "too many requests" not in response.text
 
+
+def test_chat_compare_rejects_revoked_workspace_membership_before_loading_files(
+    client, db_session, monkeypatch
+):
+    """A stale owned conversation must not load workspace context after removal."""
+    from app.models.conversation import Conversation
+    from app.models.workspace import WorkspaceMember
+
+    reply = AsyncMock(return_value=AIReply(text="test reply"))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", reply)
+    token = _register_and_login(client, "workspace-compare-revoked@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(
+        "/chat",
+        json={"message": "Create a conversation before membership revocation"},
+        headers=headers,
+    )
+    assert created.status_code == 200
+    conversation_id = created.json()["conversation_id"]
+    conversation = db_session.get(Conversation, conversation_id)
+    assert conversation is not None
+    workspace_id = conversation.workspace_id
+
+    user = db_session.query(User).filter_by(
+        email="workspace-compare-revoked@example.com"
+    ).one()
+    deleted_memberships = (
+        db_session.query(WorkspaceMember)
+        .filter(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == user.id,
+        )
+        .delete(synchronize_session=False)
+    )
+    assert deleted_memberships == 1
+    db_session.commit()
+    db_session.expire_all()
+
+    monkeypatch.setattr(
+        chat_router_module, "get_allowed_ai_models", lambda *_args: ["model-a", "model-b"]
+    )
+    file_context = AsyncMock(return_value=("private workspace file text", []))
+    monkeypatch.setattr(chat_router_module, "_build_file_context", file_context)
+    reply.reset_mock()
+
+    response = client.post(
+        "/chat/compare",
+        json={
+            "message": "Summarize the workspace files",
+            "model_a": "model-a",
+            "model_b": "model-b",
+            "conversation_id": conversation_id,
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 404
+    file_context.assert_not_awaited()
+    reply.assert_not_awaited()
