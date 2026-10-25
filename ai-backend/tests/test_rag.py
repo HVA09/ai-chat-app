@@ -604,3 +604,14 @@ def test_shared_assistant_file_chunks_stop_retrieving_after_unshare(
 
     assert revoked_rows == []
     embed_query.assert_not_awaited()
+
+    # The plain-text fallback must apply the same ACL when no scoped chunks
+    # remain; otherwise a former share can still leak extracted file contents.
+    fallback_context, fallback_sources = asyncio.run(
+        chat_router_module._build_file_context(
+            conversation, "assistant evidence", db_session
+        )
+    )
+    assert "Protected assistant knowledge" not in fallback_context
+    assert "Protected assistant evidence" not in fallback_context
+    assert fallback_sources == []
