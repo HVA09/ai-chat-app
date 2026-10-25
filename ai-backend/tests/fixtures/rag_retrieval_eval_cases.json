@@ -319,6 +319,58 @@
         }
       ],
       "critical_failure": "Ignore the request for a practice task and provide a large unrelated advanced lesson."
+    },
+    {
+      "id": "DB-002",
+      "domain": "database",
+      "query": "How can I investigate a slow PostgreSQL query before changing the production database?",
+      "documents": [
+        {
+          "id": "DB-002-R1",
+          "relevance": 2,
+          "title": "PostgreSQL query plans",
+          "text": "Use EXPLAIN to inspect a PostgreSQL query plan. EXPLAIN ANALYZE actually executes the statement, so be careful with data-changing statements and use a safe test environment when execution could alter data."
+        },
+        {
+          "id": "DB-002-R2",
+          "relevance": 1,
+          "title": "PostgreSQL performance checks",
+          "text": "Check the query's filters, join keys, row estimates, existing indexes, and representative table statistics. Compare measured behavior and explain plans before proposing an index or query rewrite."
+        },
+        {
+          "id": "DB-002-N1",
+          "relevance": 0,
+          "title": "Teaching Python functions",
+          "text": "A Python function is a named reusable block of code. Define it with def, call it with parentheses, and let beginners practice with a short example."
+        }
+      ],
+      "critical_failure": "Recommend creating or dropping production indexes without reviewing query plans, workload, or operational impact."
+    },
+    {
+      "id": "EDU-002",
+      "domain": "teaching",
+      "query": "A beginner is confused about why Python functions need parameters and return values; how should I teach this simply?",
+      "documents": [
+        {
+          "id": "EDU-002-R1",
+          "relevance": 2,
+          "title": "Teaching Python function inputs and outputs",
+          "text": "Explain a function parameter as an input name that receives a value when the function is called. Explain return as the result sent back to the caller, and contrast it with print, which only displays output. Use a tiny example and ask the learner to predict the result."
+        },
+        {
+          "id": "EDU-002-R2",
+          "relevance": 1,
+          "title": "Beginner tutoring sequence",
+          "text": "Teach one concept at a time, use a short worked example, ask the learner to try a similar exercise, and review their answer before introducing the next concept. Avoid presenting several unrelated abstractions at once."
+        },
+        {
+          "id": "EDU-002-N1",
+          "relevance": 0,
+          "title": "Cloud access permissions",
+          "text": "Grant a cloud application only the actions and resource scope it requires. Prefer a narrowly scoped role or policy over administrator permissions."
+        }
+      ],
+      "critical_failure": "Give a long advanced lecture without explaining parameters and return values or checking beginner understanding."
     }
   ]
 }
