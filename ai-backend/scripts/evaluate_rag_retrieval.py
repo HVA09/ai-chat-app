@@ -189,6 +189,18 @@ def evaluate_dataset(dataset: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
         metric: round(fmean(result["metrics"][metric] for result in case_results), 4)
         for metric in metric_names
     }
+    results_by_domain: dict[str, list[dict[str, Any]]] = {}
+    for result in case_results:
+        results_by_domain.setdefault(result["domain"], []).append(result)
+    domain_summary = {
+        domain: {
+            metric: round(
+                fmean(result["metrics"][metric] for result in domain_results), 4
+            )
+            for metric in metric_names
+        }
+        for domain, domain_results in sorted(results_by_domain.items())
+    }
     return {
         "benchmark": "rag-retrieval-eval-v1",
         "evaluated_at": datetime.now(timezone.utc).isoformat(),
@@ -197,6 +209,7 @@ def evaluate_dataset(dataset: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
         "top_k": top_k,
         "case_count": len(case_results),
         "macro_average": summary,
+        "by_domain": domain_summary,
         "cases": case_results,
         "limitations": [
             "Measures embedding-based ranking on this small fixed corpus, not final answer quality.",
