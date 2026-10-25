@@ -127,6 +127,9 @@ def evaluate_dataset(dataset: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
     if top_k < 1:
         raise ValueError("top_k must be at least 1.")
 
+    # Validate the full corpus before spending quota on any external requests.
+    dataset = validate_dataset(dataset)
+    config = _resolve_embedding_config()
     cases = dataset["cases"]
     documents = [
         document
@@ -184,7 +187,6 @@ def evaluate_dataset(dataset: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
         metric: round(fmean(result["metrics"][metric] for result in case_results), 4)
         for metric in metric_names
     }
-    config = _resolve_embedding_config()
     return {
         "benchmark": "rag-retrieval-eval-v1",
         "evaluated_at": datetime.now(timezone.utc).isoformat(),
