@@ -434,7 +434,7 @@ export default function App() {
   });
 
   const handleSuggestMemories = async () => {
-    if (!conversationId || loading || readOnlyConversation || memorySuggestionsLoading) return;
+    if (\n      !conversationId ||\n      loading ||\n      readOnlyConversation ||\n      memorySuggestionsLoading ||\n      savingSuggestedMemoryContent\n    ) return;
 
     const requestedConversationId = conversationId;
     const requestId = ++memorySuggestionsRequestRef.current;
@@ -474,9 +474,11 @@ export default function App() {
       await createMemory(suggestion.content);
       await refreshMemories();
       if (activeMemoryConversationIdRef.current === requestedConversationId) {
-        setMemorySuggestions((current) =>
-          current.filter((item) => item.content !== suggestion.content)
+        const remaining = memorySuggestions.filter(
+          (item) => item.content !== suggestion.content
         );
+        setMemorySuggestions(remaining);
+        if (remaining.length === 0) setShowMemorySuggestions(false);
       }
       setToast({ message: t("memory.suggestSaved"), type: "success" });
     } catch (err) {
@@ -485,14 +487,18 @@ export default function App() {
         type: "error",
       });
     } finally {
-      setSavingSuggestedMemoryContent("");
+      if (activeMemoryConversationIdRef.current === requestedConversationId) {
+        setSavingSuggestedMemoryContent("");
+      }
     }
   };
 
   const handleDismissMemorySuggestion = (suggestion) => {
-    setMemorySuggestions((current) =>
-      current.filter((item) => item.content !== suggestion.content)
+    const remaining = memorySuggestions.filter(
+      (item) => item.content !== suggestion.content
     );
+    setMemorySuggestions(remaining);
+    if (remaining.length === 0) setShowMemorySuggestions(false);
   };
 
   const {
@@ -1422,7 +1428,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleSuggestMemories}
-                disabled={loading || memorySuggestionsLoading}
+                disabled={loading || memorySuggestionsLoading || Boolean(savingSuggestedMemoryContent)}
                 className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 {memorySuggestionsLoading ? t("memory.suggesting") : t("memory.suggest")}
