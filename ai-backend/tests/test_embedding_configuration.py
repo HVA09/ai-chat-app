@@ -376,3 +376,49 @@ def test_embedding_dimensions_must_match_existing_database_vector_schema(
         match="يجب أن يطابق بُعد المتجهات",
     ):
         embeddings._resolve_embedding_config()
+
+@pytest.mark.parametrize("bad_value", [float("nan"), float("inf"), float("-inf")])
+def test_embedding_normalization_rejects_non_finite_values(monkeypatch, bad_value):
+    _set_embedding_settings(monkeypatch, EMBEDDING_DIMENSIONS=3)
+
+    with pytest.raises(
+        embeddings.EmbeddingServiceError,
+        match="غير منتهية",
+    ):
+        embeddings._extract_embedding_vectors(
+            {"embedding": {"values": [bad_value, 0.0, 0.0]}}
+        )
+
+
+def test_embedding_validation_rejects_non_finite_values(monkeypatch):
+    _set_embedding_settings(monkeypatch, EMBEDDING_DIMENSIONS=3)
+
+    with pytest.raises(
+        embeddings.EmbeddingServiceError,
+        match="غير منتهية",
+    ):
+        embeddings._validate_embedding_vectors([[float("nan"), 0.0, 0.0]], 1)
+
+
+def test_embedding_rejects_zero_vector(monkeypatch):
+    _set_embedding_settings(monkeypatch, EMBEDDING_DIMENSIONS=3)
+
+    with pytest.raises(
+        embeddings.EmbeddingServiceError,
+        match="صفري",
+    ):
+        embeddings._extract_embedding_vectors(
+            {"embedding": {"values": [0.0, 0.0, 0.0]}}
+        )
+
+
+def test_embedding_rejects_non_numeric_values(monkeypatch):
+    _set_embedding_settings(monkeypatch, EMBEDDING_DIMENSIONS=3)
+
+    with pytest.raises(
+        embeddings.EmbeddingServiceError,
+        match="غير رقمية",
+    ):
+        embeddings._extract_embedding_vectors(
+            {"embedding": {"values": [1.0, "not-a-number", 0.0]}}
+        )
