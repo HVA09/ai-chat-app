@@ -422,3 +422,54 @@ def test_embedding_rejects_non_numeric_values(monkeypatch):
         embeddings._extract_embedding_vectors(
             {"embedding": {"values": [1.0, "not-a-number", 0.0]}}
         )
+
+@pytest.mark.parametrize(
+    "misleading_url",
+    [
+        "https://generativelanguage.googleapis.com.attacker.example/v1beta/openai",
+        "https://attacker.example/generativelanguage.googleapis.com/v1beta/openai",
+        "http://generativelanguage.googleapis.com/v1beta/openai",
+        "https://user:password@generativelanguage.googleapis.com/v1beta/openai",
+        "https://generativelanguage.googleapis.com:8443/v1beta/openai",
+        "https://generativelanguage.googleapis.com/v1beta/openai?next=https://attacker.example",
+    ],
+)
+def test_gemini_compat_detection_rejects_misleading_urls(monkeypatch, misleading_url):
+    _set_embedding_settings(
+        monkeypatch,
+        AI_PROVIDER="gemini",
+        AI_API_KEY="chat-secret",
+        AI_API_BASE_URL=misleading_url,
+        EMBEDDING_PROVIDER="",
+        EMBEDDING_API_KEY="",
+        EMBEDDING_API_BASE_URL="",
+        EMBEDDING_MODEL="",
+        EMBEDDING_DIMENSIONS=768,
+    )
+
+    config = embeddings._resolve_embedding_config()
+
+    # A malformed or non-official chat base URL must never receive the
+    # credentials used for native Gemini embedding requests.
+    assert config.base_url == embeddings.GEMINI_BASE_URL
+    assert config.api_key == "chat-secret"
+
+
+def test_gemini_compat_detection_accepts_exact_official_origin(monkeypatch):
+    _set_embedding_settings(
+        monkeypatch,
+        AI_PROVIDER="gemini",
+        AI_API_KEY="chat-secret",
+        AI_API_BASE_URL=(
+            "https://generativelanguage.googleapis.com/v1beta/openai/"
+        ),
+        EMBEDDING_PROVIDER="",
+        EMBEDDING_API_KEY="",
+        EMBEDDING_API_BASE_URL="",
+        EMBEDDING_MODEL="",
+        EMBEDDING_DIMENSIONS=768,
+    )
+
+    config = embeddings._resolve_embedding_config()
+
+    assert config.base_url == "https://generativelanguage.googleapis.com/v1beta"
