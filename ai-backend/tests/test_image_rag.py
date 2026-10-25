@@ -296,11 +296,10 @@ def test_index_image_preserves_description_when_embeddings_fail(monkeypatch, tmp
         "get_ai_vision_reply",
         AsyncMock(return_value=AIReply(text="Quarterly revenue chart")),
     )
-    monkeypatch.setattr(
-        image_rag,
-        "index_file_chunks",
-        AsyncMock(side_effect=EmbeddingServiceError("provider unavailable")),
-    )
+    def fail_index(_db, _file):
+        raise EmbeddingServiceError("provider unavailable")
+
+    monkeypatch.setattr(image_rag, "index_file_chunks", fail_index)
 
     class FakeDB:
         def flush(self):
