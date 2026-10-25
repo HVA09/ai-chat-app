@@ -66,6 +66,18 @@ from app.services.tools.web_search import WebSearchError, extract_web_search_que
 router = APIRouter(prefix="/chat", tags=["Chat"])
 logger = get_logger("chat")
 
+
+def _release_db_connection_before_streaming(db: Session) -> None:
+    """Release the request's current DB connection before an SSE stream waits on external work.
+
+    FastAPI keeps request-scoped dependencies alive until a StreamingResponse ends.
+    Commit the prepared state before yielding events and preserve loaded ORM values,
+    so simple field access does not silently check out another connection mid-stream.
+    Any later database operation will acquire a connection only when it is needed.
+    """
+    db.expire_on_commit = False
+    db.commit()
+
 MAX_HISTORY_MESSAGES = 20  # يحدّ من نمو الاستعلام وتكلفة/زمن استدعاء AI بمحادثة طويلة جدًا
 MAX_SUMMARY_CONTEXT_CHARS = 8_000
 MAX_FILE_CONTEXT_CHARS = 24_000
@@ -1503,6 +1515,7 @@ async def chat_stream(
                     except asyncio.CancelledError:
                         pass
 
+        _release_db_connection_before_streaming(db)
         return StreamingResponse(
             agent_event_generator(),
             media_type="text/event-stream",
@@ -1552,6 +1565,7 @@ async def chat_stream(
                 return
             yield "event: done\ndata: {}\n\n"
 
+        _release_db_connection_before_streaming(db)
         return StreamingResponse(calculator_event_generator(), media_type="text/event-stream")
 
     code_request = extract_code_request(payload.message)
@@ -1601,6 +1615,7 @@ async def chat_stream(
                 return
             yield "event: done\ndata: {}\n\n"
 
+        _release_db_connection_before_streaming(db)
         return StreamingResponse(python_event_generator(), media_type="text/event-stream")
 
     analysis_filename = extract_data_analysis_request(payload.message)
@@ -1670,6 +1685,7 @@ async def chat_stream(
                 return
             yield "event: done\ndata: {}\n\n"
 
+        _release_db_connection_before_streaming(db)
         return StreamingResponse(data_analysis_event_generator(), media_type="text/event-stream")
 
     search_query = extract_web_search_query(payload.message)
@@ -1712,6 +1728,7 @@ async def chat_stream(
                 return
             yield "event: done\ndata: {}\n\n"
 
+        _release_db_connection_before_streaming(db)
         return StreamingResponse(web_search_event_generator(), media_type="text/event-stream")
 
     history = _build_history(conversation, db)
@@ -1819,6 +1836,7 @@ async def chat_stream(
 
         yield "event: done\ndata: {}\n\n"
 
+    _release_db_connection_before_streaming(db)
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
@@ -2033,6 +2051,7 @@ async def regenerate_chat_stream(
 
         yield "event: done\ndata: {}\n\n"
 
+    _release_db_connection_before_streaming(db)
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
@@ -2152,4 +2171,5 @@ async def edit_chat_stream(
 
         yield "event: done\ndata: {}\n\n"
 
+    _release_db_connection_before_streaming(db)
     return StreamingResponse(event_generator(), media_type="text/event-stream")
