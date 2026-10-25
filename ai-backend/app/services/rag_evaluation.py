@@ -77,6 +77,14 @@ def score_ranked_results(
     if missing:
         raise ValueError(f"Missing relevance labels for documents: {sorted(missing)}")
 
+    if any(
+        isinstance(relevance, bool)
+        or not isinstance(relevance, int)
+        or relevance not in {0, 1, 2}
+        for relevance in relevance_by_id.values()
+    ):
+        raise ValueError("Relevance labels must be integer grades 0, 1, or 2.")
+
     relevant_ids = {
         document_id
         for document_id, relevance in relevance_by_id.items()
@@ -93,8 +101,20 @@ def score_ranked_results(
             reciprocal_rank = 1.0 / rank
             break
 
+    def discounted_gain(relevance_grades: Sequence[int]) -> float:
+        return sum(
+            (2**relevance - 1) / math.log2(rank + 1)
+            for rank, relevance in enumerate(relevance_grades[:k], start=1)
+        )
+
+    actual_grades = [relevance_by_id[document_id] for document_id in ranked_document_ids]
+    ideal_grades = sorted(relevance_by_id.values(), reverse=True)
+    ideal_dcg = discounted_gain(ideal_grades)
+    ndcg = discounted_gain(actual_grades) / ideal_dcg if ideal_dcg else 0.0
+
     return {
         f"recall_at_{k}": recall,
         f"precision_at_{k}": precision,
+        f"ndcg_at_{k}": ndcg,
         "reciprocal_rank": reciprocal_rank,
     }
