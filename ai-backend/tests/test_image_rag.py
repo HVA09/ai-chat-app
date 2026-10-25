@@ -217,3 +217,57 @@ def test_index_image_retries_embedding_for_saved_description_without_vision(
         .count()
         == 1
     )
+
+
+def test_index_image_retry_reports_provider_failure_without_losing_description(
+    client, monkeypatch, db_session, tmp_path
+):
+    from app.services.embeddings import EmbeddingServiceError
+
+    token = _register_and_login(client, "image-index-retry-failure@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    monkeypatch.setattr(
+        files_router.settings, "UPLOAD_DIR", str(tmp_path / "uploads")
+    )
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda db, file: 0)
+
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("retry-failed-chart.png", PNG_HEADER, "image/png")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+
+    attachment = db_session.get(FileAttachment, file_id)
+    saved_description = (
+        "[IMAGE DESCRIPTION] A chart shows quarterly revenue."
+    )
+    attachment.extracted_text = saved_description
+    db_session.commit()
+
+    def fail_index(_db, _file):
+        raise EmbeddingServiceError("private upstream detail")
+
+    monkeypatch.setattr(files_router, "index_file_chunks", fail_index)
+    vision_reply = AsyncMock(
+        side_effect=AssertionError(
+            "A saved image description must not trigger a second vision request"
+        )
+    )
+    monkeypatch.setattr(image_rag, "get_ai_vision_reply", vision_reply)
+
+    response = client.post(f"/files/{file_id}/index-image", headers=headers)
+
+    assert response.status_code == 503
+    assert "private upstream detail" not in response.text
+    db_session.expire_all()
+    persisted = db_session.get(FileAttachment, file_id)
+    assert persisted.extracted_text == saved_description
+    vision_reply.assert_not_awaited()
+    assert (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file_id, FileChunk.embedding.is_not(None))
+        .count()
+        == 0
+    )
