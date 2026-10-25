@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit
+from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_current_user
 from app.models.conversation import Conversation, Message, MessageRole
 from app.models.usage_log import UsageLog
 from app.models.user import User
@@ -31,12 +31,12 @@ MAX_SUGGESTIONS = 5
 
 _SECRET_OR_IDENTIFIER_PATTERNS = (
     re.compile(
-        r"(?i)\\b(?:password|passwd|passphrase|api[ _-]*key|client[ _-]*secret|"
-        r"access[ _-]*token|refresh[ _-]*token|private[ _-]*key|authorization|bearer)\\b"
+        r"(?i)\b(?:password|passwd|passphrase|api[ _-]*key|client[ _-]*secret|"
+        r"access[ _-]*token|refresh[ _-]*token|private[ _-]*key|authorization|bearer)\b"
     ),
-    re.compile(r"(?i)\\bsk-[a-z0-9_-]{12,}\\b"),
-    re.compile(r"(?i)\\b[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}\\b"),
-    re.compile(r"\\+?\\d[\\d\\s().-]{8,}\\d"),
+    re.compile(r"(?i)\bsk-[a-z0-9_-]{12,}\b"),
+    re.compile(r"(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b"),
+    re.compile(r"\+?\d[\d\s().-]{8,}\d"),
 )
 
 
@@ -169,7 +169,7 @@ async def suggest_memories(
             detail="لا توجد رسائل مستخدم كافية لاقتراح ذكريات.",
         )
 
-    transcript = "\\n".join(
+    transcript = "\n".join(
         f"{'USER' if role == MessageRole.user.value else 'ASSISTANT'}: {content}"
         for role, content in selected
     )
@@ -188,9 +188,9 @@ async def suggest_memories(
         "For every suggestion, evidence must be an exact, contiguous quote from a USER "
         "message in the transcript. Return ONLY valid JSON in this exact shape: "
         '{"suggestions":[{"content":"short memory in the user\'s language","evidence":"exact user quote"}]}'
-        "\\n\\nBEGIN UNTRUSTED TRANSCRIPT\\n"
+        "\n\nBEGIN UNTRUSTED TRANSCRIPT\n"
         f"{transcript}"
-        "\\nEND UNTRUSTED TRANSCRIPT"
+        "\nEND UNTRUSTED TRANSCRIPT"
     )
 
     reply = await get_ai_reply(prompt, history=[], model=conversation.ai_model or settings.AI_MODEL)
@@ -209,8 +209,8 @@ async def suggest_memories(
     db.commit()
 
     existing_contents = {
-        memory.content
-        for memory in db.query(UserMemory.content)
+        content
+        for (content,) in db.query(UserMemory.content)
         .filter(UserMemory.user_id == current_user.id)
         .all()
     }
@@ -227,7 +227,7 @@ async def suggest_memories(
 
 @router.get("", response_model=list[MemoryOut])
 def list_memories(
-    current_user: User = Depends(enforce_daily_ai_limit),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     return (
@@ -242,7 +242,7 @@ def list_memories(
 @router.post("", response_model=MemoryOut, status_code=status.HTTP_201_CREATED)
 def create_memory(
     payload: MemoryCreate,
-    current_user: User = Depends(enforce_daily_ai_limit),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     memory = UserMemory(user_id=current_user.id, content=payload.content)
@@ -256,7 +256,7 @@ def create_memory(
 def update_memory(
     memory_id: int,
     payload: MemoryUpdate,
-    current_user: User = Depends(enforce_daily_ai_limit),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     memory = _get_owned_memory(memory_id, current_user, db)
@@ -269,7 +269,7 @@ def update_memory(
 @router.delete("/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_memory(
     memory_id: int,
-    current_user: User = Depends(enforce_daily_ai_limit),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     memory = _get_owned_memory(memory_id, current_user, db)
