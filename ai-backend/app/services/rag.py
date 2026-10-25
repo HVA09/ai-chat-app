@@ -51,6 +51,10 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
 def index_file_chunks(db: Session, file: FileAttachment) -> int:
     text = (file.extracted_text or "").strip()
     if not text:
+        # Re-indexing an empty or no-longer-extractable file must not leave
+        # chunks from its previous content available to future retrieval.
+        db.execute(delete(FileChunk).where(FileChunk.file_id == file.id))
+        db.flush()
         return 0
 
     chunks = chunk_text(text)
