@@ -421,6 +421,7 @@ export default function App() {
 
   const {
     memories,
+    refreshMemories,
     handleToggleMessageMemory,
     resetMemories,
   } = useMemories({
