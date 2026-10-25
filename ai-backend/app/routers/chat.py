@@ -644,11 +644,22 @@ async def _build_file_context(
         if conversation.workspace_id is not None and conversation.project_id is not None
         else False
     )
+    # Conversations can outlive a workspace share. Do not leak assistant-owned
+    # knowledge through this plain-text fallback after the share is revoked.
+    assistant_access_scope = (
+        or_(
+            Assistant.user_id == conversation.user_id,
+            AssistantWorkspaceShare.id.is_not(None),
+        )
+        if conversation.workspace_id is not None
+        else Assistant.user_id == conversation.user_id
+    )
     assistant_scope = (
         (AssistantFileLink.assistant_id == conversation.assistant_id)
         & (FileAttachment.user_id == Assistant.user_id)
         & (FileAttachment.workspace_id.is_(None))
         & (FileAttachment.project_id.is_(None))
+        & assistant_access_scope
         if conversation.assistant_id is not None
         else False
     )
@@ -665,6 +676,13 @@ async def _build_file_context(
         .outerjoin(
             Assistant,
             Assistant.id == AssistantFileLink.assistant_id,
+        )
+        .outerjoin(
+            AssistantWorkspaceShare,
+            and_(
+                AssistantWorkspaceShare.assistant_id == Assistant.id,
+                AssistantWorkspaceShare.workspace_id == conversation.workspace_id,
+            ),
         )
         .filter(
             or_(
