@@ -92,12 +92,21 @@ def _resolve_embedding_config() -> EmbeddingConfig:
             "EMBEDDING_MODEL من عائلة OpenAI لكن مزوّد embeddings غير متوافق. "
             "اضبط EMBEDDING_PROVIDER الصحيح."
         )
-    api_key = (
-        (settings.EMBEDDING_API_KEY or "").strip()
-        or (settings.AI_API_KEY or "").strip()
-    )
+    configured_key = (settings.EMBEDDING_API_KEY or "").strip()
     configured_base_url = (settings.EMBEDDING_API_BASE_URL or "").strip()
     chat_base_url = (settings.AI_API_BASE_URL or "").strip()
+    if not configured_key and (
+        (bool(configured_provider) and provider != chat_provider)
+        or (
+            bool(configured_base_url)
+            and configured_base_url.rstrip("/") != chat_base_url.rstrip("/")
+        )
+    ):
+        raise EmbeddingServiceError(
+            "مزوّد embeddings أو عنوانه يختلف عن مزوّد المحادثة؛ "
+            "اضبط EMBEDDING_API_KEY صراحةً لحماية بيانات الاعتماد."
+        )
+    api_key = configured_key or (settings.AI_API_KEY or "").strip()
 
     if not api_key:
         raise EmbeddingServiceError(
