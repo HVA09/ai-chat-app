@@ -50,7 +50,9 @@ _SECRET_OR_IDENTIFIER_PATTERNS = (
     re.compile(
         r"(?i)\b(?:diabetes|diabetic|cancer|hiv|aids|epilepsy|asthma|bipolar|"
         r"schizophrenia|ptsd|depression|panic disorder|mental illness|medical "
-        r"diagnosis|diagnosed with|taking medication|my medication)\b"
+        r"diagnosis|diagnosed with|taking medication|my medication|medication|"
+        r"prescription|insulin|blood pressure|heart disease|medical condition|"
+        r"chronic illness|allergy|allergic to|psychiatrist|mental health treatment)\b"
     ),
     re.compile(
         r"(?i)\b(?:muslim|christian|hindu|buddhist|jewish|atheist|agnostic|"
@@ -61,9 +63,11 @@ _SECRET_OR_IDENTIFIER_PATTERNS = (
     re.compile(
         r"(?:رقم جواز السفر|رقم الهوية|رقم الضمان الاجتماعي|رقم التعريف الضريبي|"
         r"عنوان منزلي|عنواني|موقعي الدقيق|إحداثيات موقعي|إحداثيات GPS|"
-        r"السكري|مرض السكري|السرطان|فيروس نقص المناعة|الإيدز|الايدز|الصرع|"
+        r"السكري|مرض السكري|مرض السكر|السرطان|فيروس نقص المناعة|الإيدز|الايدز|الصرع|"
         r"الربو|الاضطراب ثنائي القطب|الفصام|اضطراب ما بعد الصدمة|الاكتئاب|"
-        r"اكتئاب|اضطراب نفسي|صحتي النفسية|تشخيص طبي|"
+        r"اكتئاب|اضطراب نفسي|صحتي النفسية|تشخيص طبي|ضغط الدم|ارتفاع ضغط الدم|"
+        r"مرض القلب|أمراض القلب|حساسية|أدوية|الدواء|دواء|أستخدم دواء|أستخدم الدواء|"
+        r"أتناول دواء|أتناول الدواء|علاج نفسي|طبيب نفسي|"
         r"مسلم|مسلمة|مسيحي|مسيحية|يهودي|يهودية|هندوسي|بوذي|ملحد|ملحدة|"
         r"الانتماء الديني|الانتماء السياسي|حزب سياسي|الميول الجنسية|"
         r"مثلي الجنس|مثلية الجنس|عابر جنسيا|سجل جنائي|حالة اللجوء|"
