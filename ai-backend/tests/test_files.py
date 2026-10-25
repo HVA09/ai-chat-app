@@ -82,6 +82,57 @@ def test_delete_file(client, tmp_path, monkeypatch):
     assert client.get(f"/files/{file_id}", headers=headers).status_code == 404
 
 
+
+def test_deleting_file_cascades_to_rag_chunks(
+    client, db_session, tmp_path, monkeypatch
+):
+    """A deleted upload must not leave stale retrievable chunks behind."""
+    from app.models.file_chunk import FileChunk
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+
+    def fake_index_file_chunks(db, attachment):
+        db.add(
+            FileChunk(
+                file_id=attachment.id,
+                chunk_index=0,
+                content="This text should be removed with its source file.",
+                embedding=None,
+            )
+        )
+        db.flush()
+        return 1
+
+    monkeypatch.setattr(files_router, "index_file_chunks", fake_index_file_chunks)
+    token = _register_and_login(client, "rag-delete-cascade@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("knowledge.txt", b"Knowledge to index.", "text/plain")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+    assert (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file_id)
+        .count()
+        == 1
+    )
+
+    deleted = client.delete(f"/files/{file_id}", headers=headers)
+
+    assert deleted.status_code == 204
+    assert (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file_id)
+        .count()
+        == 0
+    )
+
+
 def test_cannot_access_other_users_file(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token_a = _register_and_login(client, "filesowner@example.com")
