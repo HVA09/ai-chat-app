@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models.assistant import Assistant
 from app.models.assistant_file_link import AssistantFileLink
+from app.models.assistant_workspace_share import AssistantWorkspaceShare
 from app.models.file_attachment import FileAttachment
 from app.models.file_chunk import FileChunk
 from app.services.embeddings import embed_documents_sync, embed_query
@@ -110,12 +111,25 @@ async def retrieve_relevant_chunks(
         else False
     )
 
+    # Assistant knowledge can be used only while the current user owns the
+    # assistant or its workspace share still exists. Conversations can outlive a
+    # share, so the conversation's stored assistant_id is not sufficient proof
+    # of authorization.
+    assistant_access_scope = (
+        or_(
+            Assistant.user_id == user_id,
+            AssistantWorkspaceShare.id.is_not(None),
+        )
+        if workspace_id is not None
+        else Assistant.user_id == user_id
+    )
     assistant_scope = (
         and_(
             AssistantFileLink.assistant_id == assistant_id,
             FileAttachment.user_id == Assistant.user_id,
             FileAttachment.workspace_id.is_(None),
             FileAttachment.project_id.is_(None),
+            assistant_access_scope,
         )
         if assistant_id is not None
         else False
@@ -135,6 +149,13 @@ async def retrieve_relevant_chunks(
         .join(FileAttachment, FileAttachment.id == FileChunk.file_id)
         .outerjoin(AssistantFileLink, AssistantFileLink.file_id == FileAttachment.id)
         .outerjoin(Assistant, Assistant.id == AssistantFileLink.assistant_id)
+        .outerjoin(
+            AssistantWorkspaceShare,
+            and_(
+                AssistantWorkspaceShare.assistant_id == Assistant.id,
+                AssistantWorkspaceShare.workspace_id == workspace_id,
+            ),
+        )
         .filter(FileChunk.embedding.is_not(None), chunk_scope)
         .first()
     )
@@ -148,6 +169,13 @@ async def retrieve_relevant_chunks(
         .join(FileAttachment, FileAttachment.id == FileChunk.file_id)
         .outerjoin(AssistantFileLink, AssistantFileLink.file_id == FileAttachment.id)
         .outerjoin(Assistant, Assistant.id == AssistantFileLink.assistant_id)
+        .outerjoin(
+            AssistantWorkspaceShare,
+            and_(
+                AssistantWorkspaceShare.assistant_id == Assistant.id,
+                AssistantWorkspaceShare.workspace_id == workspace_id,
+            ),
+        )
         .filter(
             FileChunk.embedding.is_not(None),
             chunk_scope,
