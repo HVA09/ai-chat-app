@@ -20,6 +20,10 @@ def _set_embedding_settings(monkeypatch, **overrides):
     values.update(overrides)
     for name, value in values.items():
         monkeypatch.setattr(embeddings.settings, name, value)
+    # Test API payload sizes without changing the real PostgreSQL vector schema.
+    monkeypatch.setattr(
+        embeddings, "STORED_EMBEDDING_DIMENSIONS", values["EMBEDDING_DIMENSIONS"]
+    )
 
 
 def test_defaults_choose_an_embedding_model_compatible_with_chat_provider(monkeypatch):
@@ -334,4 +338,17 @@ def test_openai_compatible_provider_requires_its_own_api_base_when_independent(
     )
 
     with pytest.raises(embeddings.EmbeddingServiceError, match="EMBEDDING_API_BASE_URL"):
+        embeddings._resolve_embedding_config()
+
+
+def test_embedding_dimensions_must_match_existing_database_vector_schema(
+    monkeypatch,
+):
+    _set_embedding_settings(monkeypatch, EMBEDDING_DIMENSIONS=768)
+    monkeypatch.setattr(embeddings, "STORED_EMBEDDING_DIMENSIONS", 1536)
+
+    with pytest.raises(
+        embeddings.EmbeddingServiceError,
+        match="يجب أن يطابق بُعد المتجهات",
+    ):
         embeddings._resolve_embedding_config()
