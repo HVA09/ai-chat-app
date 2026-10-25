@@ -2,7 +2,13 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import FilesPanel from "./FilesPanel";
-import { attachFileToConversation, deleteFile, listFiles, uploadFile } from "../lib/filesApi";
+import {
+  attachFileToConversation,
+  deleteFile,
+  indexImageForRag,
+  listFiles,
+  uploadFile,
+} from "../lib/filesApi";
 
 vi.mock("../lib/filesApi", () => ({
   attachFileToConversation: vi.fn(),
@@ -344,3 +350,64 @@ describe("FilesPanel project knowledge", () => {
   });
 
 });
+
+  it("keeps image indexing retry available after provider failure", async () => {
+    const file = {
+      id: 89,
+      original_filename: "retry-chart.png",
+      content_type: "image/png",
+      size_bytes: 42,
+      created_at: "2026-10-25T12:00:00Z",
+      workspace_id: null,
+      project_id: null,
+      is_attached: false,
+      is_ai_indexed: false,
+      can_delete: false,
+    };
+    listFiles
+      .mockReset()
+      .mockResolvedValueOnce([file])
+      .mockResolvedValueOnce([{ ...file, is_ai_indexed: true }]);
+    indexImageForRag
+      .mockReset()
+      .mockRejectedValueOnce({
+        response: { data: { detail: "Embedding provider unavailable" } },
+      })
+      .mockResolvedValueOnce({ id: file.id, is_ai_indexed: true });
+
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    try {
+      render(<FilesPanel onClose={vi.fn()} />);
+      const indexButton = await screen.findByTitle("files.indexImageForAi");
+      expect(indexButton).not.toBeDisabled();
+
+      await user.click(indexButton);
+      await waitFor(() => {
+        expect(indexImageForRag).toHaveBeenCalledTimes(1);
+        expect(indexButton).not.toBeDisabled();
+      });
+      expect(listFiles).toHaveBeenCalledTimes(1);
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Embedding provider unavailable" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+
+      await user.click(indexButton);
+      await waitFor(() => expect(indexImageForRag).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(2));
+
+      const indexedButton = await screen.findByTitle("files.imageIndexed");
+      expect(indexedButton).toBeDisabled();
+    } finally {
+      dispatchSpy.mockRestore();
+    }
+  });
+
+
+}
