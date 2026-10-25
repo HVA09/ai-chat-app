@@ -45,6 +45,24 @@ Dockerfile, docker-compose.yml (app, db, redis, celery_worker, nginx, certbot, b
 - `EMBEDDING_API_BASE_URL` — عنوان خدمة embeddings المستقلة عند الحاجة.
 - `EMBEDDING_MODEL` — يمكن تركه فارغًا لاختيار نموذج افتراضي متوافق مع المزوّد. إذا حددت نموذجًا تابعًا لمزوّد مختلف، سيرفض النظام الاتصال بدل إرسال بيانات الاعتماد إلى مضيف غير مقصود.
 
+## تقييم جودة RAG
+
+مجموعة اختبار أولية تضم 14 سؤالًا و42 وثيقة عبر سبعة مجالات، وتدعم مقاييس Recall@k وPrecision@k وnDCG@k وReciprocal Rank. لم تُشغّل على مزوّد حي بعد.
+
+من مجلد `ai-backend`، هذا الأمر محلي ولا يحتاج مفتاح API:
+
+```bash
+python scripts/evaluate_rag_retrieval.py --validate-only
+```
+
+لاختبار الترتيب الفعلي باستخدام مزوّد embeddings المضبوط، أضف `--run-live`؛ هذا يرسل نصوص مجموعة الاختبار للمزوّد وقد يستهلك الحصة أو يسبب تكلفة:
+
+```bash
+python scripts/evaluate_rag_retrieval.py --run-live --top-k 3 --output reports/rag-retrieval-baseline.json
+```
+
+لا يشغّل CI التقييم الحي. راجع [شرح التقييم وحدوده](docs/RAG_EVALUATION.md) قبل تفسير أي نتيجة.
+
 ## التشغيل محليًا
 
 ```bash
