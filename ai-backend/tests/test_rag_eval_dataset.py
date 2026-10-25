@@ -258,7 +258,12 @@ def test_benchmark_runner_calculates_metrics_without_live_provider_calls(monkeyp
     assert report["cases"][0]["ranked_documents"][0]["id"] == "relevant"
     assert report["macro_average"]["recall_at_2"] == pytest.approx(1.0)
     assert report["macro_average"]["precision_at_2"] == pytest.approx(0.5)
+    assert report["macro_average"]["ndcg_at_2"] == pytest.approx(1.0)
     assert report["macro_average"]["reciprocal_rank"] == pytest.approx(1.0)
+    assert list(report["by_domain"]) == ["programming"]
+    assert report["by_domain"]["programming"]["recall_at_2"] == pytest.approx(1.0)
+    assert report["by_domain"]["programming"]["precision_at_2"] == pytest.approx(0.5)
+    assert report["by_domain"]["programming"]["ndcg_at_2"] == pytest.approx(1.0)
 
 
 def _load_rag_evaluation_runner():
