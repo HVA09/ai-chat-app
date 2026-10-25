@@ -247,3 +247,46 @@ def test_benchmark_runner_calculates_metrics_without_live_provider_calls(monkeyp
     assert report["macro_average"]["recall_at_2"] == pytest.approx(1.0)
     assert report["macro_average"]["precision_at_2"] == pytest.approx(0.5)
     assert report["macro_average"]["reciprocal_rank"] == pytest.approx(1.0)
+
+
+def _load_rag_evaluation_runner():
+    runner_path = Path(__file__).parents[1] / "scripts" / "evaluate_rag_retrieval.py"
+    spec = importlib.util.spec_from_file_location("rag_retrieval_eval_runner_test", runner_path)
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    return runner
+
+
+def test_rag_validate_only_mode_never_calls_the_embedding_provider(monkeypatch, capsys):
+    runner = _load_rag_evaluation_runner()
+
+    def unexpected_provider_call(*_args, **_kwargs):
+        pytest.fail("validate-only must not call an embedding provider")
+
+    async def unexpected_async_provider_call(*_args, **_kwargs):
+        pytest.fail("validate-only must not call an embedding provider")
+
+    monkeypatch.setattr(runner.sys, "argv", ["evaluate_rag_retrieval.py", "--validate-only"])
+    monkeypatch.setattr(runner, "embed_documents_sync", unexpected_provider_call)
+    monkeypatch.setattr(runner, "embed_query", unexpected_async_provider_call)
+    monkeypatch.setattr(runner, "_resolve_embedding_config", unexpected_provider_call)
+
+    assert runner.main() == 0
+    summary = json.loads(capsys.readouterr().out)
+
+    assert summary["validation_only"] is True
+    assert summary["live_embedding_requests_sent"] is False
+    assert summary["case_count"] == 12
+    assert summary["document_count"] == 36
+    assert len(summary["domain_counts"]) == 7
+    assert sum(summary["relevance_grade_counts"].values()) == 36
+
+
+def test_rag_dataset_validator_rejects_duplicate_document_ids():
+    runner = _load_rag_evaluation_runner()
+    dataset = runner.load_dataset()
+    dataset["cases"][1]["documents"][0]["id"] = dataset["cases"][0]["documents"][0]["id"]
+
+    with pytest.raises(ValueError, match="duplicate RAG document id"):
+        runner.validate_dataset(dataset)
