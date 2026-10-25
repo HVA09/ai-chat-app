@@ -63,14 +63,7 @@ def _resolve_embedding_config() -> EmbeddingConfig:
     configured_model = (settings.EMBEDDING_MODEL or "").strip()
     chat_provider = (settings.AI_PROVIDER or "").strip().lower()
 
-    if configured_provider:
-        provider = configured_provider
-    elif configured_model.startswith("gemini-embedding-"):
-        provider = "gemini"
-    elif configured_model.startswith("text-embedding-"):
-        provider = "openai"
-    else:
-        provider = chat_provider
+    provider = configured_provider or chat_provider
 
     if configured_provider and provider not in SUPPORTED_EMBEDDING_PROVIDERS:
         supported = ", ".join(sorted(SUPPORTED_EMBEDDING_PROVIDERS))
@@ -79,11 +72,25 @@ def _resolve_embedding_config() -> EmbeddingConfig:
         )
 
     # Historically, all non-Gemini providers used the OpenAI-compatible
-    # /embeddings endpoint. Keep that behavior for old configurations.
+    # /embeddings endpoint. Keep that route for older provider names, but do
+    # not route a provider-specific model to another vendor by guessing.
     if provider not in SUPPORTED_EMBEDDING_PROVIDERS:
         provider = "openai-compatible"
 
     model = configured_model or DEFAULT_EMBEDDING_MODELS[provider]
+    if model.startswith("gemini-embedding-") and provider != "gemini":
+        raise EmbeddingServiceError(
+            "EMBEDDING_MODEL من عائلة Gemini لكن مزوّد embeddings ليس Gemini. "
+            "اضبط EMBEDDING_PROVIDER=gemini ومفتاح Gemini المناسب."
+        )
+    if model.startswith("text-embedding-") and provider not in {
+        "openai",
+        "openai-compatible",
+    }:
+        raise EmbeddingServiceError(
+            "EMBEDDING_MODEL من عائلة OpenAI لكن مزوّد embeddings غير متوافق. "
+            "اضبط EMBEDDING_PROVIDER الصحيح."
+        )
     api_key = (
         (settings.EMBEDDING_API_KEY or "").strip()
         or (settings.AI_API_KEY or "").strip()
