@@ -434,7 +434,13 @@ export default function App() {
   });
 
   const handleSuggestMemories = async () => {
-    if (\n      !conversationId ||\n      loading ||\n      readOnlyConversation ||\n      memorySuggestionsLoading ||\n      savingSuggestedMemoryContent\n    ) return;
+    if (
+      !conversationId ||
+      loading ||
+      readOnlyConversation ||
+      memorySuggestionsLoading ||
+      savingSuggestedMemoryContent
+    ) return;
 
     const requestedConversationId = conversationId;
     const requestId = ++memorySuggestionsRequestRef.current;
