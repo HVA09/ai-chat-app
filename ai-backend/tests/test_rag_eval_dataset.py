@@ -57,7 +57,7 @@ def test_rag_fixture_declares_all_metrics_produced_by_benchmark():
 
 def test_rag_evaluation_cases_have_complete_unique_ids_and_relevance_labels():
     cases = _load_dataset()
-    assert len(cases) >= 10
+    assert len(cases) >= 14
 
     case_ids = [case.get("id") for case in cases]
     assert all(isinstance(case_id, str) and case_id for case_id in case_ids)
@@ -91,7 +91,7 @@ def test_rag_evaluation_cases_have_complete_unique_ids_and_relevance_labels():
 def test_rag_evaluation_dataset_has_cases_across_all_domains():
     counts = Counter(case["domain"] for case in _load_dataset())
     for domain in EXPECTED_DOMAINS:
-        assert counts[domain] >= 1, f"Missing RAG evaluation coverage for {domain}"
+        assert counts[domain] >= 2, f"Expected at least two RAG evaluation cases for {domain}"
 
 
 def test_cosine_similarity_handles_known_vectors():
@@ -294,8 +294,8 @@ def test_rag_validate_only_mode_never_calls_the_embedding_provider(monkeypatch, 
 
     assert summary["validation_only"] is True
     assert summary["live_embedding_requests_sent"] is False
-    assert summary["case_count"] == 12
-    assert summary["document_count"] == 36
+    assert summary["case_count"] == 14
+    assert summary["document_count"] == 42
     assert len(summary["domain_counts"]) == 7
     assert sum(summary["relevance_grade_counts"].values()) == 36
 
@@ -426,7 +426,7 @@ def test_live_benchmark_runs_only_after_explicit_opt_in(monkeypatch, capsys):
 
     assert runner.main() == 0
     report = json.loads(capsys.readouterr().out)
-    assert seen == {"case_count": 12, "top_k": 2}
+    assert seen == {"case_count": 14, "top_k": 2}
     assert report["live_embedding_requests_sent"] is True
 
 
