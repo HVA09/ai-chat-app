@@ -171,6 +171,11 @@ async def compare_ai_models(
             )
 
     workspace_id = payload.workspace_id or (conversation.workspace_id if conversation else None)
+    # Authorize workspace membership before loading or embedding any workspace
+    # file context. The later AI-budget guard is not an access-control substitute.
+    if workspace_id is not None:
+        _get_owned_workspace(workspace_id, current_user, db)
+
     history = _build_history(conversation, db) if conversation is not None else []
 
     context_parts: list[str] = []
