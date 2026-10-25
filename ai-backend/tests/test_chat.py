@@ -237,6 +237,34 @@ def test_chat_includes_saved_user_memory_in_ai_context(client, monkeypatch):
     assert "USER REQUEST:" in sent_message
 
 
+
+def test_chat_does_not_include_another_users_saved_memory(client, monkeypatch):
+    mock_reply = AsyncMock(return_value=AIReply(text="رد"))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
+
+    owner_token = _register_and_login(client, "private-memory-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    saved = client.post(
+        "/memories",
+        json={"content": "PRIVATE-PREFERENCE-DO-NOT-LEAK-7319"},
+        headers=owner_headers,
+    )
+    assert saved.status_code == 201
+
+    other_token = _register_and_login(client, "private-memory-other@example.com")
+    other_headers = {"Authorization": f"Bearer {other_token}"}
+    response = client.post(
+        "/chat",
+        json={"message": "ما الذي تعرفه عن تفضيلاتي؟"},
+        headers=other_headers,
+    )
+
+    assert response.status_code == 200
+    sent_message = mock_reply.await_args.args[0]
+    assert "PRIVATE-PREFERENCE-DO-NOT-LEAK-7319" not in sent_message
+    assert "[USER MEMORY]" not in sent_message
+
+
 def test_chat_includes_conversation_summary_in_ai_context(client, monkeypatch, db_session):
     mock_reply = AsyncMock(return_value=AIReply(text="رد"))
     monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
