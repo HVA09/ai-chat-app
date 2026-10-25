@@ -116,6 +116,9 @@ export default function App() {
   const { i18n, t } = useTranslation();
   const [authed, setAuthed] = useState(false);
   const [sessionChecking, setSessionChecking] = useState(true);
+  const [sessionCheckSlow, setSessionCheckSlow] = useState(false);
+  const [sessionCheckError, setSessionCheckError] = useState(false);
+  const [sessionCheckAttempt, setSessionCheckAttempt] = useState(0);
   const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
   const [lang, setLang] = useState("ar");
   const [messages, setMessages] = useState(() => [getWelcomeMessage(t)]);
@@ -305,8 +308,38 @@ export default function App() {
   }, [resetCurrentUser, t]);
 
   useEffect(() => {
-    restoreSession().then(() => setAuthed(true)).catch(() => setAuthed(false)).finally(() => setSessionChecking(false));
-  }, []);
+    let active = true;
+
+    setSessionChecking(true);
+    setSessionCheckSlow(false);
+    setSessionCheckError(false);
+
+    const slowTimer = window.setTimeout(() => {
+      if (active) setSessionCheckSlow(true);
+    }, 12000);
+
+    restoreSession()
+      .then(() => {
+        if (active) setAuthed(true);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setAuthed(false);
+        // 401 is the normal "no saved session" case. Other errors mean the
+        // API could not be reached, including Render's temporary cold-start page.
+        setSessionCheckError(error.response?.status !== 401);
+      })
+      .finally(() => {
+        if (!active) return;
+        window.clearTimeout(slowTimer);
+        setSessionChecking(false);
+      });
+
+    return () => {
+      active = false;
+      window.clearTimeout(slowTimer);
+    };
+  }, [sessionCheckAttempt]);
 
 
 
@@ -1063,6 +1096,52 @@ export default function App() {
       <Suspense fallback={<PageLoadingFallback />}>
         <BillingCancelPage />
       </Suspense>
+    );
+  }
+
+  if (sessionChecking) {
+    return (
+      <main className="app-startup-screen" role="status" aria-live="polite">
+        <div className="app-startup-brand" aria-hidden="true">AI</div>
+        <div className="app-startup-spinner" aria-hidden="true" />
+        <h1>{t("appName")}</h1>
+        <p>
+          {sessionCheckSlow
+            ? t("app.startupServerWaking")
+            : t("app.startupConnecting")}
+        </p>
+        {sessionCheckSlow ? (
+          <p className="app-startup-hint">
+            {t("app.startupRetryHint")}
+          </p>
+        ) : null}
+      </main>
+    );
+  }
+
+  if (!authed && sessionCheckError) {
+    return (
+      <main className="app-startup-screen" role="alert">
+        <div className="app-startup-brand" aria-hidden="true">AI</div>
+        <h1>
+          {t("app.startupConnectionErrorTitle")}
+        </h1>
+        <p>
+          {t("app.startupConnectionErrorDescription")}
+        </p>
+        <button
+          type="button"
+          className="app-startup-retry"
+          onClick={() => {
+            setSessionChecking(true);
+            setSessionCheckSlow(false);
+            setSessionCheckError(false);
+            setSessionCheckAttempt((attempt) => attempt + 1);
+          }}
+        >
+          {t("app.startupRetry")}
+        </button>
+      </main>
     );
   }
 
