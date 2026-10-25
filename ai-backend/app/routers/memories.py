@@ -43,11 +43,42 @@ _SECRET_OR_IDENTIFIER_PATTERNS = (
     re.compile(r"(?i)\bsk-[a-z0-9_-]{12,}\b"),
     re.compile(r"(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b"),
     re.compile(r"\+?\d[\d\s().-]{8,}\d"),
+    re.compile(
+        r"(?i)\b(?:passport number|national id|social security number|tax id|"
+        r"home address|street address|exact location|gps coordinates)\b"
+    ),
+    re.compile(
+        r"(?i)\b(?:diabetes|diabetic|cancer|hiv|aids|epilepsy|asthma|bipolar|"
+        r"schizophrenia|ptsd|depression|panic disorder|mental illness|medical "
+        r"diagnosis|diagnosed with|taking medication|my medication)\b"
+    ),
+    re.compile(
+        r"(?i)\b(?:muslim|christian|hindu|buddhist|jewish|atheist|agnostic|"
+        r"religious affiliation|political affiliation|political party member|"
+        r"sexual orientation|gay|lesbian|bisexual|transgender|criminal record|"
+        r"immigration status|refugee status|asylum claim|bankruptcy)\b"
+    ),
+    re.compile(
+        r"(?:رقم جواز السفر|رقم الهوية|رقم الضمان الاجتماعي|رقم التعريف الضريبي|"
+        r"عنوان منزلي|عنواني|موقعي الدقيق|إحداثيات موقعي|إحداثيات GPS|"
+        r"السكري|مرض السكري|السرطان|فيروس نقص المناعة|الإيدز|الايدز|الصرع|"
+        r"الربو|الاضطراب ثنائي القطب|الفصام|اضطراب ما بعد الصدمة|الاكتئاب|"
+        r"اكتئاب|اضطراب نفسي|صحتي النفسية|تشخيص طبي|"
+        r"مسلم|مسلمة|مسيحي|مسيحية|يهودي|يهودية|هندوسي|بوذي|ملحد|ملحدة|"
+        r"الانتماء الديني|الانتماء السياسي|حزب سياسي|الميول الجنسية|"
+        r"مثلي الجنس|مثلية الجنس|عابر جنسيا|سجل جنائي|حالة اللجوء|"
+        r"طلب لجوء|إفلاس|ديون متعثرة)"
+    ),
 )
 
 
 def _contains_sensitive_memory_data(value: str) -> bool:
-    """Conservative safety filter; this is not a substitute for user review."""
+    """Best-effort screen for credentials, identifiers, and sensitive personal facts.
+
+    This deliberately errs on the side of not proposing a memory. It cannot
+    identify every indirect or paraphrased sensitive statement, so user review
+    remains necessary.
+    """
     return any(pattern.search(value) for pattern in _SECRET_OR_IDENTIFIER_PATTERNS)
 
 
