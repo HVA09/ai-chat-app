@@ -741,3 +741,100 @@ def test_reindexing_file_without_extractable_text_removes_stale_chunks(
         .count()
         == 0
     )
+
+
+def test_reindexing_file_replaces_old_chunks_after_content_changes(
+    db_session, monkeypatch
+):
+    """Re-indexing changed extracted text replaces old chunks instead of appending."""
+    user = User(email="rag-reindex-replace@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+
+    old_text = "Previous document content is no longer current."
+    new_text = "Updated document content should be retrieved instead."
+    file = FileAttachment(
+        user_id=user.id,
+        original_filename="changing-notes.txt",
+        stored_filename="changing-notes.txt",
+        content_type="text/plain",
+        size_bytes=60,
+        extracted_text=old_text,
+    )
+    db_session.add(file)
+    db_session.flush()
+
+    embedding_calls = []
+
+    def fake_embed_documents(texts):
+        embedding_calls.append(list(texts))
+        value = 0.1 if len(embedding_calls) == 1 else 0.2
+        return [[value] * 768 for _ in texts]
+
+    monkeypatch.setattr(rag, "embed_documents_sync", fake_embed_documents)
+
+    assert rag.index_file_chunks(db_session, file) == 1
+    file.extracted_text = new_text
+    assert rag.index_file_chunks(db_session, file) == 1
+    db_session.flush()
+
+    chunks = (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file.id)
+        .order_by(FileChunk.chunk_index.asc())
+        .all()
+    )
+    assert len(chunks) == 1
+    assert chunks[0].content == new_text
+    assert old_text not in chunks[0].content
+    assert chunks[0].embedding[0] == pytest.approx(0.2)
+    assert embedding_calls == [[old_text], [new_text]]
+
+
+def test_failed_reindexing_preserves_previous_chunks_until_new_embeddings_exist(
+    db_session, monkeypatch
+):
+    """A temporary provider failure must not delete the last valid file index."""
+    user = User(email="rag-reindex-failure@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+
+    old_text = "Known good document text stays searchable."
+    new_text = "Replacement text that cannot be embedded yet."
+    file = FileAttachment(
+        user_id=user.id,
+        original_filename="retry-notes.txt",
+        stored_filename="retry-notes.txt",
+        content_type="text/plain",
+        size_bytes=60,
+        extracted_text=old_text,
+    )
+    db_session.add(file)
+    db_session.flush()
+
+    monkeypatch.setattr(
+        rag,
+        "embed_documents_sync",
+        lambda texts: [[0.3] * 768 for _ in texts],
+    )
+    assert rag.index_file_chunks(db_session, file) == 1
+    db_session.flush()
+
+    file.extracted_text = new_text
+
+    def fail_embedding(_texts):
+        raise embeddings.EmbeddingServiceError("embedding provider unavailable")
+
+    monkeypatch.setattr(rag, "embed_documents_sync", fail_embedding)
+    with pytest.raises(embeddings.EmbeddingServiceError):
+        rag.index_file_chunks(db_session, file)
+
+    chunks = (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file.id)
+        .order_by(FileChunk.chunk_index.asc())
+        .all()
+    )
+    assert len(chunks) == 1
+    assert chunks[0].content == old_text
+    assert chunks[0].embedding[0] == pytest.approx(0.3)
