@@ -271,3 +271,45 @@ def test_index_image_retry_reports_provider_failure_without_losing_description(
         .count()
         == 0
     )
+
+
+def test_index_image_preserves_description_when_embeddings_fail(monkeypatch, tmp_path):
+    from app.services.embeddings import EmbeddingServiceError
+
+    file = SimpleNamespace(
+        user_id=81,
+        stored_filename="chart.png",
+        object_key="users/81/chart.png",
+        content_type="image/png",
+        extracted_text=None,
+    )
+    remote_path = tmp_path / "image-for-failed-index.png"
+    remote_path.write_bytes(PNG_HEADER)
+
+    @contextmanager
+    def fake_materialize(_object_key, _fallback_path):
+        yield remote_path
+
+    monkeypatch.setattr(image_rag, "materialize_file", fake_materialize)
+    monkeypatch.setattr(
+        image_rag,
+        "get_ai_vision_reply",
+        AsyncMock(return_value=AIReply(text="Quarterly revenue chart")),
+    )
+    monkeypatch.setattr(
+        image_rag,
+        "index_file_chunks",
+        AsyncMock(side_effect=EmbeddingServiceError("provider unavailable")),
+    )
+
+    class FakeDB:
+        def flush(self):
+            pass
+
+    reply, indexed_chunks = asyncio.run(
+        image_rag.index_image_file(file, FakeDB(), "test-model")
+    )
+
+    assert reply.text == "Quarterly revenue chart"
+    assert indexed_chunks == 0
+    assert file.extracted_text == "[IMAGE DESCRIPTION] Quarterly revenue chart"
