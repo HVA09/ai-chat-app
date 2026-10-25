@@ -56,8 +56,8 @@ def _resolve_embedding_config() -> EmbeddingConfig:
     """Resolve independent embedding settings while preserving older deployments.
 
     EMBEDDING_PROVIDER can override the chat provider. If omitted, provider
-    selection follows AI_PROVIDER, except when an explicitly configured model
-    clearly identifies the Gemini or OpenAI embedding family.
+    selection follows AI_PROVIDER. A provider-specific model that conflicts
+    with that provider is rejected rather than sending credentials to another vendor.
     """
     configured_provider = (settings.EMBEDDING_PROVIDER or "").strip().lower()
     configured_model = (settings.EMBEDDING_MODEL or "").strip()
