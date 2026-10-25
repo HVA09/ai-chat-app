@@ -700,3 +700,44 @@ def test_retrieval_ranks_closest_embedding_first(db_session, monkeypatch):
     ]
     assert "ip addr" in rows[0][0].content
 
+
+def test_reindexing_file_without_extractable_text_removes_stale_chunks(
+    db_session, monkeypatch
+):
+    """Empty extracted text must not leave old file content retrievable."""
+    user = User(email="rag-empty-reindex@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+
+    file = FileAttachment(
+        user_id=user.id,
+        original_filename="updated-document.txt",
+        stored_filename="updated-document.txt",
+        content_type="text/plain",
+        size_bytes=0,
+        extracted_text=None,
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(
+        FileChunk(
+            file_id=file.id,
+            chunk_index=0,
+            content="Stale text from the previous version of this file.",
+            embedding=[0.1] * 768,
+        )
+    )
+    db_session.commit()
+
+    def unexpected_embedding_call(_texts):
+        pytest.fail("Files without extracted text must not call the embedding provider")
+
+    monkeypatch.setattr(rag, "embed_documents_sync", unexpected_embedding_call)
+
+    assert rag.index_file_chunks(db_session, file) == 0
+    assert (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file.id)
+        .count()
+        == 0
+    )
