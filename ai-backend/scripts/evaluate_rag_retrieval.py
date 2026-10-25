@@ -49,7 +49,11 @@ def load_dataset(path: Path = FIXTURE_PATH) -> dict[str, Any]:
 
 
 async def _embed_queries(cases: list[dict[str, Any]]) -> list[list[float]]:
-    return list(await asyncio.gather(*(embed_query(case["query"]) for case in cases)))
+    # Keep requests sequential to avoid spiking a provider's rate limit.
+    vectors: list[list[float]] = []
+    for case in cases:
+        vectors.append(await embed_query(case["query"]))
+    return vectors
 
 
 def evaluate_dataset(dataset: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
