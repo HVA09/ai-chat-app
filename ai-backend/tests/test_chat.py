@@ -19,17 +19,33 @@ from app.services.ai_providers.base import AIReply
 
 def test_stream_connection_is_released_before_streaming():
     """A long SSE response should not reserve a connection during external work."""
+    from sqlalchemy import Column, Integer, String
+    from sqlalchemy.orm import declarative_base
+
     engine = create_engine("sqlite://", poolclass=QueuePool)
+    base = declarative_base()
+
+    class StreamProbe(base):
+        __tablename__ = "stream_pool_probe"
+        id = Column(Integer, primary_key=True)
+        value = Column(String, nullable=False)
+
+    base.metadata.create_all(engine)
     db = sessionmaker(bind=engine)()
 
     try:
-        db.execute(text("SELECT 1")).scalar_one()
+        # The request disables expiration before its first transaction.
+        db.expire_on_commit = False
+        db.add(StreamProbe(value="loaded before streaming"))
+        db.commit()
+        probe = db.query(StreamProbe).one()
         assert engine.pool.checkedout() == 1
 
         chat_router_module._release_db_connection_before_streaming(db)
 
         assert engine.pool.checkedout() == 0
-        assert db.expire_on_commit is False
+        assert probe.value == "loaded before streaming"
+        assert engine.pool.checkedout() == 0
     finally:
         db.close()
         engine.dispose()
