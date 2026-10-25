@@ -290,3 +290,77 @@ def test_rag_dataset_validator_rejects_duplicate_document_ids():
 
     with pytest.raises(ValueError, match="duplicate RAG document id"):
         runner.validate_dataset(dataset)
+
+
+def _minimal_valid_rag_dataset():
+    return {
+        "schema_version": 1,
+        "cases": [
+            {
+                "id": "UNIT-PREFLIGHT-001",
+                "domain": "programming",
+                "query": "find the relevant document",
+                "documents": [
+                    {
+                        "id": "preflight-relevant",
+                        "relevance": 2,
+                        "title": "Relevant",
+                        "text": "This relevant document answers the query.",
+                    },
+                    {
+                        "id": "preflight-negative",
+                        "relevance": 0,
+                        "title": "Negative",
+                        "text": "This unrelated negative document talks about cooking.",
+                    },
+                ],
+                "critical_failure": "Rank the irrelevant document first.",
+            }
+        ],
+    }
+
+
+def test_evaluator_validates_dataset_before_provider_calls(monkeypatch):
+    runner = _load_rag_evaluation_runner()
+
+    def unexpected_call(*_args, **_kwargs):
+        pytest.fail("Invalid benchmark data must be rejected before provider calls")
+
+    async def unexpected_async_call(*_args, **_kwargs):
+        pytest.fail("Invalid benchmark data must be rejected before provider calls")
+
+    monkeypatch.setattr(runner, "embed_documents_sync", unexpected_call)
+    monkeypatch.setattr(runner, "embed_query", unexpected_async_call)
+    monkeypatch.setattr(runner, "_resolve_embedding_config", unexpected_call)
+
+    with pytest.raises(ValueError, match="Each RAG case must contain"):
+        runner.evaluate_dataset({"schema_version": 1, "cases": [{"id": "invalid"}]})
+
+
+def test_evaluator_checks_embedding_configuration_before_requests(monkeypatch):
+    runner = _load_rag_evaluation_runner()
+    events = []
+
+    def fake_resolve_config():
+        events.append("resolve_config")
+        return SimpleNamespace(provider="test", model="test-model")
+
+    def fake_embed_documents(texts):
+        events.append("embed_documents")
+        return [
+            [1.0, 0.0] if "relevant" in text else [0.0, 1.0]
+            for text in texts
+        ]
+
+    async def fake_embed_query(_query):
+        events.append("embed_query")
+        return [1.0, 0.0]
+
+    monkeypatch.setattr(runner, "_resolve_embedding_config", fake_resolve_config)
+    monkeypatch.setattr(runner, "embed_documents_sync", fake_embed_documents)
+    monkeypatch.setattr(runner, "embed_query", fake_embed_query)
+
+    report = runner.evaluate_dataset(_minimal_valid_rag_dataset(), top_k=2)
+
+    assert events == ["resolve_config", "embed_documents", "embed_query"]
+    assert report["embedding_model"] == "test-model"
