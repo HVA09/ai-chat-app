@@ -1,10 +1,12 @@
-"""Run an opt-in semantic retrieval benchmark against the configured embedding API.
+"""Validate RAG benchmark data offline, with opt-in live embedding evaluation.
 
 From ai-backend, run:
-    python scripts/evaluate_rag_retrieval.py
+    python scripts/evaluate_rag_retrieval.py --validate-only
 
-This makes live embedding requests and may incur provider charges. It does not call
-the chat model, change the database, or write a report unless --output is supplied.
+This default mode reads local benchmark data only. Live requests to the configured
+embedding provider happen only when --run-live is explicitly supplied, and may
+consume quota or incur charges. The tool does not call the chat model or modify a
+database. A report is written to disk only when --output is supplied.
 """
 from __future__ import annotations
 
@@ -210,7 +212,7 @@ def main() -> int:
         "--top-k",
         type=int,
         default=3,
-        help="Cutoff for Recall@k and Precision@k (used with --run-live).",
+        help="Cutoff for Recall@k, Precision@k and nDCG@k (used with --run-live).",
     )
     run_mode = parser.add_mutually_exclusive_group()
     run_mode.add_argument(
