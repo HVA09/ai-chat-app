@@ -730,13 +730,23 @@ def _build_memory_context(
     )
     project_memories = []
     if project_id is not None:
-        project_memories = (
-            db.query(ProjectMemory)
-            .filter(ProjectMemory.project_id == project_id)
-            .order_by(ProjectMemory.updated_at.desc(), ProjectMemory.id.desc())
-            .limit(30)
-            .all()
-        )
+        # Enforce project access inside the memory-context builder itself.
+        # Callers also assemble project context, but this guard prevents a future
+        # caller from accidentally injecting shared project memories without ACL.
+        project = db.get(WorkspaceProject, project_id)
+        current_user = db.get(User, current_user_id)
+        if (
+            project is not None
+            and current_user is not None
+            and can_read_project(project, current_user, db)
+        ):
+            project_memories = (
+                db.query(ProjectMemory)
+                .filter(ProjectMemory.project_id == project_id)
+                .order_by(ProjectMemory.updated_at.desc(), ProjectMemory.id.desc())
+                .limit(30)
+                .all()
+            )
 
     parts = []
     if user_memories:
