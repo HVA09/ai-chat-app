@@ -297,7 +297,7 @@ def test_rag_validate_only_mode_never_calls_the_embedding_provider(monkeypatch, 
     assert summary["case_count"] == 14
     assert summary["document_count"] == 42
     assert len(summary["domain_counts"]) == 7
-    assert sum(summary["relevance_grade_counts"].values()) == 36
+    assert sum(summary["relevance_grade_counts"].values()) == 42
 
 
 def test_rag_dataset_validator_rejects_duplicate_document_ids():
@@ -401,7 +401,7 @@ def test_rag_default_mode_is_offline_and_never_calls_provider(monkeypatch, capsy
     summary = json.loads(capsys.readouterr().out)
     assert summary["validation_only"] is True
     assert summary["live_embedding_requests_sent"] is False
-    assert summary["case_count"] == 12
+    assert summary["case_count"] == 14
 
 
 def test_live_benchmark_runs_only_after_explicit_opt_in(monkeypatch, capsys):
