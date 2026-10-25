@@ -39,6 +39,12 @@ Dockerfile, docker-compose.yml (app, db, redis, celery_worker, nginx, certbot, b
 - `AI_API_KEY` — مفتاحك الخاص من مزوّد الذكاء الاصطناعي (OpenAI أو غيره).
   بدون مفتاح حقيقي هنا، مسار `/chat` لن يعمل.
 
+إعدادات embeddings اختيارية ومنفصلة عن نموذج المحادثة:
+- `EMBEDDING_PROVIDER` — `gemini` أو `openai` أو `openai-compatible`. إذا تركته فارغًا، يتبع مزوّد المحادثة.
+- `EMBEDDING_API_KEY` — مفتاح مستقل عندما لا يصلح مفتاح المحادثة لخدمة embeddings؛ لا تشارك المفتاح بين مزوّدين مختلفين.
+- `EMBEDDING_API_BASE_URL` — عنوان خدمة embeddings المستقلة عند الحاجة.
+- `EMBEDDING_MODEL` — يمكن تركه فارغًا لاختيار نموذج افتراضي متوافق مع المزوّد. إذا حددت نموذجًا تابعًا لمزوّد مختلف، سيرفض النظام الاتصال بدل إرسال بيانات الاعتماد إلى مضيف غير مقصود.
+
 ## التشغيل محليًا
 
 ```bash
