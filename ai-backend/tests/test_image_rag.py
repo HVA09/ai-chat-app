@@ -154,3 +154,66 @@ def test_index_image_for_rag_materializes_remote_object(monkeypatch, tmp_path):
     )
     assert get_vision_reply.call_args.args[1] == expected_data_url
     assert file.extracted_text == "[IMAGE DESCRIPTION] مخطط تجريبي"
+
+
+def test_index_image_retries_embedding_for_saved_description_without_vision(
+    client, monkeypatch, db_session, tmp_path
+):
+    token = _register_and_login(client, "image-index-retry@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    monkeypatch.setattr(
+        files_router.settings, "UPLOAD_DIR", str(tmp_path / "uploads")
+    )
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda db, file: 0)
+
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("retry-chart.png", PNG_HEADER, "image/png")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+
+    attachment = db_session.get(FileAttachment, file_id)
+    attachment.extracted_text = (
+        "[IMAGE DESCRIPTION] A chart shows monthly revenue increasing."
+    )
+    db_session.commit()
+
+    calls = []
+
+    def fake_index_file_chunks(db, file):
+        calls.append(file.extracted_text)
+        db.add(
+            FileChunk(
+                file_id=file.id,
+                chunk_index=0,
+                content=file.extracted_text,
+                embedding=[0.1] * 768,
+            )
+        )
+        db.flush()
+        return 1
+
+    monkeypatch.setattr(files_router, "index_file_chunks", fake_index_file_chunks)
+    vision_reply = AsyncMock(
+        side_effect=AssertionError(
+            "A saved image description must be reindexed without another vision request"
+        )
+    )
+    monkeypatch.setattr(image_rag, "get_ai_vision_reply", vision_reply)
+
+    response = client.post(f"/files/{file_id}/index-image", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["is_ai_indexed"] is True
+    assert calls == [
+        "[IMAGE DESCRIPTION] A chart shows monthly revenue increasing."
+    ]
+    vision_reply.assert_not_awaited()
+    assert (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file_id, FileChunk.embedding.is_not(None))
+        .count()
+        == 1
+    )
