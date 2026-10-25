@@ -312,3 +312,92 @@ def test_index_image_preserves_description_when_embeddings_fail(monkeypatch, tmp
     assert reply.text == "Quarterly revenue chart"
     assert indexed_chunks == 0
     assert file.extracted_text == "[IMAGE DESCRIPTION] Quarterly revenue chart"
+
+
+def test_failed_image_embedding_stays_retryable_from_file_response(
+    client, monkeypatch, db_session, tmp_path
+):
+    """A saved description without semantic chunks must not disable retry in the UI."""
+    from app.services.embeddings import EmbeddingServiceError
+
+    token = _register_and_login(client, "image-retryable-status@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    monkeypatch.setattr(
+        files_router.settings, "UPLOAD_DIR", str(tmp_path / "uploads")
+    )
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda _db, _file: 0)
+
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("retryable-chart.png", PNG_HEADER, "image/png")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+    assert uploaded.json()["is_ai_indexed"] is False
+
+    vision_reply = AsyncMock(
+        return_value=AIReply(
+            text="A chart shows monthly revenue increasing.",
+            input_tokens=5,
+            output_tokens=7,
+            provider="test-provider",
+            latency_ms=10,
+        )
+    )
+    monkeypatch.setattr(image_rag, "get_ai_vision_reply", vision_reply)
+
+    def fail_embedding_index(_db, _file):
+        raise EmbeddingServiceError("embedding provider unavailable")
+
+    monkeypatch.setattr(image_rag, "index_file_chunks", fail_embedding_index)
+
+    first_response = client.post(
+        f"/files/{file_id}/index-image",
+        headers=headers,
+    )
+
+    assert first_response.status_code == 200
+    assert first_response.json()["is_ai_indexed"] is False
+    db_session.expire_all()
+    saved_file = db_session.get(FileAttachment, file_id)
+    assert saved_file.extracted_text == (
+        "[IMAGE DESCRIPTION] A chart shows monthly revenue increasing."
+    )
+    vision_reply.assert_awaited_once()
+
+    def successful_retry(db, file):
+        db.query(FileChunk).filter(
+            FileChunk.file_id == file.id
+        ).delete(synchronize_session=False)
+        db.add(
+            FileChunk(
+                file_id=file.id,
+                chunk_index=0,
+                content=file.extracted_text or "",
+                embedding=[0.1] * 768,
+            )
+        )
+        db.flush()
+        return 1
+
+    # The retry route indexes the persisted description directly, without
+    # charging for another multimodal vision request.
+    monkeypatch.setattr(files_router, "index_file_chunks", successful_retry)
+    second_response = client.post(
+        f"/files/{file_id}/index-image",
+        headers=headers,
+    )
+
+    assert second_response.status_code == 200
+    assert second_response.json()["is_ai_indexed"] is True
+    vision_reply.assert_awaited_once()
+    assert (
+        db_session.query(FileChunk)
+        .filter(
+            FileChunk.file_id == file_id,
+            FileChunk.embedding.is_not(None),
+        )
+        .count()
+        == 1
+    )
