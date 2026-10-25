@@ -206,3 +206,36 @@ def test_memory_suggestion_parser_rejects_duplicates_and_unverified_quotes():
             existing_contents=set(),
         )
     assert error.value.status_code == 502
+
+def test_memory_suggestion_parser_rejects_sensitive_personal_facts():
+    from app.routers.memories import _parse_memory_suggestions
+
+    parsed = _parse_memory_suggestions(
+        json.dumps(
+            {
+                "suggestions": [
+                    {
+                        "content": "يعاني المستخدم من مرض السكري.",
+                        "evidence": "أعاني من مرض السكري.",
+                    },
+                    {
+                        "content": "المستخدم مسلم.",
+                        "evidence": "أنا مسلم.",
+                    },
+                    {
+                        "content": "يفضل الشرح بالعربية.",
+                        "evidence": "أفضل الشرح بالعربية.",
+                    },
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        user_messages=[
+            "أعاني من مرض السكري.",
+            "أنا مسلم.",
+            "أفضل الشرح بالعربية.",
+        ],
+        existing_contents=set(),
+    )
+
+    assert [item.content for item in parsed] == ["يفضل الشرح بالعربية."]
