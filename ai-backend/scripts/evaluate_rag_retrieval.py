@@ -32,21 +32,87 @@ from app.services.rag_evaluation import rank_documents, score_ranked_results  # 
 FIXTURE_PATH = BACKEND_ROOT / "tests" / "fixtures" / "rag_retrieval_eval_cases.json"
 
 
+REQUIRED_CASE_FIELDS = {"id", "domain", "query", "documents", "critical_failure"}
+REQUIRED_DOCUMENT_FIELDS = {"id", "relevance", "title", "text"}
+
+
+def validate_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
+    """Validate benchmark structure and labels without using the network."""
+    if not isinstance(dataset, dict) or dataset.get("schema_version") != 1:
+        raise ValueError("Unsupported RAG evaluation dataset schema.")
+    cases = dataset.get("cases")
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("RAG evaluation dataset must contain at least one case.")
+
+    case_ids: set[str] = set()
+    document_ids: set[str] = set()
+    for case in cases:
+        if not isinstance(case, dict) or not REQUIRED_CASE_FIELDS <= case.keys():
+            raise ValueError("Each RAG case must contain id, domain, query, documents and critical_failure.")
+        case_id = case["id"]
+        if not isinstance(case_id, str) or not case_id or case_id in case_ids:
+            raise ValueError(f"Missing or duplicate RAG case id: {case_id!r}")
+        case_ids.add(case_id)
+        if not isinstance(case["domain"], str) or not case["domain"].strip():
+            raise ValueError(f"Case {case_id} must have a domain.")
+        if not isinstance(case["query"], str) or len(case["query"].strip()) < 10:
+            raise ValueError(f"Case {case_id} must have a non-empty query.")
+        if not isinstance(case["critical_failure"], str) or not case["critical_failure"].strip():
+            raise ValueError(f"Case {case_id} must describe a critical failure.")
+        documents = case["documents"]
+        if not isinstance(documents, list) or len(documents) < 2:
+            raise ValueError(f"Case {case_id} must contain at least two documents.")
+
+        grades: list[int] = []
+        for document in documents:
+            if not isinstance(document, dict) or not REQUIRED_DOCUMENT_FIELDS <= document.keys():
+                raise ValueError(f"Every document in case {case_id} must have id, relevance, title and text.")
+            document_id = document["id"]
+            if not isinstance(document_id, str) or not document_id or document_id in document_ids:
+                raise ValueError(f"Missing or duplicate RAG document id: {document_id!r}")
+            document_ids.add(document_id)
+            grade = document["relevance"]
+            if isinstance(grade, bool) or not isinstance(grade, int) or grade not in {0, 1, 2}:
+                raise ValueError(f"Document {document_id} relevance must be 0, 1, or 2.")
+            grades.append(grade)
+            if not isinstance(document["title"], str) or not document["title"].strip():
+                raise ValueError(f"Document {document_id} must have a title.")
+            if not isinstance(document["text"], str) or len(document["text"].strip()) < 10:
+                raise ValueError(f"Document {document_id} must contain readable text.")
+
+        if 2 not in grades or 0 not in grades:
+            raise ValueError(f"Case {case_id} must include a highly relevant document (2) and a negative (0).")
+
+    return dataset
+
+
+def dataset_validation_summary(dataset: dict[str, Any]) -> dict[str, Any]:
+    """Return an offline corpus summary for the --validate-only CLI mode."""
+    cases = dataset["cases"]
+    domain_counts: dict[str, int] = {}
+    relevance_counts = {"0": 0, "1": 0, "2": 0}
+    document_count = 0
+    for case in cases:
+        domain_counts[case["domain"]] = domain_counts.get(case["domain"], 0) + 1
+        for document in case["documents"]:
+            document_count += 1
+            grade = str(document["relevance"])
+            relevance_counts[grade] += 1
+    return {
+        "benchmark": "rag-retrieval-eval-v1",
+        "validation_only": True,
+        "live_embedding_requests_sent": False,
+        "case_count": len(cases),
+        "document_count": document_count,
+        "domain_counts": dict(sorted(domain_counts.items())),
+        "relevance_grade_counts": relevance_counts,
+    }
+
+
 def load_dataset(path: Path = FIXTURE_PATH) -> dict[str, Any]:
     with path.open(encoding="utf-8") as source:
         dataset = json.load(source)
-    if dataset.get("schema_version") != 1 or not dataset.get("cases"):
-        raise ValueError("Unsupported or empty RAG evaluation dataset.")
-
-    all_ids: set[str] = set()
-    for case in dataset["cases"]:
-        for document in case["documents"]:
-            document_id = document["id"]
-            if document_id in all_ids:
-                raise ValueError(f"Duplicate document id across evaluation cases: {document_id}")
-            all_ids.add(document_id)
-    return dataset
-
+    return validate_dataset(dataset)
 
 async def _embed_queries(cases: list[dict[str, Any]]) -> list[list[float]]:
     # Keep requests sequential to avoid spiking a provider's rate limit.
@@ -140,6 +206,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--top-k", type=int, default=3, help="Cutoff for Recall@k and Precision@k.")
     parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Validate the fixture and summarize it offline; do not call the embedding provider.",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         help="Optional report path. Without this option, the report is printed to stdout.",
@@ -147,7 +218,12 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        report = evaluate_dataset(load_dataset(), top_k=args.top_k)
+        dataset = load_dataset()
+        report = (
+            dataset_validation_summary(dataset)
+            if args.validate_only
+            else evaluate_dataset(dataset, top_k=args.top_k)
+        )
     except (OSError, ValueError, KeyError, json.JSONDecodeError, EmbeddingServiceError) as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr)
         return 2
@@ -160,7 +236,6 @@ def main() -> int:
     else:
         print(rendered)
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
