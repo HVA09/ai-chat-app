@@ -43,6 +43,18 @@ def _load_dataset():
     return dataset["cases"]
 
 
+def test_rag_fixture_declares_all_metrics_produced_by_benchmark():
+    with EVALUATION_FILE.open(encoding="utf-8") as source:
+        dataset = json.load(source)
+
+    assert set(dataset["metrics"]) == {
+        "recall_at_3",
+        "precision_at_3",
+        "ndcg_at_3",
+        "reciprocal_rank",
+    }
+
+
 def test_rag_evaluation_cases_have_complete_unique_ids_and_relevance_labels():
     cases = _load_dataset()
     assert len(cases) >= 10
