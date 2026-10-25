@@ -485,3 +485,122 @@ def test_embed_query_wraps_provider_timeout_as_service_error(monkeypatch):
 
     assert isinstance(error.value.__cause__, httpx.ReadTimeout)
 
+
+
+
+def test_shared_assistant_file_chunks_stop_retrieving_after_unshare(
+    db_session, monkeypatch
+):
+    """Previously opened conversations must not retain access after a share is revoked."""
+    from app.models.assistant import Assistant
+    from app.models.assistant_file_link import AssistantFileLink
+    from app.models.assistant_workspace_share import AssistantWorkspaceShare
+    from app.models.conversation import Conversation
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    owner = User(
+        email="rag-shared-assistant-owner@example.com",
+        hashed_password="hashed",
+    )
+    member = User(
+        email="rag-shared-assistant-member@example.com",
+        hashed_password="hashed",
+    )
+    db_session.add_all([owner, member])
+    db_session.flush()
+
+    workspace = Workspace(owner_id=owner.id, name="Assistant knowledge share")
+    db_session.add(workspace)
+    db_session.flush()
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        )
+    )
+
+    assistant = Assistant(
+        user_id=owner.id,
+        name="Shared knowledge assistant",
+        instructions="Use team knowledge.",
+    )
+    db_session.add(assistant)
+    db_session.flush()
+    share = AssistantWorkspaceShare(
+        assistant_id=assistant.id,
+        workspace_id=workspace.id,
+        shared_by_user_id=owner.id,
+    )
+    db_session.add(share)
+
+    conversation = Conversation(
+        user_id=member.id,
+        workspace_id=workspace.id,
+        assistant_id=assistant.id,
+        title="Conversation opened while shared",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+
+    file = FileAttachment(
+        user_id=owner.id,
+        workspace_id=None,
+        project_id=None,
+        original_filename="assistant-private-notes.txt",
+        stored_filename="assistant-private-notes.txt",
+        content_type="text/plain",
+        size_bytes=100,
+        extracted_text="Protected assistant knowledge.",
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(
+        AssistantFileLink(assistant_id=assistant.id, file_id=file.id)
+    )
+    db_session.add(
+        FileChunk(
+            file_id=file.id,
+            chunk_index=0,
+            content="Protected assistant evidence.",
+            embedding=[0.1] * 768,
+        )
+    )
+    db_session.commit()
+
+    embed_query = AsyncMock(return_value=[0.1] * 768)
+    monkeypatch.setattr(rag, "embed_query", embed_query)
+
+    active_rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            member.id,
+            conversation.id,
+            "assistant evidence",
+            workspace_id=workspace.id,
+            assistant_id=assistant.id,
+        )
+    )
+    assert len(active_rows) == 1
+    assert active_rows[0][1].id == file.id
+
+    db_session.delete(share)
+    db_session.commit()
+    embed_query.reset_mock(side_effect=True)
+    embed_query.side_effect = AssertionError(
+        "embedding provider must not be called after access is revoked"
+    )
+
+    revoked_rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            member.id,
+            conversation.id,
+            "assistant evidence",
+            workspace_id=workspace.id,
+            assistant_id=assistant.id,
+        )
+    )
+
+    assert revoked_rows == []
+    embed_query.assert_not_awaited()
