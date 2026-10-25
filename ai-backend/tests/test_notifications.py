@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 from app.config import settings as app_settings
 from app.routers import billing as billing_router_module
+from app.routers import notifications as notifications_router_module
 from app.services.payment_providers.base import WebhookEvent
 
 
@@ -60,11 +61,60 @@ def test_websocket_rejects_invalid_token(client):
             websocket.receive_json()
 
 
-def test_websocket_receives_realtime_notification_on_subscription_activated(client, monkeypatch):
+def test_websocket_closes_database_session_before_waiting_for_messages(client, monkeypatch):
+    from types import SimpleNamespace
+
+    token = _register_and_login(client, "ws-session-release@example.com")
+    assert token
+
+    class SessionProbe:
+        def __init__(self):
+            self.closed = False
+            self.user_id = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            self.closed = True
+            return False
+
+        def get(self, model, user_id):
+            self.user_id = user_id
+            return SimpleNamespace(id=user_id, is_active=True)
+
+    session = SessionProbe()
+    monkeypatch.setattr(notifications_router_module, "SessionLocal", lambda: session)
+
+    with client.websocket_connect(
+        "/ws/notifications",
+        headers={"Origin": app_settings.CORS_ORIGINS[0]},
+    ):
+        assert session.closed is True
+        assert session.user_id is not None
+
+
+def test_websocket_receives_realtime_notification_on_subscription_activated(
+    client, monkeypatch, db_session
+):
     token = _register_and_login(client, "wsuser@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     me = client.get("/users/me", headers=headers).json()
     pro_plan = next(p for p in client.get("/billing/plans").json() if p["name"] == "Pro")
+
+    # The WebSocket auth uses SessionLocal directly. Reuse the test transaction so
+    # the user created through the client is visible in this test.
+    class SessionProbe:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def get(self, model, user_id):
+            return db_session.get(model, user_id)
+
+    monkeypatch.setattr(notifications_router_module, "SessionLocal", lambda: SessionProbe())
 
     with client.websocket_connect(
         "/ws/notifications",
