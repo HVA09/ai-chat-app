@@ -219,8 +219,8 @@ def test_memory_suggestion_parser_rejects_sensitive_personal_facts():
                         "evidence": "أعاني من مرض السكري.",
                     },
                     {
-                        "content": "المستخدم مسلم.",
-                        "evidence": "أنا مسلم.",
+                        "content": "يستخدم المستخدم دواءً للضغط.",
+                        "evidence": "أستخدم دواء الضغط يوميًا.",
                     },
                     {
                         "content": "يفضل الشرح بالعربية.",
@@ -232,7 +232,7 @@ def test_memory_suggestion_parser_rejects_sensitive_personal_facts():
         ),
         user_messages=[
             "أعاني من مرض السكري.",
-            "أنا مسلم.",
+            "أستخدم دواء الضغط يوميًا.",
             "أفضل الشرح بالعربية.",
         ],
         existing_contents=set(),
