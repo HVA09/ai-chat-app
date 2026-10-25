@@ -70,9 +70,9 @@ logger = get_logger("chat")
 def _release_db_connection_before_streaming(db: Session) -> None:
     """Return a checked-out connection before a non-Agent SSE stream waits externally.
 
-    The endpoint sets expire_on_commit=False before its first transaction so loaded
-    scalar ORM values remain available after this commit without a lazy refresh.
-    Any later database write acquires a connection only when persistence is needed.
+    The endpoint sets expire_on_commit=False before committing stream setup, so loaded
+    ORM scalar values remain available after this release commit without a lazy refresh.
+    Later database writes acquire a connection only when persistence is needed.
     """
     db.commit()
 
