@@ -17,27 +17,29 @@
 
 ## التشغيل اليدوي الاختياري
 
-من مجلد `ai-backend`، ابدأ بالتحقق المجاني من مجموعة البيانات فقط:
-
-```bash
-python scripts/evaluate_rag_retrieval.py --validate-only
-```
-
-يقرأ الأمر الملف المحلي فقط، ويعرض عدد الحالات والوثائق وتوزيع المجالات ودرجات الصلة. اختبار regression يؤكد أن هذا المسار لا يستدعي أي مزود embeddings ولا يحتاج إلى مفتاح API.
-
-لتشغيل قياس embeddings الفعلي (اختياري، وقد يستهلك حصة أو يكلّف مالًا):
+من مجلد `ai-backend`، تشغيل الأداة دون خيارات أو باستخدام `--validate-only` يتحقق من مجموعة البيانات المحلية فقط:
 
 ```bash
 python scripts/evaluate_rag_retrieval.py
+# أو
+python scripts/evaluate_rag_retrieval.py --validate-only
 ```
 
-لحفظ التقرير إلى ملف تختاره:
+هذا هو الوضع الافتراضي الآمن. يقرأ الأمر الملف المحلي فقط، ويعرض عدد الحالات والوثائق وتوزيع المجالات ودرجات الصلة. اختبارات regression تؤكد أن هذا المسار لا يستدعي أي مزود embeddings ولا يحتاج إلى مفتاح API.
+
+لتشغيل قياس embeddings الفعلي يجب الموافقة عليه صراحةً بإضافة `--run-live`. قد يستهلك هذا حصة مزوّد الخدمة أو يكلّف مالًا:
 
 ```bash
-python scripts/evaluate_rag_retrieval.py --top-k 3 --output reports/rag-retrieval-baseline.json
+python scripts/evaluate_rag_retrieval.py --run-live
 ```
 
-**لا يشغّل CI القياس الحي ولا تُرسل أي طلبات API تلقائيًا عند تثبيت الكود.** لا يحتاج هذا القياس إلى اتصال بقاعدة البيانات ولا يعدّلها؛ التقرير يُطبع على الشاشة ما لم تحدد `--output`.
+لحفظ تقرير القياس الحي إلى ملف تختاره:
+
+```bash
+python scripts/evaluate_rag_retrieval.py --run-live --top-k 3 --output reports/rag-retrieval-baseline.json
+```
+
+لا يمكن الجمع بين `--run-live` و`--validate-only`. **لا يشغّل CI القياس الحي، ولا تُرسل طلبات API إلا عند تمرير `--run-live` صراحةً.** الأداة لا تحتاج إلى اتصال بقاعدة البيانات ولا تعدّلها؛ التقرير يُطبع على الشاشة ما لم تحدد `--output`.
 
 ## تفسير الحدود
 
