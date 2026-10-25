@@ -297,3 +297,41 @@ def test_separate_provider_requires_its_own_api_key(monkeypatch):
 
     with pytest.raises(embeddings.EmbeddingServiceError, match="EMBEDDING_API_KEY"):
         embeddings._resolve_embedding_config()
+
+
+def test_separate_openai_embeddings_use_openai_root_not_chat_provider_base(
+    monkeypatch,
+):
+    _set_embedding_settings(
+        monkeypatch,
+        AI_PROVIDER="gemini",
+        AI_API_KEY="chat-secret",
+        AI_API_BASE_URL=(
+            "https://generativelanguage.googleapis.com/v1beta/openai"
+        ),
+        EMBEDDING_PROVIDER="openai",
+        EMBEDDING_API_KEY="embedding-secret",
+        EMBEDDING_API_BASE_URL="",
+        EMBEDDING_MODEL="text-embedding-3-small",
+    )
+
+    config = embeddings._resolve_embedding_config()
+
+    assert config.provider == "openai"
+    assert config.base_url == "https://api.openai.com/v1"
+    assert config.api_key == "embedding-secret"
+
+
+def test_openai_compatible_provider_requires_its_own_api_base_when_independent(
+    monkeypatch,
+):
+    _set_embedding_settings(
+        monkeypatch,
+        AI_PROVIDER="gemini",
+        EMBEDDING_PROVIDER="openai-compatible",
+        EMBEDDING_API_KEY="embedding-secret",
+        EMBEDDING_API_BASE_URL="",
+    )
+
+    with pytest.raises(embeddings.EmbeddingServiceError, match="EMBEDDING_API_BASE_URL"):
+        embeddings._resolve_embedding_config()
