@@ -587,7 +587,9 @@ async def index_image_for_rag(
         try:
             indexed_chunks = index_file_chunks(db, attachment)
         except EmbeddingServiceError as exc:
-            db.rollback()
+            # Embeddings are generated before index_file_chunks mutates any rows.
+            # Avoid rolling back the transaction that already holds the saved image
+            # description; it must remain available for the next retry.
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="تعذر فهرسة وصف الصورة الآن. أعد المحاولة لاحقًا.",
