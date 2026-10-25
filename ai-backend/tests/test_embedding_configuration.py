@@ -26,6 +26,30 @@ def _set_embedding_settings(monkeypatch, **overrides):
     )
 
 
+def test_existing_render_gemini_compat_config_resolves_native_embedding_endpoint(monkeypatch):
+    """Cover the user's current non-secret Render configuration shape."""
+    _set_embedding_settings(
+        monkeypatch,
+        AI_PROVIDER="gemini",
+        AI_API_KEY="chat-secret",
+        AI_API_BASE_URL=(
+            "https://generativelanguage.googleapis.com/v1beta/openai/"
+        ),
+        EMBEDDING_PROVIDER="",
+        EMBEDDING_API_KEY="",
+        EMBEDDING_API_BASE_URL="",
+        EMBEDDING_MODEL="",
+        EMBEDDING_DIMENSIONS=768,
+    )
+
+    config = embeddings._resolve_embedding_config()
+
+    assert config.provider == "gemini"
+    assert config.model == "gemini-embedding-001"
+    assert config.api_key == "chat-secret"
+    assert config.base_url == "https://generativelanguage.googleapis.com/v1beta"
+
+
 def test_defaults_choose_an_embedding_model_compatible_with_chat_provider(monkeypatch):
     _set_embedding_settings(monkeypatch)
 
