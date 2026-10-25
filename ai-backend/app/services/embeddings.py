@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -65,6 +66,28 @@ def _normalize_gemini_base_url(base_url: str) -> str:
     if base.endswith("/v1beta"):
         return base
     return f"{base}/v1beta"
+
+
+
+
+def _is_official_gemini_api_url(base_url: str) -> bool:
+    """Recognize the official Gemini API origin, not a hostname substring."""
+    try:
+        parsed = urlsplit(base_url.strip())
+        port = parsed.port
+    except ValueError:
+        return False
+
+    return (
+        parsed.scheme.lower() == "https"
+        and parsed.hostname is not None
+        and parsed.hostname.lower() == "generativelanguage.googleapis.com"
+        and parsed.username is None
+        and parsed.password is None
+        and port in (None, 443)
+        and not parsed.query
+        and not parsed.fragment
+    )
 
 
 def _resolve_embedding_config() -> EmbeddingConfig:
@@ -141,7 +164,7 @@ def _resolve_embedding_config() -> EmbeddingConfig:
             base_url = _normalize_gemini_base_url(configured_base_url)
         elif (
             not configured_provider
-            and "generativelanguage.googleapis.com" in chat_base_url
+            and _is_official_gemini_api_url(chat_base_url)
         ):
             # Preserve existing Gemini-compatible deployments that put
             # /v1beta/openai in AI_API_BASE_URL.
