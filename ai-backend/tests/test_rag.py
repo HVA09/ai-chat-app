@@ -615,3 +615,88 @@ def test_shared_assistant_file_chunks_stop_retrieving_after_unshare(
     assert "Protected assistant knowledge" not in fallback_context
     assert "Protected assistant evidence" not in fallback_context
     assert fallback_sources == []
+
+
+def test_retrieval_ranks_closest_embedding_first(db_session, monkeypatch):
+    """A known-nearest chunk must rank before an orthogonal, irrelevant chunk."""
+    import asyncio
+    from app.models.conversation import Conversation
+
+    user = User(email="rag-ranking@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+
+    workspace = Workspace(owner_id=user.id, name="RAG ranking")
+    db_session.add(workspace)
+    db_session.flush()
+
+    conversation = Conversation(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        title="Ranking evaluation",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+
+    relevant_file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        original_filename="networking-guide.txt",
+        stored_filename="networking-guide.txt",
+        content_type="text/plain",
+        size_bytes=50,
+        extracted_text="Linux networking commands and IP address inspection.",
+    )
+    unrelated_file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        original_filename="cooking-notes.txt",
+        stored_filename="cooking-notes.txt",
+        content_type="text/plain",
+        size_bytes=50,
+        extracted_text="A note about baking bread.",
+    )
+    db_session.add_all([relevant_file, unrelated_file])
+    db_session.flush()
+
+    query_vector = [1.0] + [0.0] * 767
+    unrelated_vector = [0.0, 1.0] + [0.0] * 766
+    db_session.add_all(
+        [
+            FileChunk(
+                file_id=relevant_file.id,
+                chunk_index=0,
+                content="Use ip addr to inspect Linux network interfaces.",
+                embedding=query_vector,
+            ),
+            FileChunk(
+                file_id=unrelated_file.id,
+                chunk_index=0,
+                content="Mix flour and water before baking bread.",
+                embedding=unrelated_vector,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    async def fake_embed_query(_query):
+        return query_vector
+
+    monkeypatch.setattr(rag, "embed_query", fake_embed_query)
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            user.id,
+            conversation.id,
+            "How do I inspect IP addresses in Linux?",
+            top_k=2,
+            workspace_id=workspace.id,
+        )
+    )
+
+    assert [file.id for _, file in rows] == [
+        relevant_file.id,
+        unrelated_file.id,
+    ]
+    assert "ip addr" in rows[0][0].content
+
