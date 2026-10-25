@@ -11,6 +11,7 @@ from app.config import settings
 
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+OPENAI_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_EMBEDDING_MODELS = {
     "gemini": "gemini-embedding-001",
     "openai": "text-embedding-3-small",
@@ -127,12 +128,29 @@ def _resolve_embedding_config() -> EmbeddingConfig:
             base_url = _normalize_gemini_base_url(chat_base_url)
         else:
             base_url = GEMINI_BASE_URL
+    elif provider == "openai":
+        if configured_base_url:
+            base_url = configured_base_url.rstrip("/")
+        elif configured_provider and provider != chat_provider:
+            base_url = OPENAI_BASE_URL
+        else:
+            base_url = chat_base_url.rstrip("/")
     else:
-        base_url = (configured_base_url or chat_base_url).rstrip("/")
-        if not base_url:
+        if (
+            not configured_base_url
+            and configured_provider
+            and chat_provider not in {"openai", "openai-compatible"}
+        ):
             raise EmbeddingServiceError(
-                "عنوان خدمة embeddings غير مضبوط. عيّن EMBEDDING_API_BASE_URL أو AI_API_BASE_URL."
+                "اضبط EMBEDDING_API_BASE_URL عند استخدام openai-compatible "
+                "بشكل مستقل عن مزوّد المحادثة."
             )
+        base_url = (configured_base_url or chat_base_url).rstrip("/")
+
+    if not base_url:
+        raise EmbeddingServiceError(
+            "عنوان خدمة embeddings غير مضبوط. عيّن EMBEDDING_API_BASE_URL أو AI_API_BASE_URL."
+        )
 
     return EmbeddingConfig(
         provider=provider,
