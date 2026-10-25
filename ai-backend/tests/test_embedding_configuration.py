@@ -283,3 +283,17 @@ def test_unsupported_chat_provider_requires_explicit_embedding_provider(
 
     with pytest.raises(embeddings.EmbeddingServiceError, match="لا يوجد تكامل embeddings"):
         embeddings._resolve_embedding_config()
+
+
+def test_separate_provider_requires_its_own_api_key(monkeypatch):
+    _set_embedding_settings(
+        monkeypatch,
+        AI_PROVIDER="openai",
+        AI_API_KEY="openai-chat-secret",
+        EMBEDDING_PROVIDER="gemini",
+        EMBEDDING_API_KEY="",
+        EMBEDDING_MODEL="gemini-embedding-001",
+    )
+
+    with pytest.raises(embeddings.EmbeddingServiceError, match="EMBEDDING_API_KEY"):
+        embeddings._resolve_embedding_config()
