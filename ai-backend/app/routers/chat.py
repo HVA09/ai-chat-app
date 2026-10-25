@@ -1515,7 +1515,6 @@ async def chat_stream(
                     except asyncio.CancelledError:
                         pass
 
-        _release_db_connection_before_streaming(db)
         return StreamingResponse(
             agent_event_generator(),
             media_type="text/event-stream",
