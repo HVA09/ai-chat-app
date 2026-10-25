@@ -71,11 +71,12 @@ def _resolve_embedding_config() -> EmbeddingConfig:
             f"EMBEDDING_PROVIDER غير مدعوم. الخيارات المتاحة: {supported}"
         )
 
-    # Historically, all non-Gemini providers used the OpenAI-compatible
-    # /embeddings endpoint. Keep that route for older provider names, but do
-    # not route a provider-specific model to another vendor by guessing.
     if provider not in SUPPORTED_EMBEDDING_PROVIDERS:
-        provider = "openai-compatible"
+        raise EmbeddingServiceError(
+            "لا يوجد تكامل embeddings افتراضي لهذا المزوّد. "
+            "اضبط EMBEDDING_PROVIDER على gemini أو openai أو openai-compatible، "
+            "وأدخل مفتاح وعنوان الخدمة المناسبين عند اختلافهما عن المحادثة."
+        )
 
     model = configured_model or DEFAULT_EMBEDDING_MODELS[provider]
     if model.startswith("gemini-embedding-") and provider != "gemini":
