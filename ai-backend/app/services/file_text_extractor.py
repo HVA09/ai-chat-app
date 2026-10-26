@@ -74,19 +74,51 @@ def _read_pdf_file(path: Path, max_chars: int) -> str:
 def _read_docx_file(path: Path, max_chars: int) -> str:
     document = Document(str(path))
     parts: list[str] = []
+    used = 0
+    truncated = False
+
+    def append_part(value: str) -> bool:
+        """Append only the portion that fits; return True once text was clipped."""
+        nonlocal used, truncated
+        value = value.strip()
+        if not value:
+            return False
+
+        separator = 1 if parts else 0
+        remaining = max_chars - used - separator
+        if remaining <= 0:
+            truncated = True
+            return True
+        if len(value) > remaining:
+            parts.append(value[:remaining])
+            used += separator + remaining
+            truncated = True
+            return True
+
+        parts.append(value)
+        used += separator + len(value)
+        return False
 
     for paragraph in document.paragraphs:
-        text = paragraph.text.strip()
-        if text:
-            parts.append(text)
+        if append_part(paragraph.text):
+            break
 
-    for table in document.tables:
-        for row in table.rows:
-            cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
-            if any(cells):
-                parts.append(" | ".join(cells))
+    if not truncated:
+        for table in document.tables:
+            for row in table.rows:
+                cells = [
+                    cell.text.strip().replace("\n", " ")
+                    for cell in row.cells
+                ]
+                if append_part(" | ".join(cell for cell in cells if cell)):
+                    break
+            if truncated:
+                break
 
-    return _limit("\n".join(parts), max_chars)
+    content = "\n".join(parts).strip()
+    if truncated and content:
+        return f"{content}\n\n[تم اختصار المحتوى بسبب الحد المسموح]"
+    return _limit(content, max_chars)
 
 
 def _read_xlsx_file(path: Path, max_chars: int) -> str:
