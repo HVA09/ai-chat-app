@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import sys
 from datetime import datetime, timezone
@@ -25,9 +26,9 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.services.embeddings import (  # noqa: E402
     EmbeddingServiceError,
-    _resolve_embedding_config,
     embed_documents_sync,
     embed_query,
+    get_embedding_index_identity,
 )
 from app.services.rag_evaluation import rank_documents, score_ranked_results  # noqa: E402
 
@@ -36,6 +37,17 @@ FIXTURE_PATH = BACKEND_ROOT / "tests" / "fixtures" / "rag_retrieval_eval_cases.j
 
 REQUIRED_CASE_FIELDS = {"id", "domain", "query", "documents", "critical_failure"}
 REQUIRED_DOCUMENT_FIELDS = {"id", "relevance", "title", "text"}
+
+
+def dataset_sha256(dataset: dict[str, Any]) -> str:
+    """Return a stable digest of the benchmark data without exposing its contents."""
+    canonical = json.dumps(
+        dataset,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def validate_dataset(dataset: dict[str, Any]) -> dict[str, Any]:
@@ -102,6 +114,7 @@ def dataset_validation_summary(dataset: dict[str, Any]) -> dict[str, Any]:
             relevance_counts[grade] += 1
     return {
         "benchmark": "rag-retrieval-eval-v1",
+        "dataset_sha256": dataset_sha256(dataset),
         "validation_only": True,
         "live_embedding_requests_sent": False,
         "case_count": len(cases),
@@ -131,7 +144,7 @@ def evaluate_dataset(dataset: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
 
     # Validate the full corpus before spending quota on any external requests.
     dataset = validate_dataset(dataset)
-    config = _resolve_embedding_config()
+    provider, model, embedding_fingerprint = get_embedding_index_identity()
     cases = dataset["cases"]
     documents = [
         document
@@ -254,8 +267,10 @@ def evaluate_dataset(dataset: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
     return {
         "benchmark": "rag-retrieval-eval-v1",
         "evaluated_at": datetime.now(timezone.utc).isoformat(),
-        "embedding_provider": config.provider,
-        "embedding_model": config.model,
+        "dataset_sha256": dataset_sha256(dataset),
+        "embedding_provider": provider,
+        "embedding_model": model,
+        "embedding_fingerprint": embedding_fingerprint,
         "top_k": top_k,
         "case_count": len(case_results),
         "macro_average": summary,

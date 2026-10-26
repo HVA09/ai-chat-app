@@ -3,7 +3,6 @@ import importlib.util
 import json
 from collections import Counter
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -219,8 +218,8 @@ def test_benchmark_runner_calculates_metrics_without_live_provider_calls(monkeyp
     monkeypatch.setattr(runner, "embed_query", fake_embed_query)
     monkeypatch.setattr(
         runner,
-        "_resolve_embedding_config",
-        lambda: SimpleNamespace(provider="test", model="test-model"),
+        "get_embedding_index_identity",
+        lambda: ("test", "test-model", "f".repeat(64)),
     )
 
     report = runner.evaluate_dataset(
@@ -254,6 +253,8 @@ def test_benchmark_runner_calculates_metrics_without_live_provider_calls(monkeyp
 
     assert report["embedding_provider"] == "test"
     assert report["embedding_model"] == "test-model"
+    assert report["embedding_fingerprint"] == "f" * 64
+    assert len(report["dataset_sha256"]) == 64
     assert report["case_count"] == 1
     assert report["cases"][0]["ranked_documents"][0]["id"] == "relevant"
     assert report["macro_average"]["recall_at_2"] == pytest.approx(1.0)
@@ -287,7 +288,7 @@ def test_rag_validate_only_mode_never_calls_the_embedding_provider(monkeypatch, 
     monkeypatch.setattr(runner.sys, "argv", ["evaluate_rag_retrieval.py", "--validate-only"])
     monkeypatch.setattr(runner, "embed_documents_sync", unexpected_provider_call)
     monkeypatch.setattr(runner, "embed_query", unexpected_async_provider_call)
-    monkeypatch.setattr(runner, "_resolve_embedding_config", unexpected_provider_call)
+    monkeypatch.setattr(runner, "get_embedding_index_identity", unexpected_provider_call)
 
     assert runner.main() == 0
     summary = json.loads(capsys.readouterr().out)
@@ -295,7 +296,9 @@ def test_rag_validate_only_mode_never_calls_the_embedding_provider(monkeypatch, 
     assert summary["validation_only"] is True
     assert summary["live_embedding_requests_sent"] is False
     assert summary["case_count"] == 14
+    assert len(summary["dataset_sha256"]) == 64
     assert summary["document_count"] == 42
+    assert len(summary["dataset_sha256"]) == 64
     assert len(summary["domain_counts"]) == 7
     assert sum(summary["relevance_grade_counts"].values()) == 42
 
@@ -348,7 +351,7 @@ def test_evaluator_validates_dataset_before_provider_calls(monkeypatch):
 
     monkeypatch.setattr(runner, "embed_documents_sync", unexpected_call)
     monkeypatch.setattr(runner, "embed_query", unexpected_async_call)
-    monkeypatch.setattr(runner, "_resolve_embedding_config", unexpected_call)
+    monkeypatch.setattr(runner, "get_embedding_index_identity", unexpected_call)
 
     with pytest.raises(ValueError, match="Each RAG case must contain"):
         runner.evaluate_dataset({"schema_version": 1, "cases": [{"id": "invalid"}]})
@@ -360,7 +363,7 @@ def test_evaluator_checks_embedding_configuration_before_requests(monkeypatch):
 
     def fake_resolve_config():
         events.append("resolve_config")
-        return SimpleNamespace(provider="test", model="test-model")
+        return ("test", "test-model", "f" * 64)
 
     def fake_embed_documents(texts):
         events.append("embed_documents")
@@ -373,7 +376,7 @@ def test_evaluator_checks_embedding_configuration_before_requests(monkeypatch):
         events.append("embed_query")
         return [1.0, 0.0]
 
-    monkeypatch.setattr(runner, "_resolve_embedding_config", fake_resolve_config)
+    monkeypatch.setattr(runner, "get_embedding_index_identity", fake_resolve_config)
     monkeypatch.setattr(runner, "embed_documents_sync", fake_embed_documents)
     monkeypatch.setattr(runner, "embed_query", fake_embed_query)
 
@@ -395,7 +398,7 @@ def test_rag_default_mode_is_offline_and_never_calls_provider(monkeypatch, capsy
     monkeypatch.setattr(runner.sys, "argv", ["evaluate_rag_retrieval.py"])
     monkeypatch.setattr(runner, "embed_documents_sync", unexpected_provider_call)
     monkeypatch.setattr(runner, "embed_query", unexpected_async_provider_call)
-    monkeypatch.setattr(runner, "_resolve_embedding_config", unexpected_provider_call)
+    monkeypatch.setattr(runner, "get_embedding_index_identity", unexpected_provider_call)
 
     assert runner.main() == 0
     summary = json.loads(capsys.readouterr().out)
@@ -460,8 +463,8 @@ def test_benchmark_reports_when_an_irrelevant_document_ranks_first(monkeypatch):
     monkeypatch.setattr(runner, "embed_query", fake_embed_query)
     monkeypatch.setattr(
         runner,
-        "_resolve_embedding_config",
-        lambda: SimpleNamespace(provider="test", model="test-model"),
+        "get_embedding_index_identity",
+        lambda: ("test", "test-model", "f".repeat(64)),
     )
 
     report = runner.evaluate_dataset(_minimal_valid_rag_dataset(), top_k=2)
@@ -475,3 +478,13 @@ def test_benchmark_reports_when_an_irrelevant_document_ranks_first(monkeypatch):
     assert report["retrieval_diagnostics"]["mean_first_relevant_rank"] == pytest.approx(2.0)
     assert report["by_domain"]["programming"]["top1_irrelevant_count"] == 1
     assert report["by_domain"]["programming"]["top1_irrelevant_rate"] == pytest.approx(1.0)
+
+def test_dataset_sha256_is_stable_and_changes_when_benchmark_content_changes():
+    runner = _load_rag_evaluation_runner()
+    original = {"schema_version": 1, "cases": [{"id": "one", "query": "test"}]}
+    reordered = {"cases": [{"query": "test", "id": "one"}], "schema_version": 1}
+    changed = {"schema_version": 1, "cases": [{"id": "one", "query": "changed"}]}
+
+    assert runner.dataset_sha256(original) == runner.dataset_sha256(reordered)
+    assert runner.dataset_sha256(original) != runner.dataset_sha256(changed)
+    assert len(runner.dataset_sha256(original)) == 64
