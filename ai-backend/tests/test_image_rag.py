@@ -420,3 +420,88 @@ def test_failed_image_embedding_stays_retryable_from_file_response(
         .count()
         == 1
     )
+
+
+def test_index_image_reindexes_stale_existing_embeddings_without_vision(
+    client, monkeypatch, db_session, tmp_path
+):
+    """A vector from an older text/model must not make a stale image look indexed."""
+    from app.models.file_attachment import extracted_text_fingerprint
+
+    token = _register_and_login(client, "image-stale-index-retry@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    monkeypatch.setattr(
+        files_router.settings, "UPLOAD_DIR", str(tmp_path / "uploads")
+    )
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda _db, _file: 0)
+
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("stale-chart.png", PNG_HEADER, "image/png")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+
+    attachment = db_session.get(FileAttachment, file_id)
+    current_description = (
+        "[IMAGE DESCRIPTION] Updated chart description with latest values."
+    )
+    attachment.extracted_text = current_description
+    attachment.indexed_text_sha256 = extracted_text_fingerprint(
+        "Old chart description from a previous source version."
+    )
+    attachment.indexed_embedding_fingerprint = "0" * 64
+    attachment.indexed_embedding_provider = "old-provider"
+    attachment.indexed_embedding_model = "old-model"
+    db_session.add(
+        FileChunk(
+            file_id=file_id,
+            chunk_index=0,
+            content="Old chart description from a previous source version.",
+            embedding=[0.1] * 768,
+        )
+    )
+    db_session.commit()
+
+    calls = []
+
+    def fake_index_file_chunks(db, file):
+        calls.append(file.extracted_text)
+        db.query(FileChunk).filter(
+            FileChunk.file_id == file.id
+        ).delete(synchronize_session=False)
+        db.add(
+            FileChunk(
+                file_id=file.id,
+                chunk_index=0,
+                content=file.extracted_text or "",
+                embedding=[0.2] * 768,
+            )
+        )
+        _mark_file_as_indexed(file)
+        db.flush()
+        return 1
+
+    monkeypatch.setattr(files_router, "index_file_chunks", fake_index_file_chunks)
+    vision_reply = AsyncMock(
+        side_effect=AssertionError(
+            "A saved description with stale embeddings must not trigger another vision request"
+        )
+    )
+    monkeypatch.setattr(image_rag, "get_ai_vision_reply", vision_reply)
+
+    response = client.post(f"/files/{file_id}/index-image", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["is_ai_indexed"] is True
+    assert calls == [current_description]
+    vision_reply.assert_not_awaited()
+
+    chunks = (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file_id)
+        .all()
+    )
+    assert len(chunks) == 1
+    assert chunks[0].content == current_description
