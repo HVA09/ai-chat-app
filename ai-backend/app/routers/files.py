@@ -423,6 +423,11 @@ def list_files(
 ):
     if project_id is not None:
         project = _get_accessible_project(project_id, current_user, db)
+        if workspace_id is not None and workspace_id != project.workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="مساحة العمل لا تطابق مساحة عمل المشروع",
+            )
         files = (
             db.query(FileAttachment)
             .filter(FileAttachment.project_id == project.id)
