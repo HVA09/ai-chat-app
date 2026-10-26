@@ -702,7 +702,7 @@ async def index_image_for_rag(
             detail="يمكن فهرسة الصور فقط",
         )
 
-    if attachment.extracted_text:
+    if (attachment.extracted_text or "").strip():
         has_embedding = (
             db.query(FileChunk.id)
             .filter(
@@ -716,7 +716,22 @@ async def index_image_for_rag(
 
         # A previous attempt may have saved the image description but failed
         # to generate embeddings. Retry indexing the stored text without
-        # calling the vision model again or charging for another image analysis.
+        # calling the vision model again, while still respecting AI usage limits.
+        enforce_daily_ai_limit(current_user, db)
+        if attachment.workspace_id is not None:
+            enforce_workspace_daily_ai_limit(attachment.workspace_id, current_user, db)
+
+        db.add(
+            UsageLog(
+                user_id=current_user.id,
+                workspace_id=attachment.workspace_id,
+                endpoint="/files/index-image/reindex",
+                model=settings.EMBEDDING_MODEL or None,
+                provider=settings.EMBEDDING_PROVIDER or settings.AI_PROVIDER or None,
+            )
+        )
+        db.commit()
+
         try:
             indexed_chunks = index_file_chunks(db, attachment)
         except EmbeddingServiceError as exc:
