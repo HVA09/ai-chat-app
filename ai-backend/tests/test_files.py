@@ -217,7 +217,7 @@ def test_reindex_file_rejects_upload_without_extracted_text(
         files={
             "file": (
                 "chart.png",
-                b"\\x89PNG\\r\\n\\x1a\\nmock-image",
+                b"\x89PNG\r\n\x1a\nmock-image",
                 "image/png",
             )
         },
