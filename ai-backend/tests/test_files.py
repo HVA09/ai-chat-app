@@ -784,7 +784,16 @@ def test_project_file_access_requires_project_membership_and_edit_role(
     )
     assert project_listing.status_code == 200
     assert [file["id"] for file in project_listing.json()] == [file_id]
+    assert project_listing.json()[0]["can_delete"] is False
     assert client.get(f"/files/{file_id}", headers=viewer_headers).status_code == 200
+    assert client.post(
+        f"/files/{file_id}/reindex",
+        headers=viewer_headers,
+    ).status_code == 403
+    assert client.post(
+        f"/files/{file_id}/index-image",
+        headers=viewer_headers,
+    ).status_code == 403
 
     denied_upload = client.post(
         "/files/upload",
