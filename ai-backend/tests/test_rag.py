@@ -66,6 +66,62 @@ def test_index_file_chunks_persists_embeddings(db_session, monkeypatch):
     assert len(chunks[0].embedding) == 768
 
 
+def test_reindex_file_chunks_replaces_old_chunks_after_text_changes(
+    db_session, monkeypatch
+):
+    """Reindexing changed extracted text must replace, not accumulate, its old chunks."""
+    user = User(
+        email="rag-content-reindex@example.com",
+        hashed_password="hashed",
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    file = FileAttachment(
+        user_id=user.id,
+        original_filename="changing-notes.txt",
+        stored_filename="changing-notes.txt",
+        content_type="text/plain",
+        size_bytes=50,
+        extracted_text="Original text that should become stale after the source changes.",
+    )
+    db_session.add(file)
+    db_session.flush()
+
+    def fake_embed(texts):
+        return [[0.1] * 768 for _ in texts]
+
+    monkeypatch.setattr(rag, "embed_documents_sync", fake_embed)
+
+    first_count = rag.index_file_chunks(db_session, file)
+    db_session.commit()
+    old_chunks = (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file.id)
+        .all()
+    )
+    assert first_count == 1
+    assert len(old_chunks) == 1
+    assert "Original text" in old_chunks[0].content
+
+    file.extracted_text = "Updated networking instructions replace the previous source text."
+    db_session.commit()
+
+    second_count = rag.index_file_chunks(db_session, file)
+    db_session.commit()
+    fresh_chunks = (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file.id)
+        .order_by(FileChunk.chunk_index.asc())
+        .all()
+    )
+
+    assert second_count == 1
+    assert len(fresh_chunks) == 1
+    assert "Updated networking instructions" in fresh_chunks[0].content
+    assert all("Original text" not in chunk.content for chunk in fresh_chunks)
+
+
 def test_chat_uses_retrieved_rag_context(client, monkeypatch, db_session):
     token = _register_and_login(client, "rag-chat@example.com")
     headers = {"Authorization": f"Bearer {token}"}
