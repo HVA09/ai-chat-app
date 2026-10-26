@@ -308,7 +308,7 @@ def test_rag_validate_only_mode_never_calls_the_embedding_provider(monkeypatch, 
 
     assert summary["validation_only"] is True
     assert summary["live_embedding_requests_sent"] is False
-    assert summary["case_count"] == 14
+    assert summary["case_count"] == len(runner.load_dataset()["cases"])
     assert len(summary["dataset_sha256"]) == 64
     assert summary["document_count"] == 42
     assert len(summary["domain_counts"]) == 7
@@ -441,7 +441,7 @@ def test_live_benchmark_runs_only_after_explicit_opt_in(monkeypatch, capsys):
 
     assert runner.main() == 0
     report = json.loads(capsys.readouterr().out)
-    assert seen == {"case_count": 14, "top_k": 2}
+    assert seen == {"case_count": len(runner.load_dataset()["cases"]), "top_k": 2}
     assert report["live_embedding_requests_sent"] is True
 
 
@@ -500,3 +500,32 @@ def test_dataset_sha256_is_stable_and_changes_when_benchmark_content_changes():
     assert runner.dataset_sha256(original) == runner.dataset_sha256(reordered)
     assert runner.dataset_sha256(original) != runner.dataset_sha256(changed)
     assert len(runner.dataset_sha256(original)) == 64
+
+
+def test_evaluator_refuses_to_overwrite_benchmark_fixture(monkeypatch, capsys):
+    runner = _load_rag_evaluation_runner()
+    fixture_path = runner.FIXTURE_PATH
+    original_content = fixture_path.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(
+        runner.sys,
+        "argv",
+        [
+            "evaluate_rag_retrieval.py",
+            "--validate-only",
+            "--output",
+            str(fixture_path),
+        ],
+    )
+
+    def unexpected_dataset_load():
+        pytest.fail("The output path must be checked before loading or evaluating data")
+
+    monkeypatch.setattr(runner, "load_dataset", unexpected_dataset_load)
+
+    assert runner.main() == 2
+    error = json.loads(capsys.readouterr().err)
+    assert error["error"] == (
+        "Output path must not overwrite the RAG evaluation fixture."
+    )
+    assert fixture_path.read_text(encoding="utf-8") == original_content
