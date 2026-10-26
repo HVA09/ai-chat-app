@@ -219,7 +219,7 @@ def test_benchmark_runner_calculates_metrics_without_live_provider_calls(monkeyp
     monkeypatch.setattr(
         runner,
         "get_embedding_index_identity",
-        lambda: ("test", "test-model", "f".repeat(64)),
+        lambda: ("test", "test-model", "f" * 64),
     )
 
     report = runner.evaluate_dataset(
@@ -298,7 +298,6 @@ def test_rag_validate_only_mode_never_calls_the_embedding_provider(monkeypatch, 
     assert summary["case_count"] == 14
     assert len(summary["dataset_sha256"]) == 64
     assert summary["document_count"] == 42
-    assert len(summary["dataset_sha256"]) == 64
     assert len(summary["domain_counts"]) == 7
     assert sum(summary["relevance_grade_counts"].values()) == 42
 
@@ -464,7 +463,7 @@ def test_benchmark_reports_when_an_irrelevant_document_ranks_first(monkeypatch):
     monkeypatch.setattr(
         runner,
         "get_embedding_index_identity",
-        lambda: ("test", "test-model", "f".repeat(64)),
+        lambda: ("test", "test-model", "f" * 64),
     )
 
     report = runner.evaluate_dataset(_minimal_valid_rag_dataset(), top_k=2)
