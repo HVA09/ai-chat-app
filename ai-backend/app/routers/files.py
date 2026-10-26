@@ -341,7 +341,7 @@ async def upload_file(
 
         sniffed = _sniff_content_type(bytes(header), file.content_type)
         if sniffed is None or sniffed not in ALLOWED_CONTENT_TYPES:
-            raise HTTPException(status_code=415, detail="نوع الملف غير مدعوم أو لا يطابق محتواه (مسموح: صور، PDF، Word، Excel، CSV)")
+            raise HTTPException(status_code=415, detail="نوع الملف غير مدعوم أو لا يطابق محتواه. الصيغ المدعومة: صور JPEG/PNG/GIF/WebP، PDF، Word DOCX، Excel XLSX، CSV، وTXT.")
 
         if sniffed in {
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
