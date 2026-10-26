@@ -747,20 +747,16 @@ async def index_image_for_rag(
         )
 
     if (attachment.extracted_text or "").strip():
-        has_embedding = (
-            db.query(FileChunk.id)
-            .filter(
-                FileChunk.file_id == attachment.id,
-                FileChunk.embedding.is_not(None),
-            )
-            .first()
-        )
-        if has_embedding:
-            return _file_response(attachment, current_user, db)
+        # Skip only when the index matches both the saved source text and the
+        # active embedding configuration. Merely finding an old vector is not
+        # sufficient: source text or provider/model settings may have changed.
+        current_file_response = _file_response(attachment, current_user, db)
+        if current_file_response.is_ai_indexed:
+            return current_file_response
 
-        # A previous attempt may have saved the image description but failed
-        # to generate embeddings. Retry indexing the stored text without
-        # calling the vision model again, while still respecting AI usage limits.
+        # A previous attempt may have saved the image description, or an older
+        # index may have become stale after a source/configuration change. Reindex
+        # the stored text without calling the vision model again.
         enforce_daily_ai_limit(current_user, db)
         if attachment.workspace_id is not None:
             enforce_workspace_daily_ai_limit(attachment.workspace_id, current_user, db)
