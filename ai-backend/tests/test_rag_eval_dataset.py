@@ -442,3 +442,36 @@ def test_live_and_validate_only_modes_cannot_be_combined(monkeypatch):
         runner.main()
 
     assert error.value.code == 2
+
+
+def test_benchmark_reports_when_an_irrelevant_document_ranks_first(monkeypatch):
+    runner = _load_rag_evaluation_runner()
+
+    def fake_embed_documents(texts):
+        return [
+            [1.0, 0.0] if "relevant" in text else [0.0, 1.0]
+            for text in texts
+        ]
+
+    async def fake_embed_query(_query):
+        return [0.0, 1.0]
+
+    monkeypatch.setattr(runner, "embed_documents_sync", fake_embed_documents)
+    monkeypatch.setattr(runner, "embed_query", fake_embed_query)
+    monkeypatch.setattr(
+        runner,
+        "_resolve_embedding_config",
+        lambda: SimpleNamespace(provider="test", model="test-model"),
+    )
+
+    report = runner.evaluate_dataset(_minimal_valid_rag_dataset(), top_k=2)
+
+    case = report["cases"][0]
+    assert case["ranked_documents"][0]["id"] == "preflight-negative"
+    assert case["top1_is_irrelevant"] is True
+    assert case["first_relevant_rank"] == 2
+    assert report["retrieval_diagnostics"]["top1_irrelevant_count"] == 1
+    assert report["retrieval_diagnostics"]["top1_irrelevant_rate"] == pytest.approx(1.0)
+    assert report["retrieval_diagnostics"]["mean_first_relevant_rank"] == pytest.approx(2.0)
+    assert report["by_domain"]["programming"]["top1_irrelevant_count"] == 1
+    assert report["by_domain"]["programming"]["top1_irrelevant_rate"] == pytest.approx(1.0)
