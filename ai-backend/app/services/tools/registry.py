@@ -23,9 +23,11 @@ from app.config import settings
 from app.models.conversation import Conversation
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
+from app.models.project import WorkspaceProject
 from app.models.project_file import ProjectFile
 from app.models.user import User
 from app.schemas.project_files import ProjectFileCreate
+from app.services.project_access import can_edit_project, can_read_project
 from app.services.tools.calculator import CalculatorError, calculate_expression
 from app.services.tools.code_execution import CodeExecutionError, execute_python_code
 from app.services.tools.data_analysis import DataAnalysisError, DataFile, analyze_file
@@ -175,6 +177,38 @@ class ToolRegistry:
         return result
 
 
+def _project_permission_denial(
+    context: ToolContext,
+    *,
+    require_edit: bool,
+) -> str | None:
+    """Recheck current project ACL before an agent tool reads or mutates project files."""
+    conversation = context.conversation
+    if conversation is None or conversation.project_id is None:
+        return None
+
+    project = context.db.get(WorkspaceProject, conversation.project_id)
+    if (
+        project is None
+        or project.workspace_id != conversation.workspace_id
+        or context.current_user is None
+    ):
+        return "المشروع غير متاح لهذه المحادثة."
+
+    allowed = (
+        can_edit_project(project, context.current_user, context.db)
+        if require_edit
+        else can_read_project(project, context.current_user, context.db)
+    )
+    if not allowed:
+        return (
+            "ليس لديك صلاحية تعديل هذا المشروع."
+            if require_edit
+            else "المشروع غير متاح لك أو ليس لديك صلاحية قراءته."
+        )
+    return None
+
+
 def _get_attached_data_attachment(
     conversation: Conversation,
     current_user: User,
@@ -308,6 +342,10 @@ async def _analyze_data(arguments: dict[str, Any], context: ToolContext) -> Tool
 
 async def _create_project_archive(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
     """Create a safe, text-only project ZIP and expose it through the existing files API."""
+    permission_denial = _project_permission_denial(context, require_edit=True)
+    if permission_denial:
+        return ToolResult(content=permission_denial, sources=[], succeeded=False)
+
     project_name = str(arguments.get("project_name") or "ai-project").strip()
     files = arguments.get("files")
     if not project_name or not isinstance(files, list) or not files:
@@ -475,6 +513,10 @@ def _validated_project_path(raw_path: Any) -> str:
 
 async def _list_project_files(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
     del arguments
+    permission_denial = _project_permission_denial(context, require_edit=False)
+    if permission_denial:
+        return ToolResult(content=permission_denial, sources=[], succeeded=False)
+
     project_id = _current_project_id(context)
     if project_id is None:
         return ToolResult(
@@ -510,6 +552,10 @@ async def _list_project_files(arguments: dict[str, Any], context: ToolContext) -
 
 
 async def _read_project_file(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
+    permission_denial = _project_permission_denial(context, require_edit=False)
+    if permission_denial:
+        return ToolResult(content=permission_denial, sources=[], succeeded=False)
+
     project_id = _current_project_id(context)
     if project_id is None:
         return ToolResult(
@@ -562,6 +608,10 @@ async def _read_project_file(arguments: dict[str, Any], context: ToolContext) ->
 
 
 async def _search_project_files(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
+    permission_denial = _project_permission_denial(context, require_edit=False)
+    if permission_denial:
+        return ToolResult(content=permission_denial, sources=[], succeeded=False)
+
     project_id = _current_project_id(context)
     if project_id is None:
         return ToolResult(
@@ -619,6 +669,10 @@ async def _search_project_files(arguments: dict[str, Any], context: ToolContext)
 
 async def _edit_project_file(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
     """Safely create or update one source file inside the current project."""
+    permission_denial = _project_permission_denial(context, require_edit=True)
+    if permission_denial:
+        return ToolResult(content=permission_denial, sources=[], succeeded=False)
+
     project_id = context.conversation.project_id
     if project_id is None:
         return ToolResult(
