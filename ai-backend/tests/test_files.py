@@ -149,6 +149,81 @@ def test_deleting_file_cascades_to_rag_chunks(
     )
 
 
+def test_deleting_file_removes_assistant_knowledge_link_and_chunks(
+    client, db_session, tmp_path, monkeypatch
+):
+    """Deleting a personal upload must also detach it from assistant knowledge."""
+    from app.models.assistant import Assistant
+    from app.models.assistant_file_link import AssistantFileLink
+    from app.models.file_chunk import FileChunk
+    from app.models.user import User
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    _disable_object_storage(monkeypatch)
+
+    def fake_index_file_chunks(db, attachment):
+        db.add(
+            FileChunk(
+                file_id=attachment.id,
+                chunk_index=0,
+                content="Assistant knowledge to remove with the source file.",
+                embedding=None,
+            )
+        )
+        db.flush()
+        return 1
+
+    monkeypatch.setattr(files_router, "index_file_chunks", fake_index_file_chunks)
+    token = _register_and_login(client, "assistant-file-delete-cascade@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    uploaded = client.post(
+        "/files/upload",
+        files={
+            "file": (
+                "assistant-notes.txt",
+                b"Assistant knowledge to remove with the source file.",
+                "text/plain",
+            )
+        },
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+
+    owner = db_session.query(User).filter_by(
+        email="assistant-file-delete-cascade@example.com"
+    ).one()
+    assistant = Assistant(
+        user_id=owner.id,
+        name="Delete cascade test assistant",
+        instructions="Use the linked knowledge when it is available.",
+    )
+    db_session.add(assistant)
+    db_session.flush()
+    db_session.add(AssistantFileLink(assistant_id=assistant.id, file_id=file_id))
+    db_session.commit()
+
+    deleted = client.delete(f"/files/{file_id}", headers=headers)
+    assert deleted.status_code == 204
+
+    db_session.expire_all()
+    assert db_session.get(Assistant, assistant.id) is not None
+    assert (
+        db_session.query(AssistantFileLink)
+        .filter(AssistantFileLink.file_id == file_id)
+        .count()
+        == 0
+    )
+    assert (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file_id)
+        .count()
+        == 0
+    )
+
+
 def test_reindex_file_retries_saved_text_after_embedding_provider_failure(
     client, db_session, tmp_path, monkeypatch
 ):
