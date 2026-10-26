@@ -673,3 +673,123 @@ def test_upload_preserves_original_file_when_text_extraction_fails(
     assert downloaded.status_code == 200
     assert downloaded.content == payload
 
+
+def test_project_file_access_requires_project_membership_and_edit_role(
+    client, db_session, tmp_path, monkeypatch
+):
+    """Workspace membership alone must not expose private project files."""
+    from app.models.project_member import ProjectMember, ProjectMemberRole
+    from app.models.user import User
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    _disable_object_storage(monkeypatch)
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda _db, _file: 0)
+
+    owner_token = _register_and_login(client, "project-file-acl-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    owner = db_session.query(User).filter_by(
+        email="project-file-acl-owner@example.com"
+    ).one()
+    workspace = owner.owned_workspaces[0]
+
+    project_response = client.post(
+        "/projects",
+        json={"workspace_id": workspace.id, "name": "Private files"},
+        headers=owner_headers,
+    )
+    assert project_response.status_code == 201
+    project_id = project_response.json()["id"]
+
+    uploaded = client.post(
+        "/files/upload",
+        params={"project_id": project_id},
+        files={"file": ("private.txt", b"Private project contents.", "text/plain")},
+        headers=owner_headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+
+    outsider_token = _register_and_login(
+        client, "project-file-acl-outsider@example.com"
+    )
+    outsider = db_session.query(User).filter_by(
+        email="project-file-acl-outsider@example.com"
+    ).one()
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=outsider.id,
+            role=WorkspaceRole.member,
+        )
+    )
+
+    viewer_token = _register_and_login(
+        client, "project-file-acl-viewer@example.com"
+    )
+    viewer = db_session.query(User).filter_by(
+        email="project-file-acl-viewer@example.com"
+    ).one()
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=viewer.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    db_session.add(
+        ProjectMember(
+            project_id=project_id,
+            user_id=viewer.id,
+            role=ProjectMemberRole.viewer,
+        )
+    )
+    db_session.commit()
+
+    outsider_headers = {"Authorization": f"Bearer {outsider_token}"}
+    assert client.get(
+        "/files",
+        params={"project_id": project_id},
+        headers=outsider_headers,
+    ).status_code == 404
+    assert client.get(
+        f"/files/{file_id}",
+        headers=outsider_headers,
+    ).status_code == 404
+    assert client.post(
+        f"/files/{file_id}/reindex",
+        headers=outsider_headers,
+    ).status_code == 404
+    assert client.post(
+        "/files/upload",
+        params={"project_id": project_id},
+        files={"file": ("intruder.txt", b"not allowed", "text/plain")},
+        headers=outsider_headers,
+    ).status_code == 404
+
+    workspace_listing = client.get(
+        "/files",
+        params={"workspace_id": workspace.id},
+        headers=outsider_headers,
+    )
+    assert workspace_listing.status_code == 200
+    assert file_id not in {file["id"] for file in workspace_listing.json()}
+
+    viewer_headers = {"Authorization": f"Bearer {viewer_token}"}
+    project_listing = client.get(
+        "/files",
+        params={"project_id": project_id},
+        headers=viewer_headers,
+    )
+    assert project_listing.status_code == 200
+    assert [file["id"] for file in project_listing.json()] == [file_id]
+    assert client.get(f"/files/{file_id}", headers=viewer_headers).status_code == 200
+
+    denied_upload = client.post(
+        "/files/upload",
+        params={"project_id": project_id},
+        files={"file": ("viewer-upload.txt", b"viewers cannot upload", "text/plain")},
+        headers=viewer_headers,
+    )
+    assert denied_upload.status_code == 403
