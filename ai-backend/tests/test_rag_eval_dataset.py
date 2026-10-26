@@ -416,7 +416,7 @@ def test_rag_default_mode_is_offline_and_never_calls_provider(monkeypatch, capsy
     summary = json.loads(capsys.readouterr().out)
     assert summary["validation_only"] is True
     assert summary["live_embedding_requests_sent"] is False
-    assert summary["case_count"] == 14
+    assert summary["case_count"] == len(runner.load_dataset()["cases"])
 
 
 def test_live_benchmark_runs_only_after_explicit_opt_in(monkeypatch, capsys):
