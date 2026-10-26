@@ -176,3 +176,196 @@ def test_non_stream_ai_request_uses_configured_timeout(monkeypatch):
 
     assert reply.text == "رد"
     assert seen["timeout"] == 17.0
+
+
+def _install_fake_provider_client(monkeypatch, provider_module, response_data):
+    """Capture outgoing provider payloads without making network requests."""
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return response_data
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            captured["timeout"] = kwargs.get("timeout")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, *args, **kwargs):
+            captured["url"] = url
+            captured["payload"] = kwargs.get("json")
+            return FakeResponse()
+
+    monkeypatch.setattr(provider_module.httpx, "AsyncClient", FakeClient)
+    return captured
+
+
+def test_openai_compatible_provider_sends_system_prompt_before_user_history(monkeypatch):
+    import asyncio
+    from app.services.ai_providers import openai_provider
+    from app.services.ai_providers.instructions import SYSTEM_PROMPT
+
+    captured = _install_fake_provider_client(
+        monkeypatch,
+        openai_provider,
+        {
+            "choices": [{"message": {"content": "reply"}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+        },
+    )
+    provider = OpenAICompatibleProvider(
+        api_key="fake",
+        base_url="https://example.com/v1",
+        model="test-model",
+    )
+    history = [
+        {"role": "system", "content": "Task-specific system guidance."},
+        {"role": "user", "content": "Earlier message"},
+    ]
+
+    reply = asyncio.run(provider.get_reply("Current question", history))
+
+    messages = captured["payload"]["messages"]
+    assert reply.text == "reply"
+    assert messages[0]["role"] == "system"
+    assert SYSTEM_PROMPT in messages[0]["content"]
+    assert "Task-specific system guidance." in messages[0]["content"]
+    assert messages[-1] == {"role": "user", "content": "Current question"}
+    assert history[0]["content"] == "Task-specific system guidance."
+
+
+def test_openai_compatible_vision_request_includes_system_prompt(monkeypatch):
+    import asyncio
+    from app.services.ai_providers import openai_provider
+    from app.services.ai_providers.instructions import SYSTEM_PROMPT
+
+    captured = _install_fake_provider_client(
+        monkeypatch,
+        openai_provider,
+        {
+            "choices": [{"message": {"content": "image summary"}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+        },
+    )
+    provider = OpenAICompatibleProvider(
+        api_key="fake",
+        base_url="https://example.com/v1",
+        model="vision-model",
+    )
+
+    reply = asyncio.run(
+        provider.get_vision_reply(
+            "Describe this image",
+            "data:image/png;base64,ZmFrZQ==",
+        )
+    )
+
+    messages = captured["payload"]["messages"]
+    assert reply.text == "image summary"
+    assert messages[0]["role"] == "system"
+    assert SYSTEM_PROMPT in messages[0]["content"]
+    assert messages[-1]["role"] == "user"
+    assert messages[-1]["content"][1]["type"] == "image_url"
+
+
+def test_openai_tool_request_preserves_system_level_guardrails(monkeypatch):
+    import asyncio
+    from app.services.ai_providers import openai_provider
+    from app.services.ai_providers.instructions import SYSTEM_PROMPT
+
+    captured = _install_fake_provider_client(
+        monkeypatch,
+        openai_provider,
+        {
+            "choices": [{"message": {"content": "done", "tool_calls": []}}],
+            "usage": {},
+        },
+    )
+    provider = OpenAICompatibleProvider(
+        api_key="fake",
+        base_url="https://example.com/v1",
+        model="tool-model",
+    )
+
+    asyncio.run(
+        provider.get_reply_with_tools(
+            messages=[
+                {"role": "system", "content": "Use the calculator for arithmetic."},
+                {"role": "user", "content": "What is 2+2?"},
+            ],
+            tools=[],
+            tool_choice="none",
+        )
+    )
+
+    first_message = captured["payload"]["messages"][0]
+    assert first_message["role"] == "system"
+    assert SYSTEM_PROMPT in first_message["content"]
+    assert "Use the calculator for arithmetic." in first_message["content"]
+
+
+def test_anthropic_provider_uses_native_system_field(monkeypatch):
+    import asyncio
+    from app.services.ai_providers import anthropic_provider
+    from app.services.ai_providers.instructions import SYSTEM_PROMPT
+
+    captured = _install_fake_provider_client(
+        monkeypatch,
+        anthropic_provider,
+        {"content": [{"text": "reply"}], "usage": {"input_tokens": 1, "output_tokens": 1}},
+    )
+    provider = AnthropicProvider(api_key="fake", model="claude-test")
+    history = [
+        {"role": "system", "content": "Narrow task instructions."},
+        {"role": "user", "content": "Earlier message"},
+    ]
+
+    reply = asyncio.run(provider.get_reply("Current question", history))
+
+    assert reply.text == "reply"
+    assert SYSTEM_PROMPT in captured["payload"]["system"]
+    assert "Narrow task instructions." in captured["payload"]["system"]
+    assert all(message["role"] != "system" for message in captured["payload"]["messages"])
+    assert captured["payload"]["messages"][-1]["content"] == "Current question"
+
+
+def test_gemini_provider_uses_native_system_instruction_field(monkeypatch):
+    import asyncio
+    from app.services.ai_providers import gemini_provider
+    from app.services.ai_providers.instructions import SYSTEM_PROMPT
+
+    captured = _install_fake_provider_client(
+        monkeypatch,
+        gemini_provider,
+        {
+            "candidates": [{"content": {"parts": [{"text": "reply"}]}}],
+            "usageMetadata": {"promptTokenCount": 1, "candidatesTokenCount": 1},
+        },
+    )
+    provider = GeminiProvider(api_key="fake", model="gemini-test")
+    history = [
+        {"role": "system", "content": "Narrow task instructions."},
+        {"role": "assistant", "content": "Earlier assistant reply"},
+    ]
+
+    reply = asyncio.run(provider.get_reply("Current question", history))
+
+    system_text = captured["payload"]["systemInstruction"]["parts"][0]["text"]
+    assert reply.text == "reply"
+    assert SYSTEM_PROMPT in system_text
+    assert "Narrow task instructions." in system_text
+    assert all(item["role"] != "system" for item in captured["payload"]["contents"])
+    assert captured["payload"]["contents"][-1] == {
+        "role": "user",
+        "parts": [{"text": "Current question"}],
+    }
