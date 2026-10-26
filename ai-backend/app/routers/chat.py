@@ -390,6 +390,22 @@ def _get_or_create_conversation(
                 status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة"
             )
 
+        # A conversation can outlive a project's membership grant. Re-check the
+        # persisted project on every reuse, even when the client sends only the
+        # conversation_id (not project_id). This protects /chat, /chat/stream,
+        # and agent-mode paths before they run tools or load project files.
+        if conversation.project_id is not None:
+            conversation_project = db.get(WorkspaceProject, conversation.project_id)
+            if (
+                conversation_project is None
+                or conversation_project.workspace_id != selected_workspace.id
+                or not can_read_project(conversation_project, current_user, db)
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="المشروع غير متاح لهذه المحادثة",
+                )
+
         changed = False
         if selected_project is not None and conversation.project_id != selected_project.id:
             raise HTTPException(
