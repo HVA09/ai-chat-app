@@ -100,7 +100,7 @@ def test_rag_evaluation_dataset_covers_arabic_queries_in_every_domain():
     arabic_query_domains = {
         case["domain"]
         for case in cases
-        if re.search(r"[\\u0600-\\u06FF]", case["query"])
+        if re.search(r"[\u0600-\u06FF]", case["query"])
     }
 
     assert EXPECTED_DOMAINS <= arabic_query_domains
