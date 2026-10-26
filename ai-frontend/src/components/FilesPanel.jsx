@@ -532,7 +532,14 @@ export default function FilesPanel({
                       {t("files.indexed")}
                     </span>
                   ) : (
-                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                    <span
+                      title={
+                        !file.has_extracted_text && !file.content_type.startsWith("image/")
+                          ? t("files.noExtractedTextHelp")
+                          : undefined
+                      }
+                      className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                    >
                       {file.has_extracted_text
                         ? t("files.indexingPending")
                         : file.content_type.startsWith("image/")

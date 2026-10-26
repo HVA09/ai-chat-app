@@ -48,6 +48,8 @@ vi.mock("react-i18next", () => ({
       "files.detach": "Detach",
       "files.confirmDelete": "Delete this file?",
       "files.delete": "Delete",
+      "files.noExtractedText": "No searchable text was extracted from this file",
+      "files.noExtractedTextHelp": "The upload succeeded, but no searchable text was found. A scanned PDF may need OCR; try a text-searchable PDF or paste the relevant text.",
     })[key] ?? key,
   }),
 }));
@@ -55,6 +57,30 @@ vi.mock("react-i18next", () => ({
 describe("FilesPanel project knowledge", () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("explains when an uploaded document has no searchable text", async () => {
+    listFiles.mockResolvedValueOnce([
+      {
+        id: 81,
+        original_filename: "scanned.pdf",
+        content_type: "application/pdf",
+        size_bytes: 100,
+        is_attached: false,
+        is_ai_indexed: false,
+        has_extracted_text: false,
+        can_delete: true,
+      },
+    ]);
+
+    render(<FilesPanel onClose={vi.fn()} />);
+
+    const status = await screen.findByText(
+      "No searchable text was extracted from this file"
+    );
+    expect(status.getAttribute("title")).toBe(
+      "The upload succeeded, but no searchable text was found. A scanned PDF may need OCR; try a text-searchable PDF or paste the relevant text."
+    );
   });
 
   it("shows a global toast when loading files fails", async () => {
