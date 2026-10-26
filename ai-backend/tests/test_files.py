@@ -1000,3 +1000,97 @@ def test_file_is_reported_unindexed_when_embedding_configuration_changes(
     assert listed.status_code == 200
     assert listed.json()[0]["is_ai_indexed"] is False
 
+
+def test_file_status_tracks_source_change_and_reindex_cycle(
+    client, db_session, tmp_path, monkeypatch
+):
+    """File status must turn stale after source edits and recover after reindexing."""
+    from app.models.file_attachment import FileAttachment
+    from app.models.file_chunk import FileChunk
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    _disable_object_storage(monkeypatch)
+    monkeypatch.setattr(
+        files_router,
+        "enforce_daily_ai_limit",
+        lambda current_user, _db: current_user,
+    )
+
+    index_attempts = 0
+
+    def fake_index_file_chunks(db, attachment):
+        nonlocal index_attempts
+        index_attempts += 1
+        db.query(FileChunk).filter(
+            FileChunk.file_id == attachment.id
+        ).delete(synchronize_session=False)
+        text = (attachment.extracted_text or "").strip()
+        if not text:
+            return 0
+        db.add(
+            FileChunk(
+                file_id=attachment.id,
+                chunk_index=0,
+                content=text,
+                embedding=[0.1] * 768,
+            )
+        )
+        _mark_file_as_indexed(attachment)
+        db.flush()
+        return 1
+
+    monkeypatch.setattr(files_router, "index_file_chunks", fake_index_file_chunks)
+    token = _register_and_login(client, "files-stale-source-reindex@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    uploaded = client.post(
+        "/files/upload",
+        files={
+            "file": (
+                "source-notes.txt",
+                b"Original source text that has been indexed.",
+                "text/plain",
+            )
+        },
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+    assert uploaded.json()["is_ai_indexed"] is True
+    assert index_attempts == 1
+
+    attachment = db_session.get(FileAttachment, file_id)
+    assert attachment is not None
+    attachment.extracted_text = "Updated source text that requires reindexing."
+    db_session.commit()
+    db_session.expire_all()
+
+    stale_attachment = db_session.get(FileAttachment, file_id)
+    assert stale_attachment is not None
+    assert stale_attachment.extracted_text_sha256 != stale_attachment.indexed_text_sha256
+
+    listed = client.get("/files", headers=headers)
+    assert listed.status_code == 200
+    stale_response = next(item for item in listed.json() if item["id"] == file_id)
+    assert stale_response["has_extracted_text"] is True
+    assert stale_response["is_ai_indexed"] is False
+
+    retried = client.post(f"/files/{file_id}/reindex", headers=headers)
+    assert retried.status_code == 200
+    assert retried.json()["is_ai_indexed"] is True
+    assert index_attempts == 2
+
+    db_session.expire_all()
+    indexed_attachment = db_session.get(FileAttachment, file_id)
+    assert indexed_attachment is not None
+    assert indexed_attachment.indexed_text_sha256 == indexed_attachment.extracted_text_sha256
+    assert (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file_id)
+        .count()
+        == 1
+    )
+    chunk = db_session.query(FileChunk).filter(FileChunk.file_id == file_id).one()
+    assert chunk.content == "Updated source text that requires reindexing."
+    assert "Original source text that has been indexed." not in chunk.content
