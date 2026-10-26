@@ -784,6 +784,13 @@ def test_project_file_access_requires_project_membership_and_edit_role(
     )
     assert project_listing.status_code == 200
     assert [file["id"] for file in project_listing.json()] == [file_id]
+
+    mismatch_listing = client.get(
+        "/files",
+        params={"project_id": project_id, "workspace_id": workspace.id + 9999},
+        headers=viewer_headers,
+    )
+    assert mismatch_listing.status_code == 400
     assert project_listing.json()[0]["can_delete"] is False
     assert client.get(f"/files/{file_id}", headers=viewer_headers).status_code == 200
     assert client.post(
