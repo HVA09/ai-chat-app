@@ -6,6 +6,8 @@ from io import StringIO
 from pathlib import Path
 
 from docx import Document
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 from openpyxl import load_workbook
 from pypdf import PdfReader
 
@@ -99,13 +101,15 @@ def _read_docx_file(path: Path, max_chars: int) -> str:
         used += separator + len(value)
         return False
 
-    for paragraph in document.paragraphs:
-        if append_part(paragraph.text):
-            break
-
-    if not truncated:
-        for table in document.tables:
-            for row in table.rows:
+    # iter_inner_content() yields Paragraph/Table blocks lazily in document
+    # order. Avoid materializing a full paragraph list or collecting all tables
+    # before applying the extraction limit.
+    for block in document.iter_inner_content():
+        if isinstance(block, Paragraph):
+            if append_part(block.text):
+                break
+        elif isinstance(block, Table):
+            for row in block.rows:
                 cells = [
                     cell.text.strip().replace("\n", " ")
                     for cell in row.cells
