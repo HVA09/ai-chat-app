@@ -136,7 +136,8 @@ def test_deleting_file_cascades_to_rag_chunks(
 def test_reindex_file_retries_saved_text_after_embedding_provider_failure(
     client, db_session, tmp_path, monkeypatch
 ):
-    """A failed initial index can be retried without uploading the source again."""
+    """A failed index remains retryable without uploading the source again."""
+    from app.models.file_attachment import FileAttachment
     from app.models.file_chunk import FileChunk
     from app.routers import files as files_router
     from app.services.embeddings import EmbeddingServiceError
@@ -154,10 +155,10 @@ def test_reindex_file_retries_saved_text_after_embedding_provider_failure(
 
     attempts = 0
 
-    def fail_once_then_index(db, attachment):
+    def fail_twice_then_index(db, attachment):
         nonlocal attempts
         attempts += 1
-        if attempts == 1:
+        if attempts <= 2:
             raise EmbeddingServiceError("simulated embedding outage")
         db.add(
             FileChunk(
@@ -170,7 +171,7 @@ def test_reindex_file_retries_saved_text_after_embedding_provider_failure(
         db.flush()
         return 1
 
-    monkeypatch.setattr(files_router, "index_file_chunks", fail_once_then_index)
+    monkeypatch.setattr(files_router, "index_file_chunks", fail_twice_then_index)
     token = _register_and_login(client, "files-reindex-retry@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     payload = b"Linux network notes for retry testing."
@@ -187,12 +188,31 @@ def test_reindex_file_retries_saved_text_after_embedding_provider_failure(
     assert uploaded.json()["is_ai_indexed"] is False
     assert attempts == 1
 
+    failed_retry = client.post(f"/files/{file_id}/reindex", headers=headers)
+    assert failed_retry.status_code == 503
+    assert "simulated embedding outage" not in failed_retry.text
+    assert attempts == 2
+
+    db_session.expire_all()
+    persisted = db_session.get(FileAttachment, file_id)
+    assert persisted is not None
+    assert persisted.extracted_text
+    assert (
+        db_session.query(FileChunk)
+        .filter(
+            FileChunk.file_id == file_id,
+            FileChunk.embedding.is_not(None),
+        )
+        .count()
+        == 0
+    )
+
     retried = client.post(f"/files/{file_id}/reindex", headers=headers)
 
     assert retried.status_code == 200
     assert retried.json()["has_extracted_text"] is True
     assert retried.json()["is_ai_indexed"] is True
-    assert attempts == 2
+    assert attempts == 3
     assert (
         db_session.query(FileChunk)
         .filter(
