@@ -220,3 +220,119 @@ def test_project_archive_rejects_more_than_50_files():
 
     assert result.succeeded is False
     assert "50" in result.content
+
+
+def test_project_viewer_can_read_but_cannot_modify_project_with_agent_tools(db_session):
+    """Project viewer rights must be enforced inside agent tool handlers."""
+    from app.models.conversation import Conversation
+    from app.models.project import WorkspaceProject
+    from app.models.project_file import ProjectFile
+    from app.models.project_member import ProjectMember, ProjectMemberRole
+    from app.models.user import User
+    from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
+    from app.services.tools.registry import (
+        _create_project_archive,
+        _edit_project_file,
+        _list_project_files,
+        _read_project_file,
+        _search_project_files,
+    )
+
+    owner = User(email="tool-project-acl-owner@example.com", hashed_password="hashed")
+    viewer = User(email="tool-project-acl-viewer@example.com", hashed_password="hashed")
+    db_session.add_all([owner, viewer])
+    db_session.flush()
+
+    workspace = Workspace(owner_id=owner.id, name="Tool project ACL")
+    db_session.add(workspace)
+    db_session.flush()
+
+    project = WorkspaceProject(
+        workspace_id=workspace.id,
+        owner_id=owner.id,
+        name="Viewer read-only project",
+        instructions="",
+    )
+    db_session.add(project)
+    db_session.flush()
+
+    db_session.add_all(
+        [
+            WorkspaceMember(
+                workspace_id=workspace.id,
+                user_id=viewer.id,
+                role=WorkspaceRole.member,
+            ),
+            ProjectMember(
+                project_id=project.id,
+                user_id=viewer.id,
+                role=ProjectMemberRole.viewer,
+            ),
+        ]
+    )
+    conversation = Conversation(
+        user_id=viewer.id,
+        workspace_id=workspace.id,
+        project_id=project.id,
+        title="Viewer agent conversation",
+    )
+    source = ProjectFile(
+        project_id=project.id,
+        path="src/main.py",
+        content="print('safe')",
+    )
+    db_session.add_all([conversation, source])
+    db_session.commit()
+    db_session.refresh(conversation)
+    db_session.refresh(source)
+
+    context = ToolContext(
+        conversation=conversation,
+        current_user=viewer,
+        db=db_session,
+    )
+
+    listed = asyncio.run(_list_project_files({}, context))
+    read = asyncio.run(_read_project_file({"path": "src/main.py"}, context))
+    searched = asyncio.run(_search_project_files({"query": "safe"}, context))
+
+    assert listed.succeeded is True
+    assert "src/main.py" in listed.content
+    assert read.succeeded is True
+    assert "print('safe')" in read.content
+    assert searched.succeeded is True
+    assert "src/main.py:1" in searched.content
+
+    edited = asyncio.run(
+        _edit_project_file(
+            {"path": "src/main.py", "content": "print('changed')"},
+            context,
+        )
+    )
+    archived = asyncio.run(
+        _create_project_archive(
+            {
+                "project_name": "attempted-write",
+                "files": [
+                    {"path": "src/main.py", "content": "print('changed')"},
+                ],
+            },
+            context,
+        )
+    )
+
+    assert edited.succeeded is False
+    assert "صلاحية تعديل" in edited.content
+    assert archived.succeeded is False
+    assert "صلاحية تعديل" in archived.content
+
+    db_session.expire_all()
+    saved = (
+        db_session.query(ProjectFile)
+        .filter(
+            ProjectFile.project_id == project.id,
+            ProjectFile.path == "src/main.py",
+        )
+        .one()
+    )
+    assert saved.content == "print('safe')"
