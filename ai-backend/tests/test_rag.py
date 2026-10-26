@@ -20,6 +20,23 @@ def _register_and_login(client, email):
     return client.cookies.get("access_token")
 
 
+
+def _mark_file_as_indexed(*files):
+    from datetime import datetime, timezone
+    from app.models.file_attachment import extracted_text_fingerprint
+    from app.services.embeddings import get_embedding_index_identity
+
+    provider, model, fingerprint = get_embedding_index_identity()
+    for file in files:
+        text_fingerprint = extracted_text_fingerprint(file.extracted_text)
+        file.extracted_text_sha256 = text_fingerprint
+        file.indexed_text_sha256 = text_fingerprint
+        file.indexed_embedding_fingerprint = fingerprint
+        file.indexed_embedding_provider = provider
+        file.indexed_embedding_model = model
+        file.indexed_at = datetime.now(timezone.utc)
+
+
 def test_chunk_text_creates_overlapping_chunks():
     text = " ".join(f"word{i}" for i in range(500))
     chunks = rag.chunk_text(text, chunk_size=120, overlap=20)
@@ -64,6 +81,11 @@ def test_index_file_chunks_persists_embeddings(db_session, monkeypatch):
     assert count == len(chunks)
     assert count > 1
     assert len(chunks[0].embedding) == 768
+    assert file.extracted_text_sha256 == file.indexed_text_sha256
+    assert file.indexed_embedding_fingerprint
+    assert file.indexed_embedding_provider
+    assert file.indexed_embedding_model
+    assert file.indexed_at is not None
 
 
 def test_reindex_file_chunks_replaces_old_chunks_after_text_changes(
@@ -266,6 +288,7 @@ def test_workspace_knowledge_chunks_are_retrievable_without_conversation_link(
         embedding=[0.1] * 768,
     )
     db_session.add(chunk)
+    _mark_file_as_indexed(file)
     db_session.commit()
 
     async def fake_embed_query(_query):
@@ -328,6 +351,7 @@ def test_workspace_knowledge_does_not_cross_workspace_scope(db_session, monkeypa
             embedding=[0.1] * 768,
         )
     )
+    _mark_file_as_indexed(file)
     db_session.commit()
 
     async def fake_embed_query(_query):
@@ -400,6 +424,7 @@ def test_project_knowledge_isolated_by_project(db_session, monkeypatch):
         FileChunk(file_id=file_a.id, chunk_index=0, content="A evidence", embedding=[0.1] * 768),
         FileChunk(file_id=file_b.id, chunk_index=0, content="B evidence", embedding=[0.1] * 768),
     ])
+    _mark_file_as_indexed(file_a, file_b)
     db_session.commit()
 
     async def fake_embed_query(_query):
@@ -466,6 +491,7 @@ def test_project_knowledge_not_visible_to_unscoped_workspace_chat(db_session, mo
             embedding=[0.1] * 768,
         )
     )
+    _mark_file_as_indexed(file)
     db_session.commit()
 
     embed_query = AsyncMock(
@@ -622,6 +648,7 @@ def test_shared_assistant_file_chunks_stop_retrieving_after_unshare(
             embedding=[0.1] * 768,
         )
     )
+    _mark_file_as_indexed(file)
     db_session.commit()
 
     embed_query = AsyncMock(return_value=[0.1] * 768)
@@ -733,6 +760,7 @@ def test_retrieval_ranks_closest_embedding_first(db_session, monkeypatch):
             ),
         ]
     )
+    _mark_file_as_indexed(relevant_file, unrelated_file)
     db_session.commit()
 
     async def fake_embed_query(_query):
@@ -894,3 +922,104 @@ def test_failed_reindexing_preserves_previous_chunks_until_new_embeddings_exist(
     assert len(chunks) == 1
     assert chunks[0].content == old_text
     assert chunks[0].embedding[0] == pytest.approx(0.3)
+
+
+def test_retrieval_skips_chunks_when_source_text_changes(db_session, monkeypatch):
+    import asyncio
+    from app.models.conversation import Conversation
+
+    user = User(email="rag-stale-text@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+    workspace = Workspace(owner_id=user.id, name="Stale text")
+    db_session.add(workspace)
+    db_session.flush()
+    conversation = Conversation(user_id=user.id, workspace_id=workspace.id, title="Stale text")
+    db_session.add(conversation)
+    db_session.flush()
+    file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        original_filename="notes.txt",
+        stored_filename="notes.txt",
+        content_type="text/plain",
+        size_bytes=20,
+        extracted_text="Original source text for indexing.",
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(
+        FileChunk(
+            file_id=file.id,
+            chunk_index=0,
+            content="Original source text for indexing.",
+            embedding=[0.1] * 768,
+        )
+    )
+    _mark_file_as_indexed(file)
+    db_session.commit()
+
+    file.extracted_text = "Replaced source text which no longer matches the old chunk."
+    db_session.commit()
+
+    embed_query = AsyncMock(side_effect=AssertionError("stale vectors must not be queried"))
+    monkeypatch.setattr(rag, "embed_query", embed_query)
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session, user.id, conversation.id, "source text", workspace_id=workspace.id
+        )
+    )
+    assert rows == []
+    embed_query.assert_not_awaited()
+
+
+def test_retrieval_skips_chunks_when_embedding_configuration_changes(db_session, monkeypatch):
+    import asyncio
+    from app.models.conversation import Conversation
+
+    user = User(email="rag-stale-model@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+    workspace = Workspace(owner_id=user.id, name="Stale model")
+    db_session.add(workspace)
+    db_session.flush()
+    conversation = Conversation(user_id=user.id, workspace_id=workspace.id, title="Stale model")
+    db_session.add(conversation)
+    db_session.flush()
+    file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        original_filename="guide.txt",
+        stored_filename="guide.txt",
+        content_type="text/plain",
+        size_bytes=20,
+        extracted_text="A source document with an indexed embedding.",
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(
+        FileChunk(
+            file_id=file.id,
+            chunk_index=0,
+            content="A source document with an indexed embedding.",
+            embedding=[0.1] * 768,
+        )
+    )
+    _mark_file_as_indexed(file)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        rag,
+        "get_embedding_index_identity",
+        lambda: ("different-provider", "different-model", "different-fingerprint"),
+    )
+    embed_query = AsyncMock(side_effect=AssertionError("incompatible vectors must not be queried"))
+    monkeypatch.setattr(rag, "embed_query", embed_query)
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session, user.id, conversation.id, "source document", workspace_id=workspace.id
+        )
+    )
+    assert rows == []
+    embed_query.assert_not_awaited()
+

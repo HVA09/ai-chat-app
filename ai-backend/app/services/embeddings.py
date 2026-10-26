@@ -1,6 +1,8 @@
 """خدمة embeddings مستقلة عن مزوّد المحادثة، لفهرسة الملفات واسترجاع RAG."""
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -201,6 +203,27 @@ def _resolve_embedding_config() -> EmbeddingConfig:
         base_url=base_url,
         model=model,
     )
+
+
+def get_embedding_index_identity() -> tuple[str, str, str]:
+    """Return provider, model, and a secret-free fingerprint of the embedding space.
+
+    API keys are deliberately excluded. Changing provider/model/base URL/dimensions
+    changes the fingerprint so old vectors cannot be compared to new query vectors.
+    """
+    config = _resolve_embedding_config()
+    identity = json.dumps(
+        {
+            "provider": config.provider,
+            "model": config.model,
+            "base_url": config.base_url.rstrip("/"),
+            "dimensions": int(settings.EMBEDDING_DIMENSIONS),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    fingerprint = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return config.provider, config.model, fingerprint
 
 
 def _embedding_headers(config: EmbeddingConfig) -> dict[str, str]:

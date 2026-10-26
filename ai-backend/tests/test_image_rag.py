@@ -25,6 +25,22 @@ def _register_and_login(client, email, password="StrongPass123"):
     return client.cookies.get("access_token")
 
 
+
+def _mark_file_as_indexed(file):
+    from datetime import datetime, timezone
+    from app.models.file_attachment import extracted_text_fingerprint
+    from app.services.embeddings import get_embedding_index_identity
+
+    provider, model, fingerprint = get_embedding_index_identity()
+    text_fingerprint = extracted_text_fingerprint(file.extracted_text)
+    file.extracted_text_sha256 = text_fingerprint
+    file.indexed_text_sha256 = text_fingerprint
+    file.indexed_embedding_fingerprint = fingerprint
+    file.indexed_embedding_provider = provider
+    file.indexed_embedding_model = model
+    file.indexed_at = datetime.now(timezone.utc)
+
+
 def test_index_image_for_rag_is_explicit_and_persists_usage(client, monkeypatch, db_session, tmp_path):
     token = _register_and_login(client, "image-index@example.com")
     headers = {"Authorization": f"Bearer {token}"}
@@ -65,6 +81,7 @@ def test_index_image_for_rag_is_explicit_and_persists_usage(client, monkeypatch,
                 embedding=[0.1] * 768,
             )
         )
+        _mark_file_as_indexed(file)
         db.flush()
         return 1
 
@@ -192,6 +209,7 @@ def test_index_image_retries_embedding_for_saved_description_without_vision(
                 embedding=[0.1] * 768,
             )
         )
+        _mark_file_as_indexed(file)
         db.flush()
         return 1
 
@@ -378,6 +396,7 @@ def test_failed_image_embedding_stays_retryable_from_file_response(
                 embedding=[0.1] * 768,
             )
         )
+        _mark_file_as_indexed(file)
         db.flush()
         return 1
 

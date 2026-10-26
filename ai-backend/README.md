@@ -61,6 +61,8 @@ python scripts/evaluate_rag_retrieval.py --validate-only
 python scripts/evaluate_rag_retrieval.py --run-live --top-k 3 --output reports/rag-retrieval-baseline.json
 ```
 
+يحتفظ كل فهرس بصمة النص المستخرج وبصمة إعداد embeddings (المزوّد والنموذج والعنوان والأبعاد)، ولا تُستخدم المتجهات إذا اختلفت عن النص/الإعداد الحالي. الملفات التي فُهرست قبل إضافة هذه البيانات تُعامل كبحاجة إلى إعادة فهرسة؛ يظل fallback النصي متاحًا حتى ذلك الحين. لا تُجرِ إعادة فهرسة جماعية في الإنتاج دون خطة وتقييم للحصة والتكلفة.
+
 لا يشغّل CI التقييم الحي. راجع [شرح التقييم وحدوده](docs/RAG_EVALUATION.md) قبل تفسير أي نتيجة.
 
 ## التشغيل محليًا

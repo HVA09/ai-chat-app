@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime, timezone
 from typing import TypedDict
 
 from sqlalchemy import and_, delete, exists, or_
@@ -10,9 +11,14 @@ from sqlalchemy.orm import Session
 from app.models.assistant import Assistant
 from app.models.assistant_file_link import AssistantFileLink
 from app.models.assistant_workspace_share import AssistantWorkspaceShare
-from app.models.file_attachment import FileAttachment
+from app.models.file_attachment import FileAttachment, extracted_text_fingerprint
 from app.models.file_chunk import FileChunk
-from app.services.embeddings import embed_documents_sync, embed_query
+from app.services.embeddings import (
+    EmbeddingServiceError,
+    embed_documents_sync,
+    embed_query,
+    get_embedding_index_identity,
+)
 
 CHUNK_SIZE = 1400
 CHUNK_OVERLAP = 200
@@ -50,15 +56,26 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
 
 def index_file_chunks(db: Session, file: FileAttachment) -> int:
     text = (file.extracted_text or "").strip()
-    if not text:
-        # Re-indexing an empty or no-longer-extractable file must not leave
-        # chunks from its previous content available to future retrieval.
+    text_fingerprint = extracted_text_fingerprint(text)
+    if not text_fingerprint:
+        # If source text vanished, old chunks must not remain retrievable.
         db.execute(delete(FileChunk).where(FileChunk.file_id == file.id))
+        file.extracted_text_sha256 = None
+        file.indexed_text_sha256 = None
+        file.indexed_embedding_fingerprint = None
+        file.indexed_embedding_provider = None
+        file.indexed_embedding_model = None
+        file.indexed_at = None
         db.flush()
         return 0
 
     chunks = chunk_text(text)
+    provider, model, embedding_fingerprint = get_embedding_index_identity()
+    # Generate and validate the entire replacement before deleting the previous
+    # index, so a provider outage leaves existing valid chunks intact.
     embeddings = embed_documents_sync(chunks)
+    if len(embeddings) != len(chunks):
+        raise EmbeddingServiceError("عدد embeddings لا يطابق عدد المقاطع")
 
     db.execute(delete(FileChunk).where(FileChunk.file_id == file.id))
     db.add_all(
@@ -72,9 +89,14 @@ def index_file_chunks(db: Session, file: FileAttachment) -> int:
             for index, (content, embedding) in enumerate(zip(chunks, embeddings, strict=True))
         ]
     )
+    file.extracted_text_sha256 = text_fingerprint
+    file.indexed_text_sha256 = text_fingerprint
+    file.indexed_embedding_fingerprint = embedding_fingerprint
+    file.indexed_embedding_provider = provider
+    file.indexed_embedding_model = model
+    file.indexed_at = datetime.now(timezone.utc)
     db.flush()
     return len(chunks)
-
 
 async def retrieve_relevant_chunks(
     db: Session,
@@ -87,6 +109,19 @@ async def retrieve_relevant_chunks(
     assistant_id: int | None = None,
 ) -> list[tuple[FileChunk, FileAttachment]]:
     from app.models.conversation_file_link import ConversationFileLink
+
+    try:
+        _provider, _model, active_embedding_fingerprint = get_embedding_index_identity()
+    except EmbeddingServiceError:
+        # Without a valid embedding configuration, rely on the caller's text
+        # fallback rather than comparing vectors from an unknown embedding space.
+        return []
+
+    current_index_scope = and_(
+        FileAttachment.extracted_text_sha256.is_not(None),
+        FileAttachment.indexed_text_sha256 == FileAttachment.extracted_text_sha256,
+        FileAttachment.indexed_embedding_fingerprint == active_embedding_fingerprint,
+    )
 
     linked_to_conversation = exists().where(
         ConversationFileLink.file_id == FileChunk.file_id,
@@ -160,7 +195,7 @@ async def retrieve_relevant_chunks(
                 AssistantWorkspaceShare.workspace_id == workspace_id,
             ),
         )
-        .filter(FileChunk.embedding.is_not(None), chunk_scope)
+        .filter(FileChunk.embedding.is_not(None), current_index_scope, chunk_scope)
         .first()
     )
     if candidate is None:
@@ -182,6 +217,7 @@ async def retrieve_relevant_chunks(
         )
         .filter(
             FileChunk.embedding.is_not(None),
+            current_index_scope,
             chunk_scope,
         )
         .order_by(FileChunk.embedding.cosine_distance(query_embedding))

@@ -23,6 +23,22 @@ def _disable_object_storage(monkeypatch):
         monkeypatch.setattr(app_settings, name, "")
 
 
+
+def _mark_file_as_indexed(attachment):
+    from datetime import datetime, timezone
+    from app.models.file_attachment import extracted_text_fingerprint
+    from app.services.embeddings import get_embedding_index_identity
+
+    provider, model, fingerprint = get_embedding_index_identity()
+    text_fingerprint = extracted_text_fingerprint(attachment.extracted_text)
+    attachment.extracted_text_sha256 = text_fingerprint
+    attachment.indexed_text_sha256 = text_fingerprint
+    attachment.indexed_embedding_fingerprint = fingerprint
+    attachment.indexed_embedding_provider = provider
+    attachment.indexed_embedding_model = model
+    attachment.indexed_at = datetime.now(timezone.utc)
+
+
 def test_upload_file_success(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client)
@@ -168,6 +184,7 @@ def test_reindex_file_retries_saved_text_after_embedding_provider_failure(
                 embedding=[0.1] * 768,
             )
         )
+        _mark_file_as_indexed(attachment)
         db.flush()
         return 1
 
@@ -853,3 +870,58 @@ def test_upload_preserves_extracted_text_when_ai_limit_defers_indexing(
     stored = db_session.get(FileAttachment, response.json()["id"])
     assert stored is not None
     assert stored.extracted_text == payload.decode("utf-8")
+
+
+def test_file_is_reported_unindexed_when_embedding_configuration_changes(
+    client, tmp_path, monkeypatch
+):
+    from app.models.file_chunk import FileChunk
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    _disable_object_storage(monkeypatch)
+
+    def fake_index_file_chunks(db, attachment):
+        db.add(
+            FileChunk(
+                file_id=attachment.id,
+                chunk_index=0,
+                content=attachment.extracted_text or "",
+                embedding=[0.1] * 768,
+            )
+        )
+        _mark_file_as_indexed(attachment)
+        db.flush()
+        return 1
+
+    monkeypatch.setattr(files_router, "index_file_chunks", fake_index_file_chunks)
+    token = _register_and_login(client, "stale-index-status@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    uploaded = client.post(
+        "/files/upload",
+        files={
+            "file": (
+                "indexed-notes.txt",
+                b"These notes were indexed using the current embedding configuration.",
+                "text/plain",
+            )
+        },
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    assert uploaded.json()["is_ai_indexed"] is True
+
+    previous_identity = files_router.get_embedding_index_identity()
+    monkeypatch.setattr(
+        files_router,
+        "get_embedding_index_identity",
+        lambda: (
+            previous_identity[0],
+            previous_identity[1],
+            f"stale-{previous_identity[2]}",
+        ),
+    )
+    listed = client.get("/files", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()[0]["is_ai_indexed"] is False
+

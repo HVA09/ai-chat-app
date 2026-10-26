@@ -473,3 +473,37 @@ def test_gemini_compat_detection_accepts_exact_official_origin(monkeypatch):
     config = embeddings._resolve_embedding_config()
 
     assert config.base_url == "https://generativelanguage.googleapis.com/v1beta"
+
+
+def test_embedding_index_identity_excludes_secrets_and_tracks_model_and_endpoint(monkeypatch):
+    _set_embedding_settings(
+        monkeypatch,
+        AI_PROVIDER="gemini",
+        AI_API_KEY="chat-secret",
+        AI_API_BASE_URL="https://generativelanguage.googleapis.com/v1beta/openai",
+        EMBEDDING_PROVIDER="openai",
+        EMBEDDING_API_KEY="embedding-secret-one",
+        EMBEDDING_API_BASE_URL="https://embeddings.example/v1",
+        EMBEDDING_MODEL="text-embedding-3-small",
+        EMBEDDING_DIMENSIONS=3,
+    )
+
+    first = embeddings.get_embedding_index_identity()
+    monkeypatch.setattr(embeddings.settings, "EMBEDDING_API_KEY", "embedding-secret-two")
+    second = embeddings.get_embedding_index_identity()
+    assert first == second
+    assert first[0:2] == ("openai", "text-embedding-3-small")
+    assert len(first[2]) == 64
+
+    monkeypatch.setattr(
+        embeddings.settings, "EMBEDDING_MODEL", "text-embedding-3-large"
+    )
+    changed_model = embeddings.get_embedding_index_identity()
+    assert changed_model[2] != first[2]
+
+    monkeypatch.setattr(
+        embeddings.settings, "EMBEDDING_API_BASE_URL", "https://other-embeddings.example/v1"
+    )
+    changed_endpoint = embeddings.get_embedding_index_identity()
+    assert changed_endpoint[2] != changed_model[2]
+

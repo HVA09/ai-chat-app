@@ -19,14 +19,14 @@ from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_
 from app.audit import log_event
 from app.models.conversation import Conversation
 from app.models.conversation_file_link import ConversationFileLink
-from app.models.file_attachment import FileAttachment
+from app.models.file_attachment import FileAttachment, extracted_text_fingerprint
 from app.models.file_chunk import FileChunk
 from app.models.project import WorkspaceProject
 from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.file import FileOut
-from app.services.embeddings import EmbeddingServiceError
+from app.services.embeddings import EmbeddingServiceError, get_embedding_index_identity
 from app.services.file_text_extractor import FileTextExtractionError, extract_text
 from app.services.project_access import can_edit_project, can_read_project
 from app.services.rag import index_file_chunks
@@ -248,11 +248,24 @@ def _file_response(
         )
         .first()
     )
-    # "AI indexed" means semantic chunks exist. A saved image description without
-    # embeddings is still available to the text fallback, but must remain retryable
-    # from the UI so the user can complete semantic indexing when the provider recovers.
-    response.is_ai_indexed = has_embedding
     response.has_extracted_text = bool((file.extracted_text or "").strip())
+    current_text_fingerprint = extracted_text_fingerprint(file.extracted_text)
+    active_embedding_fingerprint = None
+    if has_embedding and current_text_fingerprint:
+        try:
+            _provider, _model, active_embedding_fingerprint = get_embedding_index_identity()
+        except EmbeddingServiceError:
+            # A configuration failure should make the status retryable, not break file listing.
+            active_embedding_fingerprint = None
+
+    response.is_ai_indexed = bool(
+        has_embedding
+        and current_text_fingerprint
+        and file.extracted_text_sha256 == current_text_fingerprint
+        and file.indexed_text_sha256 == current_text_fingerprint
+        and active_embedding_fingerprint
+        and file.indexed_embedding_fingerprint == active_embedding_fingerprint
+    )
     return response
 
 
