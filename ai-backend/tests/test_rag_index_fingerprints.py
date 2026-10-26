@@ -239,3 +239,64 @@ def test_failed_reindex_preserves_rows_but_marks_old_index_stale(
     assert file.indexed_text_sha256 == previous_fingerprint
     assert file.extracted_text_sha256 == new_fingerprint
     assert file.indexed_text_sha256 != file.extracted_text_sha256
+
+
+def test_empty_source_text_removes_stale_chunks_and_index_identity(
+    db_session, monkeypatch
+):
+    """Clearing extracted text must invalidate the index and delete old chunks."""
+    user = User(email="rag-empty-source@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+
+    workspace = Workspace(owner_id=user.id, name="Empty source invalidation")
+    db_session.add(workspace)
+    db_session.flush()
+
+    file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        project_id=None,
+        original_filename="notes.txt",
+        stored_filename="rag-empty-source.txt",
+        content_type="text/plain",
+        size_bytes=32,
+        extracted_text="Source text that was previously indexed.",
+    )
+    db_session.add(file)
+    db_session.flush()
+
+    source_fingerprint = extracted_text_fingerprint(file.extracted_text)
+    file.indexed_text_sha256 = source_fingerprint
+    file.indexed_embedding_fingerprint = "active-model-fingerprint"
+    file.indexed_embedding_provider = "test-provider"
+    file.indexed_embedding_model = "test-model"
+    db_session.add(
+        FileChunk(
+            file_id=file.id,
+            chunk_index=0,
+            content="Stale chunk from source text.",
+            embedding=[0.1] * 768,
+        )
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        rag,
+        "get_embedding_index_identity",
+        lambda: ("test-provider", "test-model", "active-model-fingerprint"),
+    )
+    file.extracted_text = ""
+    db_session.flush()
+
+    assert rag.index_file_chunks(db_session, file) == 0
+    db_session.commit()
+    db_session.refresh(file)
+
+    assert db_session.query(FileChunk).filter(FileChunk.file_id == file.id).count() == 0
+    assert file.extracted_text_sha256 is None
+    assert file.indexed_text_sha256 is None
+    assert file.indexed_embedding_fingerprint is None
+    assert file.indexed_embedding_provider is None
+    assert file.indexed_embedding_model is None
+    assert file.indexed_at is None
