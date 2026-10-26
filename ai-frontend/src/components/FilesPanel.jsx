@@ -9,6 +9,7 @@ import {
   listFiles,
   uploadFile,
   indexImageForRag,
+  reindexFileForRag,
 } from "../lib/filesApi";
 import { getErrorMessage } from "../lib/errors";
 
@@ -214,6 +215,20 @@ export default function FilesPanel({
       await refresh();
     } catch (err) {
       showErrorToast(err, "files.imageIndexError");
+    } finally {
+      setIndexingId(null);
+    }
+  };
+
+  const handleReindexFile = async (file) => {
+    if (!file.has_extracted_text || file.is_ai_indexed) return;
+
+    setIndexingId(file.id);
+    try {
+      await reindexFileForRag(file.id);
+      await refresh();
+    } catch (err) {
+      showErrorToast(err, "files.reindexError");
     } finally {
       setIndexingId(null);
     }
@@ -438,12 +453,38 @@ export default function FilesPanel({
                     <button
                       onClick={() => handleIndexImage(file)}
                       disabled={Boolean(file.is_ai_indexed) || indexingId === file.id}
-                      title={file.is_ai_indexed ? t("files.imageIndexed") : t("files.indexImageForAi")}
+                      title={
+                        file.is_ai_indexed
+                          ? t("files.imageIndexed")
+                          : file.has_extracted_text
+                            ? t("files.retryIndexForAi")
+                            : t("files.indexImageForAi")
+                      }
+                      aria-label={
+                        file.is_ai_indexed
+                          ? t("files.imageIndexed")
+                          : file.has_extracted_text
+                            ? t("files.retryIndexForAi")
+                            : t("files.indexImageForAi")
+                      }
                       className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-slate-400"
                     >
                       {indexingId === file.id ? "..." : file.is_ai_indexed ? "✅" : "✨"}
                     </button>
                   )}
+                  {!file.content_type.startsWith("image/") &&
+                    file.has_extracted_text &&
+                    !file.is_ai_indexed && (
+                      <button
+                        onClick={() => handleReindexFile(file)}
+                        disabled={indexingId === file.id}
+                        title={t("files.retryIndexForAi")}
+                        aria-label={t("files.retryIndexForAi")}
+                        className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                      >
+                        {indexingId === file.id ? "..." : "✨"}
+                      </button>
+                    )}
                   {conversationId && file.is_attached && file.content_type.startsWith("image/") && onAnalyzeImage && (
                     <button
                       onClick={() => handleAnalyzeImage(file)}
@@ -490,7 +531,15 @@ export default function FilesPanel({
                     <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                       {t("files.indexed")}
                     </span>
-                  ) : null}
+                  ) : (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                      {file.has_extracted_text
+                        ? t("files.indexingPending")
+                        : file.content_type.startsWith("image/")
+                          ? t("files.imageNotIndexed")
+                          : t("files.noExtractedText")}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
