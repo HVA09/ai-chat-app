@@ -133,6 +133,107 @@ def test_deleting_file_cascades_to_rag_chunks(
     )
 
 
+def test_reindex_file_retries_saved_text_after_embedding_provider_failure(
+    client, db_session, tmp_path, monkeypatch
+):
+    """A failed initial index can be retried without uploading the source again."""
+    from app.models.file_chunk import FileChunk
+    from app.routers import files as files_router
+    from app.services.embeddings import EmbeddingServiceError
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    _disable_object_storage(monkeypatch)
+    monkeypatch.setattr(
+        files_router, "enforce_daily_ai_limit", lambda current_user, _db: current_user
+    )
+    monkeypatch.setattr(
+        files_router,
+        "enforce_workspace_daily_ai_limit",
+        lambda _workspace_id, _current_user, _db: None,
+    )
+
+    attempts = 0
+
+    def fail_once_then_index(db, attachment):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise EmbeddingServiceError("simulated embedding outage")
+        db.add(
+            FileChunk(
+                file_id=attachment.id,
+                chunk_index=0,
+                content="Linux network notes for retry testing.",
+                embedding=[0.1] * 768,
+            )
+        )
+        db.flush()
+        return 1
+
+    monkeypatch.setattr(files_router, "index_file_chunks", fail_once_then_index)
+    token = _register_and_login(client, "files-reindex-retry@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = b"Linux network notes for retry testing."
+
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("network-notes.txt", payload, "text/plain")},
+        headers=headers,
+    )
+
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+    assert uploaded.json()["has_extracted_text"] is True
+    assert uploaded.json()["is_ai_indexed"] is False
+    assert attempts == 1
+
+    retried = client.post(f"/files/{file_id}/reindex", headers=headers)
+
+    assert retried.status_code == 200
+    assert retried.json()["has_extracted_text"] is True
+    assert retried.json()["is_ai_indexed"] is True
+    assert attempts == 2
+    assert (
+        db_session.query(FileChunk)
+        .filter(
+            FileChunk.file_id == file_id,
+            FileChunk.embedding.is_not(None),
+        )
+        .count()
+        == 1
+    )
+
+
+def test_reindex_file_rejects_upload_without_extracted_text(
+    client, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    _disable_object_storage(monkeypatch)
+    token = _register_and_login(client, "files-reindex-no-text@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    uploaded = client.post(
+        "/files/upload",
+        files={
+            "file": (
+                "chart.png",
+                b"\\x89PNG\\r\\n\\x1a\\nmock-image",
+                "image/png",
+            )
+        },
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    assert uploaded.json()["has_extracted_text"] is False
+
+    response = client.post(
+        f"/files/{uploaded.json()['id']}/reindex",
+        headers=headers,
+    )
+
+    assert response.status_code == 422
+
+
 def test_cannot_access_other_users_file(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token_a = _register_and_login(client, "filesowner@example.com")
@@ -142,6 +243,7 @@ def test_cannot_access_other_users_file(client, tmp_path, monkeypatch):
     headers_b = {"Authorization": f"Bearer {token_b}"}
     assert client.get(f"/files/{file_id}", headers=headers_b).status_code == 404
     assert client.delete(f"/files/{file_id}", headers=headers_b).status_code == 404
+    assert client.post(f"/files/{file_id}/reindex", headers=headers_b).status_code == 404
 
 
 def test_files_require_authentication(client):
