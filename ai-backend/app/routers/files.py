@@ -28,6 +28,7 @@ from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.file import FileOut
 from app.services.embeddings import EmbeddingServiceError
 from app.services.file_text_extractor import FileTextExtractionError, extract_text
+from app.services.project_access import can_edit_project, can_read_project
 from app.services.rag import index_file_chunks
 from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
@@ -142,6 +143,11 @@ def _get_accessible_project(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المشروع غير موجود")
     _get_workspace_membership(project.workspace_id, current_user, db)
+    if not can_read_project(project, current_user, db):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المشروع غير متاح",
+        )
     return project
 
 
@@ -177,6 +183,13 @@ def _get_accessible_file(
         return file
 
     _get_workspace_membership(file.workspace_id, current_user, db)
+    if file.project_id is not None:
+        project = db.get(WorkspaceProject, file.project_id)
+        if project is None or not can_read_project(project, current_user, db):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="الملف غير موجود",
+            )
     return file
 
 
@@ -225,6 +238,11 @@ async def upload_file(
     project = None
     if project_id is not None:
         project = _get_accessible_project(project_id, current_user, db)
+        if not can_edit_project(project, current_user, db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="لا تملك صلاحية رفع ملفات إلى هذا المشروع",
+            )
         if workspace_id is not None and workspace_id != project.workspace_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -396,7 +414,17 @@ def list_files(
             .order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc())
             .all()
         )
-        return [_file_response(file, current_user, db) for file in files]
+        # Workspace membership alone does not grant access to every project
+        # inside the workspace. Keep project-scoped file metadata out of the
+        # general workspace library unless the caller can read that project.
+        visible_files = []
+        for file in files:
+            if file.project_id is not None:
+                project = db.get(WorkspaceProject, file.project_id)
+                if project is None or not can_read_project(project, current_user, db):
+                    continue
+            visible_files.append(file)
+        return [_file_response(file, current_user, db) for file in visible_files]
 
     if conversation_id is None:
         files = (
