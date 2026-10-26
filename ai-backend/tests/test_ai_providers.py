@@ -369,3 +369,147 @@ def test_gemini_provider_uses_native_system_instruction_field(monkeypatch):
         "role": "user",
         "parts": [{"text": "Current question"}],
     }
+
+
+def _install_fake_stream_provider_client(monkeypatch, provider_module, lines):
+    """Capture streaming API requests and return deterministic SSE lines."""
+    captured = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        async def aiter_lines(self):
+            for line in lines:
+                yield line
+
+    class FakeStreamContext:
+        async def __aenter__(self):
+            return FakeResponse()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            captured["timeout"] = kwargs.get("timeout")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def stream(self, method, url, *args, **kwargs):
+            captured["method"] = method
+            captured["url"] = url
+            captured["payload"] = kwargs.get("json")
+            return FakeStreamContext()
+
+    monkeypatch.setattr(provider_module.httpx, "AsyncClient", FakeClient)
+    return captured
+
+
+def test_openai_compatible_stream_includes_system_guardrails(monkeypatch):
+    import asyncio
+    from app.services.ai_providers import openai_provider
+    from app.services.ai_providers.instructions import SYSTEM_PROMPT
+
+    captured = _install_fake_stream_provider_client(
+        monkeypatch,
+        openai_provider,
+        [
+            'data: {"choices":[{"delta":{"content":"streamed"}}]}',
+            "data: [DONE]",
+        ],
+    )
+    provider = OpenAICompatibleProvider(
+        api_key="fake",
+        base_url="https://example.com/v1",
+        model="test-model",
+    )
+    history = [
+        {"role": "system", "content": "Task-specific stream guidance."},
+        {"role": "user", "content": "Earlier message"},
+    ]
+
+    async def collect():
+        return [
+            part
+            async for part in provider.stream_reply("Current question", history)
+        ]
+
+    assert asyncio.run(collect()) == ["streamed"]
+    messages = captured["payload"]["messages"]
+    assert messages[0]["role"] == "system"
+    assert SYSTEM_PROMPT in messages[0]["content"]
+    assert "Task-specific stream guidance." in messages[0]["content"]
+    assert messages[-1] == {"role": "user", "content": "Current question"}
+    assert captured["payload"]["stream"] is True
+
+
+def test_anthropic_stream_uses_native_system_guardrails(monkeypatch):
+    import asyncio
+    from app.services.ai_providers import anthropic_provider
+    from app.services.ai_providers.instructions import SYSTEM_PROMPT
+
+    captured = _install_fake_stream_provider_client(
+        monkeypatch,
+        anthropic_provider,
+        [
+            'data: {"type":"content_block_delta","delta":{"text":"streamed"}}',
+            'data: {"type":"message_stop"}',
+        ],
+    )
+    provider = AnthropicProvider(api_key="fake", model="claude-test")
+    history = [
+        {"role": "system", "content": "Task-specific stream guidance."},
+        {"role": "assistant", "content": "Earlier assistant reply"},
+    ]
+
+    async def collect():
+        return [
+            part
+            async for part in provider.stream_reply("Current question", history)
+        ]
+
+    assert asyncio.run(collect()) == ["streamed"]
+    assert SYSTEM_PROMPT in captured["payload"]["system"]
+    assert "Task-specific stream guidance." in captured["payload"]["system"]
+    assert all(item["role"] != "system" for item in captured["payload"]["messages"])
+    assert captured["payload"]["stream"] is True
+
+
+def test_gemini_stream_uses_native_system_instruction_guardrails(monkeypatch):
+    import asyncio
+    from app.services.ai_providers import gemini_provider
+    from app.services.ai_providers.instructions import SYSTEM_PROMPT
+
+    captured = _install_fake_stream_provider_client(
+        monkeypatch,
+        gemini_provider,
+        [
+            'data: {"candidates":[{"content":{"parts":[{"text":"streamed"}]}}]}',
+        ],
+    )
+    provider = GeminiProvider(api_key="fake", model="gemini-test")
+    history = [
+        {"role": "system", "content": "Task-specific stream guidance."},
+        {"role": "assistant", "content": "Earlier assistant reply"},
+    ]
+
+    async def collect():
+        return [
+            part
+            async for part in provider.stream_reply("Current question", history)
+        ]
+
+    assert asyncio.run(collect()) == ["streamed"]
+    system_text = captured["payload"]["systemInstruction"]["parts"][0]["text"]
+    assert SYSTEM_PROMPT in system_text
+    assert "Task-specific stream guidance." in system_text
+    assert all(item["role"] != "system" for item in captured["payload"]["contents"])
+    assert captured["payload"]["contents"][-1] == {
+        "role": "user",
+        "parts": [{"text": "Current question"}],
+    }
