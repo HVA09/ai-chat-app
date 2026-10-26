@@ -809,3 +809,47 @@ def test_project_file_access_requires_project_membership_and_edit_role(
         headers=viewer_headers,
     )
     assert denied_upload.status_code == 403
+
+
+def test_upload_preserves_extracted_text_when_ai_limit_defers_indexing(
+    client, db_session, tmp_path, monkeypatch
+):
+    """Quota rejection skips embeddings but must not discard a successful upload."""
+    from fastapi import HTTPException
+
+    from app.models.file_attachment import FileAttachment
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    _disable_object_storage(monkeypatch)
+    token = _register_and_login(client, "files-ai-limit-deferred@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    def reject_indexing(_current_user, _db):
+        raise HTTPException(status_code=429, detail="synthetic rate-limit test")
+
+    index_calls = []
+
+    def should_not_index(_db, _file):
+        index_calls.append(True)
+        raise AssertionError("Embedding provider must not be called after quota rejection")
+
+    monkeypatch.setattr(files_router, "enforce_daily_ai_limit", reject_indexing)
+    monkeypatch.setattr(files_router, "index_file_chunks", should_not_index)
+
+    payload = b"Extracted notes should survive a deferred embedding attempt."
+    response = client.post(
+        "/files/upload",
+        files={"file": ("quota-deferred.txt", payload, "text/plain")},
+        headers=headers,
+    )
+
+    assert response.status_code == 201
+    assert response.json()["has_extracted_text"] is True
+    assert response.json()["is_ai_indexed"] is False
+    assert index_calls == []
+
+    db_session.expire_all()
+    stored = db_session.get(FileAttachment, response.json()["id"])
+    assert stored is not None
+    assert stored.extracted_text == payload.decode("utf-8")
