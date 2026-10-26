@@ -999,8 +999,14 @@ def delete_project(
     db.query(Conversation).filter(
         Conversation.project_id == project.id
     ).update({"project_id": None}, synchronize_session=False)
+    # Project-scoped uploads must not become visible to every workspace
+    # member when the project is deleted. Preserve each file for its uploader
+    # in their personal library instead of promoting it to workspace knowledge.
     db.query(FileAttachment).filter(
         FileAttachment.project_id == project.id
-    ).update({"project_id": None}, synchronize_session=False)
+    ).update(
+        {"project_id": None, "workspace_id": None},
+        synchronize_session=False,
+    )
     db.delete(project)
     db.commit()
