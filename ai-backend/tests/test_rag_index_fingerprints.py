@@ -93,3 +93,149 @@ def test_retrieval_skips_stale_index_without_calling_embedding_provider(
 
     assert rows == []
     embed_query.assert_not_awaited()
+
+
+def test_reindex_replaces_previous_chunks_and_updates_fingerprints(
+    db_session, monkeypatch
+):
+    """A successful reindex atomically replaces stale chunks and records identity."""
+    user = User(email="rag-reindex-replace@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+
+    workspace = Workspace(owner_id=user.id, name="Reindex replacement")
+    db_session.add(workspace)
+    db_session.flush()
+
+    file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        project_id=None,
+        original_filename="notes.txt",
+        stored_filename="rag-reindex-replace.txt",
+        content_type="text/plain",
+        size_bytes=64,
+        extracted_text="Old indexed source text.",
+    )
+    db_session.add(file)
+    db_session.flush()
+
+    old_source_fingerprint = extracted_text_fingerprint(file.extracted_text)
+    file.indexed_text_sha256 = old_source_fingerprint
+    file.indexed_embedding_fingerprint = "old-model-fingerprint"
+    file.indexed_embedding_provider = "old-provider"
+    file.indexed_embedding_model = "old-model"
+    db_session.add(
+        FileChunk(
+            file_id=file.id,
+            chunk_index=0,
+            content="Old indexed source text.",
+            embedding=[0.1] * 768,
+        )
+    )
+    db_session.commit()
+
+    current_identity = ("test-provider", "test-model", "current-model-fingerprint")
+    monkeypatch.setattr(
+        rag, "get_embedding_index_identity", lambda: current_identity
+    )
+    monkeypatch.setattr(
+        rag,
+        "embed_documents_sync",
+        lambda texts: [[0.25] * 768 for _ in texts],
+    )
+
+    file.extracted_text = "Updated source text with the latest verified details."
+    db_session.flush()
+    expected_text_fingerprint = extracted_text_fingerprint(file.extracted_text)
+
+    count = rag.index_file_chunks(db_session, file)
+    db_session.commit()
+    db_session.refresh(file)
+
+    chunks = (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file.id)
+        .order_by(FileChunk.chunk_index.asc())
+        .all()
+    )
+    assert count == len(chunks) == 1
+    assert chunks[0].content == "Updated source text with the latest verified details."
+    assert file.extracted_text_sha256 == expected_text_fingerprint
+    assert file.indexed_text_sha256 == expected_text_fingerprint
+    assert file.indexed_embedding_fingerprint == current_identity[2]
+    assert file.indexed_embedding_provider == current_identity[0]
+    assert file.indexed_embedding_model == current_identity[1]
+    assert file.indexed_at is not None
+
+
+def test_failed_reindex_preserves_rows_but_marks_old_index_stale(
+    db_session, monkeypatch
+):
+    """A provider failure never deletes old chunks, but changed text invalidates them."""
+    from app.services.embeddings import EmbeddingServiceError
+
+    user = User(email="rag-reindex-failure@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+
+    workspace = Workspace(owner_id=user.id, name="Reindex failure")
+    db_session.add(workspace)
+    db_session.flush()
+
+    file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        project_id=None,
+        original_filename="notes.txt",
+        stored_filename="rag-reindex-failure.txt",
+        content_type="text/plain",
+        size_bytes=64,
+        extracted_text="Previous source text.",
+    )
+    db_session.add(file)
+    db_session.flush()
+
+    previous_fingerprint = extracted_text_fingerprint(file.extracted_text)
+    file.indexed_text_sha256 = previous_fingerprint
+    file.indexed_embedding_fingerprint = "current-model-fingerprint"
+    file.indexed_embedding_provider = "test-provider"
+    file.indexed_embedding_model = "test-model"
+    db_session.add(
+        FileChunk(
+            file_id=file.id,
+            chunk_index=0,
+            content="Previous source text.",
+            embedding=[0.1] * 768,
+        )
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        rag,
+        "get_embedding_index_identity",
+        lambda: ("test-provider", "test-model", "current-model-fingerprint"),
+    )
+
+    def fail_embedding(_texts):
+        raise EmbeddingServiceError("provider unavailable")
+
+    monkeypatch.setattr(rag, "embed_documents_sync", fail_embedding)
+    file.extracted_text = "Updated source text that has not been indexed yet."
+    db_session.flush()
+    new_fingerprint = extracted_text_fingerprint(file.extracted_text)
+
+    with pytest.raises(EmbeddingServiceError, match="provider unavailable"):
+        rag.index_file_chunks(db_session, file)
+
+    chunks = (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file.id)
+        .order_by(FileChunk.chunk_index.asc())
+        .all()
+    )
+    assert len(chunks) == 1
+    assert chunks[0].content == "Previous source text."
+    assert file.indexed_text_sha256 == previous_fingerprint
+    assert file.extracted_text_sha256 == new_fingerprint
+    assert file.indexed_text_sha256 != file.extracted_text_sha256
