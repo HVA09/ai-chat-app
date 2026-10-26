@@ -209,6 +209,7 @@ def _file_response(
     # embeddings is still available to the text fallback, but must remain retryable
     # from the UI so the user can complete semantic indexing when the provider recovers.
     response.is_ai_indexed = has_embedding
+    response.has_extracted_text = bool((file.extracted_text or "").strip())
     return response
 
 
@@ -552,6 +553,74 @@ def download_file(
         media_type=attachment.content_type,
         headers={"Content-Disposition": "attachment; filename=\"" + attachment.original_filename + "\""},
     )
+
+
+@router.post("/{file_id}/reindex", response_model=FileOut)
+def reindex_file_for_rag(
+    file_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retry semantic indexing for saved extracted text without re-uploading the file."""
+    attachment = _get_accessible_file(file_id, current_user, db)
+    if not (attachment.extracted_text or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "لا يوجد نص مستخرج قابل للفهرسة في هذا الملف. "
+                "إذا كان الملف صورة، استخدم إجراء فهرسة الصور."
+            ),
+        )
+
+    enforce_daily_ai_limit(current_user, db)
+    if attachment.workspace_id is not None:
+        enforce_workspace_daily_ai_limit(attachment.workspace_id, current_user, db)
+
+    # Persist an attempt record before contacting the embedding provider. Token
+    # usage is not returned by the embedding helper, so only request metadata is
+    # recorded here; this is not an embedding-cost estimate.
+    db.add(
+        UsageLog(
+            user_id=current_user.id,
+            workspace_id=attachment.workspace_id,
+            endpoint="/files/reindex",
+            model=settings.EMBEDDING_MODEL or None,
+            provider=settings.EMBEDDING_PROVIDER or settings.AI_PROVIDER or None,
+        )
+    )
+    db.commit()
+
+    try:
+        indexed_chunks = index_file_chunks(db, attachment)
+    except EmbeddingServiceError as exc:
+        log_event(
+            db,
+            "file_rag_index_failed",
+            f"تعذرت إعادة فهرسة الملف {attachment.original_filename}: {exc}",
+            current_user.id,
+            attachment.workspace_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="تعذرت فهرسة الملف للبحث الذكي الآن. أعد المحاولة لاحقًا.",
+        ) from exc
+
+    if indexed_chunks < 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="لا يوجد نص صالح لإنشاء مقاطع بحث من هذا الملف.",
+        )
+
+    db.commit()
+    db.refresh(attachment)
+    log_event(
+        db,
+        "file_rag_indexed",
+        f"إعادة فهرسة الملف {attachment.original_filename} ({indexed_chunks} مقطع)",
+        current_user.id,
+        attachment.workspace_id,
+    )
+    return _file_response(attachment, current_user, db)
 
 
 @router.post("/{file_id}/index-image", response_model=FileOut)
