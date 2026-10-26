@@ -1,6 +1,7 @@
 """Offline integrity and metric tests for the RAG retrieval evaluation benchmark."""
 import importlib.util
 import json
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -56,7 +57,7 @@ def test_rag_fixture_declares_all_metrics_produced_by_benchmark():
 
 def test_rag_evaluation_cases_have_complete_unique_ids_and_relevance_labels():
     cases = _load_dataset()
-    assert len(cases) >= 14
+    assert len(cases) >= 20
 
     case_ids = [case.get("id") for case in cases]
     assert all(isinstance(case_id, str) and case_id for case_id in case_ids)
@@ -88,9 +89,21 @@ def test_rag_evaluation_cases_have_complete_unique_ids_and_relevance_labels():
 
 
 def test_rag_evaluation_dataset_has_cases_across_all_domains():
-    counts = Counter(case["domain"] for case in _load_dataset())
+    cases = _load_dataset()
+    counts = Counter(case["domain"] for case in cases)
     for domain in EXPECTED_DOMAINS:
         assert counts[domain] >= 2, f"Expected at least two RAG evaluation cases for {domain}"
+
+
+def test_rag_evaluation_dataset_covers_arabic_queries_in_every_domain():
+    cases = _load_dataset()
+    arabic_query_domains = {
+        case["domain"]
+        for case in cases
+        if re.search(r"[\\u0600-\\u06FF]", case["query"])
+    }
+
+    assert EXPECTED_DOMAINS <= arabic_query_domains
 
 
 def test_cosine_similarity_handles_known_vectors():
