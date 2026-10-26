@@ -56,6 +56,11 @@ def test_upload_rejects_unsupported_type(client, tmp_path, monkeypatch):
     token = _register_and_login(client)
     response = client.post("/files/upload", files={"file": ("virus.exe", b"binary", "application/x-msdownload")}, headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 415
+    detail = response.json()["detail"]
+    assert "DOCX" in detail
+    assert "XLSX" in detail
+    assert "CSV" in detail
+    assert "TXT" in detail
 
 
 def test_upload_rejects_oversized_file(client, tmp_path, monkeypatch):
