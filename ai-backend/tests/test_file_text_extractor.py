@@ -70,7 +70,7 @@ def test_extract_pdf_file(tmp_path: Path):
     assert extract_text(path, "application/pdf") == ""
 
 
-def test_docx_extraction_stops_building_text_after_character_limit(
+def test_docx_extraction_stops_reading_blocks_after_character_limit(
     tmp_path: Path, monkeypatch
 ):
     from app.services import file_text_extractor
@@ -79,7 +79,10 @@ def test_docx_extraction_stops_building_text_after_character_limit(
         def __init__(self, text: str):
             self.text = text
 
-    class TrackingParagraphs:
+    class FakeTable:
+        pass
+
+    class TrackingBlocks:
         def __init__(self):
             self.visited = 0
 
@@ -89,18 +92,37 @@ def test_docx_extraction_stops_building_text_after_character_limit(
             self.visited += 1
             yield FakeParagraph("This later paragraph should not be visited.")
 
-    paragraphs = TrackingParagraphs()
+    blocks = TrackingBlocks()
 
     class FakeDocument:
-        def __init__(self):
-            self.paragraphs = paragraphs
-            self.tables = []
+        def iter_inner_content(self):
+            return iter(blocks)
 
     monkeypatch.setattr(file_text_extractor, "Document", lambda _path: FakeDocument())
+    monkeypatch.setattr(file_text_extractor, "Paragraph", FakeParagraph)
+    monkeypatch.setattr(file_text_extractor, "Table", FakeTable)
 
     text = file_text_extractor._read_docx_file(tmp_path / "fake.docx", max_chars=20)
 
     assert text.startswith("A" * 20)
     assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
-    assert paragraphs.visited == 1
+    assert blocks.visited == 1
     assert "later paragraph" not in text
+
+
+def test_docx_extraction_preserves_paragraph_and_table_order(tmp_path: Path):
+    path = tmp_path / "ordered.docx"
+    document = Document()
+    document.add_paragraph("Before table")
+    table = document.add_table(rows=1, cols=1)
+    table.cell(0, 0).text = "Table content"
+    document.add_paragraph("After table")
+    document.save(path)
+
+    text = extract_text(
+        path,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+
+    assert text.index("Before table") < text.index("Table content")
+    assert text.index("Table content") < text.index("After table")
