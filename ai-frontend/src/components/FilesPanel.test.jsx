@@ -6,6 +6,7 @@ import {
   attachFileToConversation,
   deleteFile,
   indexImageForRag,
+  reindexFileForRag,
   listFiles,
   uploadFile,
 } from "../lib/filesApi";
@@ -17,6 +18,7 @@ vi.mock("../lib/filesApi", () => ({
   downloadFile: vi.fn(),
   fetchFileBlob: vi.fn(),
   indexImageForRag: vi.fn(),
+  reindexFileForRag: vi.fn(),
   listFiles: vi.fn().mockResolvedValue([]),
   uploadFile: vi.fn().mockResolvedValue({}),
 }));
@@ -349,6 +351,63 @@ describe("FilesPanel project knowledge", () => {
     expect(listFiles).toHaveBeenCalledTimes(2);
   });
 
+
+  it("keeps text file indexing retry available after provider failure", async () => {
+    const file = {
+      id: 90,
+      original_filename: "network-notes.txt",
+      content_type: "text/plain",
+      size_bytes: 48,
+      created_at: "2026-10-25T12:00:00Z",
+      workspace_id: null,
+      project_id: null,
+      has_extracted_text: true,
+      is_attached: false,
+      is_ai_indexed: false,
+      can_delete: false,
+    };
+    listFiles
+      .mockReset()
+      .mockResolvedValueOnce([file])
+      .mockResolvedValueOnce([{ ...file, is_ai_indexed: true }]);
+    reindexFileForRag
+      .mockReset()
+      .mockRejectedValueOnce({
+        response: { data: { detail: "Embedding provider unavailable" } },
+      })
+      .mockResolvedValueOnce({ ...file, is_ai_indexed: true });
+
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    try {
+      render(<FilesPanel onClose={vi.fn()} />);
+      const retryButton = await screen.findByTitle("files.retryIndexForAi");
+      expect(retryButton).not.toBeDisabled();
+
+      await user.click(retryButton);
+      await waitFor(() => {
+        expect(reindexFileForRag).toHaveBeenCalledTimes(1);
+        expect(retryButton).not.toBeDisabled();
+      });
+      expect(listFiles).toHaveBeenCalledTimes(1);
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Embedding provider unavailable" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+
+      await user.click(retryButton);
+      await waitFor(() => expect(reindexFileForRag).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(2));
+      expect(await screen.findByText("files.indexed")).toBeInTheDocument();
+    } finally {
+      dispatchSpy.mockRestore();
+    }
+  });
 
   it("keeps image indexing retry available after provider failure", async () => {
     const file = {
