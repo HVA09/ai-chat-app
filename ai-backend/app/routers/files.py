@@ -202,7 +202,9 @@ def _get_accessible_file(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
 
     if file.workspace_id is None:
-        if file.user_id != current_user.id:
+        if file.user_id != current_user.id or not _can_read_project_file(
+            file, current_user, db
+        ):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
         return file
 
