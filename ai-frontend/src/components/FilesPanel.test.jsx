@@ -81,6 +81,11 @@ describe("FilesPanel project knowledge", () => {
     expect(status.getAttribute("title")).toBe(
       "The upload succeeded, but no searchable text was found. A scanned PDF may need OCR; try a text-searchable PDF or paste the relevant text."
     );
+    expect(
+      await screen.findByText(
+        "The upload succeeded, but no searchable text was found. A scanned PDF may need OCR; try a text-searchable PDF or paste the relevant text."
+      )
+    ).toBeTruthy();
   });
 
   it("shows a global toast when loading files fails", async () => {
