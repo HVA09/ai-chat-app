@@ -375,21 +375,50 @@ async def upload_file(
 
     if extracted_text:
         try:
-            indexed_chunks = index_file_chunks(db, attachment)
-            if indexed_chunks:
-                log_event(
-                    db,
-                    "file_rag_indexed",
-                    f"تم فهرسة {indexed_chunks} مقطعًا للملف {attachment.original_filename}",
-                    current_user.id,
-                )
-        except EmbeddingServiceError as exc:
+            enforce_daily_ai_limit(current_user, db)
+            if workspace_id is not None:
+                enforce_workspace_daily_ai_limit(workspace_id, current_user, db)
+        except HTTPException as exc:
+            if exc.status_code not in {429, 503}:
+                raise
+            # Keep the uploaded file and extracted text even when indexing is
+            # deferred by quota or a rate-limit service outage. The UI can offer
+            # a retry after the limit/service recovers without another upload.
             log_event(
                 db,
-                "file_rag_index_failed",
-                f"تعذر فهرسة الملف {attachment.original_filename}: {exc}",
+                "file_rag_index_deferred",
+                f"تم حفظ الملف {attachment.original_filename} وتأجيل فهرسته بسبب حد الاستخدام أو تعذر تحديد المعدل (HTTP {exc.status_code})",
                 current_user.id,
+                workspace_id,
             )
+        else:
+            db.add(
+                UsageLog(
+                    user_id=current_user.id,
+                    workspace_id=workspace_id,
+                    endpoint="/files/upload/index",
+                    model=settings.EMBEDDING_MODEL or None,
+                    provider=settings.EMBEDDING_PROVIDER or settings.AI_PROVIDER or None,
+                )
+            )
+            try:
+                indexed_chunks = index_file_chunks(db, attachment)
+                if indexed_chunks:
+                    log_event(
+                        db,
+                        "file_rag_indexed",
+                        f"تم فهرسة {indexed_chunks} مقطعًا للملف {attachment.original_filename}",
+                        current_user.id,
+                        workspace_id,
+                    )
+            except EmbeddingServiceError as exc:
+                log_event(
+                    db,
+                    "file_rag_index_failed",
+                    f"تعذر فهرسة الملف {attachment.original_filename}: {exc}",
+                    current_user.id,
+                    workspace_id,
+                )
 
     if conversation_id is not None:
         db.add(
