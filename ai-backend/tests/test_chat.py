@@ -1552,3 +1552,90 @@ def test_chat_compare_rejects_revoked_workspace_membership_before_loading_files(
     assert response.status_code == 404
     file_context.assert_not_awaited()
     reply.assert_not_awaited()
+
+def test_agent_chat_rejects_project_conversation_after_membership_revocation(
+    client, db_session, monkeypatch
+):
+    """An old project conversation cannot authorize agent tools after access is revoked."""
+    from app.models.project_member import ProjectMember, ProjectMemberRole
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    reply = AsyncMock(return_value=AIReply(text="Initial response"))
+    agent = AsyncMock(return_value=("Agent should not run", [], 0, 0))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", reply)
+    monkeypatch.setattr(chat_router_module, "run_agent", agent)
+
+    owner_token = _register_and_login(client, "project-agent-acl-owner@example.com")
+    member_token = _register_and_login(client, "project-agent-acl-member@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    member_headers = {"Authorization": f"Bearer {member_token}"}
+
+    workspace_response = client.post(
+        "/workspaces",
+        json={"name": "Agent project ACL"},
+        headers=owner_headers,
+    )
+    assert workspace_response.status_code == 201
+    workspace_id = workspace_response.json()["id"]
+
+    project_response = client.post(
+        "/projects",
+        json={"workspace_id": workspace_id, "name": "Private agent project"},
+        headers=owner_headers,
+    )
+    assert project_response.status_code == 201
+    project_id = project_response.json()["id"]
+
+    member = (
+        db_session.query(User)
+        .filter(User.email == "project-agent-acl-member@example.com")
+        .one()
+    )
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace_id,
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    db_session.add(
+        ProjectMember(
+            project_id=project_id,
+            user_id=member.id,
+            role=ProjectMemberRole.viewer,
+        )
+    )
+    db_session.commit()
+
+    initial = client.post(
+        "/chat",
+        json={
+            "message": "ابدأ محادثة في المشروع",
+            "workspace_id": workspace_id,
+            "project_id": project_id,
+        },
+        headers=member_headers,
+    )
+    assert initial.status_code == 200
+    conversation_id = initial.json()["conversation_id"]
+    reply.assert_awaited_once()
+
+    db_session.query(ProjectMember).filter(
+        ProjectMember.project_id == project_id,
+        ProjectMember.user_id == member.id,
+    ).delete(synchronize_session=False)
+    db_session.commit()
+
+    denied = client.post(
+        "/chat",
+        json={
+            "message": "/agent اقرأ ملفات المشروع",
+            "workspace_id": workspace_id,
+            "conversation_id": conversation_id,
+        },
+        headers=member_headers,
+    )
+
+    assert denied.status_code == 404
+    agent.assert_not_awaited()
+    assert reply.await_count == 1
