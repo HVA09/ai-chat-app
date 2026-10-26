@@ -165,12 +165,25 @@ def evaluate_dataset(dataset: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
             k=top_k,
         )
         metadata = {document["id"]: document for document in case["documents"]}
+        first_relevant_rank = next(
+            (
+                rank
+                for rank, (document_id, _score) in enumerate(ranked, start=1)
+                if relevance_by_id[document_id] > 0
+            ),
+            None,
+        )
+        top1_is_irrelevant = bool(
+            ranked and relevance_by_id[ranked[0][0]] == 0
+        )
         case_results.append(
             {
                 "case_id": case["id"],
                 "domain": case["domain"],
                 "query": case["query"],
                 "metrics": metrics,
+                "top1_is_irrelevant": top1_is_irrelevant,
+                "first_relevant_rank": first_relevant_rank,
                 "ranked_documents": [
                     {
                         "id": document_id,
@@ -194,12 +207,49 @@ def evaluate_dataset(dataset: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
         results_by_domain.setdefault(result["domain"], []).append(result)
     domain_summary = {
         domain: {
-            metric: round(
-                fmean(result["metrics"][metric] for result in domain_results), 4
-            )
-            for metric in metric_names
+            **{
+                metric: round(
+                    fmean(result["metrics"][metric] for result in domain_results), 4
+                )
+                for metric in metric_names
+            },
+            "top1_irrelevant_count": sum(
+                result["top1_is_irrelevant"] for result in domain_results
+            ),
+            "top1_irrelevant_rate": round(
+                fmean(
+                    float(result["top1_is_irrelevant"])
+                    for result in domain_results
+                ),
+                4,
+            ),
+            "mean_first_relevant_rank": round(
+                fmean(
+                    float(result["first_relevant_rank"])
+                    for result in domain_results
+                    if result["first_relevant_rank"] is not None
+                ),
+                4,
+            ),
         }
         for domain, domain_results in sorted(results_by_domain.items())
+    }
+    top1_irrelevant_count = sum(
+        result["top1_is_irrelevant"] for result in case_results
+    )
+    retrieval_diagnostics = {
+        "top1_irrelevant_count": top1_irrelevant_count,
+        "top1_irrelevant_rate": round(
+            top1_irrelevant_count / len(case_results), 4
+        ),
+        "mean_first_relevant_rank": round(
+            fmean(
+                float(result["first_relevant_rank"])
+                for result in case_results
+                if result["first_relevant_rank"] is not None
+            ),
+            4,
+        ),
     }
     return {
         "benchmark": "rag-retrieval-eval-v1",
@@ -209,6 +259,7 @@ def evaluate_dataset(dataset: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
         "top_k": top_k,
         "case_count": len(case_results),
         "macro_average": summary,
+        "retrieval_diagnostics": retrieval_diagnostics,
         "by_domain": domain_summary,
         "cases": case_results,
         "limitations": [
