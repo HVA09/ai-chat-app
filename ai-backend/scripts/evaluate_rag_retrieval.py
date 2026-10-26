@@ -312,6 +312,15 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        if (
+            args.output is not None
+            and args.output.expanduser().resolve() == FIXTURE_PATH.resolve()
+        ):
+            # Refuse to overwrite the benchmark corpus, including via a symlink
+            # or alternate relative path. Check before any optional live requests.
+            raise ValueError(
+                "Output path must not overwrite the RAG evaluation fixture."
+            )
         dataset = load_dataset()
         # Safety first: no provider calls occur unless the user explicitly opts in.
         report = (
