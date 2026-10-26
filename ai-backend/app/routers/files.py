@@ -170,6 +170,30 @@ def _get_workspace_membership(
     return membership
 
 
+def _can_read_project_file(
+    file: FileAttachment, current_user: User, db: Session
+) -> bool:
+    """Project file access is narrower than general workspace membership."""
+    if file.project_id is None:
+        return True
+    project = db.get(WorkspaceProject, file.project_id)
+    return project is not None and can_read_project(project, current_user, db)
+
+
+def _require_project_file_edit_access(
+    file: FileAttachment, current_user: User, db: Session
+) -> None:
+    """Reject write/compute operations for project viewers."""
+    if file.project_id is None:
+        return
+    project = db.get(WorkspaceProject, file.project_id)
+    if project is None or not can_edit_project(project, current_user, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="لا تملك صلاحية تعديل ملفات هذا المشروع",
+        )
+
+
 def _get_accessible_file(
     file_id: int, current_user: User, db: Session
 ) -> FileAttachment:
@@ -183,13 +207,11 @@ def _get_accessible_file(
         return file
 
     _get_workspace_membership(file.workspace_id, current_user, db)
-    if file.project_id is not None:
-        project = db.get(WorkspaceProject, file.project_id)
-        if project is None or not can_read_project(project, current_user, db):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="الملف غير موجود",
-            )
+    if not _can_read_project_file(file, current_user, db):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الملف غير موجود",
+        )
     return file
 
 
@@ -205,11 +227,17 @@ def _file_response(
     response.workspace_id = file.workspace_id
     response.is_owner = file.user_id == current_user.id
 
-    can_delete = response.is_owner
-    if file.workspace_id is not None and not can_delete:
-        membership = _get_workspace_membership(file.workspace_id, current_user, db)
-        can_delete = membership.role in {WorkspaceRole.owner, WorkspaceRole.admin}
-    response.can_delete = can_delete
+    if file.project_id is not None:
+        project = db.get(WorkspaceProject, file.project_id)
+        response.can_delete = (
+            project is not None and can_edit_project(project, current_user, db)
+        )
+    else:
+        can_delete = response.is_owner
+        if file.workspace_id is not None and not can_delete:
+            membership = _get_workspace_membership(file.workspace_id, current_user, db)
+            can_delete = membership.role in {WorkspaceRole.owner, WorkspaceRole.admin}
+        response.can_delete = can_delete
     has_embedding = bool(
         db.query(FileChunk.id)
         .filter(
@@ -417,13 +445,10 @@ def list_files(
         # Workspace membership alone does not grant access to every project
         # inside the workspace. Keep project-scoped file metadata out of the
         # general workspace library unless the caller can read that project.
-        visible_files = []
-        for file in files:
-            if file.project_id is not None:
-                project = db.get(WorkspaceProject, file.project_id)
-                if project is None or not can_read_project(project, current_user, db):
-                    continue
-            visible_files.append(file)
+        visible_files = [
+            file for file in files
+            if _can_read_project_file(file, current_user, db)
+        ]
         return [_file_response(file, current_user, db) for file in visible_files]
 
     if conversation_id is None:
@@ -454,6 +479,10 @@ def list_files(
             .order_by(FileAttachment.created_at.desc())
             .all()
         )
+        files = [
+            file for file in files
+            if _can_read_project_file(file, current_user, db)
+        ]
         results = []
         for file in files:
             results.append(_file_response(file, current_user, db, is_attached=True))
@@ -591,6 +620,7 @@ def reindex_file_for_rag(
 ):
     """Retry semantic indexing for saved extracted text without re-uploading the file."""
     attachment = _get_accessible_file(file_id, current_user, db)
+    _require_project_file_edit_access(attachment, current_user, db)
     if not (attachment.extracted_text or "").strip():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -659,6 +689,7 @@ async def index_image_for_rag(
 ):
     """يفهرس صورة صراحةً في RAG بدون استدعاء Vision مخفي أثناء كل رسالة."""
     attachment = _get_accessible_file(file_id, current_user, db)
+    _require_project_file_edit_access(attachment, current_user, db)
 
     if not attachment.content_type.startswith("image/"):
         raise HTTPException(
