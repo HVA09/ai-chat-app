@@ -9,6 +9,7 @@ import httpx
 
 from app.config import settings
 from app.services.ai_providers.base import AIProvider, AIReply
+from app.services.ai_providers.instructions import SYSTEM_PROMPT
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
@@ -30,7 +31,19 @@ class AnthropicProvider(AIProvider):
     def _messages(
         self, message: str, history: list[dict[str, str]] | None
     ) -> list[dict[str, str]]:
-        return (history or []) + [{"role": "user", "content": message}]
+        return [
+            dict(item)
+            for item in (history or [])
+            if item.get("role") != "system"
+        ] + [{"role": "user", "content": message}]
+
+    def _system_prompt(self, history: list[dict[str, str]] | None) -> str:
+        existing = [
+            str(item.get("content") or "")
+            for item in (history or [])
+            if item.get("role") == "system" and str(item.get("content") or "").strip()
+        ]
+        return "\n\n".join([SYSTEM_PROMPT, *existing])
 
     async def get_reply(self, message: str, history: list[dict[str, str]] | None = None) -> AIReply:
         async with httpx.AsyncClient(timeout=settings.AI_REQUEST_TIMEOUT_SECONDS) as client:
@@ -40,6 +53,7 @@ class AnthropicProvider(AIProvider):
                 json={
                     "model": self.model,
                     "max_tokens": self.max_tokens,
+                    "system": self._system_prompt(history),
                     "messages": self._messages(message, history),
                 },
             )
@@ -63,6 +77,7 @@ class AnthropicProvider(AIProvider):
                 json={
                     "model": self.model,
                     "max_tokens": self.max_tokens,
+                    "system": self._system_prompt(history),
                     "messages": self._messages(message, history),
                     "stream": True,
                 },
