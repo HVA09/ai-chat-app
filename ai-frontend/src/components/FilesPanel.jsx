@@ -548,6 +548,13 @@ export default function FilesPanel({
                     </span>
                   )}
                 </div>
+                {!file.is_ai_indexed &&
+                  !file.has_extracted_text &&
+                  !file.content_type.startsWith("image/") && (
+                    <p className="mt-2 ps-[3.25rem] text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      {t("files.noExtractedTextHelp")}
+                    </p>
+                  )}
               </div>
             ))}
             </div>
