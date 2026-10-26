@@ -563,3 +563,109 @@ def test_project_name_conflicts_are_case_insensitive(client):
     )
     assert duplicate.status_code == 409
     assert duplicate.json()["detail"] == "يوجد مشروع بهذا الاسم في مساحة العمل"
+
+
+def test_project_delete_keeps_uploaded_files_private_to_uploader(
+    client, db_session, tmp_path, monkeypatch
+):
+    """Deleting a project must not promote its uploads to shared workspace files."""
+    from app.config import settings as app_settings
+    from app.models.file_attachment import FileAttachment
+    from app.models.user import User
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    for setting_name in (
+        "S3_BUCKET",
+        "S3_ENDPOINT_URL",
+        "S3_REGION",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.setattr(app_settings, setting_name, "")
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda _db, _file: 0)
+
+    owner_token = _register_and_login(client, "project-delete-file-owner@example.com")
+    member_token = _register_and_login(client, "project-delete-workspace-member@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    member_headers = {"Authorization": f"Bearer {member_token}"}
+
+    workspace = _create_workspace(client, owner_headers, name="Private project files")
+    member = (
+        db_session.query(User)
+        .filter(User.email == "project-delete-workspace-member@example.com")
+        .one()
+    )
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace["id"],
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    db_session.commit()
+
+    created_project = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Confidential project"},
+        headers=owner_headers,
+    )
+    assert created_project.status_code == 201
+    project_id = created_project.json()["id"]
+
+    uploaded = client.post(
+        "/files/upload",
+        params={"project_id": project_id},
+        files={
+            "file": (
+                "project-secret.txt",
+                b"Information that must remain private after project deletion.",
+                "text/plain",
+            )
+        },
+        headers=owner_headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+    assert uploaded.json()["project_id"] == project_id
+    assert uploaded.json()["workspace_id"] == workspace["id"]
+
+    member_before = client.get(
+        "/files",
+        params={"workspace_id": workspace["id"]},
+        headers=member_headers,
+    )
+    assert member_before.status_code == 200
+    assert file_id not in {item["id"] for item in member_before.json()}
+
+    deleted = client.delete(f"/projects/{project_id}", headers=owner_headers)
+    assert deleted.status_code == 204
+
+    db_session.expire_all()
+    saved_file = db_session.get(FileAttachment, file_id)
+    assert saved_file is not None
+    assert saved_file.project_id is None
+    assert saved_file.workspace_id is None
+    assert saved_file.user_id == (
+        db_session.query(User)
+        .filter(User.email == "project-delete-file-owner@example.com")
+        .one()
+        .id
+    )
+
+    member_after = client.get(
+        "/files",
+        params={"workspace_id": workspace["id"]},
+        headers=member_headers,
+    )
+    assert member_after.status_code == 200
+    assert file_id not in {item["id"] for item in member_after.json()}
+    assert client.get(f"/files/{file_id}", headers=member_headers).status_code == 404
+
+    owner_personal_files = client.get("/files", headers=owner_headers)
+    assert owner_personal_files.status_code == 200
+    assert file_id in {item["id"] for item in owner_personal_files.json()}
+    owner_download = client.get(f"/files/{file_id}", headers=owner_headers)
+    assert owner_download.status_code == 200
+    assert b"Information that must remain private" in owner_download.content
