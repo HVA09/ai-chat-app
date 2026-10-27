@@ -92,6 +92,38 @@ def test_download_file_returns_original_bytes(client, tmp_path, monkeypatch):
     assert download_response.content == b"a,b,c\n1,2,3"
 
 
+def test_download_file_safely_encodes_untrusted_filename(client, db_session, tmp_path, monkeypatch):
+    """Control characters and separators in the original name must not alter headers."""
+    from app.models.file_attachment import FileAttachment
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    token = _register_and_login(client, "filename-header@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    upload_response = client.post(
+        "/files/upload",
+        files={"file": ("normal.txt", b"safe text", "text/plain")},
+        headers=headers,
+    )
+    assert upload_response.status_code == 201
+
+    attachment = db_session.get(FileAttachment, upload_response.json()["id"])
+    assert attachment is not None
+    attachment.original_filename = 'report";\r\nX-Injected: yes - résumé.txt'
+    db_session.commit()
+
+    response = client.get(f"/files/{attachment.id}", headers=headers)
+
+    assert response.status_code == 200
+    disposition = response.headers["content-disposition"]
+    assert "\r" not in disposition
+    assert "\n" not in disposition
+    assert disposition.startswith('attachment; filename="')
+    assert "filename*=UTF-8''" in disposition
+    assert "%22%3B" in disposition
+    assert "%C3%A9" in disposition
+    assert response.content == b"safe text"
+
+
 def test_delete_file(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client)
