@@ -31,7 +31,7 @@ from app.schemas.file import FileOut
 from app.services.embeddings import EmbeddingServiceError, get_embedding_index_identity
 from app.services.file_text_extractor import FileTextExtractionError, extract_text
 from app.services.project_access import can_edit_project, can_read_project
-from app.services.rag import index_file_chunks
+from app.services.rag import index_file_chunks, safe_source_filename
 from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
 
@@ -383,7 +383,7 @@ async def upload_file(
             log_event(
                 db,
                 "file_text_extraction_failed",
-                f"فشل استخراج نص الملف: {file.filename or stored_filename} ({exc})",
+                f"فشل استخراج نص الملف: {safe_source_filename(file.filename or stored_filename)} ({exc})",
                 current_user.id,
             )
 
@@ -415,7 +415,7 @@ async def upload_file(
             log_event(
                 db,
                 "file_rag_index_deferred",
-                f"تم حفظ الملف {attachment.original_filename} وتأجيل فهرسته بسبب حد الاستخدام أو تعذر تحديد المعدل (HTTP {exc.status_code})",
+                f"تم حفظ الملف {safe_source_filename(attachment.original_filename)} وتأجيل فهرسته بسبب حد الاستخدام أو تعذر تحديد المعدل (HTTP {exc.status_code})",
                 current_user.id,
                 workspace_id,
             )
@@ -435,7 +435,7 @@ async def upload_file(
                     log_event(
                         db,
                         "file_rag_indexed",
-                        f"تم فهرسة {indexed_chunks} مقطعًا للملف {attachment.original_filename}",
+                        f"تم فهرسة {indexed_chunks} مقطعًا للملف {safe_source_filename(attachment.original_filename)}",
                         current_user.id,
                         workspace_id,
                     )
@@ -443,7 +443,7 @@ async def upload_file(
                 log_event(
                     db,
                     "file_rag_index_failed",
-                    f"تعذر فهرسة الملف {attachment.original_filename}: {exc}",
+                    f"تعذر فهرسة الملف {safe_source_filename(attachment.original_filename)}: {exc}",
                     current_user.id,
                     workspace_id,
                 )
@@ -460,7 +460,7 @@ async def upload_file(
     log_event(
         db,
         "file_uploaded",
-        f"رفع ملف: {attachment.original_filename} بواسطة {current_user.email}",
+        f"رفع ملف: {safe_source_filename(attachment.original_filename)} بواسطة {current_user.email}",
         current_user.id,
     )
     return _file_response(
@@ -745,7 +745,7 @@ def reindex_file_for_rag(
         log_event(
             db,
             "file_rag_index_failed",
-            f"تعذرت إعادة فهرسة الملف {attachment.original_filename}: {exc}",
+            f"تعذرت إعادة فهرسة الملف {safe_source_filename(attachment.original_filename)}: {exc}",
             current_user.id,
             attachment.workspace_id,
         )
@@ -765,7 +765,7 @@ def reindex_file_for_rag(
     log_event(
         db,
         "file_rag_indexed",
-        f"إعادة فهرسة الملف {attachment.original_filename} ({indexed_chunks} مقطع)",
+        f"إعادة فهرسة الملف {safe_source_filename(attachment.original_filename)} ({indexed_chunks} مقطع)",
         current_user.id,
         attachment.workspace_id,
     )
@@ -836,7 +836,7 @@ async def index_image_for_rag(
         log_event(
             db,
             "file_rag_indexed",
-            f"إعادة فهرسة وصف الصورة: {attachment.original_filename} ({indexed_chunks} مقطع)",
+            f"إعادة فهرسة وصف الصورة: {safe_source_filename(attachment.original_filename)} ({indexed_chunks} مقطع)",
             current_user.id,
         )
         return _file_response(attachment, current_user, db)
@@ -876,7 +876,7 @@ async def index_image_for_rag(
     log_event(
         db,
         "file_rag_indexed",
-        f"فهرسة صورة للـ RAG: {attachment.original_filename} ({indexed_chunks} مقطع)",
+        f"فهرسة صورة للـ RAG: {safe_source_filename(attachment.original_filename)} ({indexed_chunks} مقطع)",
         current_user.id,
     )
     return _file_response(attachment, current_user, db)
@@ -907,6 +907,6 @@ def delete_file(
     log_event(
         db,
         "file_deleted",
-        f"حذف ملف: {attachment.original_filename} بواسطة {current_user.email}",
+        f"حذف ملف: {safe_source_filename(attachment.original_filename)} بواسطة {current_user.email}",
         current_user.id,
     )
