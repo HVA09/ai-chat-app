@@ -31,6 +31,19 @@ TOP_K = 6
 MAX_RETRIEVAL_CONTEXT_CHARS = 18_000
 
 
+def safe_source_filename(filename: str | None) -> str:
+    """Render a filename safely inside prompt labels without changing stored metadata.
+
+    Upload names are user-controlled. Keep labels on one line and prevent square
+    brackets/backticks from forging source or context delimiters in the prompt.
+    """
+    normalized = " ".join((filename or "").split())
+    normalized = normalized.replace("[", "(").replace("]", ")").replace("`", "'")
+    # Drop ASCII control characters that survived whitespace normalization.
+    normalized = "".join(character for character in normalized if ord(character) >= 32 and ord(character) != 127)
+    return normalized[:255] or "unnamed file"
+
+
 class SourceCitation(TypedDict):
     id: str
     filename: str
@@ -306,7 +319,7 @@ def build_retrieval_context(
                 "snippet": chunk.content[:220].strip(),
             }
         )
-        parts.append(f"[SOURCE {source_id}: {file.original_filename} | CHUNK: {chunk.chunk_index + 1}]\n{snippet}")
+        parts.append(f"[SOURCE {source_id}: {safe_source_filename(file.original_filename)} | CHUNK: {chunk.chunk_index + 1}]\n{snippet}")
         total += len(snippet)
 
     return (
@@ -348,7 +361,7 @@ def build_fallback_file_context(
                 "snippet": " ".join(text.split())[:220].strip(),
             }
         )
-        parts.append(f"[SOURCE {source_id}: {file.original_filename}]\n{snippet}")
+        parts.append(f"[SOURCE {source_id}: {safe_source_filename(file.original_filename)}]\n{snippet}")
         total += len(snippet)
 
     if not parts:
