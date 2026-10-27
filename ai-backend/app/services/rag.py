@@ -327,7 +327,7 @@ def build_fallback_file_context(
     sources: list[SourceCitation] = []
     total = 0
 
-    for index, file in enumerate(files, start=1):
+    for file in files:
         text = (file.extracted_text or "").strip()
         if not text:
             continue
@@ -335,7 +335,9 @@ def build_fallback_file_context(
         if remaining <= 0:
             break
 
-        source_id = f"S{index}"
+        # Number only sources that actually enter the context so IDs stay
+        # contiguous when attachments with no extracted text are skipped.
+        source_id = f"S{len(sources) + 1}"
         snippet = text[: min(8_000, remaining)]
         sources.append(
             {
