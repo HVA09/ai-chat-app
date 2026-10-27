@@ -499,4 +499,52 @@ describe("FilesPanel project knowledge", () => {
   });
 
 
+  it("hides image and text indexing controls from read-only project viewers", async () => {
+    const projectFiles = [
+      {
+        id: 201,
+        original_filename: "viewer-notes.txt",
+        content_type: "text/plain",
+        size_bytes: 64,
+        created_at: "2026-10-27T00:00:00Z",
+        workspace_id: 7,
+        project_id: 88,
+        has_extracted_text: true,
+        is_ai_indexed: false,
+        is_attached: false,
+        can_delete: false,
+      },
+      {
+        id: 202,
+        original_filename: "viewer-chart.png",
+        content_type: "image/png",
+        size_bytes: 32,
+        created_at: "2026-10-27T00:00:00Z",
+        workspace_id: 7,
+        project_id: 88,
+        has_extracted_text: false,
+        is_ai_indexed: false,
+        is_attached: false,
+        can_delete: false,
+      },
+    ];
+    listFiles.mockReset().mockResolvedValue(projectFiles);
+
+    render(
+      <FilesPanel
+        onClose={vi.fn()}
+        workspaceId={7}
+        projectId={88}
+      />
+    );
+
+    expect(await screen.findByText("viewer-notes.txt")).toBeInTheDocument();
+    expect(await screen.findByText("viewer-chart.png")).toBeInTheDocument();
+    expect(screen.queryByTitle("files.retryIndexForAi")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("files.indexImageForAi")).not.toBeInTheDocument();
+    expect(reindexFileForRag).not.toHaveBeenCalled();
+    expect(indexImageForRag).not.toHaveBeenCalled();
+  });
+
+
 });

@@ -39,6 +39,14 @@ def _finite_number(value: Any, field: str) -> float:
     return number
 
 
+def _bounded_metric(value: Any, field: str) -> float:
+    """Validate ranking metrics, allowing a small float-rounding tolerance."""
+    number = _finite_number(value, field)
+    if number < -0.00011 or number > 1.00011:
+        raise ValueError(f"{field} must be between 0 and 1.")
+    return number
+
+
 def _validate_report(report: Any, label: str) -> dict[str, Any]:
     if not isinstance(report, dict) or report.get("benchmark") != BENCHMARK_NAME:
         raise ValueError(f"{label} is not a {BENCHMARK_NAME} report.")
@@ -71,7 +79,7 @@ def _validate_report(report: Any, label: str) -> dict[str, Any]:
     if not isinstance(metrics, dict) or not metrics:
         raise ValueError(f"{label} is missing macro_average metrics.")
     for name, value in metrics.items():
-        _finite_number(value, f"{label}.macro_average.{name}")
+        _bounded_metric(value, f"{label}.macro_average.{name}")
         _direction(name)
 
     by_domain = report.get("by_domain")
@@ -84,7 +92,7 @@ def _validate_report(report: Any, label: str) -> dict[str, Any]:
             raise ValueError(f"{label}.by_domain.{domain} is missing ranking metrics.")
         for name, value in values.items():
             if name in metrics:
-                _finite_number(value, f"{label}.by_domain.{domain}.{name}")
+                _bounded_metric(value, f"{label}.by_domain.{domain}.{name}")
             elif name in LOWER_IS_BETTER:
                 _finite_number(value, f"{label}.by_domain.{domain}.{name}")
             elif name == "top1_irrelevant_count":
@@ -128,7 +136,7 @@ def _validate_report(report: Any, label: str) -> dict[str, Any]:
         if not isinstance(case_metrics, dict) or set(case_metrics) != set(metrics):
             raise ValueError(f"{label} case {case_id} has an incompatible metric set.")
         for name, value in case_metrics.items():
-            _finite_number(value, f"{label}.cases.{case_id}.metrics.{name}")
+            _bounded_metric(value, f"{label}.cases.{case_id}.metrics.{name}")
 
         if not isinstance(case["top1_is_irrelevant"], bool):
             raise ValueError(f"{label} case {case_id} has an invalid top1_is_irrelevant.")
@@ -175,6 +183,31 @@ def _validate_report(report: Any, label: str) -> dict[str, Any]:
 
     if set(cases_by_domain) != set(by_domain):
         raise ValueError(f"{label} has inconsistent case and by_domain coverage.")
+
+    # Summary fields are duplicated in saved JSON, so verify they can be derived
+    # from the case rows instead of trusting duplicated values.
+    for metric in metrics:
+        expected_macro = round(
+            sum(case["metrics"][metric] for case in cases) / len(cases),
+            4,
+        )
+        if abs(float(metrics[metric]) - expected_macro) > 0.00011:
+            raise ValueError(
+                f"{label}.macro_average.{metric} is inconsistent with case-level metric averages."
+            )
+
+    for domain, domain_cases in cases_by_domain.items():
+        for metric in metrics:
+            expected_domain = round(
+                sum(case["metrics"][metric] for case in domain_cases)
+                / len(domain_cases),
+                4,
+            )
+            actual_domain = float(by_domain[domain][metric])
+            if abs(actual_domain - expected_domain) > 0.00011:
+                raise ValueError(
+                    f"{label}.by_domain.{domain}.{metric} is inconsistent with case-level metric averages."
+                )
 
     diagnostics = report.get("retrieval_diagnostics")
     if not isinstance(diagnostics, dict):

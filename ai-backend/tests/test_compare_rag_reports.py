@@ -303,9 +303,29 @@ def test_comparator_rejects_inconsistent_case_level_rankings():
         comparator.compare_reports(_report(), bad_rank)
 
     bad_flag = _report()
-    bad_flag["cases"][0]["top1_is_irrelevant"] = True
+    bad_flag["cases"][0]["top1_is_irrelevant"] = not bad_flag["cases"][0]["top1_is_irrelevant"]
     with pytest.raises(ValueError, match="inconsistent top1_is_irrelevant"):
         comparator.compare_reports(_report(), bad_flag)
+
+
+
+def test_comparator_rejects_inconsistent_metric_aggregates_and_out_of_range_values():
+    comparator = _load_comparator()
+
+    bad_case_metric = _report()
+    bad_case_metric["cases"][0]["metrics"]["recall_at_3"] = 0.99
+    with pytest.raises(ValueError, match="macro_average.*case-level metric averages"):
+        comparator.compare_reports(_report(), bad_case_metric)
+
+    bad_domain_metric = _report()
+    bad_domain_metric["by_domain"]["programming"]["ndcg_at_3"] = 0.1
+    with pytest.raises(ValueError, match="by_domain.*case-level metric averages"):
+        comparator.compare_reports(_report(), bad_domain_metric)
+
+    out_of_range = _report()
+    out_of_range["macro_average"]["precision_at_3"] = 1.2
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        comparator.compare_reports(_report(), out_of_range)
 
 
 def test_comparator_rejects_missing_case_rows():

@@ -32,6 +32,14 @@ function formatSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function canManageFileIndex(file) {
+  return (
+    file.project_id === null ||
+    file.project_id === undefined ||
+    Boolean(file.can_delete)
+  );
+}
+
 export default function FilesPanel({
   onClose,
   conversationId = null,
@@ -207,7 +215,7 @@ export default function FilesPanel({
   };
 
   const handleIndexImage = async (file) => {
-    if (!file.content_type.startsWith("image/") || file.is_ai_indexed) return;
+    if (!canManageFileIndex(file) || !file.content_type.startsWith("image/") || file.is_ai_indexed) return;
 
     setIndexingId(file.id);
     try {
@@ -221,7 +229,7 @@ export default function FilesPanel({
   };
 
   const handleReindexFile = async (file) => {
-    if (!file.has_extracted_text || file.is_ai_indexed) return;
+    if (!canManageFileIndex(file) || !file.has_extracted_text || file.is_ai_indexed) return;
 
     setIndexingId(file.id);
     try {
@@ -449,7 +457,7 @@ export default function FilesPanel({
                   >
                     ⬇
                   </button>
-                  {file.content_type.startsWith("image/") && (
+                  {file.content_type.startsWith("image/") && canManageFileIndex(file) && (
                     <button
                       onClick={() => handleIndexImage(file)}
                       disabled={Boolean(file.is_ai_indexed) || indexingId === file.id}
@@ -473,6 +481,7 @@ export default function FilesPanel({
                     </button>
                   )}
                   {!file.content_type.startsWith("image/") &&
+                    canManageFileIndex(file) &&
                     file.has_extracted_text &&
                     !file.is_ai_indexed && (
                       <button
