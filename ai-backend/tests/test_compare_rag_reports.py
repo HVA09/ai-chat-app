@@ -25,7 +25,7 @@ def _report(
     ndcg=0.7,
     reciprocal_rank=0.5,
     top1_irrelevant_rate=0.5,
-    mean_first_relevant_rank=2.0,
+    irrelevant_case_ids=None,
 ):
     metrics = {
         "recall_at_3": recall,
@@ -33,12 +33,89 @@ def _report(
         "ndcg_at_3": ndcg,
         "reciprocal_rank": reciprocal_rank,
     }
-    domain_metrics = {
-        **metrics,
-        "top1_irrelevant_count": 1,
-        "top1_irrelevant_rate": top1_irrelevant_rate,
-        "mean_first_relevant_rank": mean_first_relevant_rank,
-    }
+    case_ids = [f"CASE-{index:03d}" for index in range(14)]
+    if irrelevant_case_ids is None:
+        bad_count = round(top1_irrelevant_rate * len(case_ids))
+        irrelevant_case_ids = set(case_ids[:bad_count])
+    else:
+        irrelevant_case_ids = set(irrelevant_case_ids)
+        if not irrelevant_case_ids <= set(case_ids):
+            raise ValueError("Unknown test case id.")
+
+    cases = []
+    for index, case_id in enumerate(case_ids):
+        top1_is_irrelevant = case_id in irrelevant_case_ids
+        if top1_is_irrelevant:
+            ranked_documents = [
+                {
+                    "id": f"{case_id}-negative",
+                    "title": "Irrelevant document",
+                    "relevance": 0,
+                    "cosine_similarity": 0.99,
+                },
+                {
+                    "id": f"{case_id}-relevant",
+                    "title": "Relevant document",
+                    "relevance": 2,
+                    "cosine_similarity": 0.98,
+                },
+                {
+                    "id": f"{case_id}-partial",
+                    "title": "Partially relevant document",
+                    "relevance": 1,
+                    "cosine_similarity": 0.2,
+                },
+            ]
+        else:
+            ranked_documents = [
+                {
+                    "id": f"{case_id}-relevant",
+                    "title": "Relevant document",
+                    "relevance": 2,
+                    "cosine_similarity": 0.99,
+                },
+                {
+                    "id": f"{case_id}-partial",
+                    "title": "Partially relevant document",
+                    "relevance": 1,
+                    "cosine_similarity": 0.5,
+                },
+                {
+                    "id": f"{case_id}-negative",
+                    "title": "Irrelevant document",
+                    "relevance": 0,
+                    "cosine_similarity": 0.2,
+                },
+            ]
+        cases.append(
+            {
+                "case_id": case_id,
+                "domain": "programming" if index < 7 else "networking",
+                "query": f"Test query {case_id}",
+                "metrics": dict(metrics),
+                "top1_is_irrelevant": top1_is_irrelevant,
+                "first_relevant_rank": 2 if top1_is_irrelevant else 1,
+                "ranked_documents": ranked_documents,
+                "critical_failure": "Rank the irrelevant document first.",
+            }
+        )
+
+    by_domain = {}
+    for domain in ("programming", "networking"):
+        domain_cases = [case for case in cases if case["domain"] == domain]
+        domain_bad_count = sum(case["top1_is_irrelevant"] for case in domain_cases)
+        by_domain[domain] = {
+            **metrics,
+            "top1_irrelevant_count": domain_bad_count,
+            "top1_irrelevant_rate": round(domain_bad_count / len(domain_cases), 4),
+            "mean_first_relevant_rank": round(
+                sum(case["first_relevant_rank"] for case in domain_cases)
+                / len(domain_cases),
+                4,
+            ),
+        }
+
+    bad_count = sum(case["top1_is_irrelevant"] for case in cases)
     return {
         "benchmark": "rag-retrieval-eval-v1",
         "dataset_sha256": dataset_sha256,
@@ -46,17 +123,18 @@ def _report(
         "embedding_model": model,
         "embedding_fingerprint": fingerprint,
         "top_k": 3,
-        "case_count": 14,
+        "case_count": len(cases),
         "macro_average": metrics,
         "retrieval_diagnostics": {
-            "top1_irrelevant_count": 7,
-            "top1_irrelevant_rate": top1_irrelevant_rate,
-            "mean_first_relevant_rank": mean_first_relevant_rank,
+            "top1_irrelevant_count": bad_count,
+            "top1_irrelevant_rate": round(bad_count / len(cases), 4),
+            "mean_first_relevant_rank": round(
+                sum(case["first_relevant_rank"] for case in cases) / len(cases),
+                4,
+            ),
         },
-        "by_domain": {
-            "programming": domain_metrics,
-            "networking": domain_metrics,
-        },
+        "by_domain": by_domain,
+        "cases": cases,
     }
 
 
@@ -71,7 +149,6 @@ def test_report_comparison_marks_improvements_and_regressions():
         ndcg=0.6,
         reciprocal_rank=0.8,
         top1_irrelevant_rate=0.1,
-        mean_first_relevant_rank=1.25,
     )
 
     result = comparator.compare_reports(baseline, candidate)
@@ -86,6 +163,8 @@ def test_report_comparison_marks_improvements_and_regressions():
     assert result["by_domain"]["programming"]["ndcg_at_3"]["status"] == "regressed"
     assert result["comparison_counts"]["regressed"] > 0
     assert result["comparison_counts"]["improved"] > 0
+    assert "by_case" in result
+    assert result["by_case"]["CASE-010"]["top1_irrelevant"]["status"] == "unchanged"
 
 
 def test_comparator_rejects_different_dataset_or_run_settings():
@@ -170,3 +249,46 @@ def test_cli_will_not_overwrite_an_input_report(tmp_path, monkeypatch, capsys):
         "Output path must not overwrite either input report."
     )
     assert baseline_path.read_text(encoding="utf-8") == original_baseline
+
+
+def test_comparator_surfaces_case_level_regression_hidden_by_better_macro_metrics():
+    comparator = _load_comparator()
+    baseline = _report()
+    candidate = _report(
+        fingerprint="c" * 64,
+        model="candidate-model",
+        recall=0.75,
+        precision=0.6,
+        ndcg=0.8,
+        reciprocal_rank=0.8,
+        top1_irrelevant_rate=2 / 14,
+        irrelevant_case_ids={"CASE-000", "CASE-010"},
+    )
+
+    result = comparator.compare_reports(baseline, candidate)
+
+    assert result["macro_average"]["recall_at_3"]["status"] == "improved"
+    assert result["retrieval_diagnostics"]["top1_irrelevant_rate"]["status"] == "improved"
+    case = result["by_case"]["CASE-010"]
+    assert case["top1_irrelevant"]["status"] == "regressed"
+    assert case["baseline_top1_document"]["relevance"] == 2
+    assert case["candidate_top1_document"]["relevance"] == 0
+    assert case["critical_failure"] == "Rank the irrelevant document first."
+    assert result["cases_with_top1_regression"] == [
+        {
+            "case_id": "CASE-010",
+            "domain": "networking",
+            "critical_failure": "Rank the irrelevant document first.",
+            "baseline_top1_document": {
+                "id": "CASE-010-relevant",
+                "title": "Relevant document",
+                "relevance": 2,
+            },
+            "candidate_top1_document": {
+                "id": "CASE-010-negative",
+                "title": "Irrelevant document",
+                "relevance": 0,
+            },
+        }
+    ]
+    assert result["case_comparison_counts"]["mixed"] >= 1
