@@ -11,6 +11,7 @@ from urllib.parse import quote_plus
 import httpx
 
 from app.config import settings
+from app.services.prompt_context import safe_context_text
 
 
 SEARCH_URL = "https://api.duckduckgo.com/"
@@ -166,10 +167,14 @@ def format_web_search_response(query: str, results: list[WebSearchResult]) -> tu
                 "kind": "web",
             }
         )
-        if result.snippet:
-            parts.append(f"\n[{source_id}] **{result.title}**\n{result.snippet}")
+        # Search results are untrusted external text. Sanitize only the prompt/rendered
+        # copy; preserve the raw title and snippet in source metadata for traceability.
+        safe_title = safe_context_text(result.title)
+        safe_snippet = safe_context_text(result.snippet)
+        if safe_snippet:
+            parts.append(f"\n[{source_id}] **{safe_title}**\n{safe_snippet}")
         else:
-            parts.append(f"\n[{source_id}] **{result.title}**")
+            parts.append(f"\n[{source_id}] **{safe_title}**")
 
     return "\n".join(parts), sources
 
