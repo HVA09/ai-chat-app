@@ -292,3 +292,26 @@ def test_comparator_surfaces_case_level_regression_hidden_by_better_macro_metric
         }
     ]
     assert result["case_comparison_counts"]["mixed"] >= 1
+
+
+def test_comparator_rejects_inconsistent_case_level_rankings():
+    comparator = _load_comparator()
+
+    bad_rank = _report()
+    bad_rank["cases"][0]["first_relevant_rank"] = 3
+    with pytest.raises(ValueError, match="inconsistent first_relevant_rank"):
+        comparator.compare_reports(_report(), bad_rank)
+
+    bad_flag = _report()
+    bad_flag["cases"][0]["top1_is_irrelevant"] = True
+    with pytest.raises(ValueError, match="inconsistent top1_is_irrelevant"):
+        comparator.compare_reports(_report(), bad_flag)
+
+
+def test_comparator_rejects_missing_case_rows():
+    comparator = _load_comparator()
+    incomplete = _report()
+    incomplete["cases"].pop()
+
+    with pytest.raises(ValueError, match="exactly case_count entries"):
+        comparator.compare_reports(_report(), incomplete)
