@@ -133,6 +133,19 @@ def _get_owned_conversation(conversation_id: int, current_user: User, db: Sessio
     )
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
+
+    # Ownership alone does not preserve permission to edit a conversation after
+    # workspace membership or project access is revoked. File listing, upload,
+    # attach, and detach must enforce the same current scope as chat itself.
+    if conversation.workspace_id is not None:
+        _get_workspace_membership(conversation.workspace_id, current_user, db)
+    if conversation.project_id is not None:
+        project = _get_accessible_project(conversation.project_id, current_user, db)
+        if project.workspace_id != conversation.workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المحادثة غير موجودة",
+            )
     return conversation
 
 
