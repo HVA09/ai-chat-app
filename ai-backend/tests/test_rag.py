@@ -1351,3 +1351,109 @@ def test_fallback_file_context_assigns_contiguous_ids_after_skipping_unreadable_
     assert "[SOURCE S1: linux-notes.txt]" in context
     assert "[SOURCE S2: dns-notes.txt]" in context
     assert "[SOURCE S3:" not in context
+
+def test_mixed_retrieved_and_attached_files_keep_citations_consistent(
+    db_session, monkeypatch
+):
+    """Retrieved chunks and explicit attachments must share one contiguous source-id space."""
+    from app.models.conversation import Conversation
+    from app.models.conversation_file_link import ConversationFileLink
+
+    user = User(email="rag-mixed-sources@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+
+    workspace = Workspace(owner_id=user.id, name="Mixed source citations")
+    db_session.add(workspace)
+    db_session.flush()
+
+    conversation = Conversation(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        title="Mixed source citation test",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+
+    retrieved_file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        original_filename="retrieved-linux.txt",
+        stored_filename="retrieved-linux.txt",
+        content_type="text/plain",
+        size_bytes=40,
+        extracted_text="Linux network interfaces can be inspected with ip addr.",
+    )
+    attached_file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        original_filename="attached-dns.txt",
+        stored_filename="attached-dns.txt",
+        content_type="text/plain",
+        size_bytes=40,
+        extracted_text="Use dig to inspect DNS records and resolver responses.",
+    )
+    unreadable_file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        original_filename="unreadable-scan.pdf",
+        stored_filename="unreadable-scan.pdf",
+        content_type="application/pdf",
+        size_bytes=20,
+        extracted_text=None,
+    )
+    empty_file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        original_filename="empty.txt",
+        stored_filename="empty.txt",
+        content_type="text/plain",
+        size_bytes=0,
+        extracted_text="  ",
+    )
+    db_session.add_all([retrieved_file, attached_file, unreadable_file, empty_file])
+    db_session.flush()
+
+    chunk = FileChunk(
+        file_id=retrieved_file.id,
+        chunk_index=0,
+        content="Linux network interfaces can be inspected with ip addr.",
+        embedding=[0.1] * 768,
+    )
+    db_session.add(chunk)
+    _mark_file_as_indexed(retrieved_file)
+    db_session.add_all(
+        [
+            ConversationFileLink(conversation_id=conversation.id, file_id=retrieved_file.id),
+            ConversationFileLink(conversation_id=conversation.id, file_id=attached_file.id),
+            ConversationFileLink(conversation_id=conversation.id, file_id=unreadable_file.id),
+            ConversationFileLink(conversation_id=conversation.id, file_id=empty_file.id),
+        ]
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "retrieve_relevant_chunks",
+        AsyncMock(return_value=[(chunk, retrieved_file)]),
+    )
+
+    context, sources = asyncio.run(
+        chat_router_module._build_file_context(
+            conversation,
+            "Summarize the network notes.",
+            db_session,
+        )
+    )
+
+    assert [source["id"] for source in sources] == ["S1", "S2"]
+    assert [source["filename"] for source in sources] == [
+        "retrieved-linux.txt",
+        "attached-dns.txt",
+    ]
+    assert "[SOURCE S1: retrieved-linux.txt | CHUNK: 1]" in context
+    assert "[SOURCE S2: attached-dns.txt]" in context
+    assert "[SOURCE S3:" not in context
+    assert "unreadable-scan.pdf" in context
+    assert "no extracted text is available" in context
+    assert "empty.txt" not in [source["filename"] for source in sources]
