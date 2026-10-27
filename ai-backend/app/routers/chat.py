@@ -197,6 +197,9 @@ async def compare_ai_models(
                 payload.message,
                 db,
             )
+        except HTTPException:
+            # Do not turn an authorization denial into an ordinary context miss.
+            raise
         except Exception:
             file_context = ""
         if file_context:
