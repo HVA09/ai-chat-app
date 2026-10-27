@@ -146,24 +146,72 @@ def _read_xlsx_file(path: Path, max_chars: int) -> str:
     workbook = load_workbook(filename=str(path), read_only=True, data_only=True)
     parts: list[str] = []
     used = 0
+    truncated = False
+
+    def append_line(value: str) -> bool:
+        nonlocal used, truncated
+        separator = 1 if parts else 0
+        remaining = max_chars - used - separator
+        if remaining <= 0:
+            truncated = True
+            return True
+        if len(value) > remaining:
+            parts.append(value[:remaining])
+            used += separator + remaining
+            truncated = True
+            return True
+        parts.append(value)
+        used += separator + len(value)
+        return False
+
+    def render_row(row, limit: int) -> tuple[str, bool]:
+        """Build only the row prefix that can fit into the remaining text budget."""
+        values: list[str] = []
+        used_in_row = 0
+        has_value = False
+        for value in row:
+            if value is None:
+                continue
+            cell = str(value).strip()
+            if not cell:
+                continue
+            separator = " | " if has_value else ""
+            remaining = limit - used_in_row - len(separator)
+            if remaining <= 0:
+                return "".join(values), True
+            if len(cell) > remaining:
+                values.append(separator + cell[:remaining])
+                return "".join(values), True
+            values.append(separator + cell)
+            used_in_row += len(separator) + len(cell)
+            has_value = True
+        return "".join(values), False
+
     try:
         for worksheet in workbook.worksheets:
-            parts.append(f"[ورقة: {worksheet.title}]")
-            used += len(parts[-1]) + 1
+            if append_line(f"[ورقة: {worksheet.title}]"):
+                break
             for row in worksheet.iter_rows(values_only=True):
-                values = [
-                    str(value).strip()
-                    for value in row
-                    if value is not None and str(value).strip()
-                ]
-                if not values:
+                remaining = max_chars - used - (1 if parts else 0)
+                if remaining <= 0:
+                    truncated = True
+                    break
+                line, row_truncated = render_row(row, remaining)
+                if not line:
+                    if row_truncated:
+                        truncated = True
+                        break
                     continue
-                line = " | ".join(values)
-                parts.append(line)
-                used += len(line) + 1
-                if used >= max_chars:
-                    return _limit("\n".join(parts), max_chars)
-        return _limit("\n".join(parts), max_chars)
+                if append_line(line) or row_truncated:
+                    truncated = True
+                    break
+            if truncated:
+                break
+
+        content = "\n".join(parts).strip()
+        if truncated and content:
+            return f"{content}\n\n[تم اختصار المحتوى بسبب الحد المسموح]"
+        return _limit(content, max_chars)
     finally:
         workbook.close()
 
