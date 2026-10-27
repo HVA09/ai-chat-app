@@ -126,3 +126,50 @@ def test_docx_extraction_preserves_paragraph_and_table_order(tmp_path: Path):
 
     assert text.index("Before table") < text.index("Table content")
     assert text.index("Table content") < text.index("After table")
+
+
+def test_pdf_extraction_stops_at_character_limit_and_skips_later_pages(
+    tmp_path: Path, monkeypatch
+):
+    """Large text from a page must not be accumulated beyond the configured limit."""
+    from app.services import file_text_extractor
+
+    class FakePage:
+        def __init__(self, content: str):
+            self.content = content
+            self.extract_calls = 0
+
+        def extract_text(self):
+            self.extract_calls += 1
+            return self.content
+
+    first_page = FakePage("short")
+    oversized_page = FakePage("A" * 1000)
+    later_page = FakePage("This page must never be visited.")
+
+    class TrackingPages:
+        def __init__(self):
+            self.visited = 0
+
+        def __iter__(self):
+            for page in (first_page, oversized_page, later_page):
+                self.visited += 1
+                yield page
+
+    pages = TrackingPages()
+
+    class FakeReader:
+        def __init__(self, _path):
+            self.pages = pages
+
+    monkeypatch.setattr(file_text_extractor, "PdfReader", FakeReader)
+
+    text = file_text_extractor._read_pdf_file(tmp_path / "fake.pdf", max_chars=20)
+
+    assert text.startswith("short\n\n" + "A" * 13)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+    assert pages.visited == 2
+    assert first_page.extract_calls == 1
+    assert oversized_page.extract_calls == 1
+    assert later_page.extract_calls == 0
+    assert "This page must never be visited." not in text
