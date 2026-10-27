@@ -1,7 +1,6 @@
 """تقطيع النص وفهرسة واسترجاع مقاطع RAG."""
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from typing import TypedDict
@@ -19,6 +18,7 @@ from app.models.project import WorkspaceProject
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.services.project_access import can_read_project
+from app.services.prompt_context import safe_context_text
 from app.services.embeddings import (
     EmbeddingServiceError,
     embed_documents_sync,
@@ -43,32 +43,6 @@ def safe_source_filename(filename: str | None) -> str:
     # Drop ASCII control characters that survived whitespace normalization.
     normalized = "".join(character for character in normalized if ord(character) >= 32 and ord(character) != 127)
     return normalized[:255] or "unnamed file"
-
-
-_CONTEXT_CONTROL_MARKER_PATTERN = re.compile(
-    r"\[(?:"
-    r"\s*SOURCE\s+S\d+\s*:[^\]\r\n]*"
-    r"|\s*(?:USER MEMORY|PROJECT MEMORY|ASSISTANT INSTRUCTIONS|PROJECT INSTRUCTIONS|CONVERSATION SUMMARY)\s*"
-    r"|\s*END\s+(?:RETRIEVED FILE CONTEXT|FILE CONTEXT|EXPLICIT ATTACHMENT CONTEXT|"
-    r"ATTACHMENT STATUS|USER MEMORY|PROJECT MEMORY|ASSISTANT INSTRUCTIONS|"
-    r"PROJECT INSTRUCTIONS|CONVERSATION SUMMARY)\s*"
-    r"|\s*ATTACHMENT STATUS\s+—\s+VERIFIED APPLICATION METADATA\s*"
-    r")\]",
-    re.IGNORECASE,
-)
-
-
-def safe_context_text(text: str) -> str:
-    """Neutralize known app-level context markers in prompt-bound content.
-
-    This changes only the rendered copy passed to the model; stored text and source
-    metadata remain unchanged. It reduces delimiter spoofing across files, saved
-    memory, summaries and custom instructions, but does not stop every prompt injection.
-    """
-    return _CONTEXT_CONTROL_MARKER_PATTERN.sub(
-        lambda match: f"［{match.group(0)[1:-1]}］",
-        text,
-    )
 
 
 class SourceCitation(TypedDict):
