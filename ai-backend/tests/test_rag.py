@@ -1298,3 +1298,56 @@ def test_retrieval_refuses_conversation_owned_by_another_user(db_session, monkey
     assert rows == []
     identity.assert_not_called()
     embed_query.assert_not_awaited()
+
+
+def test_fallback_file_context_assigns_contiguous_ids_after_skipping_unreadable_files():
+    """Source IDs must match context labels even when some attachments have no text."""
+    files = [
+        FileAttachment(
+            id=501,
+            user_id=1,
+            original_filename="unreadable.pdf",
+            stored_filename="unreadable.pdf",
+            content_type="application/pdf",
+            size_bytes=10,
+            extracted_text=None,
+        ),
+        FileAttachment(
+            id=502,
+            user_id=1,
+            original_filename="linux-notes.txt",
+            stored_filename="linux-notes.txt",
+            content_type="text/plain",
+            size_bytes=30,
+            extracted_text="Linux network inspection uses ip addr.",
+        ),
+        FileAttachment(
+            id=503,
+            user_id=1,
+            original_filename="empty.txt",
+            stored_filename="empty.txt",
+            content_type="text/plain",
+            size_bytes=0,
+            extracted_text="   ",
+        ),
+        FileAttachment(
+            id=504,
+            user_id=1,
+            original_filename="dns-notes.txt",
+            stored_filename="dns-notes.txt",
+            content_type="text/plain",
+            size_bytes=35,
+            extracted_text="Use dig to inspect DNS records and resolver responses.",
+        ),
+    ]
+
+    context, sources = rag.build_fallback_file_context(files)
+
+    assert [source["id"] for source in sources] == ["S1", "S2"]
+    assert [source["filename"] for source in sources] == [
+        "linux-notes.txt",
+        "dns-notes.txt",
+    ]
+    assert "[SOURCE S1: linux-notes.txt]" in context
+    assert "[SOURCE S2: dns-notes.txt]" in context
+    assert "[SOURCE S3:" not in context
