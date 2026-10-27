@@ -256,6 +256,16 @@ def compare_reports(baseline_report: Any, candidate_report: Any) -> dict[str, An
     if set(baseline["by_domain"]) != set(candidate["by_domain"]):
         raise ValueError("Reports contain different domain sets.")
 
+    baseline_cases = {case["case_id"]: case for case in baseline["cases"]}
+    candidate_cases = {case["case_id"]: case for case in candidate["cases"]}
+    if set(baseline_cases) != set(candidate_cases):
+        raise ValueError("Reports contain different case identifiers.")
+    for case_id in baseline_cases:
+        if baseline_cases[case_id]["domain"] != candidate_cases[case_id]["domain"]:
+            raise ValueError(f"Reports assign case {case_id} to different domains.")
+        if baseline_cases[case_id]["critical_failure"] != candidate_cases[case_id]["critical_failure"]:
+            raise ValueError(f"Reports contain different critical-failure guidance for case {case_id}.")
+
     metric_comparisons: dict[str, Any] = {}
     for metric in sorted(baseline["macro_average"]):
         direction = _direction(metric)
@@ -291,6 +301,85 @@ def compare_reports(baseline_report: Any, candidate_report: Any) -> dict[str, An
             for metric in sorted(expected_metrics)
         }
 
+    case_comparisons: dict[str, Any] = {}
+    cases_with_top1_regression: list[dict[str, Any]] = []
+    case_comparison_counts = {
+        "improved": 0,
+        "regressed": 0,
+        "mixed": 0,
+        "unchanged": 0,
+    }
+    for case_id in sorted(baseline_cases):
+        base_case = baseline_cases[case_id]
+        candidate_case = candidate_cases[case_id]
+
+        case_metrics = {
+            metric: _compare_value(
+                base_case["metrics"][metric],
+                candidate_case["metrics"][metric],
+                _direction(metric),
+            )
+            for metric in sorted(baseline["macro_average"])
+        }
+        top1_irrelevant = _compare_value(
+            float(base_case["top1_is_irrelevant"]),
+            float(candidate_case["top1_is_irrelevant"]),
+            "lower_is_better",
+        )
+        first_relevant_rank = _compare_value(
+            base_case["first_relevant_rank"],
+            candidate_case["first_relevant_rank"],
+            "lower_is_better",
+        )
+        base_top1 = base_case["ranked_documents"][0]
+        candidate_top1 = candidate_case["ranked_documents"][0]
+        case_item_comparisons = [
+            *case_metrics.values(),
+            top1_irrelevant,
+            first_relevant_rank,
+        ]
+        case_statuses = {item["status"] for item in case_item_comparisons}
+        if "regressed" in case_statuses and "improved" in case_statuses:
+            case_status = "mixed"
+        elif "regressed" in case_statuses:
+            case_status = "regressed"
+        elif "improved" in case_statuses:
+            case_status = "improved"
+        else:
+            case_status = "unchanged"
+        case_comparison_counts[case_status] += 1
+
+        base_top1_summary = {
+            "id": base_top1["id"],
+            "title": base_top1["title"],
+            "relevance": base_top1["relevance"],
+        }
+        candidate_top1_summary = {
+            "id": candidate_top1["id"],
+            "title": candidate_top1["title"],
+            "relevance": candidate_top1["relevance"],
+        }
+        case_comparisons[case_id] = {
+            "domain": base_case["domain"],
+            "status": case_status,
+            "metrics": case_metrics,
+            "top1_irrelevant": top1_irrelevant,
+            "first_relevant_rank": first_relevant_rank,
+            "baseline_top1_document": base_top1_summary,
+            "candidate_top1_document": candidate_top1_summary,
+            "critical_failure": base_case["critical_failure"],
+        }
+        if top1_irrelevant["status"] == "regressed":
+            cases_with_top1_regression.append(
+                {
+                    "case_id": case_id,
+                    "domain": base_case["domain"],
+                    "critical_failure": base_case["critical_failure"],
+                    "baseline_top1_document": base_top1_summary,
+                    "candidate_top1_document": candidate_top1_summary,
+                }
+            )
+
     all_comparisons = [
         *metric_comparisons.values(),
         *diagnostics_comparisons.values(),
@@ -321,6 +410,9 @@ def compare_reports(baseline_report: Any, candidate_report: Any) -> dict[str, An
         "macro_average": metric_comparisons,
         "retrieval_diagnostics": diagnostics_comparisons,
         "by_domain": domain_comparisons,
+        "by_case": case_comparisons,
+        "cases_with_top1_regression": cases_with_top1_regression,
+        "case_comparison_counts": case_comparison_counts,
         "comparison_counts": {
             "improved": improved,
             "regressed": regressed,
