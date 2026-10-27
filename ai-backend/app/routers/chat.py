@@ -522,10 +522,109 @@ def _build_history(conversation: Conversation, db: Session) -> list[dict[str, st
     recent_messages.reverse()  # نرجّعها لترتيبها الزمني الطبيعي (الأقدم أول)
     return [{"role": m.role.value, "content": m.content} for m in recent_messages]
 
+def _get_authorized_file_context_conversation(
+    conversation: Conversation, db: Session
+) -> Conversation:
+    """Reload a conversation and revalidate every knowledge scope before use."""
+    from sqlalchemy import and_, or_
+
+    current = (
+        db.query(Conversation)
+        .populate_existing()
+        .filter(
+            Conversation.id == conversation.id,
+            Conversation.user_id == conversation.user_id,
+            Conversation.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if current is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المحادثة غير متاحة",
+        )
+
+    current_user = db.get(User, current.user_id)
+    if current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المحادثة غير متاحة",
+        )
+
+    if current.workspace_id is not None:
+        workspace = db.get(Workspace, current.workspace_id)
+        if workspace is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="مساحة العمل غير متاحة",
+            )
+        if workspace.owner_id != current_user.id:
+            membership = (
+                db.query(WorkspaceMember.id)
+                .filter(
+                    WorkspaceMember.workspace_id == current.workspace_id,
+                    WorkspaceMember.user_id == current_user.id,
+                )
+                .first()
+            )
+            if membership is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="مساحة العمل غير متاحة",
+                )
+
+        if current.project_id is not None:
+            project = db.get(WorkspaceProject, current.project_id)
+            if (
+                project is None
+                or project.workspace_id != current.workspace_id
+                or not can_read_project(project, current_user, db)
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="المشروع غير متاح لهذه المحادثة",
+                )
+
+    if current.assistant_id is not None:
+        assistant = (
+            db.query(Assistant)
+            .outerjoin(
+                AssistantWorkspaceShare,
+                and_(
+                    AssistantWorkspaceShare.assistant_id == Assistant.id,
+                    AssistantWorkspaceShare.workspace_id == current.workspace_id,
+                ),
+            )
+            .filter(
+                Assistant.id == current.assistant_id,
+                (
+                    (Assistant.user_id == current.user_id)
+                    | AssistantWorkspaceShare.id.is_not(None)
+                )
+                if current.workspace_id is not None
+                else Assistant.user_id == current.user_id,
+            )
+            .first()
+        )
+        if assistant is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المساعد غير متاح لهذه المحادثة",
+            )
+
+    return current
+
+
 async def _build_file_context(
     conversation: Conversation, message: str, db: Session
 ) -> tuple[str, list[dict]]:
-    """Build retrieval context while preserving explicit uploads even when RAG has no match."""
+    """Build retrieval context while rechecking authorization around async RAG."""
+    conversation = _get_authorized_file_context_conversation(conversation, db)
+    scope_before_retrieval = (
+        conversation.workspace_id,
+        conversation.project_id,
+        conversation.assistant_id,
+    )
     rows: list[tuple[object, FileAttachment]] = []
     context = ""
     sources: list[dict] = []
@@ -539,6 +638,18 @@ async def _build_file_context(
             project_id=conversation.project_id,
             assistant_id=conversation.assistant_id,
         )
+        # The embedding request above may take seconds. Recheck authorization
+        # before any fallback or explicitly attached file text is loaded.
+        conversation = _get_authorized_file_context_conversation(conversation, db)
+        if scope_before_retrieval != (
+            conversation.workspace_id,
+            conversation.project_id,
+            conversation.assistant_id,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="تغير نطاق المحادثة أثناء استرجاع الملفات",
+            )
         context, sources = build_retrieval_context(rows)
     except EmbeddingServiceError as exc:
         logger.warning(
@@ -546,6 +657,9 @@ async def _build_file_context(
             conversation.id,
             exc,
         )
+        # Do not switch to fallback text context if a share or membership was
+        # revoked while the provider request was in flight.
+        conversation = _get_authorized_file_context_conversation(conversation, db)
 
     from sqlalchemy import and_, or_
 
