@@ -54,9 +54,17 @@ def _validate_report(report: Any, label: str) -> dict[str, Any]:
     ):
         raise ValueError(f"{label} has an invalid embedding_fingerprint.")
 
-    if isinstance(report.get("case_count"), bool) or not isinstance(report.get("case_count"), int) or report["case_count"] < 1:
+    if (
+        isinstance(report.get("case_count"), bool)
+        or not isinstance(report.get("case_count"), int)
+        or report["case_count"] < 1
+    ):
         raise ValueError(f"{label} has an invalid case_count.")
-    if isinstance(report.get("top_k"), bool) or not isinstance(report.get("top_k"), int) or report["top_k"] < 1:
+    if (
+        isinstance(report.get("top_k"), bool)
+        or not isinstance(report.get("top_k"), int)
+        or report["top_k"] < 1
+    ):
         raise ValueError(f"{label} has an invalid top_k.")
 
     metrics = report.get("macro_average")
@@ -64,6 +72,7 @@ def _validate_report(report: Any, label: str) -> dict[str, Any]:
         raise ValueError(f"{label} is missing macro_average metrics.")
     for name, value in metrics.items():
         _finite_number(value, f"{label}.macro_average.{name}")
+        _direction(name)
 
     by_domain = report.get("by_domain")
     if not isinstance(by_domain, dict) or not by_domain:
@@ -71,9 +80,101 @@ def _validate_report(report: Any, label: str) -> dict[str, Any]:
     for domain, values in by_domain.items():
         if not isinstance(domain, str) or not domain or not isinstance(values, dict):
             raise ValueError(f"{label}.by_domain contains an invalid domain entry.")
+        if not set(metrics) <= set(values):
+            raise ValueError(f"{label}.by_domain.{domain} is missing ranking metrics.")
         for name, value in values.items():
-            if name in metrics or name in LOWER_IS_BETTER:
+            if name in metrics:
                 _finite_number(value, f"{label}.by_domain.{domain}.{name}")
+            elif name in LOWER_IS_BETTER:
+                _finite_number(value, f"{label}.by_domain.{domain}.{name}")
+            elif name == "top1_irrelevant_count":
+                if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                    raise ValueError(f"{label}.by_domain.{domain}.{name} must be a non-negative integer.")
+            else:
+                raise ValueError(f"{label}.by_domain.{domain} contains unsupported metric {name}.")
+
+    cases = report.get("cases")
+    if not isinstance(cases, list) or len(cases) != report["case_count"]:
+        raise ValueError(f"{label}.cases must contain exactly case_count entries.")
+
+    case_ids: set[str] = set()
+    seen_document_ids_by_case: set[tuple[str, str]] = set()
+    cases_by_domain: dict[str, list[dict[str, Any]]] = {}
+    for case in cases:
+        if not isinstance(case, dict):
+            raise ValueError(f"{label}.cases contains a non-object entry.")
+        required = {
+            "case_id",
+            "domain",
+            "metrics",
+            "top1_is_irrelevant",
+            "first_relevant_rank",
+            "ranked_documents",
+            "critical_failure",
+        }
+        if not required <= set(case):
+            raise ValueError(f"{label}.cases contains an incomplete case entry.")
+
+        case_id = case["case_id"]
+        domain = case["domain"]
+        if not isinstance(case_id, str) or not case_id or case_id in case_ids:
+            raise ValueError(f"{label} contains a missing or duplicate case_id.")
+        if not isinstance(domain, str) or domain not in by_domain:
+            raise ValueError(f"{label} case {case_id} has an unknown domain.")
+        case_ids.add(case_id)
+        cases_by_domain.setdefault(domain, []).append(case)
+
+        case_metrics = case["metrics"]
+        if not isinstance(case_metrics, dict) or set(case_metrics) != set(metrics):
+            raise ValueError(f"{label} case {case_id} has an incompatible metric set.")
+        for name, value in case_metrics.items():
+            _finite_number(value, f"{label}.cases.{case_id}.metrics.{name}")
+
+        if not isinstance(case["top1_is_irrelevant"], bool):
+            raise ValueError(f"{label} case {case_id} has an invalid top1_is_irrelevant.")
+        first_rank = case["first_relevant_rank"]
+        if isinstance(first_rank, bool) or not isinstance(first_rank, int) or first_rank < 1:
+            raise ValueError(f"{label} case {case_id} has an invalid first_relevant_rank.")
+        if not isinstance(case["critical_failure"], str) or not case["critical_failure"].strip():
+            raise ValueError(f"{label} case {case_id} is missing critical_failure guidance.")
+
+        ranked = case["ranked_documents"]
+        if not isinstance(ranked, list) or not ranked:
+            raise ValueError(f"{label} case {case_id} has no ranked documents.")
+        ranked_ids: set[str] = set()
+        actual_first_relevant_rank = None
+        for rank, document in enumerate(ranked, start=1):
+            if not isinstance(document, dict):
+                raise ValueError(f"{label} case {case_id} contains an invalid ranked document.")
+            document_id = document.get("id")
+            if not isinstance(document_id, str) or not document_id or document_id in ranked_ids:
+                raise ValueError(f"{label} case {case_id} has a missing or duplicate ranked document id.")
+            ranked_ids.add(document_id)
+            relevance = document.get("relevance")
+            if (
+                isinstance(relevance, bool)
+                or not isinstance(relevance, int)
+                or relevance not in {0, 1, 2}
+            ):
+                raise ValueError(f"{label} case {case_id} has an invalid relevance grade.")
+            if not isinstance(document.get("title"), str) or not document["title"].strip():
+                raise ValueError(f"{label} case {case_id} has a ranked document without a title.")
+            _finite_number(
+                document.get("cosine_similarity"),
+                f"{label}.cases.{case_id}.ranked_documents.{rank}.cosine_similarity",
+            )
+            if relevance > 0 and actual_first_relevant_rank is None:
+                actual_first_relevant_rank = rank
+            seen_document_ids_by_case.add((case_id, document_id))
+
+        if actual_first_relevant_rank is None or actual_first_relevant_rank != first_rank:
+            raise ValueError(f"{label} case {case_id} has inconsistent first_relevant_rank.")
+        top1_is_irrelevant = ranked[0]["relevance"] == 0
+        if case["top1_is_irrelevant"] != top1_is_irrelevant:
+            raise ValueError(f"{label} case {case_id} has inconsistent top1_is_irrelevant.")
+
+    if set(cases_by_domain) != set(by_domain):
+        raise ValueError(f"{label} has inconsistent case and by_domain coverage.")
 
     diagnostics = report.get("retrieval_diagnostics")
     if not isinstance(diagnostics, dict):
@@ -82,9 +183,32 @@ def _validate_report(report: Any, label: str) -> dict[str, Any]:
         if name not in diagnostics:
             raise ValueError(f"{label}.retrieval_diagnostics is missing {name}.")
         _finite_number(diagnostics[name], f"{label}.retrieval_diagnostics.{name}")
+    bad_count = sum(case["top1_is_irrelevant"] for case in cases)
+    expected_rate = bad_count / len(cases)
+    expected_first_rank = sum(case["first_relevant_rank"] for case in cases) / len(cases)
+    if (
+        isinstance(diagnostics.get("top1_irrelevant_count"), bool)
+        or diagnostics.get("top1_irrelevant_count") != bad_count
+    ):
+        raise ValueError(f"{label}.retrieval_diagnostics has inconsistent top1_irrelevant_count.")
+    if abs(float(diagnostics["top1_irrelevant_rate"]) - expected_rate) > 0.00011:
+        raise ValueError(f"{label}.retrieval_diagnostics has inconsistent top1_irrelevant_rate.")
+    if abs(float(diagnostics["mean_first_relevant_rank"]) - expected_first_rank) > 0.00011:
+        raise ValueError(f"{label}.retrieval_diagnostics has inconsistent mean_first_relevant_rank.")
+
+    for domain, domain_cases in cases_by_domain.items():
+        values = by_domain[domain]
+        domain_bad_count = sum(case["top1_is_irrelevant"] for case in domain_cases)
+        domain_rate = domain_bad_count / len(domain_cases)
+        domain_first_rank = sum(case["first_relevant_rank"] for case in domain_cases) / len(domain_cases)
+        if values.get("top1_irrelevant_count") != domain_bad_count:
+            raise ValueError(f"{label}.by_domain.{domain} has inconsistent top1_irrelevant_count.")
+        if abs(float(values["top1_irrelevant_rate"]) - domain_rate) > 0.00011:
+            raise ValueError(f"{label}.by_domain.{domain} has inconsistent top1_irrelevant_rate.")
+        if abs(float(values["mean_first_relevant_rank"]) - domain_first_rank) > 0.00011:
+            raise ValueError(f"{label}.by_domain.{domain} has inconsistent mean_first_relevant_rank.")
 
     return report
-
 
 def _direction(metric_name: str) -> str:
     if metric_name in LOWER_IS_BETTER:
