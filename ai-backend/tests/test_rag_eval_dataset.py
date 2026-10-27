@@ -308,11 +308,13 @@ def test_rag_validate_only_mode_never_calls_the_embedding_provider(monkeypatch, 
 
     assert summary["validation_only"] is True
     assert summary["live_embedding_requests_sent"] is False
-    assert summary["case_count"] == len(runner.load_dataset()["cases"])
+    dataset = runner.load_dataset()
+    expected_document_count = sum(len(case["documents"]) for case in dataset["cases"])
+    assert summary["case_count"] == len(dataset["cases"])
     assert len(summary["dataset_sha256"]) == 64
-    assert summary["document_count"] == 42
+    assert summary["document_count"] == expected_document_count
     assert len(summary["domain_counts"]) == 7
-    assert sum(summary["relevance_grade_counts"].values()) == 42
+    assert sum(summary["relevance_grade_counts"].values()) == expected_document_count
 
 
 def test_rag_dataset_validator_rejects_duplicate_document_ids():
