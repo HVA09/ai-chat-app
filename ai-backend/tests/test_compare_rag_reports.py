@@ -26,6 +26,7 @@ def _report(
     reciprocal_rank=0.5,
     top1_irrelevant_rate=0.5,
     irrelevant_case_ids=None,
+    case_count=14,
 ):
     metrics = {
         "recall_at_3": recall,
@@ -33,7 +34,7 @@ def _report(
         "ndcg_at_3": ndcg,
         "reciprocal_rank": reciprocal_rank,
     }
-    case_ids = [f"CASE-{index:03d}" for index in range(14)]
+    case_ids = [f"CASE-{index:03d}" for index in range(case_count)]
     if irrelevant_case_ids is None:
         bad_count = round(top1_irrelevant_rate * len(case_ids))
         irrelevant_case_ids = set(case_ids[:bad_count])
@@ -90,7 +91,7 @@ def _report(
         cases.append(
             {
                 "case_id": case_id,
-                "domain": "programming" if index < 7 else "networking",
+                "domain": "programming" if index < (case_count + 1) // 2 else "networking",
                 "query": f"Test query {case_id}",
                 "metrics": dict(metrics),
                 "top1_is_irrelevant": top1_is_irrelevant,
@@ -180,8 +181,7 @@ def test_comparator_rejects_different_dataset_or_run_settings():
     with pytest.raises(ValueError, match="different top_k"):
         comparator.compare_reports(_report(), candidate)
 
-    candidate = _report()
-    candidate["case_count"] = 13
+    candidate = _report(case_count=13)
     with pytest.raises(ValueError, match="different case_count"):
         comparator.compare_reports(_report(), candidate)
 
