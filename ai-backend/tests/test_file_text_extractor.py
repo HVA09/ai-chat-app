@@ -173,3 +173,56 @@ def test_pdf_extraction_stops_at_character_limit_and_skips_later_pages(
     assert oversized_page.extract_calls == 1
     assert later_page.extract_calls == 0
     assert "This page must never be visited." not in text
+
+
+def test_xlsx_extraction_bounds_accumulated_rows_and_closes_workbook(
+    tmp_path: Path, monkeypatch
+):
+    """A single oversized spreadsheet cell must not be accumulated into context."""
+    from app.services import file_text_extractor
+
+    class FakeWorksheet:
+        title = "Data"
+
+        def __init__(self):
+            self.rows_yielded = 0
+
+        def iter_rows(self, values_only=True):
+            self.rows_yielded += 1
+            yield ("A" * 1000,)
+            self.rows_yielded += 1
+            yield ("This later row must not be visited.",)
+
+    worksheet = FakeWorksheet()
+
+    class FakeWorkbook:
+        worksheets = [worksheet]
+
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    workbook = FakeWorkbook()
+    monkeypatch.setattr(
+        file_text_extractor,
+        "load_workbook",
+        lambda **_kwargs: workbook,
+    )
+
+    original_limit = file_text_extractor._limit
+
+    def assert_bounded_input(text: str, max_chars: int) -> str:
+        assert len(text) <= max_chars
+        return original_limit(text, max_chars)
+
+    monkeypatch.setattr(file_text_extractor, "_limit", assert_bounded_input)
+
+    text = file_text_extractor._read_xlsx_file(tmp_path / "fake.xlsx", max_chars=20)
+
+    assert text.startswith("[ورقة: Data]\n" + "A" * 7)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+    assert worksheet.rows_yielded == 1
+    assert workbook.closed
+    assert "This later row must not be visited." not in text
