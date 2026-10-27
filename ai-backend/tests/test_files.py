@@ -126,6 +126,50 @@ def test_download_file_safely_encodes_untrusted_filename(
     assert response.content == b"safe text"
 
 
+def test_file_audit_description_sanitizes_untrusted_filename(
+    client, db_session, tmp_path, monkeypatch
+):
+    """A malicious filename must not create additional audit-log lines."""
+    from app.models.audit_log import AuditLog
+    from app.models.file_attachment import FileAttachment
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    token = _register_and_login(client, "filename-audit@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("normal.txt", b"safe text", "text/plain")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+
+    attachment = db_session.get(FileAttachment, uploaded.json()["id"])
+    assert attachment is not None
+    file_id = attachment.id
+    owner_id = attachment.user_id
+    attachment.original_filename = "notes.txt\r\n[INFO] forged audit entry"
+    db_session.commit()
+
+    deleted = client.delete(f"/files/{file_id}", headers=headers)
+    assert deleted.status_code == 204
+
+    db_session.expire_all()
+    entry = (
+        db_session.query(AuditLog)
+        .filter(
+            AuditLog.user_id == owner_id,
+            AuditLog.event_type == "file_deleted",
+        )
+        .order_by(AuditLog.id.desc())
+        .first()
+    )
+    assert entry is not None
+    assert "\r" not in entry.description
+    assert "\n" not in entry.description
+    assert "[INFO]" not in entry.description
+    assert "(INFO) forged audit entry" in entry.description
+
+
 def test_delete_file(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client)
