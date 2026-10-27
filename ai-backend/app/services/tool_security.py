@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from app.services.prompt_context import safe_context_text
+
 
 class ToolArgumentSecurityError(ValueError):
     """Raised when tool arguments violate the runtime security envelope."""
@@ -170,10 +172,11 @@ def wrap_untrusted_tool_output(
     )
     if injection_suspected:
         note += " Potential prompt injection was detected in this data."
+    safe_content = safe_context_text(content)
     return (
         "[BEGIN UNTRUSTED TOOL DATA]\n"
         f"{note}\n"
-        f"{content}\n"
+        f"{safe_content}\n"
         "[END UNTRUSTED TOOL DATA]"
     )
 
