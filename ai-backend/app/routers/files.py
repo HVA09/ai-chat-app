@@ -7,6 +7,8 @@ import uuid
 from pathlib import Path
 import tempfile
 import zipfile
+from urllib.parse import quote
+
 from sqlalchemy import and_, case, func
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
@@ -660,6 +662,28 @@ def detach_file_from_conversation(
     db.commit()
 
 
+def _attachment_content_disposition(filename: str | None) -> str:
+    """Build a safe download header from an untrusted original filename."""
+    raw_name = (filename or "download").strip() or "download"
+    raw_name = "".join(
+        character
+        for character in raw_name
+        if ord(character) >= 32 and ord(character) != 127
+    ) or "download"
+
+    # Quoted ASCII fallback is compatible with older clients. The UTF-8 value
+    # uses RFC 5987 percent-encoding so quotes, separators, and path characters
+    # cannot alter the header structure.
+    ascii_fallback = "".join(
+        character
+        if 32 <= ord(character) <= 126 and character not in {'"', "\\", ";"}
+        else "_"
+        for character in raw_name
+    )[:150] or "download"
+    encoded_name = quote(raw_name, safe="")
+    return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_name}"
+
+
 @router.get("/{file_id}")
 def download_file(
     file_id: int,
@@ -675,7 +699,7 @@ def download_file(
     return StreamingResponse(
         body,
         media_type=attachment.content_type,
-        headers={"Content-Disposition": "attachment; filename=\"" + attachment.original_filename + "\""},
+        headers={"Content-Disposition": _attachment_content_disposition(attachment.original_filename)},
     )
 
 
