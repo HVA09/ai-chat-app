@@ -97,6 +97,9 @@ def test_download_file_safely_encodes_untrusted_filename(
 ):
     """Control characters and separators must not alter download headers."""
     from app.models.file_attachment import FileAttachment
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda _db, _file: 0)
 
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client, "filename-header@example.com")
@@ -132,6 +135,9 @@ def test_file_audit_description_sanitizes_untrusted_filename(
     """A malicious filename must not create additional audit-log lines."""
     from app.models.audit_log import AuditLog
     from app.models.file_attachment import FileAttachment
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda _db, _file: 0)
 
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client, "filename-audit@example.com")
