@@ -11,8 +11,13 @@ from sqlalchemy.orm import Session
 from app.models.assistant import Assistant
 from app.models.assistant_file_link import AssistantFileLink
 from app.models.assistant_workspace_share import AssistantWorkspaceShare
+from app.models.conversation import Conversation
 from app.models.file_attachment import FileAttachment, extracted_text_fingerprint
 from app.models.file_chunk import FileChunk
+from app.models.project import WorkspaceProject
+from app.models.user import User
+from app.models.workspace import Workspace, WorkspaceMember
+from app.services.project_access import can_read_project
 from app.services.embeddings import (
     EmbeddingServiceError,
     embed_documents_sync,
@@ -109,6 +114,55 @@ async def retrieve_relevant_chunks(
     assistant_id: int | None = None,
 ) -> list[tuple[FileChunk, FileAttachment]]:
     from app.models.conversation_file_link import ConversationFileLink
+
+    # Enforce the persisted conversation owner/scope in the retrieval service as
+    # defense in depth. API routes validate these too, but future internal callers
+    # must not be able to bypass workspace membership or project permissions.
+    conversation = (
+        db.query(Conversation)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user_id,
+            Conversation.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if conversation is None:
+        return []
+
+    if assistant_id is not None and conversation.assistant_id != assistant_id:
+        return []
+
+    if workspace_id is not None:
+        if conversation.workspace_id != workspace_id:
+            return []
+        workspace = db.get(Workspace, workspace_id)
+        if workspace is None:
+            return []
+        if workspace.owner_id != user_id:
+            membership = (
+                db.query(WorkspaceMember.id)
+                .filter(
+                    WorkspaceMember.workspace_id == workspace_id,
+                    WorkspaceMember.user_id == user_id,
+                )
+                .first()
+            )
+            if membership is None:
+                return []
+
+    if project_id is not None:
+        if workspace_id is None or conversation.project_id != project_id:
+            return []
+        project = db.get(WorkspaceProject, project_id)
+        current_user = db.get(User, user_id)
+        if (
+            project is None
+            or current_user is None
+            or project.workspace_id != workspace_id
+            or not can_read_project(project, current_user, db)
+        ):
+            return []
 
     try:
         _provider, _model, active_embedding_fingerprint = get_embedding_index_identity()
