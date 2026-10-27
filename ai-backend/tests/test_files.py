@@ -92,8 +92,10 @@ def test_download_file_returns_original_bytes(client, tmp_path, monkeypatch):
     assert download_response.content == b"a,b,c\n1,2,3"
 
 
-def test_download_file_safely_encodes_untrusted_filename(client, db_session, tmp_path, monkeypatch):
-    """Control characters and separators in the original name must not alter headers."""
+def test_download_file_safely_encodes_untrusted_filename(
+    client, db_session, tmp_path, monkeypatch
+):
+    """Control characters and separators must not alter download headers."""
     from app.models.file_attachment import FileAttachment
 
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
