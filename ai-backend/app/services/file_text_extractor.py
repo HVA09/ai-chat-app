@@ -75,7 +75,7 @@ def _read_pdf_file(path: Path, max_chars: int) -> str:
             truncated = True
             break
 
-        if len(page_text) > remaining:
+        if len(page_text) >= remaining:
             parts.append(page_text[:remaining])
             used += separator + remaining
             truncated = True
@@ -108,7 +108,7 @@ def _read_docx_file(path: Path, max_chars: int) -> str:
         if remaining <= 0:
             truncated = True
             return True
-        if len(value) > remaining:
+        if len(value) >= remaining:
             parts.append(value[:remaining])
             used += separator + remaining
             truncated = True
@@ -155,7 +155,7 @@ def _read_xlsx_file(path: Path, max_chars: int) -> str:
         if remaining <= 0:
             truncated = True
             return True
-        if len(value) > remaining:
+        if len(value) >= remaining:
             parts.append(value[:remaining])
             used += separator + remaining
             truncated = True
@@ -179,7 +179,7 @@ def _read_xlsx_file(path: Path, max_chars: int) -> str:
             remaining = limit - used_in_row - len(separator)
             if remaining <= 0:
                 return "".join(values), True
-            if len(cell) > remaining:
+            if len(cell) >= remaining:
                 values.append(separator + cell[:remaining])
                 return "".join(values), True
             values.append(separator + cell)
