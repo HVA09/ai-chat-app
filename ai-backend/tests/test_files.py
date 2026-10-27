@@ -1099,3 +1099,145 @@ def test_file_status_tracks_source_change_and_reindex_cycle(
     chunk = db_session.query(FileChunk).filter(FileChunk.file_id == file_id).one()
     assert chunk.content == "Updated source text that requires reindexing."
     assert "Original source text that has been indexed." not in chunk.content
+
+
+def test_file_operations_recheck_current_project_and_workspace_access(
+    client, db_session, tmp_path, monkeypatch
+):
+    """An owned conversation does not preserve revoked project/workspace access."""
+    from app.models.conversation import Conversation
+    from app.models.conversation_file_link import ConversationFileLink
+    from app.models.file_attachment import FileAttachment
+    from app.models.project_member import ProjectMember, ProjectMemberRole
+    from app.models.user import User
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    owner_token = _register_and_login(client, "file-conversation-scope-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    owner = db_session.query(User).filter_by(
+        email="file-conversation-scope-owner@example.com"
+    ).one()
+    workspace = owner.owned_workspaces[0]
+
+    created_project = client.post(
+        "/projects",
+        json={"workspace_id": workspace.id, "name": "File conversation access"},
+        headers=owner_headers,
+    )
+    assert created_project.status_code == 201
+    project_id = created_project.json()["id"]
+
+    member_token = _register_and_login(
+        client, "file-conversation-scope-member@example.com"
+    )
+    member_headers = {"Authorization": f"Bearer {member_token}"}
+    member = db_session.query(User).filter_by(
+        email="file-conversation-scope-member@example.com"
+    ).one()
+    workspace_membership = WorkspaceMember(
+        workspace_id=workspace.id,
+        user_id=member.id,
+        role=WorkspaceRole.member,
+    )
+    project_membership = ProjectMember(
+        project_id=project_id,
+        user_id=member.id,
+        role=ProjectMemberRole.editor,
+    )
+    db_session.add_all([workspace_membership, project_membership])
+    db_session.flush()
+
+    conversation = Conversation(
+        user_id=member.id,
+        workspace_id=workspace.id,
+        project_id=project_id,
+        title="Conversation loses project access",
+    )
+    file_a = FileAttachment(
+        user_id=member.id,
+        original_filename="personal-a.txt",
+        stored_filename="personal-a.txt",
+        content_type="text/plain",
+        size_bytes=12,
+        extracted_text="Personal attachment A.",
+    )
+    file_b = FileAttachment(
+        user_id=member.id,
+        original_filename="personal-b.txt",
+        stored_filename="personal-b.txt",
+        content_type="text/plain",
+        size_bytes=12,
+        extracted_text="Personal attachment B.",
+    )
+    db_session.add_all([conversation, file_a, file_b])
+    db_session.flush()
+    db_session.add(
+        ConversationFileLink(conversation_id=conversation.id, file_id=file_a.id)
+    )
+    db_session.commit()
+
+    params = {"conversation_id": conversation.id, "include_unattached": "true"}
+    assert client.get("/files", params=params, headers=member_headers).status_code == 200
+    assert client.post(
+        f"/files/{file_b.id}/attach/{conversation.id}",
+        headers=member_headers,
+    ).status_code == 200
+
+    def assert_conversation_file_operations_denied():
+        assert client.get(
+            "/files", params=params, headers=member_headers
+        ).status_code == 404
+        assert client.post(
+            f"/files/{file_a.id}/attach/{conversation.id}",
+            headers=member_headers,
+        ).status_code == 404
+        assert client.delete(
+            f"/files/{file_a.id}/attach/{conversation.id}",
+            headers=member_headers,
+        ).status_code == 404
+
+        db_session.expire_all()
+        prior_count = (
+            db_session.query(FileAttachment)
+            .filter(FileAttachment.user_id == member.id)
+            .count()
+        )
+        denied_upload = client.post(
+            "/files/upload",
+            params={"conversation_id": conversation.id},
+            files={
+                "file": (
+                    "blocked-upload.txt",
+                    b"Must not be stored after access revocation.",
+                    "text/plain",
+                )
+            },
+            headers=member_headers,
+        )
+        assert denied_upload.status_code == 404
+        db_session.expire_all()
+        assert (
+            db_session.query(FileAttachment)
+            .filter(FileAttachment.user_id == member.id)
+            .count()
+            == prior_count
+        )
+
+    # Workspace membership remains, but project access has been revoked.
+    db_session.delete(project_membership)
+    db_session.commit()
+    assert_conversation_file_operations_denied()
+
+    # Restore project membership, then revoke the workspace membership instead.
+    db_session.add(
+        ProjectMember(
+            project_id=project_id,
+            user_id=member.id,
+            role=ProjectMemberRole.editor,
+        )
+    )
+    db_session.commit()
+    db_session.delete(workspace_membership)
+    db_session.commit()
+    assert_conversation_file_operations_denied()
