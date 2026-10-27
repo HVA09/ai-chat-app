@@ -62,15 +62,32 @@ def _read_pdf_file(path: Path, max_chars: int) -> str:
     reader = PdfReader(str(path))
     parts: list[str] = []
     used = 0
+    truncated = False
+
     for page in reader.pages:
         page_text = (page.extract_text() or "").strip()
         if not page_text:
             continue
-        parts.append(page_text)
-        used += len(page_text) + 1
-        if used >= max_chars:
+
+        separator = 2 if parts else 0
+        remaining = max_chars - used - separator
+        if remaining <= 0:
+            truncated = True
             break
-    return _limit("\n\n".join(parts), max_chars)
+
+        if len(page_text) > remaining:
+            parts.append(page_text[:remaining])
+            used += separator + remaining
+            truncated = True
+            break
+
+        parts.append(page_text)
+        used += separator + len(page_text)
+
+    content = "\n\n".join(parts).strip()
+    if truncated and content:
+        return f"{content}\n\n[تم اختصار المحتوى بسبب الحد المسموح]"
+    return _limit(content, max_chars)
 
 
 def _read_docx_file(path: Path, max_chars: int) -> str:
