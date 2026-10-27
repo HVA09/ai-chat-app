@@ -518,6 +518,7 @@ def test_project_file_requires_project_membership(client, db_session, tmp_path, 
 def test_project_file_cannot_attach_to_different_project_conversation(client, db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     from app.models.user import User
+    from app.models.conversation_file_link import ConversationFileLink
     from app.routers import chat as chat_router_module
     from app.services.ai_providers.base import AIReply
     from unittest.mock import AsyncMock
@@ -564,6 +565,31 @@ def test_project_file_cannot_attach_to_different_project_conversation(client, db
         headers=headers,
     )
     assert attached.status_code == 400
+
+    # Simulate a stale/legacy cross-project link. Detaching must apply the same
+    # project-scope policy as attaching and must leave the link untouched.
+    db_session.add(
+        ConversationFileLink(
+            conversation_id=conversation_id,
+            file_id=file_id,
+        )
+    )
+    db_session.commit()
+
+    detached = client.delete(
+        f"/files/{file_id}/attach/{conversation_id}",
+        headers=headers,
+    )
+    assert detached.status_code == 400
+    assert (
+        db_session.query(ConversationFileLink)
+        .filter(
+            ConversationFileLink.conversation_id == conversation_id,
+            ConversationFileLink.file_id == file_id,
+        )
+        .first()
+        is not None
+    )
 
 
 

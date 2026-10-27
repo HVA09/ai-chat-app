@@ -633,6 +633,11 @@ def detach_file_from_conversation(
 ):
     file = _get_accessible_file(file_id, current_user, db)
     conversation = _get_owned_conversation(conversation_id, current_user, db)
+    if file.project_id is not None and file.project_id != conversation.project_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ملف المشروع لا ينتمي إلى مشروع المحادثة",
+        )
     if file.workspace_id is not None and file.workspace_id != conversation.workspace_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
