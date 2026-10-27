@@ -1,9 +1,9 @@
 """تقطيع النص وفهرسة واسترجاع مقاطع RAG."""
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from datetime import datetime, timezone
-import re
 from typing import TypedDict
 
 from sqlalchemy import and_, delete, exists, or_
