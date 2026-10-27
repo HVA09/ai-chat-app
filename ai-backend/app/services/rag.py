@@ -59,11 +59,11 @@ _CONTEXT_CONTROL_MARKER_PATTERN = re.compile(
 
 
 def safe_context_text(text: str) -> str:
-    """Neutralize exact prompt-context markers that appear inside untrusted file text.
+    """Neutralize known app-level context markers in prompt-bound content.
 
     This changes only the rendered copy passed to the model; stored text and source
-    metadata remain unchanged. It is a defense against delimiter spoofing, not a
-    substitute for treating the entire file body as untrusted data.
+    metadata remain unchanged. It reduces delimiter spoofing across files, saved
+    memory, summaries and custom instructions, but does not stop every prompt injection.
     """
     return _CONTEXT_CONTROL_MARKER_PATTERN.sub(
         lambda match: f"［{match.group(0)[1:-1]}］",
