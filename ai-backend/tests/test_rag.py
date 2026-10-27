@@ -688,16 +688,17 @@ def test_shared_assistant_file_chunks_stop_retrieving_after_unshare(
     assert revoked_rows == []
     embed_query.assert_not_awaited()
 
-    # The plain-text fallback must apply the same ACL when no scoped chunks
-    # remain; otherwise a former share can still leak extracted file contents.
-    fallback_context, fallback_sources = asyncio.run(
-        chat_router_module._build_file_context(
-            conversation, "assistant evidence", db_session
+    # The context builder also fails closed when a stale conversation references
+    # an assistant whose workspace share has already been revoked.
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as denied:
+        asyncio.run(
+            chat_router_module._build_file_context(
+                conversation, "assistant evidence", db_session
+            )
         )
-    )
-    assert "Protected assistant knowledge" not in fallback_context
-    assert "Protected assistant evidence" not in fallback_context
-    assert fallback_sources == []
+    assert denied.value.status_code == 404
 
 
 def test_retrieval_ranks_closest_embedding_first(db_session, monkeypatch):
@@ -1457,3 +1458,162 @@ def test_mixed_retrieved_and_attached_files_keep_citations_consistent(
     assert "unreadable-scan.pdf" in context
     assert "no extracted text is available" in context
     assert "empty.txt" not in [source["filename"] for source in sources]
+
+
+def test_file_context_refuses_workspace_fallback_if_membership_is_revoked_during_rag(
+    db_session, monkeypatch
+):
+    """An async retrieval delay must not let revoked users reach fallback text."""
+    from app.models.conversation import Conversation
+    from app.models.conversation_file_link import ConversationFileLink
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+    from fastapi import HTTPException
+
+    owner = User(
+        email="rag-fallback-revocation-owner@example.com",
+        hashed_password="hashed",
+    )
+    member = User(
+        email="rag-fallback-revocation-member@example.com",
+        hashed_password="hashed",
+    )
+    db_session.add_all([owner, member])
+    db_session.flush()
+
+    workspace = Workspace(owner_id=owner.id, name="Fallback membership revocation")
+    db_session.add(workspace)
+    db_session.flush()
+    membership = WorkspaceMember(
+        workspace_id=workspace.id,
+        user_id=member.id,
+        role=WorkspaceRole.member,
+    )
+    db_session.add(membership)
+
+    conversation = Conversation(
+        user_id=member.id,
+        workspace_id=workspace.id,
+        title="Revoke access while retrieval is waiting",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+
+    file = FileAttachment(
+        user_id=owner.id,
+        workspace_id=workspace.id,
+        project_id=None,
+        original_filename="private-workspace-notes.txt",
+        stored_filename="private-workspace-notes.txt",
+        content_type="text/plain",
+        size_bytes=48,
+        extracted_text="Secret text that must never enter the fallback context.",
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(
+        ConversationFileLink(conversation_id=conversation.id, file_id=file.id)
+    )
+    db_session.commit()
+
+    async def revoke_access_during_retrieval(*_args, **_kwargs):
+        db_session.delete(membership)
+        db_session.commit()
+        return []
+
+    retrieval = AsyncMock(side_effect=revoke_access_during_retrieval)
+    monkeypatch.setattr(chat_router_module, "retrieve_relevant_chunks", retrieval)
+
+    with pytest.raises(HTTPException) as denied:
+        asyncio.run(
+            chat_router_module._build_file_context(
+                conversation, "summarize the private notes", db_session
+            )
+        )
+
+    assert denied.value.status_code == 404
+    retrieval.assert_awaited_once()
+    assert (
+        db_session.query(FileAttachment)
+        .filter(FileAttachment.id == file.id)
+        .one()
+        .extracted_text
+        == "Secret text that must never enter the fallback context."
+    )
+
+
+def test_file_context_refuses_project_fallback_without_project_access(
+    db_session, monkeypatch
+):
+    """Workspace membership alone must not authorize project-specific fallback text."""
+    from app.models.conversation import Conversation
+    from app.models.conversation_file_link import ConversationFileLink
+    from app.models.project import WorkspaceProject
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+    from fastapi import HTTPException
+
+    owner = User(
+        email="rag-project-fallback-owner@example.com",
+        hashed_password="hashed",
+    )
+    member = User(
+        email="rag-project-fallback-member@example.com",
+        hashed_password="hashed",
+    )
+    db_session.add_all([owner, member])
+    db_session.flush()
+
+    workspace = Workspace(owner_id=owner.id, name="Project fallback access")
+    db_session.add(workspace)
+    db_session.flush()
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    project = WorkspaceProject(
+        workspace_id=workspace.id,
+        owner_id=owner.id,
+        name="Private project",
+    )
+    db_session.add(project)
+    db_session.flush()
+
+    conversation = Conversation(
+        user_id=member.id,
+        workspace_id=workspace.id,
+        project_id=project.id,
+        title="Conversation without project access",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+    file = FileAttachment(
+        user_id=owner.id,
+        workspace_id=workspace.id,
+        project_id=project.id,
+        original_filename="project-private-notes.txt",
+        stored_filename="project-private-notes.txt",
+        content_type="text/plain",
+        size_bytes=45,
+        extracted_text="Project text that must stay private.",
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(
+        ConversationFileLink(conversation_id=conversation.id, file_id=file.id)
+    )
+    db_session.commit()
+
+    retrieval = AsyncMock(return_value=[])
+    monkeypatch.setattr(chat_router_module, "retrieve_relevant_chunks", retrieval)
+
+    with pytest.raises(HTTPException) as denied:
+        asyncio.run(
+            chat_router_module._build_file_context(
+                conversation, "summarize the project notes", db_session
+            )
+        )
+
+    assert denied.value.status_code == 404
+    retrieval.assert_not_awaited()
