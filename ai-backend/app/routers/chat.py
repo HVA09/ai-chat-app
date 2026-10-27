@@ -51,6 +51,7 @@ from app.services.rag import (
     build_fallback_file_context,
     build_retrieval_context,
     retrieve_relevant_chunks,
+    safe_source_filename,
 )
 from app.services.tools.calculator import CalculatorError, calculate_expression, extract_calculator_expression
 from app.services.tools.code_execution import CodeExecutionError, execute_python_code, extract_code_request
@@ -712,8 +713,7 @@ async def _build_file_context(
             return ""
         lines = []
         for file in unreadable[:10]:
-            filename = " ".join((file.original_filename or "unnamed file").split())
-            filename = filename.replace("`", "'")[:255]
+            filename = safe_source_filename(file.original_filename)
             content_type = (file.content_type or "unknown type").replace("\n", " ")[:100]
             lines.append(f"- filename: `{filename}`; content type: `{content_type}`")
         return (
@@ -744,7 +744,7 @@ async def _build_file_context(
             source_id = f"S{len(sources) + len(supplemental_sources) + 1}"
             snippet = file_text[: min(8_000, remaining)]
             supplemental_parts.append(
-                f"[SOURCE {source_id}: {file.original_filename}]\n{snippet}"
+                f"[SOURCE {source_id}: {safe_source_filename(file.original_filename)}]\n{snippet}"
             )
             supplemental_sources.append(
                 {
