@@ -445,7 +445,7 @@ def _attach_requested_files(
     current_user: User,
     db: Session,
 ) -> None:
-    """Validate and attach up to ten user/workspace files before building AI context."""
+    """Attach only files readable in the conversation's exact scope."""
     if not file_ids:
         return
 
@@ -458,20 +458,31 @@ def _attach_requested_files(
 
     files = db.query(FileAttachment).filter(FileAttachment.id.in_(unique_ids)).all()
     by_id = {file.id: file for file in files}
+
+    def is_file_readable_in_conversation(file: FileAttachment) -> bool:
+        # Personal uploads are private to their uploader and cannot carry a
+        # project scope. Workspace files can be used in any conversation from
+        # that same workspace; project files require the exact project scope.
+        if file.workspace_id is None:
+            return file.project_id is None and file.user_id == current_user.id
+        if file.workspace_id != conversation.workspace_id:
+            return False
+        if file.project_id is None:
+            return True
+        if file.project_id != conversation.project_id:
+            return False
+
+        project = db.get(WorkspaceProject, file.project_id)
+        return (
+            project is not None
+            and project.workspace_id == conversation.workspace_id
+            and can_read_project(project, current_user, db)
+        )
+
     forbidden = [
         file_id
         for file_id in unique_ids
-        if (
-            file_id not in by_id
-            or (
-                by_id[file_id].workspace_id is None
-                and by_id[file_id].user_id != current_user.id
-            )
-            or (
-                by_id[file_id].workspace_id is not None
-                and by_id[file_id].workspace_id != conversation.workspace_id
-            )
-        )
+        if file_id not in by_id or not is_file_readable_in_conversation(by_id[file_id])
     ]
     if forbidden:
         raise HTTPException(

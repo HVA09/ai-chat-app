@@ -1168,6 +1168,83 @@ def test_chat_rejects_file_belonging_to_another_user(client, db_session, monkeyp
     )
     assert response.status_code == 404
 
+def test_chat_rejects_project_file_when_user_only_has_workspace_membership(
+    client, db_session, monkeypatch
+):
+    """A workspace member cannot attach private project knowledge to a general chat."""
+    from app.models.conversation_file_link import ConversationFileLink
+    from app.models.file_attachment import FileAttachment
+    from app.models.user import User
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    mock_reply = AsyncMock(return_value=AIReply(text="should not be called"))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
+
+    owner_token = _register_and_login(client, "project-file-chat-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    owner = db_session.query(User).filter_by(
+        email="project-file-chat-owner@example.com"
+    ).one()
+    workspace = owner.owned_workspaces[0]
+
+    created_project = client.post(
+        "/projects",
+        json={"workspace_id": workspace.id, "name": "Private chat attachment"},
+        headers=owner_headers,
+    )
+    assert created_project.status_code == 201
+    project_id = created_project.json()["id"]
+
+    member_token = _register_and_login(client, "project-file-chat-member@example.com")
+    member_headers = {"Authorization": f"Bearer {member_token}"}
+    member = db_session.query(User).filter_by(
+        email="project-file-chat-member@example.com"
+    ).one()
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        )
+    )
+
+    project_file = FileAttachment(
+        user_id=owner.id,
+        workspace_id=workspace.id,
+        project_id=project_id,
+        original_filename="private-project-notes.txt",
+        stored_filename=f"private-project-notes-{owner.id}-{member.id}.txt",
+        content_type="text/plain",
+        size_bytes=40,
+        extracted_text="This content is private to the project.",
+    )
+    db_session.add(project_file)
+    db_session.commit()
+    db_session.refresh(project_file)
+
+    response = client.post(
+        "/chat",
+        json={
+            "message": "Use this project file to answer me.",
+            "workspace_id": workspace.id,
+            "file_ids": [project_file.id],
+        },
+        headers=member_headers,
+    )
+
+    assert response.status_code == 404
+    mock_reply.assert_not_awaited()
+    db_session.expire_all()
+    assert (
+        db_session.query(ConversationFileLink)
+        .filter(
+            ConversationFileLink.file_id == project_file.id,
+        )
+        .count()
+        == 0
+    )
+
+
 def test_monthly_ai_cost_budget_blocks_regular_user_when_exceeded(client, db_session, monkeypatch):
     import json
 
