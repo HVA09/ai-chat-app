@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime, timezone
+import re
 from typing import TypedDict
 
 from sqlalchemy import and_, delete, exists, or_
@@ -42,6 +43,25 @@ def safe_source_filename(filename: str | None) -> str:
     # Drop ASCII control characters that survived whitespace normalization.
     normalized = "".join(character for character in normalized if ord(character) >= 32 and ord(character) != 127)
     return normalized[:255] or "unnamed file"
+
+
+_CONTEXT_CONTROL_MARKER_PATTERN = re.compile(
+    r"\[(?:\s*SOURCE\s+S\d+\s*:[^\]\r\n]*|\s*END\s+(?:RETRIEVED FILE CONTEXT|FILE CONTEXT|EXPLICIT ATTACHMENT CONTEXT|ATTACHMENT STATUS)\s*)\]",
+    re.IGNORECASE,
+)
+
+
+def safe_context_text(text: str) -> str:
+    """Neutralize exact prompt-context markers that appear inside untrusted file text.
+
+    This changes only the rendered copy passed to the model; stored text and source
+    metadata remain unchanged. It is a defense against delimiter spoofing, not a
+    substitute for treating the entire file body as untrusted data.
+    """
+    return _CONTEXT_CONTROL_MARKER_PATTERN.sub(
+        lambda match: f"［{match.group(0)[1:-1]}］",
+        text,
+    )
 
 
 class SourceCitation(TypedDict):
@@ -319,7 +339,7 @@ def build_retrieval_context(
                 "snippet": chunk.content[:220].strip(),
             }
         )
-        parts.append(f"[SOURCE {source_id}: {safe_source_filename(file.original_filename)} | CHUNK: {chunk.chunk_index + 1}]\n{snippet}")
+        parts.append(f"[SOURCE {source_id}: {safe_source_filename(file.original_filename)} | CHUNK: {chunk.chunk_index + 1}]\n{safe_context_text(snippet)}")
         total += len(snippet)
 
     return (
@@ -361,7 +381,7 @@ def build_fallback_file_context(
                 "snippet": " ".join(text.split())[:220].strip(),
             }
         )
-        parts.append(f"[SOURCE {source_id}: {safe_source_filename(file.original_filename)}]\n{snippet}")
+        parts.append(f"[SOURCE {source_id}: {safe_source_filename(file.original_filename)}]\n{safe_context_text(snippet)}")
         total += len(snippet)
 
     if not parts:
