@@ -1082,3 +1082,173 @@ def test_fallback_file_context_marks_embedded_instructions_as_untrusted():
     assert "[END FILE CONTEXT]" in context
     assert injected_text in context
     assert sources[0]["filename"] == "untrusted-fallback.txt"
+
+
+def test_retrieval_refuses_workspace_scope_after_membership_revocation(
+    db_session, monkeypatch
+):
+    """Service-level RAG must recheck membership even if the conversation row remains."""
+    from unittest.mock import Mock
+
+    from app.models.conversation import Conversation
+    from app.models.conversation_file_link import ConversationFileLink
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    owner = User(email="rag-revoked-workspace-owner@example.com", hashed_password="hashed")
+    member = User(email="rag-revoked-workspace-member@example.com", hashed_password="hashed")
+    db_session.add_all([owner, member])
+    db_session.flush()
+
+    workspace = Workspace(owner_id=owner.id, name="RAG revoked workspace")
+    db_session.add(workspace)
+    db_session.flush()
+    membership = WorkspaceMember(
+        workspace_id=workspace.id,
+        user_id=member.id,
+        role=WorkspaceRole.member,
+    )
+    db_session.add(membership)
+
+    conversation = Conversation(
+        user_id=member.id,
+        workspace_id=workspace.id,
+        title="Conversation retained after membership revocation",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+
+    file = FileAttachment(
+        user_id=owner.id,
+        workspace_id=workspace.id,
+        project_id=None,
+        original_filename="workspace-private.txt",
+        stored_filename="workspace-private.txt",
+        content_type="text/plain",
+        size_bytes=32,
+        extracted_text="Private workspace retrieval evidence.",
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(
+        FileChunk(
+            file_id=file.id,
+            chunk_index=0,
+            content="Private workspace retrieval evidence.",
+            embedding=[0.1] * 768,
+        )
+    )
+    db_session.add(
+        ConversationFileLink(conversation_id=conversation.id, file_id=file.id)
+    )
+    db_session.commit()
+
+    db_session.delete(membership)
+    db_session.commit()
+
+    identity = Mock(side_effect=AssertionError("RAG must reject revoked workspace access first"))
+    embed_query = AsyncMock(
+        side_effect=AssertionError("RAG must not request an embedding after revocation")
+    )
+    monkeypatch.setattr(rag, "get_embedding_index_identity", identity)
+    monkeypatch.setattr(rag, "embed_query", embed_query)
+
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            member.id,
+            conversation.id,
+            "retrieve private workspace evidence",
+            workspace_id=workspace.id,
+        )
+    )
+
+    assert rows == []
+    identity.assert_not_called()
+    embed_query.assert_not_awaited()
+
+
+def test_retrieval_refuses_project_scope_without_current_project_access(
+    db_session, monkeypatch
+):
+    """Workspace membership alone must not authorize project knowledge retrieval."""
+    from unittest.mock import Mock
+
+    from app.models.conversation import Conversation
+    from app.models.project import WorkspaceProject
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    owner = User(email="rag-private-project-owner@example.com", hashed_password="hashed")
+    member = User(email="rag-private-project-member@example.com", hashed_password="hashed")
+    db_session.add_all([owner, member])
+    db_session.flush()
+
+    workspace = Workspace(owner_id=owner.id, name="RAG private project")
+    db_session.add(workspace)
+    db_session.flush()
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    project = WorkspaceProject(
+        workspace_id=workspace.id,
+        owner_id=owner.id,
+        name="Restricted knowledge",
+    )
+    db_session.add(project)
+    db_session.flush()
+
+    conversation = Conversation(
+        user_id=member.id,
+        workspace_id=workspace.id,
+        project_id=project.id,
+        title="Conversation without project membership",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+
+    file = FileAttachment(
+        user_id=owner.id,
+        workspace_id=workspace.id,
+        project_id=project.id,
+        original_filename="project-private.txt",
+        stored_filename="project-private.txt",
+        content_type="text/plain",
+        size_bytes=35,
+        extracted_text="Restricted project retrieval evidence.",
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(
+        FileChunk(
+            file_id=file.id,
+            chunk_index=0,
+            content="Restricted project retrieval evidence.",
+            embedding=[0.1] * 768,
+        )
+    )
+    db_session.commit()
+
+    identity = Mock(side_effect=AssertionError("RAG must reject inaccessible projects first"))
+    embed_query = AsyncMock(
+        side_effect=AssertionError("RAG must not request an embedding for inaccessible projects")
+    )
+    monkeypatch.setattr(rag, "get_embedding_index_identity", identity)
+    monkeypatch.setattr(rag, "embed_query", embed_query)
+
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            member.id,
+            conversation.id,
+            "retrieve restricted project evidence",
+            workspace_id=workspace.id,
+            project_id=project.id,
+        )
+    )
+
+    assert rows == []
+    identity.assert_not_called()
+    embed_query.assert_not_awaited()
