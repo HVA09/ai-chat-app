@@ -51,6 +51,7 @@ from app.services.rag import (
     build_fallback_file_context,
     build_retrieval_context,
     retrieve_relevant_chunks,
+    safe_context_text,
     safe_source_filename,
 )
 from app.services.tools.calculator import CalculatorError, calculate_expression, extract_calculator_expression
@@ -744,7 +745,7 @@ async def _build_file_context(
             source_id = f"S{len(sources) + len(supplemental_sources) + 1}"
             snippet = file_text[: min(8_000, remaining)]
             supplemental_parts.append(
-                f"[SOURCE {source_id}: {safe_source_filename(file.original_filename)}]\n{snippet}"
+                f"[SOURCE {source_id}: {safe_source_filename(file.original_filename)}]\n{safe_context_text(snippet)}"
             )
             supplemental_sources.append(
                 {
