@@ -1252,3 +1252,49 @@ def test_retrieval_refuses_project_scope_without_current_project_access(
     assert rows == []
     identity.assert_not_called()
     embed_query.assert_not_awaited()
+
+
+def test_retrieval_refuses_conversation_owned_by_another_user(db_session, monkeypatch):
+    """The retrieval service must not trust a caller-supplied user/conversation pair."""
+    from unittest.mock import Mock
+
+    from app.models.conversation import Conversation
+
+    owner = User(email="rag-conversation-owner@example.com", hashed_password="hashed")
+    other = User(email="rag-conversation-other@example.com", hashed_password="hashed")
+    db_session.add_all([owner, other])
+    db_session.flush()
+
+    workspace = Workspace(owner_id=owner.id, name="Owner-only RAG conversation")
+    db_session.add(workspace)
+    db_session.flush()
+    conversation = Conversation(
+        user_id=owner.id,
+        workspace_id=workspace.id,
+        title="Private conversation",
+    )
+    db_session.add(conversation)
+    db_session.commit()
+
+    identity = Mock(
+        side_effect=AssertionError("Ownership must be checked before embedding configuration")
+    )
+    embed_query = AsyncMock(
+        side_effect=AssertionError("Ownership must be checked before embedding the query")
+    )
+    monkeypatch.setattr(rag, "get_embedding_index_identity", identity)
+    monkeypatch.setattr(rag, "embed_query", embed_query)
+
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            other.id,
+            conversation.id,
+            "private evidence",
+            workspace_id=workspace.id,
+        )
+    )
+
+    assert rows == []
+    identity.assert_not_called()
+    embed_query.assert_not_awaited()
