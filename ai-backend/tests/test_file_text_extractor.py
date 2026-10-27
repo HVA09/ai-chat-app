@@ -226,3 +226,130 @@ def test_xlsx_extraction_bounds_accumulated_rows_and_closes_workbook(
     assert worksheet.rows_yielded == 1
     assert workbook.closed
     assert "This later row must not be visited." not in text
+
+
+def test_docx_extraction_stops_when_a_block_exactly_fills_character_budget(
+    tmp_path: Path, monkeypatch
+):
+    from app.services import file_text_extractor
+
+    class FakeParagraph:
+        def __init__(self, text: str):
+            self.text = text
+
+    class FakeTable:
+        pass
+
+    class TrackingBlocks:
+        def __init__(self):
+            self.visited = 0
+
+        def __iter__(self):
+            self.visited += 1
+            yield FakeParagraph("A" * 20)
+            self.visited += 1
+            yield FakeParagraph("This later paragraph must not be visited.")
+
+    blocks = TrackingBlocks()
+
+    class FakeDocument:
+        def iter_inner_content(self):
+            return iter(blocks)
+
+    monkeypatch.setattr(file_text_extractor, "Document", lambda _path: FakeDocument())
+    monkeypatch.setattr(file_text_extractor, "Paragraph", FakeParagraph)
+    monkeypatch.setattr(file_text_extractor, "Table", FakeTable)
+
+    text = file_text_extractor._read_docx_file(tmp_path / "fake.docx", max_chars=20)
+
+    assert text.startswith("A" * 20)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+    assert blocks.visited == 1
+    assert "later paragraph" not in text
+
+
+def test_pdf_extraction_stops_when_a_page_exactly_fills_character_budget(
+    tmp_path: Path, monkeypatch
+):
+    from app.services import file_text_extractor
+
+    class FakePage:
+        def __init__(self, content: str):
+            self.content = content
+            self.extract_calls = 0
+
+        def extract_text(self):
+            self.extract_calls += 1
+            return self.content
+
+    first_page = FakePage("A" * 20)
+    later_page = FakePage("This page must not be extracted.")
+
+    class TrackingPages:
+        def __init__(self):
+            self.visited = 0
+
+        def __iter__(self):
+            for page in (first_page, later_page):
+                self.visited += 1
+                yield page
+
+    pages = TrackingPages()
+
+    class FakeReader:
+        def __init__(self, _path):
+            self.pages = pages
+
+    monkeypatch.setattr(file_text_extractor, "PdfReader", FakeReader)
+
+    text = file_text_extractor._read_pdf_file(tmp_path / "fake.pdf", max_chars=20)
+
+    assert text.startswith("A" * 20)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+    assert pages.visited == 1
+    assert first_page.extract_calls == 1
+    assert later_page.extract_calls == 0
+
+
+def test_xlsx_extraction_stops_when_a_row_exactly_fills_character_budget(
+    tmp_path: Path, monkeypatch
+):
+    from app.services import file_text_extractor
+
+    class FakeWorksheet:
+        title = "Data"
+
+        def __init__(self):
+            self.rows_yielded = 0
+
+        def iter_rows(self, values_only=True):
+            self.rows_yielded += 1
+            yield ("A" * 7,)
+            self.rows_yielded += 1
+            yield ("This later row must not be visited.",)
+
+    worksheet = FakeWorksheet()
+
+    class FakeWorkbook:
+        worksheets = [worksheet]
+
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    workbook = FakeWorkbook()
+    monkeypatch.setattr(
+        file_text_extractor,
+        "load_workbook",
+        lambda **_kwargs: workbook,
+    )
+
+    text = file_text_extractor._read_xlsx_file(tmp_path / "fake.xlsx", max_chars=20)
+
+    assert text.startswith("[ورقة: Data]\n" + "A" * 7)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+    assert worksheet.rows_yielded == 1
+    assert workbook.closed
+    assert "This later row must not be visited." not in text
