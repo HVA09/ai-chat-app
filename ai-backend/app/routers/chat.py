@@ -207,9 +207,10 @@ async def compare_ai_models(
         if file_context:
             context_parts.append(file_context)
 
-    prompt = payload.message
+    safe_user_message = safe_context_text(payload.message)
+    prompt = safe_user_message
     if context_parts:
-        prompt = "\n\n".join(context_parts) + f"\n\nUSER REQUEST:\n{payload.message}"
+        prompt = "\n\n".join(context_parts) + f"\n\nUSER REQUEST:\n{safe_user_message}"
 
     results: list[ChatCompareResult] = []
     for model in (model_a, model_b):
@@ -525,7 +526,10 @@ def _build_history(conversation: Conversation, db: Session) -> list[dict[str, st
         .all()
     )
     recent_messages.reverse()  # نرجّعها لترتيبها الزمني الطبيعي (الأقدم أول)
-    return [{"role": m.role.value, "content": m.content} for m in recent_messages]
+    return [
+        {"role": m.role.value, "content": safe_context_text(m.content)}
+        for m in recent_messages
+    ]
 
 def _get_authorized_file_context_conversation(
     conversation: Conversation, db: Session
@@ -1157,11 +1161,12 @@ async def _augment_message(
         )
         if part
     ]
+    safe_user_message = safe_context_text(message)
     if not context_parts:
-        return message, []
+        return safe_user_message, []
 
     combined_context = "\n\n".join(context_parts)
-    return f"{combined_context}\n\nUSER REQUEST:\n{message}", sources
+    return f"{combined_context}\n\nUSER REQUEST:\n{safe_user_message}", sources
 
 
 
@@ -1234,12 +1239,13 @@ async def analyze_attached_image(
     assistant_context = _build_assistant_context(conversation, db)
     project_context = _build_project_context(conversation, db)
     memory_context = _build_memory_context(conversation.user_id, conversation.project_id, db)
-    prompt = payload.message
+    safe_user_message = safe_context_text(payload.message)
+    prompt = safe_user_message
     context_parts = [
         part for part in (memory_context, project_context, assistant_context) if part
     ]
     if context_parts:
-        prompt = "\n\n".join(context_parts) + f"\n\nUSER REQUEST:\n{payload.message}"
+        prompt = "\n\n".join(context_parts) + f"\n\nUSER REQUEST:\n{safe_user_message}"
 
     try:
         with materialize_file(attachment.object_key, image_path) as materialized_path:
