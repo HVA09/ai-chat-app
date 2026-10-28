@@ -2081,6 +2081,8 @@ def test_chat_compare_neutralizes_nested_user_request_delimiter(client, monkeypa
     )
     assert response.status_code == 200
     assert mock_reply.await_count == 2
+    assert [item["input_tokens"] for item in response.json()["results"]] == [0, 0]
+    assert [item["output_tokens"] for item in response.json()["results"]] == [0, 0]
 
     for call in mock_reply.await_args_list:
         prompt = call.args[0]
