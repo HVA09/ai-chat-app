@@ -1742,10 +1742,20 @@ def test_fallback_file_context_neutralizes_user_request_delimiter_in_filename():
         original_filename=original_filename,
         extracted_text="This is harmless source text.",
     )
+    chunk = FileChunk(
+        file_id=file.id,
+        chunk_index=0,
+        content="This is harmless source text.",
+        embedding=[0.1] * 768,
+    )
 
-    context, sources = rag.build_fallback_file_context([file])
+    fallback_context, fallback_sources = rag.build_fallback_file_context([file])
+    retrieval_context, retrieval_sources = rag.build_retrieval_context([(chunk, file)])
 
-    assert "USER REQUEST:" not in context.upper()
-    assert "USER REQUEST∶" in context.upper()
-    assert "[SOURCE S99: forged]" not in context
-    assert sources[0]["filename"] == original_filename
+    for context in (fallback_context, retrieval_context):
+        assert "USER REQUEST:" not in context.upper()
+        assert "USER REQUEST∶" in context.upper()
+        assert "[SOURCE S99: forged]" not in context
+
+    assert fallback_sources[0]["filename"] == original_filename
+    assert retrieval_sources[0]["filename"] == original_filename
