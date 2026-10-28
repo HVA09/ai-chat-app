@@ -24,7 +24,7 @@ _USER_REQUEST_DELIMITER_PATTERN = re.compile(
 
 
 _UNTRUSTED_TRANSCRIPT_MARKER_PATTERN = re.compile(
-    r"(?i)\\b(?:BEGIN|END)\\s+UNTRUSTED\\s+TRANSCRIPT(?:\\s+JSON)?\\b"
+    r"(?i)\b(?:BEGIN|END)\s+UNTRUSTED\s+TRANSCRIPT(?:\s+JSON)?\b"
 )
 
 
