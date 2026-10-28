@@ -335,3 +335,43 @@ def test_comparator_rejects_missing_case_rows():
 
     with pytest.raises(ValueError, match="exactly case_count entries"):
         comparator.compare_reports(_report(), incomplete)
+
+
+def test_comparator_rejects_different_ranked_document_sets_even_with_same_hash():
+    comparator = _load_comparator()
+    baseline = _report()
+    candidate = _report(fingerprint="c" * 64)
+    candidate["cases"][0]["ranked_documents"][1]["id"] = "substituted-document"
+
+    with pytest.raises(ValueError, match="rank different document ids"):
+        comparator.compare_reports(baseline, candidate)
+
+
+def test_comparator_rejects_changed_relevance_labels_for_same_corpus():
+    comparator = _load_comparator()
+    baseline = _report()
+    candidate = _report(fingerprint="c" * 64)
+    candidate["cases"][0]["ranked_documents"][2]["relevance"] = 1
+
+    with pytest.raises(ValueError, match="different document labels"):
+        comparator.compare_reports(baseline, candidate)
+
+
+def test_report_validator_rejects_document_ids_reused_across_cases():
+    comparator = _load_comparator()
+    malformed = _report()
+    malformed["cases"][1]["ranked_documents"][0]["id"] = (
+        malformed["cases"][0]["ranked_documents"][0]["id"]
+    )
+
+    with pytest.raises(ValueError, match="duplicate ranked document id across cases"):
+        comparator.compare_reports(_report(), malformed)
+
+
+def test_report_validator_rejects_cosine_similarity_outside_valid_range():
+    comparator = _load_comparator()
+    malformed = _report()
+    malformed["cases"][0]["ranked_documents"][0]["cosine_similarity"] = 3.5
+
+    with pytest.raises(ValueError, match="cosine similarity outside"):
+        comparator.compare_reports(_report(), malformed)
