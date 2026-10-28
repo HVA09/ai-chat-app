@@ -53,7 +53,9 @@ _SECRET_OR_IDENTIFIER_PATTERNS = (
     re.compile(r"(?i)-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"),
     re.compile(r"https?://hooks\.slack\.com/services/[A-Z0-9]+/[A-Z0-9]+/[A-Za-z0-9]+"),
     re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),
-    re.compile(r"(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^/\s:@]+:[^@\s/]+@[^/\s]+"),
+    # Match credential-bearing connection URLs across common schemes, including
+    # SQLAlchemy driver suffixes and services with an empty username (for example Redis).
+    re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://(?:[^/@\s:]+)?:[^@/\s]+@[^/\s?#]+"),
     re.compile(r"(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b"),
     re.compile(r"\+?\d[\d\s().-]{8,}\d"),
     re.compile(
