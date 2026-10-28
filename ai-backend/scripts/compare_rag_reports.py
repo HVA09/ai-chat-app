@@ -279,6 +279,76 @@ def _compare_value(baseline_value: Any, candidate_value: Any, direction: str) ->
     }
 
 
+def _metrics_from_ranked_documents(
+    ranked_documents: list[dict[str, Any]],
+    k: int,
+) -> dict[str, float]:
+    """Recalculate ranking metrics from relevance labels and their actual order."""
+    if len(ranked_documents) < k:
+        raise ValueError(
+            f"Ranked document list has fewer than top_k={k} documents."
+        )
+
+    grades = [document["relevance"] for document in ranked_documents]
+    relevant_count = sum(grade > 0 for grade in grades)
+    top_grades = grades[:k]
+    hits = sum(grade > 0 for grade in top_grades)
+    recall = hits / relevant_count if relevant_count else 0.0
+    precision = hits / k
+
+    reciprocal_rank = next(
+        (
+            1.0 / rank
+            for rank, grade in enumerate(grades, start=1)
+            if grade > 0
+        ),
+        0.0,
+    )
+
+    def discounted_gain(values: list[int]) -> float:
+        return sum(
+            (2**grade - 1) / math.log2(rank + 1)
+            for rank, grade in enumerate(values[:k], start=1)
+        )
+
+    ideal_dcg = discounted_gain(sorted(grades, reverse=True))
+    ndcg = discounted_gain(grades) / ideal_dcg if ideal_dcg else 0.0
+    return {
+        f"recall_at_{k}": recall,
+        f"precision_at_{k}": precision,
+        f"ndcg_at_{k}": ndcg,
+        "reciprocal_rank": reciprocal_rank,
+    }
+
+
+def _validate_rank_metrics_from_order(report: dict[str, Any], label: str) -> None:
+    """Reject reports whose case metrics disagree with the ranked document rows."""
+    top_k = report["top_k"]
+    expected_metric_names = {
+        f"recall_at_{top_k}",
+        f"precision_at_{top_k}",
+        f"ndcg_at_{top_k}",
+        "reciprocal_rank",
+    }
+    if set(report["macro_average"]) != expected_metric_names:
+        raise ValueError(
+            f"{label} metric names do not match top_k={top_k}."
+        )
+
+    for case in report["cases"]:
+        actual = _metrics_from_ranked_documents(
+            case["ranked_documents"],
+            top_k,
+        )
+        for metric, expected in actual.items():
+            recorded = case["metrics"].get(metric)
+            if recorded is None or abs(float(recorded) - expected) > 0.00011:
+                raise ValueError(
+                    f"{label} case {case['case_id']} metric {metric} "
+                    "does not match its ranked document order."
+                )
+
+
 def compare_reports(baseline_report: Any, candidate_report: Any) -> dict[str, Any]:
     """Compare two reports only when both describe the same benchmark corpus."""
     baseline = _validate_report(baseline_report, "baseline")
@@ -330,6 +400,12 @@ def compare_reports(baseline_report: Any, candidate_report: Any) -> dict[str, An
                     f"Reports contain different document labels for case {case_id} "
                     f"and document {document_id}."
                 )
+
+    # Validate the metrics against the ranking rows only after comparing corpus
+    # identities and labels, so a changed relevance label gets the clearer corpus
+    # mismatch error rather than being reported as a malformed metric.
+    _validate_rank_metrics_from_order(baseline, "baseline")
+    _validate_rank_metrics_from_order(candidate, "candidate")
 
     metric_comparisons: dict[str, Any] = {}
     for metric in sorted(baseline["macro_average"]):
