@@ -286,3 +286,24 @@ def test_memory_suggestion_parser_rejects_unlabeled_credentials_and_tokens():
     assert [item.content for item in parsed] == [
         "يفضل الشرح بالعربية مع أمثلة."
     ]
+
+
+def test_memory_suggestion_sensitive_filter_covers_additional_raw_credentials():
+    from app.routers.memories import _contains_sensitive_memory_data
+
+    raw_credentials = [
+        "sk_live_" + "A" * 24,
+        "rk_test_" + "B" * 24,
+        "xoxb-" + "1234567890-abcdefghijkl",
+        "npm_" + "C" * 30,
+        "pypi-" + "D" * 35,
+        "glpat-" + "E" * 25,
+        "ya29." + "F" * 30,
+        "-----BEGIN PRIVATE KEY-----",
+        "https://hooks.slack.com/services/T123456/B123456/abcdef123456",
+    ]
+
+    assert all(_contains_sensitive_memory_data(value) for value in raw_credentials)
+    assert not _contains_sensitive_memory_data(
+        "أفضل الشرح بالعربية مع أمثلة عملية."
+    )
