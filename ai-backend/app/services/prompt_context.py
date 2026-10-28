@@ -18,6 +18,11 @@ _CONTEXT_CONTROL_MARKER_PATTERN = re.compile(
 )
 
 
+_USER_REQUEST_DELIMITER_PATTERN = re.compile(
+    r"(?i)\bUSER\s+REQUEST\s*:"
+)
+
+
 def safe_context_text(text: str) -> str:
     """Neutralize known app-level context markers in prompt-bound content.
 
@@ -25,7 +30,10 @@ def safe_context_text(text: str) -> str:
     metadata remain unchanged. It reduces delimiter and citation spoofing, but does
     not stop every prompt injection or replace source/permission validation.
     """
-    return _CONTEXT_CONTROL_MARKER_PATTERN.sub(
+    rendered = _CONTEXT_CONTROL_MARKER_PATTERN.sub(
         lambda match: f"［{match.group(0)[1:-1]}］",
         text,
     )
+    # The final user request is separated by this literal delimiter in the prompt.
+    # Prevent file, memory, and metadata text from imitating that delimiter.
+    return _USER_REQUEST_DELIMITER_PATTERN.sub("USER REQUEST∶", rendered)
