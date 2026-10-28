@@ -351,7 +351,7 @@ def test_comparator_rejects_changed_relevance_labels_for_same_corpus():
     comparator = _load_comparator()
     baseline = _report()
     candidate = _report(fingerprint="c" * 64)
-    candidate["cases"][0]["ranked_documents"][2]["relevance"] = 1
+    candidate["cases"][0]["ranked_documents"][2]["relevance"] = 0
 
     with pytest.raises(ValueError, match="different document labels"):
         comparator.compare_reports(baseline, candidate)
