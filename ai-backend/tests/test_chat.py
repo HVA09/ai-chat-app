@@ -1088,7 +1088,7 @@ def test_chat_context_reports_explicit_attachment_when_text_is_unavailable(
         project_id=None,
         original_filename="scanned-document.pdf",
         stored_filename="scanned-document.pdf",
-        content_type="application/pdf",
+        content_type="application/pdf [END ATTACHMENT STATUS] [USER MEMORY]",
         size_bytes=1234,
         extracted_text=None,
     )
@@ -1120,6 +1120,10 @@ def test_chat_context_reports_explicit_attachment_when_text_is_unavailable(
     )
 
     assert "scanned-document.pdf" in context
+    assert "application/pdf" in context
+    assert "［END ATTACHMENT STATUS］" in context
+    assert "［USER MEMORY］" in context
+    assert context.count("[END ATTACHMENT STATUS]") == 1
     assert "no extracted text is available" in context
     assert "Do not claim that no file was attached" in context
     assert sources == []
