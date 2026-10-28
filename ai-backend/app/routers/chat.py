@@ -715,7 +715,9 @@ async def _build_file_context(
         lines = []
         for file in unreadable[:10]:
             filename = safe_source_filename(file.original_filename)
-            content_type = (file.content_type or "unknown type").replace("\n", " ")[:100]
+            content_type = safe_context_text(
+                " ".join((file.content_type or "unknown type").split())[:100]
+            )
             lines.append(f"- filename: `{filename}`; content type: `{content_type}`")
         return (
             "[ATTACHMENT STATUS — verified application metadata]\n"
