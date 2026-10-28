@@ -239,8 +239,15 @@ async def compare_ai_models(
                 text=reply.text,
                 provider=reply.provider,
                 latency_ms=reply.latency_ms,
-                input_tokens=reply.input_tokens,
-                output_tokens=reply.output_tokens,
+                # Some providers do not expose token usage. The public response
+                # schema uses integer counters, so represent unknown usage as zero
+                # rather than failing the entire model-comparison response.
+                input_tokens=(
+                    reply.input_tokens if reply.input_tokens is not None else 0
+                ),
+                output_tokens=(
+                    reply.output_tokens if reply.output_tokens is not None else 0
+                ),
             )
         )
 
