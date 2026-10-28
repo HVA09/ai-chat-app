@@ -137,10 +137,13 @@ async def search_web(
 
 def format_web_search_response(query: str, results: list[WebSearchResult]) -> tuple[str, list[dict]]:
     """يبني رسالة عرض + مصادر بنفس بنية مصادر RAG."""
+    # The query is user-controlled too. Escape app control markers in the rendered
+    # response, while preserving the original query when building the search URL.
+    safe_query = safe_context_text(query)
     if not results:
         search_url = f"https://duckduckgo.com/?q={quote_plus(query)}"
         return (
-            f"لم أجد نتائج فورية كافية لهذا البحث: **{query}**.\n\n"
+            f"لم أجد نتائج فورية كافية لهذا البحث: **{safe_query}**.\n\n"
             "يمكنك فتح صفحة البحث الكاملة من المصدر أدناه.",
             [
                 {
@@ -154,7 +157,7 @@ def format_web_search_response(query: str, results: list[WebSearchResult]) -> tu
         )
 
     sources: list[dict] = []
-    parts = [f"نتائج البحث عن: **{query}**"]
+    parts = [f"نتائج البحث عن: **{safe_query}**"]
     for index, result in enumerate(results, start=1):
         source_id = f"W{index}"
         sources.append(
