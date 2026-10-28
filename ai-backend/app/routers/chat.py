@@ -2179,7 +2179,10 @@ async def regenerate_chat_stream(
 
     user_message = messages[user_index]
     history_messages = messages[:user_index]
-    history = [{"role": m.role.value, "content": m.content} for m in history_messages[-MAX_HISTORY_MESSAGES:]]
+    history = [
+        {"role": m.role.value, "content": safe_context_text(m.content)}
+        for m in history_messages[-MAX_HISTORY_MESSAGES:]
+    ]
     ai_message, sources = await _augment_message(user_message.content, conversation, db)
 
     async def event_generator():
@@ -2293,7 +2296,10 @@ async def edit_chat_stream(
     target_message = user_messages[payload.message_index - 1]
     target_position = messages.index(target_message)
     history_messages = messages[:target_position]
-    history = [{"role": m.role.value, "content": m.content} for m in history_messages[-MAX_HISTORY_MESSAGES:]]
+    history = [
+        {"role": m.role.value, "content": safe_context_text(m.content)}
+        for m in history_messages[-MAX_HISTORY_MESSAGES:]
+    ]
     ai_message, sources = await _augment_message(payload.message, conversation, db)
 
     async def event_generator():
