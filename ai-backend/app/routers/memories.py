@@ -41,6 +41,13 @@ _SECRET_OR_IDENTIFIER_PATTERNS = (
     ),
     re.compile(r"(?i)\bbearer\s+[a-z0-9._~+/=-]{16,}\b"),
     re.compile(r"(?i)\bsk-[a-z0-9_-]{12,}\b"),
+    # Detect common unlabeled provider credentials so a suggestion cannot
+    # evade the screen merely by quoting a raw key instead of "API key: ...".
+    re.compile(r"(?i)\bAIza[0-9A-Za-z_-]{30,}\b"),
+    re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"),
+    re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),
+    re.compile(r"(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^/\s:@]+:[^@\s/]+@[^/\s]+"),
     re.compile(r"(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b"),
     re.compile(r"\+?\d[\d\s().-]{8,}\d"),
     re.compile(
