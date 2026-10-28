@@ -413,10 +413,29 @@ def test_csv_extraction_bounds_bytes_and_truncates_an_oversized_field(
 
     path = tmp_path / "large.csv"
     path.write_text("A" * 10_000, encoding="utf-8")
-    observed = _guard_bounded_binary_reads(monkeypatch, path, maximum_size=32 * 8)
+    observed = _guard_bounded_binary_reads(monkeypatch, path, maximum_size=32 * 4)
 
     text = file_text_extractor._read_csv_file(path, max_chars=32)
 
-    assert observed == [32 * 8]
+    assert observed == [32 * 4]
     assert text.startswith("A" * 32)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+
+
+def test_csv_extraction_handles_a_large_field_with_default_character_budget(
+    tmp_path: Path, monkeypatch
+):
+    from app.services import file_text_extractor
+
+    path = tmp_path / "very-large-field.csv"
+    path.write_text("A" * 200_000, encoding="utf-8")
+    max_chars = file_text_extractor.DEFAULT_MAX_CHARS
+    observed = _guard_bounded_binary_reads(
+        monkeypatch, path, maximum_size=max_chars * 4
+    )
+
+    text = file_text_extractor._read_csv_file(path, max_chars=max_chars)
+
+    assert observed == [max_chars * 4]
+    assert text.startswith("A" * max_chars)
     assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
