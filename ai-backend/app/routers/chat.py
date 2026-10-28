@@ -1225,6 +1225,16 @@ async def analyze_attached_image(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="المحادثة غير موجودة",
         )
+
+    # Enforce current workspace/project/assistant access before looking up an image
+    # or assembling private context. Conversation ownership alone is not enough
+    # when workspace membership or an assistant share has been revoked.
+    conversation = _get_authorized_file_context_conversation(conversation, db)
+    scope_before_vision = (
+        conversation.workspace_id,
+        conversation.project_id,
+        conversation.assistant_id,
+    )
     if conversation.workspace_id is not None:
         enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
 
@@ -1254,6 +1264,17 @@ async def analyze_attached_image(
             f"data:{attachment.content_type};base64,"
             f"{base64.b64encode(raw).decode('ascii')}"
         )
+        # Recheck immediately before sending image bytes to the external provider.
+        conversation = _get_authorized_file_context_conversation(conversation, db)
+        if scope_before_vision != (
+            conversation.workspace_id,
+            conversation.project_id,
+            conversation.assistant_id,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="تغير نطاق المحادثة أثناء تجهيز الصورة",
+            )
         reply = await get_ai_vision_reply(
             prompt,
             image_data_url,
