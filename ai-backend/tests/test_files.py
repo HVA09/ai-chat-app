@@ -1,6 +1,11 @@
 """
 اختبارات المرحلة السادسة: رفع الملفات وإدارتها
 """
+import zipfile
+
+import pytest
+from fastapi import HTTPException
+
 from app.config import settings as app_settings
 
 
@@ -1351,3 +1356,89 @@ def test_file_operations_recheck_current_project_and_workspace_access(
     db_session.delete(workspace_membership)
     db_session.commit()
     assert_conversation_file_operations_denied()
+
+
+@pytest.mark.parametrize(
+    "member_name",
+    [
+        "../evil.xml",
+        "..\\\\evil.xml",
+        "/absolute.xml",
+        "C:\\\\temp\\\\evil.xml",
+    ],
+)
+def test_office_archive_rejects_unsafe_member_paths(tmp_path, member_name):
+    from app.routers.files import _validate_office_archive
+
+    path = tmp_path / "unsafe-office.zip"
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr(member_name, "payload")
+
+    with pytest.raises(HTTPException) as error:
+        _validate_office_archive(path, max_uncompressed=10_000)
+
+    assert error.value.status_code == 415
+
+
+def test_office_archive_rejects_excessive_member_count(tmp_path):
+    from app.routers.files import _validate_office_archive
+
+    path = tmp_path / "many-members.zip"
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as archive:
+        for index in range(1001):
+            archive.writestr(f"word/item-{index}.xml", "x")
+
+    with pytest.raises(HTTPException, match="عددًا غير طبيعي") as error:
+        _validate_office_archive(path, max_uncompressed=10_000)
+
+    assert error.value.status_code == 415
+
+
+def test_office_archive_rejects_excessive_total_uncompressed_size(tmp_path):
+    from app.routers.files import _validate_office_archive
+
+    path = tmp_path / "large-uncompressed.zip"
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("word/one.xml", "A" * 600)
+        archive.writestr("word/two.xml", "B" * 600)
+
+    with pytest.raises(HTTPException, match="غير المضغوط") as error:
+        _validate_office_archive(path, max_uncompressed=1000)
+
+    assert error.value.status_code == 415
+
+
+def test_office_archive_rejects_abnormal_compression_ratio(tmp_path):
+    from app.routers.files import _validate_office_archive
+
+    path = tmp_path / "high-ratio.zip"
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("word/document.xml", "A" * 10_000)
+
+    with pytest.raises(HTTPException, match="نسبة ضغط غير طبيعية") as error:
+        _validate_office_archive(path, max_uncompressed=20_000)
+
+    assert error.value.status_code == 415
+
+
+def test_office_archive_rejects_malformed_zip(tmp_path):
+    from app.routers.files import _validate_office_archive
+
+    path = tmp_path / "malformed-office.zip"
+    path.write_bytes(b"this is not a ZIP archive")
+
+    with pytest.raises(HTTPException, match="تالف أو ليس ZIP صالحًا") as error:
+        _validate_office_archive(path, max_uncompressed=10_000)
+
+    assert error.value.status_code == 415
+
+
+def test_office_archive_accepts_small_valid_package(tmp_path):
+    from app.routers.files import _validate_office_archive
+
+    path = tmp_path / "valid-office.zip"
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("word/document.xml", "<document>small</document>")
+        archive.writestr("[Content_Types].xml", "<Types />")
+
+    _validate_office_archive(path, max_uncompressed=10_000)
