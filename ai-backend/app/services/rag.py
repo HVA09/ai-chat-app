@@ -42,7 +42,9 @@ def safe_source_filename(filename: str | None) -> str:
     normalized = normalized.replace("[", "(").replace("]", ")").replace("`", "'")
     # Drop ASCII control characters that survived whitespace normalization.
     normalized = "".join(character for character in normalized if ord(character) >= 32 and ord(character) != 127)
-    return normalized[:255] or "unnamed file"
+    # Filenames are untrusted too; neutralize prompt delimiters only in the
+    # rendered label, preserving the original filename in source metadata.
+    return safe_context_text(normalized[:255]) or "unnamed file"
 
 
 class SourceCitation(TypedDict):
