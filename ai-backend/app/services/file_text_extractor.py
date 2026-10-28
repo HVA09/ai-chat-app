@@ -49,7 +49,10 @@ def _read_csv_file(path: Path, max_chars: int) -> str:
     # Bound the input bytes as well as the rendered output. A single very large
     # CSV field can otherwise be allocated in full before the row limit applies.
     with path.open("rb") as source:
-        raw = source.read(max(0, max_chars) * 8)
+        # Four bytes per output character still leaves room for UTF-8 while
+        # keeping a single parsed field below csv's default field-size limit
+        # for the configured 20,000-character extraction budget.
+        raw = source.read(max(0, max_chars) * 4)
     text = raw.decode("utf-8-sig", errors="replace")
     rows = csv.reader(StringIO(text))
     rendered = []
