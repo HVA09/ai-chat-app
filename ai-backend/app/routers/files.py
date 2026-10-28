@@ -4,7 +4,7 @@
 """
 import base64
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import tempfile
 import zipfile
 from urllib.parse import quote
@@ -105,7 +105,21 @@ def _validate_office_archive(path: Path, max_uncompressed: int) -> None:
 
             total_uncompressed = 0
             for info in infos:
-                if info.filename.startswith("/") or ".." in Path(info.filename).parts:
+                # ZIP member names can use either slash convention. Reject
+                # absolute paths, drive-qualified paths, and traversal segments
+                # before handing the package to a document parser.
+                normalized_name = info.filename.replace("\\", "/")
+                archive_parts = PurePosixPath(normalized_name).parts
+                has_drive_prefix = (
+                    len(normalized_name) >= 2
+                    and normalized_name[0].isalpha()
+                    and normalized_name[1] == ":"
+                )
+                if (
+                    normalized_name.startswith("/")
+                    or has_drive_prefix
+                    or ".." in archive_parts
+                ):
                     raise HTTPException(status_code=415, detail="مسار داخل ملف Office غير صالح")
                 if info.file_size > max_uncompressed:
                     raise HTTPException(status_code=415, detail="عنصر داخل ملف Office أكبر من الحد المسموح")
