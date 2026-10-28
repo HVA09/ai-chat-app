@@ -64,9 +64,9 @@ def _read_csv_file(path: Path, max_chars: int) -> str:
         separator = 1 if rendered else 0
         available = max(0, remaining - separator)
         if len(line) > available:
-            if available:
-                rendered.append(line[:available])
-                used += available + separator
+            # Preserve one extra character so _limit() can append the usual
+            # truncation marker without retaining the rest of a huge CSV row.
+            rendered.append(line[: available + 1])
             break
         rendered.append(line)
         used += len(line) + separator
