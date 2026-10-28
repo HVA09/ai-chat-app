@@ -298,7 +298,10 @@ def test_memory_suggestion_sensitive_filter_covers_additional_raw_credentials():
         "npm_" + "C" * 30,
         "pypi-" + "D" * 35,
         "glpat-" + "E" * 25,
+        "github_pat_" + "G" * 35,
         "ya29." + "F" * 30,
+        "AKIAIOSFODNN7EXAMPLE",
+        "ASIAABCDEFGHIJKLMNOP",
         "-----BEGIN PRIVATE KEY-----",
         "https://hooks.slack.com/services/T123456/B123456/abcdef123456",
     ]
