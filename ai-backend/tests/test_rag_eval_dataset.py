@@ -371,6 +371,23 @@ def test_evaluator_validates_dataset_before_provider_calls(monkeypatch):
         runner.evaluate_dataset({"schema_version": 1, "cases": [{"id": "invalid"}]})
 
 
+def test_evaluator_rejects_top_k_larger_than_candidate_pool_before_provider_calls(monkeypatch):
+    runner = _load_rag_evaluation_runner()
+
+    def unexpected_call(*_args, **_kwargs):
+        pytest.fail("Invalid top_k must be rejected before provider calls")
+
+    async def unexpected_async_call(*_args, **_kwargs):
+        pytest.fail("Invalid top_k must be rejected before provider calls")
+
+    monkeypatch.setattr(runner, "embed_documents_sync", unexpected_call)
+    monkeypatch.setattr(runner, "embed_query", unexpected_async_call)
+    monkeypatch.setattr(runner, "get_embedding_index_identity", unexpected_call)
+
+    with pytest.raises(ValueError, match="top_k cannot exceed the smallest candidate pool"):
+        runner.evaluate_dataset(_minimal_valid_rag_dataset(), top_k=3)
+
+
 def test_evaluator_checks_embedding_configuration_before_requests(monkeypatch):
     runner = _load_rag_evaluation_runner()
     events = []
