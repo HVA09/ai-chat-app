@@ -269,7 +269,12 @@ def test_runtime_wraps_untrusted_output_and_blocks_followup_tools():
     assert result.tool_calls == 1
     assert provider.tool_choices == ["auto", "none"]
     assert provider.tools_seen[1] == []
-    assert any(event["type"] == "runtime_security_block" for event in events)
+    security_blocks = [
+        event for event in events
+        if event["type"] == "runtime_security_block"
+    ]
+    assert security_blocks
+    assert security_blocks[0]["injection_suspected"] is True
     tool_message = next(
         message
         for message in provider.messages_seen[1]
