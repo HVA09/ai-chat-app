@@ -1,5 +1,6 @@
 """اختبارات أداة بحث الويب."""
 import asyncio
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -10,6 +11,18 @@ from app.services.tools.web_search import (
     format_web_search_response,
     search_web,
 )
+
+
+def assert_duckduckgo_search_url(url: str, expected_query: str) -> None:
+    parsed = urlsplit(url)
+    assert parsed.scheme == "https"
+    assert parsed.hostname == "duckduckgo.com"
+    assert parsed.port is None
+    assert parsed.username is None
+    assert parsed.password is None
+    assert parsed.path == "/"
+    assert parsed.fragment == ""
+    assert parse_qs(parsed.query) == {"q": [expected_query]}
 
 
 def test_extract_web_search_query():
@@ -32,7 +45,7 @@ def test_format_web_search_response_without_results():
     text, sources = format_web_search_response("unknown", [])
     assert "unknown" in text
     assert sources[0]["filename"] == "DuckDuckGo"
-    assert "duckduckgo.com" in sources[0]["url"]
+    assert_duckduckgo_search_url(sources[0]["url"], "unknown")
 
 
 def test_search_web_parses_instant_answer(monkeypatch):
