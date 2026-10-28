@@ -193,6 +193,8 @@ def test_registry_rejects_invalid_or_oversized_tool_arguments(monkeypatch):
     [
         ([{"path": "../escape.txt", "content": "x"}], "مسار ملف غير آمن"),
         ([{"path": "/absolute.txt", "content": "x"}], "مسار ملف غير آمن"),
+        ([{"path": "C:/Windows/system.ini", "content": "x"}], "مسار ملف غير آمن"),
+        ([{"path": "D:relative.txt", "content": "x"}], "مسار ملف غير آمن"),
         ([{"path": "app.txt", "content": "x"}, {"path": "app.txt", "content": "y"}], "المسار مكرر"),
     ],
 )
