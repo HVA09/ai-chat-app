@@ -371,7 +371,15 @@ async def _create_project_archive(arguments: dict[str, Any], context: ToolContex
         if not raw_path or not isinstance(content, str):
             return ToolResult(content="ملف غير صالح: يجب أن يكون path نصًا وcontent نصًا.", sources=[], succeeded=False)
         path_obj = Path(raw_path)
-        if path_obj.is_absolute() or ".." in path_obj.parts or raw_path.startswith("/"):
+        # Path.is_absolute() follows the current OS. On Linux, Windows drive paths
+        # such as C:/Windows/file.txt look relative, but can become absolute paths
+        # when the ZIP is extracted on Windows. Reject drive-prefixed paths too.
+        if (
+            path_obj.is_absolute()
+            or ".." in path_obj.parts
+            or raw_path.startswith("/")
+            or re.match(r"^[A-Za-z]:", raw_path)
+        ):
             return ToolResult(content=f"مسار ملف غير آمن: {raw_path}", sources=[], succeeded=False)
         normalized = "/".join(part for part in path_obj.parts if part not in {"", "."})
         if not normalized:
