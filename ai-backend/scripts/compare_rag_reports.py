@@ -180,6 +180,16 @@ def _validate_report(report: Any, label: str) -> dict[str, Any]:
                 raise ValueError(
                     f"{label} case {case_id} has a cosine similarity outside [-1, 1]."
                 )
+            if ranked and rank > 1:
+                previous_similarity = _finite_number(
+                    ranked[rank - 2].get("cosine_similarity"),
+                    f"{label}.cases.{case_id}.ranked_documents.{rank - 1}.cosine_similarity",
+                )
+                if similarity > previous_similarity + 0.00011:
+                    raise ValueError(
+                        f"{label} case {case_id} ranked documents are not sorted "
+                        "by descending cosine similarity."
+                    )
             if relevance > 0 and actual_first_relevant_rank is None:
                 actual_first_relevant_rank = rank
 
