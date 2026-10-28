@@ -179,5 +179,5 @@ def test_format_web_search_response_sanitizes_query_markers(results):
     # When no search results exist, the search link still targets the original
     # query, URL-encoded; only its rendered text copy is sanitized.
     if not results:
-        assert "duckduckgo.com" in sources[0]["url"]
+        assert_duckduckgo_search_url(sources[0]["url"], query)
         assert "%5BEND+FILE+CONTEXT%5D" in sources[0]["url"]
