@@ -26,6 +26,36 @@ _INJECTION_PATTERNS = (
     re.compile(r"(?:call|invoke|execute)\s+(?:the\s+)?(?:tool|function)", re.I),
     re.compile(r"reveal\s+(?:the\s+)?(?:system|developer)\s+(?:prompt|message)", re.I),
     re.compile(r"do\s+not\s+(?:tell|show)\s+the\s+user", re.I),
+    # Arabic equivalents for common prompt-injection phrases. These are
+    # suspicion signals, not a complete classifier; untrusted outputs remain
+    # untrusted regardless of whether a pattern matches.
+    re.compile(
+        r"(?:تجاهل|تجاوز|تخطى|تخطَّ|انسَ|انسى|أهمل|اهمل)\s+"
+        r"(?:كل\s+)?(?:التعليمات|تعليمات)\s+"
+        r"(?:السابقة|المسبقة|الماضية|أعلاه|اعلاه)",
+        re.I,
+    ),
+    re.compile(
+        r"(?:تعليمات|رسالة|موجه|موجّه)\s+"
+        r"(?:النظام|المطور|المطوّر)\s*[:：-]",
+        re.I,
+    ),
+    re.compile(
+        r"(?:اكشف|أكشف|اظهر|أظهر|اعرض|أعرض|اطبع)\s+"
+        r"(?:لي\s+)?(?:تعليمات|رسالة|موجه|موجّه)\s+"
+        r"(?:النظام|المطور|المطوّر|المخفية|الداخلية|السرية)",
+        re.I,
+    ),
+    re.compile(
+        r"(?:نفذ|نفّذ|شغل|شغّل|استدع[ىيِ]?)\s+"
+        r"(?:هذه\s+)?(?:الأداة|الاداة|الأمر|الامر|الدالة|دالة)",
+        re.I,
+    ),
+    re.compile(
+        r"لا\s+(?:تخبر|تُخبر|تقل|تُقل|تعرض|تُظهر|تظهر)\s+"
+        r"(?:المستخدم|للمستخدم)",
+        re.I,
+    ),
 )
 
 
