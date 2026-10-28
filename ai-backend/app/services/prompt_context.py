@@ -8,10 +8,10 @@ _CONTEXT_CONTROL_MARKER_PATTERN = re.compile(
     r"\[(?:"
     r"\s*SOURCE\s+S\d+\s*:[^\]\r\n]*"
     r"|\s*[SWD]\d+\s*"
-    r"|\s*(?:USER MEMORY|PROJECT MEMORY|ASSISTANT INSTRUCTIONS|PROJECT INSTRUCTIONS|CONVERSATION SUMMARY|BEGIN UNTRUSTED TOOL DATA)\s*"
+    r"|\s*(?:USER MEMORY|PROJECT MEMORY|ASSISTANT INSTRUCTIONS|PROJECT INSTRUCTIONS|CONVERSATION SUMMARY|BEGIN UNTRUSTED TOOL DATA|BEGIN UNTRUSTED TRANSCRIPT(?: JSON)?)\s*"
     r"|\s*END\s+(?:RETRIEVED FILE CONTEXT|FILE CONTEXT|EXPLICIT ATTACHMENT CONTEXT|"
     r"ATTACHMENT STATUS|USER MEMORY|PROJECT MEMORY|ASSISTANT INSTRUCTIONS|"
-    r"PROJECT INSTRUCTIONS|CONVERSATION SUMMARY|UNTRUSTED TOOL DATA)\s*"
+    r"PROJECT INSTRUCTIONS|CONVERSATION SUMMARY|UNTRUSTED TOOL DATA|UNTRUSTED TRANSCRIPT(?: JSON)?)\s*"
     r"|\s*ATTACHMENT STATUS\s+—\s+VERIFIED APPLICATION METADATA\s*"
     r")\]",
     re.IGNORECASE,
@@ -20,6 +20,11 @@ _CONTEXT_CONTROL_MARKER_PATTERN = re.compile(
 
 _USER_REQUEST_DELIMITER_PATTERN = re.compile(
     r"(?i)\bUSER\s+REQUEST\s*:"
+)
+
+
+_UNTRUSTED_TRANSCRIPT_MARKER_PATTERN = re.compile(
+    r"(?i)\\b(?:BEGIN|END)\\s+UNTRUSTED\\s+TRANSCRIPT(?:\\s+JSON)?\\b"
 )
 
 
@@ -33,6 +38,12 @@ def safe_context_text(text: str) -> str:
     rendered = _CONTEXT_CONTROL_MARKER_PATTERN.sub(
         lambda match: f"［{match.group(0)[1:-1]}］",
         text,
+    )
+    # Transcript wrappers are also app-owned delimiters. Neutralize bare mentions
+    # so a saved message cannot impersonate the beginning/end of a memory transcript.
+    rendered = _UNTRUSTED_TRANSCRIPT_MARKER_PATTERN.sub(
+        lambda match: match.group(0).replace(" ", "∶", 1),
+        rendered,
     )
     # The final user request is separated by this literal delimiter in the prompt.
     # Prevent file, memory, and metadata text from imitating that delimiter.
