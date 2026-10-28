@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from app.services.rag_evaluation import score_ranked_results
+
 
 def _load_comparator():
     script_path = Path(__file__).parents[1] / "scripts" / "compare_rag_reports.py"
@@ -20,101 +22,132 @@ def _report(
     dataset_sha256="a" * 64,
     fingerprint="b" * 64,
     model="test-model",
-    recall=0.5,
-    precision=0.5,
-    ndcg=0.7,
-    reciprocal_rank=0.5,
-    top1_irrelevant_rate=0.5,
     irrelevant_case_ids=None,
+    low_ndcg_case_ids=None,
     case_count=14,
 ):
-    metrics = {
-        "recall_at_3": recall,
-        "precision_at_3": precision,
-        "ndcg_at_3": ndcg,
-        "reciprocal_rank": reciprocal_rank,
-    }
     case_ids = [f"CASE-{index:03d}" for index in range(case_count)]
     if irrelevant_case_ids is None:
-        bad_count = round(top1_irrelevant_rate * len(case_ids))
-        irrelevant_case_ids = set(case_ids[:bad_count])
+        irrelevant_case_ids = set(case_ids[: (case_count + 1) // 2])
     else:
         irrelevant_case_ids = set(irrelevant_case_ids)
-        if not irrelevant_case_ids <= set(case_ids):
-            raise ValueError("Unknown test case id.")
+    low_ndcg_case_ids = set(low_ndcg_case_ids or ())
+    if not irrelevant_case_ids <= set(case_ids) or not low_ndcg_case_ids <= set(case_ids):
+        raise ValueError("Unknown test case id.")
+    if irrelevant_case_ids & low_ndcg_case_ids:
+        raise ValueError("A case cannot use two mutually exclusive test rankings.")
 
     cases = []
     for index, case_id in enumerate(case_ids):
-        top1_is_irrelevant = case_id in irrelevant_case_ids
-        if top1_is_irrelevant:
-            ranked_documents = [
-                {
-                    "id": f"{case_id}-negative",
-                    "title": "Irrelevant document",
-                    "relevance": 0,
-                    "cosine_similarity": 0.99,
-                },
-                {
-                    "id": f"{case_id}-relevant",
-                    "title": "Relevant document",
-                    "relevance": 2,
-                    "cosine_similarity": 0.98,
-                },
-                {
-                    "id": f"{case_id}-partial",
-                    "title": "Partially relevant document",
-                    "relevance": 1,
-                    "cosine_similarity": 0.2,
-                },
+        documents_by_id = {
+            f"{case_id}-relevant": {
+                "id": f"{case_id}-relevant",
+                "title": "Relevant document",
+                "relevance": 2,
+                "cosine_similarity": 0.99,
+            },
+            f"{case_id}-partial": {
+                "id": f"{case_id}-partial",
+                "title": "Partially relevant document",
+                "relevance": 1,
+                "cosine_similarity": 0.7,
+            },
+            f"{case_id}-partial-two": {
+                "id": f"{case_id}-partial-two",
+                "title": "Second partially relevant document",
+                "relevance": 1,
+                "cosine_similarity": 0.6,
+            },
+            f"{case_id}-negative": {
+                "id": f"{case_id}-negative",
+                "title": "Irrelevant document",
+                "relevance": 0,
+                "cosine_similarity": 0.2,
+            },
+            f"{case_id}-negative-two": {
+                "id": f"{case_id}-negative-two",
+                "title": "Second irrelevant document",
+                "relevance": 0,
+                "cosine_similarity": 0.1,
+            },
+        }
+        if case_id in irrelevant_case_ids:
+            ranking_order = [
+                f"{case_id}-negative",
+                f"{case_id}-relevant",
+                f"{case_id}-partial",
+                f"{case_id}-partial-two",
+                f"{case_id}-negative-two",
+            ]
+        elif case_id in low_ndcg_case_ids:
+            ranking_order = [
+                f"{case_id}-partial",
+                f"{case_id}-negative",
+                f"{case_id}-partial-two",
+                f"{case_id}-relevant",
+                f"{case_id}-negative-two",
             ]
         else:
-            ranked_documents = [
-                {
-                    "id": f"{case_id}-relevant",
-                    "title": "Relevant document",
-                    "relevance": 2,
-                    "cosine_similarity": 0.99,
-                },
-                {
-                    "id": f"{case_id}-partial",
-                    "title": "Partially relevant document",
-                    "relevance": 1,
-                    "cosine_similarity": 0.5,
-                },
-                {
-                    "id": f"{case_id}-negative",
-                    "title": "Irrelevant document",
-                    "relevance": 0,
-                    "cosine_similarity": 0.2,
-                },
+            ranking_order = [
+                f"{case_id}-relevant",
+                f"{case_id}-partial",
+                f"{case_id}-partial-two",
+                f"{case_id}-negative",
+                f"{case_id}-negative-two",
             ]
+        ranked_documents = [dict(documents_by_id[document_id]) for document_id in ranking_order]
+        relevance_by_id = {
+            document_id: document["relevance"]
+            for document_id, document in documents_by_id.items()
+        }
+        metrics = score_ranked_results(ranking_order, relevance_by_id, k=3)
+        first_relevant_rank = next(
+            rank
+            for rank, document in enumerate(ranked_documents, start=1)
+            if document["relevance"] > 0
+        )
+        top1_is_irrelevant = ranked_documents[0]["relevance"] == 0
         cases.append(
             {
                 "case_id": case_id,
                 "domain": "programming" if index < (case_count + 1) // 2 else "networking",
                 "query": f"Test query {case_id}",
-                "metrics": dict(metrics),
+                "metrics": metrics,
                 "top1_is_irrelevant": top1_is_irrelevant,
-                "first_relevant_rank": 2 if top1_is_irrelevant else 1,
+                "first_relevant_rank": first_relevant_rank,
                 "ranked_documents": ranked_documents,
                 "critical_failure": "Rank the irrelevant document first.",
             }
         )
 
+    metric_names = set(cases[0]["metrics"])
+    macro_average = {
+        metric: round(sum(case["metrics"][metric] for case in cases) / len(cases), 4)
+        for metric in metric_names
+    }
     by_domain = {}
-    for domain in ("programming", "networking"):
+    for domain in sorted({case["domain"] for case in cases}):
         domain_cases = [case for case in cases if case["domain"] == domain]
         domain_bad_count = sum(case["top1_is_irrelevant"] for case in domain_cases)
-        by_domain[domain] = {
-            **metrics,
-            "top1_irrelevant_count": domain_bad_count,
-            "top1_irrelevant_rate": round(domain_bad_count / len(domain_cases), 4),
-            "mean_first_relevant_rank": round(
-                sum(case["first_relevant_rank"] for case in domain_cases)
-                / len(domain_cases),
+        domain_summary = {
+            metric: round(
+                sum(case["metrics"][metric] for case in domain_cases) / len(domain_cases),
                 4,
-            ),
+            )
+            for metric in metric_names
         }
+        domain_summary.update(
+            {
+                "top1_irrelevant_count": domain_bad_count,
+                "top1_irrelevant_rate": round(domain_bad_count / len(domain_cases), 4),
+                "mean_first_relevant_rank": round(
+                    sum(case["first_relevant_rank"] for case in domain_cases)
+                    / len(domain_cases),
+                    4,
+                ),
+            }
+        )
+        by_domain[domain] = domain_summary
 
     bad_count = sum(case["top1_is_irrelevant"] for case in cases)
     return {
@@ -125,7 +158,7 @@ def _report(
         "embedding_fingerprint": fingerprint,
         "top_k": 3,
         "case_count": len(cases),
-        "macro_average": metrics,
+        "macro_average": macro_average,
         "retrieval_diagnostics": {
             "top1_irrelevant_count": bad_count,
             "top1_irrelevant_rate": round(bad_count / len(cases), 4),
@@ -145,18 +178,17 @@ def test_report_comparison_marks_improvements_and_regressions():
     candidate = _report(
         fingerprint="c" * 64,
         model="candidate-model",
-        recall=0.75,
-        precision=0.4,
-        ndcg=0.6,
-        reciprocal_rank=0.8,
-        top1_irrelevant_rate=0.1,
+        irrelevant_case_ids={"CASE-013"},
+        low_ndcg_case_ids={
+            "CASE-001", "CASE-002", "CASE-003", "CASE-004", "CASE-005"
+        },
     )
 
     result = comparator.compare_reports(baseline, candidate)
 
     assert result["embedding_fingerprint_changed"] is True
     assert result["macro_average"]["recall_at_3"]["status"] == "improved"
-    assert result["macro_average"]["precision_at_3"]["status"] == "regressed"
+    assert result["macro_average"]["precision_at_3"]["status"] == "improved"
     assert result["macro_average"]["ndcg_at_3"]["status"] == "regressed"
     assert result["macro_average"]["reciprocal_rank"]["status"] == "improved"
     assert result["retrieval_diagnostics"]["top1_irrelevant_rate"]["status"] == "improved"
@@ -202,7 +234,7 @@ def test_cli_reads_local_reports_and_writes_comparison(tmp_path, monkeypatch, ca
     output_path = tmp_path / "comparison.json"
     baseline_path.write_text(json.dumps(_report()), encoding="utf-8")
     candidate_path.write_text(
-        json.dumps(_report(fingerprint="c" * 64, recall=0.8)),
+        json.dumps(_report(fingerprint="c" * 64, irrelevant_case_ids=set())),
         encoding="utf-8",
     )
 
@@ -221,7 +253,7 @@ def test_cli_reads_local_reports_and_writes_comparison(tmp_path, monkeypatch, ca
     assert comparator.main() == 0
     assert "written" in capsys.readouterr().out
     result = json.loads(output_path.read_text(encoding="utf-8"))
-    assert result["macro_average"]["recall_at_3"]["delta_candidate_minus_baseline"] == pytest.approx(0.3)
+    assert result["macro_average"]["recall_at_3"]["delta_candidate_minus_baseline"] == pytest.approx(0.1667)
 
 
 def test_cli_will_not_overwrite_an_input_report(tmp_path, monkeypatch, capsys):
@@ -257,11 +289,6 @@ def test_comparator_surfaces_case_level_regression_hidden_by_better_macro_metric
     candidate = _report(
         fingerprint="c" * 64,
         model="candidate-model",
-        recall=0.75,
-        precision=0.6,
-        ndcg=0.8,
-        reciprocal_rank=0.8,
-        top1_irrelevant_rate=2 / 14,
         irrelevant_case_ids={"CASE-000", "CASE-010"},
     )
 
@@ -375,3 +402,30 @@ def test_report_validator_rejects_cosine_similarity_outside_valid_range():
 
     with pytest.raises(ValueError, match="cosine similarity outside"):
         comparator.compare_reports(_report(), malformed)
+
+def test_comparator_rejects_metrics_that_do_not_match_ranked_document_order():
+    comparator = _load_comparator()
+    candidate = _report()
+
+    # Keep macro and per-domain summaries consistent with the tampered case rows;
+    # the validator must independently recompute metrics from the ranked documents.
+    for case in candidate["cases"]:
+        case["metrics"]["recall_at_3"] = 0.99
+    candidate["macro_average"]["recall_at_3"] = 0.99
+    for domain in candidate["by_domain"].values():
+        domain["recall_at_3"] = 0.99
+
+    with pytest.raises(ValueError, match="does not match its ranked document order"):
+        comparator.compare_reports(_report(), candidate)
+
+
+def test_comparator_rejects_metric_names_that_do_not_match_top_k():
+    comparator = _load_comparator()
+    baseline = _report()
+    candidate = _report()
+    baseline["top_k"] = 2
+    candidate["top_k"] = 2
+
+    with pytest.raises(ValueError, match="metric names do not match top_k=2"):
+        comparator.compare_reports(baseline, candidate)
+
