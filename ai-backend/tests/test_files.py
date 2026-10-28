@@ -1,6 +1,7 @@
 """
 اختبارات المرحلة السادسة: رفع الملفات وإدارتها
 """
+from io import BytesIO
 import zipfile
 
 import pytest
@@ -1442,3 +1443,46 @@ def test_office_archive_accepts_small_valid_package(tmp_path):
         archive.writestr("[Content_Types].xml", "<Types />")
 
     _validate_office_archive(path, max_uncompressed=10_000)
+
+
+def test_upload_rejects_office_zip_bomb_before_persisting_file(
+    client, db_session, tmp_path, monkeypatch
+):
+    """The upload route rejects a compressed Office payload before permanent storage."""
+    from app.models.file_attachment import FileAttachment
+    from app.models.user import User
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    _disable_object_storage(monkeypatch)
+
+    archive_bytes = BytesIO()
+    with zipfile.ZipFile(
+        archive_bytes, "w", compression=zipfile.ZIP_DEFLATED
+    ) as archive:
+        archive.writestr("word/document.xml", "A" * 10_000)
+
+    token = _register_and_login(client, "office-zip-bomb@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    response = client.post(
+        "/files/upload",
+        files={
+            "file": (
+                "oversized.docx",
+                archive_bytes.getvalue(),
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 415
+    user = db_session.query(User).filter_by(email="office-zip-bomb@example.com").one()
+    assert (
+        db_session.query(FileAttachment)
+        .filter(FileAttachment.user_id == user.id)
+        .count()
+        == 0
+    )
+    user_directory = tmp_path / str(user.id)
+    assert user_directory.exists()
+    assert list(user_directory.iterdir()) == []
