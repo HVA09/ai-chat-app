@@ -96,6 +96,10 @@ def _report(
                 f"{case_id}-negative-two",
             ]
         ranked_documents = [dict(documents_by_id[document_id]) for document_id in ranking_order]
+        # Keep synthetic report rows structurally realistic: scores must follow
+        # the reported ranking order even when relevance is intentionally poor.
+        for rank, document in enumerate(ranked_documents):
+            document["cosine_similarity"] = round(0.99 - rank * 0.1, 6)
         relevance_by_id = {
             document_id: document["relevance"]
             for document_id, document in documents_by_id.items()
@@ -429,3 +433,11 @@ def test_comparator_rejects_metric_names_that_do_not_match_top_k():
     with pytest.raises(ValueError, match="metric names do not match top_k=2"):
         comparator.compare_reports(baseline, candidate)
 
+
+def test_report_validator_rejects_cosine_scores_that_conflict_with_rank_order():
+    comparator = _load_comparator()
+    malformed = _report()
+    malformed["cases"][0]["ranked_documents"][1]["cosine_similarity"] = 1.0
+
+    with pytest.raises(ValueError, match="not sorted by descending cosine similarity"):
+        comparator.compare_reports(_report(), malformed)
