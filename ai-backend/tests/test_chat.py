@@ -1627,3 +1627,103 @@ def test_non_agent_chat_stream_releases_db_connection_before_streaming_response(
         assert isinstance(response, CapturedStreamingResponse)
         assert released == [True]
         assert db.expire_on_commit is False
+
+
+
+def _assert_message_stream_route_releases_db_before_response(
+    client, monkeypatch, db_session, *, route_kind, email
+):
+    """Exercise regenerate/edit setup and assert release precedes StreamingResponse."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="initial answer")),
+    )
+    token = _register_and_login(client, email)
+    headers = {"Authorization": f"Bearer {token}"}
+    created = client.post(
+        "/chat",
+        json={"message": "initial question"},
+        headers=headers,
+    )
+    assert created.status_code == 200
+    conversation_id = created.json()["conversation_id"]
+    current_user = db_session.query(User).filter(User.email == email).one()
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "_augment_message",
+        AsyncMock(return_value=("edited prompt", [])),
+    )
+    original_release = chat_router_module._release_db_connection_before_streaming
+    released = []
+
+    def tracking_release(session):
+        original_release(session)
+        released.append(True)
+
+    class CapturedStreamingResponse:
+        def __init__(self, content, **kwargs):
+            assert released == [True], (
+                f"{route_kind} route constructed StreamingResponse before DB release"
+            )
+            self.content = content
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(
+        chat_router_module, "_release_db_connection_before_streaming", tracking_release
+    )
+    monkeypatch.setattr(
+        chat_router_module, "StreamingResponse", CapturedStreamingResponse
+    )
+
+    request = SimpleNamespace(headers={"accept-language": "ar"})
+    if route_kind == "regenerate":
+        response = asyncio.run(
+            chat_router_module.regenerate_chat_stream(
+                conversation_id=conversation_id,
+                request=request,
+                current_user=current_user,
+                db=db_session,
+            )
+        )
+    else:
+        response = asyncio.run(
+            chat_router_module.edit_chat_stream(
+                conversation_id=conversation_id,
+                payload=SimpleNamespace(message_index=1, message="edited question"),
+                request=request,
+                current_user=current_user,
+                db=db_session,
+            )
+        )
+
+    assert isinstance(response, CapturedStreamingResponse)
+    assert released == [True]
+    assert db_session.expire_on_commit is False
+
+
+def test_regenerate_route_releases_db_connection_before_streaming_response(
+    client, monkeypatch, db_session
+):
+    _assert_message_stream_route_releases_db_before_response(
+        client,
+        monkeypatch,
+        db_session,
+        route_kind="regenerate",
+        email="db-pool-regenerate-route@example.com",
+    )
+
+
+def test_edit_route_releases_db_connection_before_streaming_response(
+    client, monkeypatch, db_session
+):
+    _assert_message_stream_route_releases_db_before_response(
+        client,
+        monkeypatch,
+        db_session,
+        route_kind="edit",
+        email="db-pool-edit-route@example.com",
+    )
