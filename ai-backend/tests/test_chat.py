@@ -2036,9 +2036,8 @@ def test_chat_neutralizes_request_delimiters_in_prompt_and_saved_history(
 
 def test_chat_compare_neutralizes_nested_user_request_delimiter(client, monkeypatch):
     """The model-comparison endpoint must keep one real request delimiter."""
-    mock_reply = AsyncMock(
-        return_value=AIReply(text="رد تجريبي", input_tokens=1, output_tokens=1)
-    )
+    # Some providers do not return token usage; the compare API should still respond.
+    mock_reply = AsyncMock(return_value=AIReply(text="رد تجريبي"))
     monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
     token = _register_and_login(client, "request-delimiter-compare@example.com")
     headers = {"Authorization": f"Bearer {token}"}
