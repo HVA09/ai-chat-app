@@ -1063,6 +1063,11 @@ def test_chat_context_includes_legacy_knowledge_when_rag_returns_current_chunks(
     from app.models.file_attachment import FileAttachment
     from app.models.workspace import Workspace
 
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="تم")),
+    )
     token = _register_and_login(client, "mixed-legacy-rag@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     created = client.post("/chat", json={"message": "ابدأ"}, headers=headers)
