@@ -294,6 +294,7 @@ def test_comparator_surfaces_case_level_regression_hidden_by_better_macro_metric
         fingerprint="c" * 64,
         model="candidate-model",
         irrelevant_case_ids={"CASE-000", "CASE-010"},
+        low_ndcg_case_ids={"CASE-001"},
     )
 
     result = comparator.compare_reports(baseline, candidate)
