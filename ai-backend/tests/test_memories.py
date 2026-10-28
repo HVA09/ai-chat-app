@@ -244,3 +244,45 @@ def test_memory_suggestion_parser_rejects_sensitive_personal_facts():
     )
 
     assert [item.content for item in parsed] == ["يفضل الشرح بالعربية."]
+
+
+def test_memory_suggestion_parser_rejects_unlabeled_credentials_and_tokens():
+    from app.routers.memories import _parse_memory_suggestions
+
+    candidates = [
+        {
+            "content": "يجب إبقاء مفتاح خدمة الذكاء الاصطناعي خاصًا.",
+            "evidence": "AIzaSyA1234567890abcdefghijklmnopqrstuv",
+        },
+        {
+            "content": "يستخدم المستخدم رمز وصول خاصًا.",
+            "evidence": "ghp_" + "A" * 30,
+        },
+        {
+            "content": "يستخدم المستخدم مفتاح وصول للنشر.",
+            "evidence": "AKIAIOSFODNN7EXAMPLE",
+        },
+        {
+            "content": "يستخدم المستخدم رمز جلسة مؤقتًا.",
+            "evidence": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTYifQ.signatureSignatureMoreHere",
+        },
+        {
+            "content": "يستخدم المستخدم اتصال قاعدة بيانات خاصًا.",
+            "evidence": "postgresql://app_user:fake-pass-123@db.example.test:5432/app",
+        },
+        {
+            "content": "يفضل الشرح بالعربية مع أمثلة.",
+            "evidence": "أفضل الشرح بالعربية مع أمثلة عملية.",
+        },
+    ]
+    user_messages = [item["evidence"] for item in candidates]
+
+    parsed = _parse_memory_suggestions(
+        json.dumps({"suggestions": candidates}, ensure_ascii=False),
+        user_messages=user_messages,
+        existing_contents=set(),
+    )
+
+    assert [item.content for item in parsed] == [
+        "يفضل الشرح بالعربية مع أمثلة."
+    ]
