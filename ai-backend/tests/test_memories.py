@@ -302,6 +302,8 @@ def test_memory_suggestion_sensitive_filter_covers_additional_raw_credentials():
         "ya29." + "F" * 30,
         "AKIAIOSFODNN7EXAMPLE",
         "ASIAABCDEFGHIJKLMNOP",
+        "postgresql+psycopg://app_user:fake-pass-123@db.example.test:5432/app",
+        "redis://:fake-cache-pass@cache.example.test:6379/0",
         "-----BEGIN PRIVATE KEY-----",
         "https://hooks.slack.com/services/T123456/B123456/abcdef123456",
     ]
