@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
@@ -181,9 +182,28 @@ def validate_tool_arguments(
         _validate_schema(arguments, parameters, "$")
 
 
+def _normalize_injection_signal_text(text: str) -> str:
+    """Normalize common Unicode formatting tricks for detection only.
+
+    The original tool output is not changed by this function. Detection is a
+    warning signal, not an authorization decision or a complete injection filter.
+    """
+    normalized = unicodedata.normalize("NFKC", text)
+    normalized = "".join(
+        character
+        for character in normalized
+        if character != "\u0640"
+        and unicodedata.category(character) not in {"Mn", "Me", "Cf"}
+    )
+    return re.sub(r"\s+", " ", normalized)
+
+
 def inspect_untrusted_output(content: str) -> ToolOutputSecurity:
     text = content if isinstance(content, str) else str(content)
-    injection_suspected = any(pattern.search(text) for pattern in _INJECTION_PATTERNS)
+    signal_text = _normalize_injection_signal_text(text)
+    injection_suspected = any(
+        pattern.search(signal_text) for pattern in _INJECTION_PATTERNS
+    )
     return ToolOutputSecurity(
         untrusted=True,
         injection_suspected=injection_suspected,
