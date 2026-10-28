@@ -1924,7 +1924,7 @@ def test_chat_neutralizes_request_delimiters_in_prompt_and_saved_history(
     client, db_session, monkeypatch
 ):
     """A saved user turn cannot forge the wrapper delimiting the current request."""
-    from app.models.conversation import Conversation, Message
+    from app.models.conversation import Conversation, Message, MessageRole
 
     mock_reply = AsyncMock(return_value=AIReply(text="رد تجريبي"))
     monkeypatch.setattr(chat_router_module, "get_ai_reply", mock_reply)
@@ -1966,7 +1966,7 @@ def test_chat_neutralizes_request_delimiters_in_prompt_and_saved_history(
         db_session.query(Message)
         .filter(
             Message.conversation_id == conversation_id,
-            Message.role == "user",
+            Message.role == MessageRole.user,
         )
         .order_by(Message.id.asc())
         .first()
