@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from app.services.rag_evaluation import score_ranked_results
+
 BENCHMARK_NAME = "rag-retrieval-eval-v1"
 COMPARISON_NAME = "rag-retrieval-comparison-v1"
 EPSILON = 1e-6
@@ -106,7 +108,7 @@ def _validate_report(report: Any, label: str) -> dict[str, Any]:
         raise ValueError(f"{label}.cases must contain exactly case_count entries.")
 
     case_ids: set[str] = set()
-    seen_document_ids_by_case: set[tuple[str, str]] = set()
+    seen_document_ids: set[str] = set()
     cases_by_domain: dict[str, list[dict[str, Any]]] = {}
     for case in cases:
         if not isinstance(case, dict):
@@ -158,6 +160,11 @@ def _validate_report(report: Any, label: str) -> dict[str, Any]:
             if not isinstance(document_id, str) or not document_id or document_id in ranked_ids:
                 raise ValueError(f"{label} case {case_id} has a missing or duplicate ranked document id.")
             ranked_ids.add(document_id)
+            if document_id in seen_document_ids:
+                raise ValueError(
+                    f"{label} contains a duplicate ranked document id across cases: {document_id}."
+                )
+            seen_document_ids.add(document_id)
             relevance = document.get("relevance")
             if (
                 isinstance(relevance, bool)
@@ -167,19 +174,35 @@ def _validate_report(report: Any, label: str) -> dict[str, Any]:
                 raise ValueError(f"{label} case {case_id} has an invalid relevance grade.")
             if not isinstance(document.get("title"), str) or not document["title"].strip():
                 raise ValueError(f"{label} case {case_id} has a ranked document without a title.")
-            _finite_number(
+            similarity = _finite_number(
                 document.get("cosine_similarity"),
                 f"{label}.cases.{case_id}.ranked_documents.{rank}.cosine_similarity",
             )
+            if similarity < -1.00011 or similarity > 1.00011:
+                raise ValueError(
+                    f"{label} case {case_id} has a cosine similarity outside [-1, 1]."
+                )
             if relevance > 0 and actual_first_relevant_rank is None:
                 actual_first_relevant_rank = rank
-            seen_document_ids_by_case.add((case_id, document_id))
 
         if actual_first_relevant_rank is None or actual_first_relevant_rank != first_rank:
             raise ValueError(f"{label} case {case_id} has inconsistent first_relevant_rank.")
         top1_is_irrelevant = ranked[0]["relevance"] == 0
         if case["top1_is_irrelevant"] != top1_is_irrelevant:
             raise ValueError(f"{label} case {case_id} has inconsistent top1_is_irrelevant.")
+
+        derived_metrics = score_ranked_results(
+            [document["id"] for document in ranked],
+            {document["id"]: document["relevance"] for document in ranked},
+            k=report["top_k"],
+        )
+        if set(derived_metrics) != set(case_metrics):
+            raise ValueError(f"{label} case {case_id} has an incompatible metric set.")
+        for metric, expected_value in derived_metrics.items():
+            if abs(float(case_metrics[metric]) - expected_value) > 0.00011:
+                raise ValueError(
+                    f"{label} case {case_id} has metrics inconsistent with ranked documents."
+                )
 
     if set(cases_by_domain) != set(by_domain):
         raise ValueError(f"{label} has inconsistent case and by_domain coverage.")
@@ -298,6 +321,30 @@ def compare_reports(baseline_report: Any, candidate_report: Any) -> dict[str, An
             raise ValueError(f"Reports assign case {case_id} to different domains.")
         if baseline_cases[case_id]["critical_failure"] != candidate_cases[case_id]["critical_failure"]:
             raise ValueError(f"Reports contain different critical-failure guidance for case {case_id}.")
+
+        base_documents = {
+            document["id"]: document
+            for document in baseline_cases[case_id]["ranked_documents"]
+        }
+        candidate_documents = {
+            document["id"]: document
+            for document in candidate_cases[case_id]["ranked_documents"]
+        }
+        if set(base_documents) != set(candidate_documents):
+            raise ValueError(
+                f"Reports rank different document ids for case {case_id}; "
+                "comparison requires the same candidate corpus."
+            )
+        for document_id, base_document in base_documents.items():
+            candidate_document = candidate_documents[document_id]
+            if (
+                base_document["relevance"] != candidate_document["relevance"]
+                or base_document["title"] != candidate_document["title"]
+            ):
+                raise ValueError(
+                    f"Reports contain different document labels for case {case_id} "
+                    f"and document {document_id}."
+                )
 
     metric_comparisons: dict[str, Any] = {}
     for metric in sorted(baseline["macro_average"]):
