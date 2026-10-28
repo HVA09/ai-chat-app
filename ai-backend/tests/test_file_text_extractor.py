@@ -353,3 +353,70 @@ def test_xlsx_extraction_stops_when_a_row_exactly_fills_character_budget(
     assert worksheet.rows_yielded == 1
     assert workbook.closed
     assert "This later row must not be visited." not in text
+
+
+def _guard_bounded_binary_reads(monkeypatch, target_path: Path, maximum_size: int):
+    """Fail if extraction switches back to whole-file reads or unbounded read()."""
+    original_open = Path.open
+    observed_sizes = []
+
+    class GuardedReader:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return self.handle.__exit__(exc_type, exc_value, traceback)
+
+        def read(self, size=-1):
+            assert 0 <= size <= maximum_size, (
+                f"expected a bounded read <= {maximum_size} bytes, got {size}"
+            )
+            observed_sizes.append(size)
+            return self.handle.read(size)
+
+    def guarded_open(self, *args, **kwargs):
+        handle = original_open(self, *args, **kwargs)
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if self == target_path and mode == "rb":
+            return GuardedReader(handle)
+        return handle
+
+    def fail_read_bytes(_self):
+        raise AssertionError("extractor must not load the whole file via read_bytes()")
+
+    monkeypatch.setattr(Path, "open", guarded_open)
+    monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
+    return observed_sizes
+
+
+def test_text_extraction_reads_only_a_bounded_prefix(tmp_path: Path, monkeypatch):
+    from app.services import file_text_extractor
+
+    path = tmp_path / "large.txt"
+    path.write_text("A" * 10_000, encoding="utf-8")
+    observed = _guard_bounded_binary_reads(monkeypatch, path, maximum_size=32 * 4)
+
+    text = file_text_extractor._read_text_file(path, max_chars=32)
+
+    assert observed == [32 * 4]
+    assert text.startswith("A" * 32)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+
+
+def test_csv_extraction_bounds_bytes_and_truncates_an_oversized_field(
+    tmp_path: Path, monkeypatch
+):
+    from app.services import file_text_extractor
+
+    path = tmp_path / "large.csv"
+    path.write_text("A" * 10_000, encoding="utf-8")
+    observed = _guard_bounded_binary_reads(monkeypatch, path, maximum_size=32 * 8)
+
+    text = file_text_extractor._read_csv_file(path, max_chars=32)
+
+    assert observed == [32 * 8]
+    assert text.startswith("A" * 32)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
