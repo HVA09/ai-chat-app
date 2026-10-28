@@ -1461,3 +1461,169 @@ def test_chat_stream_sends_localized_provider_rate_limit_message(client, monkeyp
     assert "check the provider's quota" in response.text
     assert "too many requests" not in response.text
 
+
+
+
+def test_non_agent_chat_stream_releases_db_connection_before_streaming_response(
+    monkeypatch,
+):
+    """Every non-Agent SSE branch must release its checkout before response streaming."""
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+
+    original_release = chat_router_module._release_db_connection_before_streaming
+    conversation = SimpleNamespace(id=701, workspace_id=None, ai_model="test-model")
+    current_user = SimpleNamespace(id=702, email="stream-pool@example.com")
+
+    class FakeSession:
+        def __init__(self):
+            self.expire_on_commit = True
+            self.commit_count = 0
+
+        def add(self, _item):
+            return None
+
+        def commit(self):
+            self.commit_count += 1
+
+        def rollback(self):
+            return None
+
+    for branch in ("calculator", "python", "data_analysis", "web_search", "normal"):
+        db = FakeSession()
+        released = []
+
+        monkeypatch.setattr(
+            chat_router_module,
+            "_get_or_create_conversation",
+            lambda *_args, **_kwargs: conversation,
+        )
+        monkeypatch.setattr(
+            chat_router_module,
+            "_attach_requested_files",
+            lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(
+            chat_router_module,
+            "extract_agent_request",
+            lambda _message: None,
+        )
+        monkeypatch.setattr(
+            chat_router_module,
+            "extract_calculator_expression",
+            lambda _message, selected=branch: "1 + 1"
+            if selected == "calculator"
+            else None,
+        )
+        monkeypatch.setattr(
+            chat_router_module,
+            "extract_code_request",
+            lambda _message, selected=branch: "print('ok')"
+            if selected == "python"
+            else None,
+        )
+        monkeypatch.setattr(
+            chat_router_module,
+            "extract_data_analysis_request",
+            lambda _message, selected=branch: "notes.csv"
+            if selected == "data_analysis"
+            else None,
+        )
+        monkeypatch.setattr(
+            chat_router_module,
+            "extract_web_search_query",
+            lambda _message, selected=branch: "Linux networking"
+            if selected == "web_search"
+            else None,
+        )
+        monkeypatch.setattr(
+            chat_router_module,
+            "_release_db_connection_before_streaming",
+            lambda session: (
+                original_release(session),
+                released.append(True),
+            ),
+        )
+
+        if branch == "calculator":
+            monkeypatch.setattr(
+                chat_router_module, "calculate_expression", lambda _expression: "2"
+            )
+        elif branch == "python":
+            monkeypatch.setattr(
+                chat_router_module, "execute_python_code", lambda _code: "ok"
+            )
+        elif branch == "data_analysis":
+            attachment = SimpleNamespace(
+                object_key="fake-key",
+                stored_filename="notes.csv",
+                original_filename="notes.csv",
+                content_type="text/csv",
+            )
+            monkeypatch.setattr(
+                chat_router_module,
+                "_get_attached_data_attachment",
+                lambda *_args, **_kwargs: attachment,
+            )
+            monkeypatch.setattr(
+                chat_router_module,
+                "materialize_file",
+                lambda *_args, **_kwargs: nullcontext("/tmp/fake-notes.csv"),
+            )
+            monkeypatch.setattr(
+                chat_router_module,
+                "analyze_file",
+                lambda _data_file: "analysis output",
+            )
+        elif branch == "web_search":
+            monkeypatch.setattr(
+                chat_router_module,
+                "search_web",
+                AsyncMock(return_value=[]),
+            )
+            monkeypatch.setattr(
+                chat_router_module,
+                "format_web_search_response",
+                lambda _query, _results: ("search output", []),
+            )
+        else:
+            monkeypatch.setattr(
+                chat_router_module,
+                "_build_history",
+                Mock(return_value=[]),
+            )
+            monkeypatch.setattr(
+                chat_router_module,
+                "_augment_message",
+                AsyncMock(return_value=("hello", [])),
+            )
+
+        class CapturedStreamingResponse:
+            def __init__(self, content, **kwargs):
+                assert released == [True], (
+                    f"{branch} branch started StreamingResponse before releasing DB"
+                )
+                self.content = content
+                self.kwargs = kwargs
+
+        monkeypatch.setattr(
+            chat_router_module, "StreamingResponse", CapturedStreamingResponse
+        )
+
+        response = asyncio.run(
+            chat_router_module.chat_stream(
+                payload=SimpleNamespace(
+                    message="hello",
+                    file_ids=[],
+                    conversation_id=None,
+                ),
+                request=None,
+                current_user=current_user,
+                db=db,
+            )
+        )
+
+        assert isinstance(response, CapturedStreamingResponse)
+        assert released == [True]
+        assert db.expire_on_commit is False
