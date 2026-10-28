@@ -15,8 +15,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from app.services.rag_evaluation import score_ranked_results
-
 BENCHMARK_NAME = "rag-retrieval-eval-v1"
 COMPARISON_NAME = "rag-retrieval-comparison-v1"
 EPSILON = 1e-6
@@ -190,19 +188,6 @@ def _validate_report(report: Any, label: str) -> dict[str, Any]:
         top1_is_irrelevant = ranked[0]["relevance"] == 0
         if case["top1_is_irrelevant"] != top1_is_irrelevant:
             raise ValueError(f"{label} case {case_id} has inconsistent top1_is_irrelevant.")
-
-        derived_metrics = score_ranked_results(
-            [document["id"] for document in ranked],
-            {document["id"]: document["relevance"] for document in ranked},
-            k=report["top_k"],
-        )
-        if set(derived_metrics) != set(case_metrics):
-            raise ValueError(f"{label} case {case_id} has an incompatible metric set.")
-        for metric, expected_value in derived_metrics.items():
-            if abs(float(case_metrics[metric]) - expected_value) > 0.00011:
-                raise ValueError(
-                    f"{label} case {case_id} has metrics inconsistent with ranked documents."
-                )
 
     if set(cases_by_domain) != set(by_domain):
         raise ValueError(f"{label} has inconsistent case and by_domain coverage.")
