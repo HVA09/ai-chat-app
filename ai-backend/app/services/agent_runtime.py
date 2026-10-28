@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.conversation import Conversation
 from app.models.user import User
+from app.services.prompt_context import safe_context_text
 from app.services.tool_security import wrap_untrusted_tool_output
 from app.services.ai_providers.base import AIToolReply
 from app.services.mcp_client import discover_mcp_tools
@@ -147,7 +148,15 @@ class AgentRuntime:
     def _history(
         messages: list[dict[str, str]] | None, limit: int
     ) -> list[dict[str, str]]:
-        return list(messages or [])[-limit:]
+        selected = list(messages or [])[-limit:]
+        sanitized: list[dict[str, Any]] = []
+        for message in selected:
+            copied = dict(message)
+            content = copied.get("content")
+            if isinstance(content, str):
+                copied["content"] = safe_context_text(content)
+            sanitized.append(copied)
+        return sanitized
 
     @staticmethod
     def _assistant_tool_message(reply: AIToolReply) -> dict:
@@ -260,7 +269,7 @@ class AgentRuntime:
         messages: list[dict] = self._history(
             history, self.limits.max_history_messages
         )
-        messages.append({"role": "user", "content": task})
+        messages.append({"role": "user", "content": safe_context_text(task)})
 
         registry = self.registry_factory()
         for spec in await self.mcp_discoverer():
