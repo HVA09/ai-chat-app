@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import re
+import unicodedata
+from collections.abc import Callable
 
 
 _CONTEXT_CONTROL_MARKER_PATTERN = re.compile(
@@ -37,6 +39,40 @@ _UNTRUSTED_TRANSCRIPT_MARKER_PATTERN = re.compile(
 )
 
 
+def _replace_obfuscated_matches(
+    text: str,
+    pattern: re.Pattern[str],
+    replacement: Callable[[re.Match[str]], str],
+) -> str:
+    """Match markers after ignoring Unicode format controls, replacing only matched spans.
+
+    Format controls outside app-owned marker spans are preserved. Offsets map each
+    normalized character back to the original text so an obfuscated delimiter can
+    be neutralized without globally rewriting user/file content.
+    """
+    normalized_chars: list[str] = []
+    original_offsets: list[int] = []
+    for index, character in enumerate(text):
+        if unicodedata.category(character) == "Cf":
+            continue
+        normalized_chars.append(character)
+        original_offsets.append(index)
+
+    normalized_text = "".join(normalized_chars)
+    matches = list(pattern.finditer(normalized_text))
+    for match in reversed(matches):
+        if match.start() == match.end():
+            continue
+        original_start = original_offsets[match.start()]
+        original_end = original_offsets[match.end() - 1] + 1
+        text = (
+            text[:original_start]
+            + replacement(match)
+            + text[original_end:]
+        )
+    return text
+
+
 def safe_context_text(text: str) -> str:
     """Neutralize known app-level context markers in prompt-bound content.
 
@@ -44,16 +80,22 @@ def safe_context_text(text: str) -> str:
     metadata remain unchanged. It reduces delimiter and citation spoofing, but does
     not stop every prompt injection or replace source/permission validation.
     """
-    rendered = _CONTEXT_CONTROL_MARKER_PATTERN.sub(
-        lambda match: f"［{match.group(0)[1:-1]}］",
+    rendered = _replace_obfuscated_matches(
         text,
+        _CONTEXT_CONTROL_MARKER_PATTERN,
+        lambda match: f"［{match.group(0)[1:-1]}］",
     )
     # Transcript wrappers are also app-owned delimiters. Neutralize bare mentions
     # so a saved message cannot impersonate the beginning/end of a memory transcript.
-    rendered = _UNTRUSTED_TRANSCRIPT_MARKER_PATTERN.sub(
-        lambda match: match.group(0).replace(" ", "∶", 1),
+    rendered = _replace_obfuscated_matches(
         rendered,
+        _UNTRUSTED_TRANSCRIPT_MARKER_PATTERN,
+        lambda match: match.group(0).replace(" ", "∶", 1),
     )
     # The final user request is separated by this literal delimiter in the prompt.
     # Prevent file, memory, and metadata text from imitating that delimiter.
-    return _USER_REQUEST_DELIMITER_PATTERN.sub("USER REQUEST∶", rendered)
+    return _replace_obfuscated_matches(
+        rendered,
+        _USER_REQUEST_DELIMITER_PATTERN,
+        lambda _match: "USER REQUEST∶",
+    )
