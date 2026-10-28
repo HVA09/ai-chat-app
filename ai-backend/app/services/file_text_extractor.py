@@ -36,13 +36,20 @@ def _limit(text: str, max_chars: int) -> str:
 
 
 def _read_text_file(path: Path, max_chars: int) -> str:
-    raw = path.read_bytes()[: max_chars * 4]
+    # Path.read_bytes() loads the entire file before slicing. Read a bounded
+    # byte prefix directly from the file handle so large uploads do not cause
+    # avoidable peak-memory spikes before the character limit is applied.
+    with path.open("rb") as source:
+        raw = source.read(max(0, max_chars) * 4)
     text = raw.decode("utf-8-sig", errors="replace")
     return _limit(text, max_chars)
 
 
 def _read_csv_file(path: Path, max_chars: int) -> str:
-    raw = path.read_bytes()[: max_chars * 8]
+    # Bound the input bytes as well as the rendered output. A single very large
+    # CSV field can otherwise be allocated in full before the row limit applies.
+    with path.open("rb") as source:
+        raw = source.read(max(0, max_chars) * 8)
     text = raw.decode("utf-8-sig", errors="replace")
     rows = csv.reader(StringIO(text))
     rendered = []
@@ -51,8 +58,18 @@ def _read_csv_file(path: Path, max_chars: int) -> str:
         line = " | ".join(cell.strip() for cell in row)
         if not line:
             continue
+        remaining = max_chars - used
+        if remaining <= 0:
+            break
+        separator = 1 if rendered else 0
+        available = max(0, remaining - separator)
+        if len(line) > available:
+            if available:
+                rendered.append(line[:available])
+                used += available + separator
+            break
         rendered.append(line)
-        used += len(line) + 1
+        used += len(line) + separator
         if used >= max_chars:
             break
     return _limit("\n".join(rendered), max_chars)
