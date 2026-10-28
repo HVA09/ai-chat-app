@@ -44,19 +44,23 @@ def _replace_obfuscated_matches(
     pattern: re.Pattern[str],
     replacement: Callable[[re.Match[str]], str],
 ) -> str:
-    """Match markers after ignoring Unicode format controls, replacing only matched spans.
+    """Match obfuscated markers using a normalized copy, replacing only matched spans.
 
-    Format controls outside app-owned marker spans are preserved. Offsets map each
-    normalized character back to the original text so an obfuscated delimiter can
-    be neutralized without globally rewriting user/file content.
+    Format controls and combining marks outside app-owned marker spans are preserved.
+    Compatibility normalization applies only to the matching copy, and offsets map
+    each normalized character back to the original so surrounding user/file text is
+    not globally rewritten.
     """
     normalized_chars: list[str] = []
     original_offsets: list[int] = []
     for index, character in enumerate(text):
-        if unicodedata.category(character) == "Cf":
+        category = unicodedata.category(character)
+        if character == "\u0640" or category in {"Cf", "Mn", "Me"}:
             continue
-        normalized_chars.append(character)
-        original_offsets.append(index)
+        normalized_character = unicodedata.normalize("NFKC", character)
+        for normalized_unit in normalized_character:
+            normalized_chars.append(normalized_unit)
+            original_offsets.append(index)
 
     normalized_text = "".join(normalized_chars)
     matches = list(pattern.finditer(normalized_text))
