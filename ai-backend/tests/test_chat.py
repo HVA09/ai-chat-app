@@ -1054,6 +1054,104 @@ def test_chat_context_keeps_explicit_upload_when_rag_returns_other_file(
     assert any(source["filename"] == "latest-upload.txt" for source in sources)
 
 
+def test_chat_context_includes_legacy_knowledge_when_rag_returns_current_chunks(
+    client, db_session, monkeypatch
+):
+    from types import SimpleNamespace
+
+    from app.models.conversation import Conversation
+    from app.models.file_attachment import FileAttachment
+    from app.models.workspace import Workspace
+
+    token = _register_and_login(client, "mixed-legacy-rag@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    created = client.post("/chat", json={"message": "ابدأ"}, headers=headers)
+    assert created.status_code == 200
+    conversation_id = created.json()["conversation_id"]
+
+    conversation = (
+        db_session.query(Conversation)
+        .filter(Conversation.id == conversation_id)
+        .one()
+    )
+    user = (
+        db_session.query(User)
+        .filter(User.email == "mixed-legacy-rag@example.com")
+        .one()
+    )
+    workspace = Workspace(owner_id=user.id, name="Mixed index regression")
+    db_session.add(workspace)
+    db_session.flush()
+    conversation.workspace_id = workspace.id
+
+    current_text = "CURRENT_INDEXED_WORKSPACE_CONTENT"
+    current_file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        project_id=None,
+        original_filename="current.txt",
+        stored_filename="current.txt",
+        content_type="text/plain",
+        size_bytes=len(current_text),
+        extracted_text=current_text,
+        indexed_text_sha256=None,
+        indexed_embedding_fingerprint="active-test-embedding-fingerprint",
+        indexed_embedding_provider="test-provider",
+        indexed_embedding_model="test-model",
+    )
+    legacy_text = "LEGACY_UNINDEXED_WORKSPACE_KNOWLEDGE"
+    legacy_file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        project_id=None,
+        original_filename="legacy.txt",
+        stored_filename="legacy.txt",
+        content_type="text/plain",
+        size_bytes=len(legacy_text),
+        extracted_text=legacy_text,
+    )
+    db_session.add_all([current_file, legacy_file])
+    db_session.commit()
+    db_session.refresh(conversation)
+    db_session.refresh(current_file)
+    db_session.refresh(legacy_file)
+
+    # The current row represents a valid index; its stored metadata must match
+    # the source fingerprint maintained by the FileAttachment model listener.
+    current_file.indexed_text_sha256 = current_file.extracted_text_sha256
+    db_session.commit()
+    db_session.refresh(current_file)
+
+    async def retrieve_current_file(*_args, **_kwargs):
+        return [
+            (
+                SimpleNamespace(
+                    chunk_index=0,
+                    content="Current semantic match.",
+                ),
+                current_file,
+            )
+        ]
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "retrieve_relevant_chunks",
+        retrieve_current_file,
+    )
+
+    context, sources = asyncio.run(
+        chat_router_module._build_file_context(
+            conversation,
+            "Summarize the workspace knowledge.",
+            db_session,
+        )
+    )
+
+    assert "Current semantic match." in context
+    assert "LEGACY_UNINDEXED_WORKSPACE_KNOWLEDGE" in context
+    assert any(source["filename"] == "legacy.txt" for source in sources)
+
+
 def test_chat_context_reports_explicit_attachment_when_text_is_unavailable(
     client, db_session, monkeypatch
 ):
