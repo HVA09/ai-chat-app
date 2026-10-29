@@ -541,7 +541,7 @@ def test_benchmark_reports_when_an_irrelevant_document_ranks_first(monkeypatch):
         lambda: ("test", "test-model", "f" * 64),
     )
 
-    report = runner.evaluate_dataset(_minimal_valid_rag_dataset(), top_k=2)
+    report = runner.evaluate_dataset(_minimal_valid_rag_dataset(), top_k=1)
 
     case = report["cases"][0]
     assert case["ranked_documents"][0]["id"] == "preflight-negative"
