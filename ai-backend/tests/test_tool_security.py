@@ -231,3 +231,17 @@ def test_invalid_tool_schema_constraints_fail_closed(schema, value):
                 "properties": {"value": schema},
                 "required": ["value"],
             })
+
+@pytest.mark.parametrize(
+    "invalid_type",
+    [None, "unknown-type", [], ["integer", {}], {"type": "integer"}],
+)
+def test_invalid_tool_schema_types_fail_closed(invalid_type):
+    schema = {
+        "type": "object",
+        "properties": {"value": {"type": invalid_type}},
+        "required": ["value"],
+    }
+
+    with pytest.raises(ToolArgumentSecurityError, match="Invalid tool schema type"):
+        _validate({"value": 1}, schema)
