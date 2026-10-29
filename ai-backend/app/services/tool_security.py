@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -95,10 +96,47 @@ def _validate_type(value: Any, expected: str) -> bool:
     return True
 
 
+def _schema_count_constraint(
+    schema: dict[str, Any], name: str, path: str
+) -> int | None:
+    if name not in schema:
+        return None
+    value = schema[name]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ToolArgumentSecurityError(
+            f"Invalid tool schema constraint at {path}.{name}."
+        )
+    return value
+
+
+def _schema_numeric_constraint(
+    schema: dict[str, Any], name: str, path: str
+) -> int | float | None:
+    if name not in schema:
+        return None
+    value = schema[name]
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ToolArgumentSecurityError(
+            f"Invalid tool schema constraint at {path}.{name}."
+        )
+    try:
+        finite = math.isfinite(float(value))
+    except (OverflowError, ValueError):
+        finite = False
+    if not finite:
+        raise ToolArgumentSecurityError(
+            f"Invalid tool schema constraint at {path}.{name}."
+        )
+    return value
+
+
 def _validate_schema(value: Any, schema: dict[str, Any], path: str) -> None:
     schema_type = schema.get("type")
     if isinstance(schema_type, list):
-        if not any(_validate_type(value, item) for item in schema_type if item in _TYPE_NAMES):
+        supported_types = [item for item in schema_type if item in _TYPE_NAMES]
+        if not supported_types or not any(
+            _validate_type(value, item) for item in supported_types
+        ):
             raise ToolArgumentSecurityError(f"Invalid tool argument type at {path}.")
     elif isinstance(schema_type, str) and schema_type in _TYPE_NAMES:
         if not _validate_type(value, schema_type):
@@ -109,22 +147,79 @@ def _validate_schema(value: Any, schema: dict[str, Any], path: str) -> None:
         raise ToolArgumentSecurityError(f"Invalid tool argument value at {path}.")
 
     if isinstance(value, str):
-        max_length = schema.get("maxLength")
-        if isinstance(max_length, int) and len(value) > max_length:
+        max_length = _schema_count_constraint(schema, "maxLength", path)
+        min_length = _schema_count_constraint(schema, "minLength", path)
+        if max_length is not None and len(value) > max_length:
             raise ToolArgumentSecurityError(
                 f"Tool argument at {path} exceeds maxLength."
             )
-        min_length = schema.get("minLength")
-        if isinstance(min_length, int) and len(value) < min_length:
+        if min_length is not None and len(value) < min_length:
             raise ToolArgumentSecurityError(
                 f"Tool argument at {path} is shorter than minLength."
             )
 
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        minimum = _schema_numeric_constraint(schema, "minimum", path)
+        maximum = _schema_numeric_constraint(schema, "maximum", path)
+        exclusive_minimum = schema.get("exclusiveMinimum")
+        exclusive_maximum = schema.get("exclusiveMaximum")
+
+        # JSON Schema's current form uses numeric exclusive bounds. Accept the
+        # older boolean form only when its corresponding inclusive bound exists.
+        if isinstance(exclusive_minimum, bool):
+            exclusive_minimum_bound = minimum if exclusive_minimum else None
+            if exclusive_minimum and minimum is None:
+                raise ToolArgumentSecurityError(
+                    f"Invalid tool schema constraint at {path}.exclusiveMinimum."
+                )
+        else:
+            exclusive_minimum_bound = _schema_numeric_constraint(
+                schema, "exclusiveMinimum", path
+            )
+        if isinstance(exclusive_maximum, bool):
+            exclusive_maximum_bound = maximum if exclusive_maximum else None
+            if exclusive_maximum and maximum is None:
+                raise ToolArgumentSecurityError(
+                    f"Invalid tool schema constraint at {path}.exclusiveMaximum."
+                )
+        else:
+            exclusive_maximum_bound = _schema_numeric_constraint(
+                schema, "exclusiveMaximum", path
+            )
+
+        if minimum is not None and value < minimum:
+            raise ToolArgumentSecurityError(
+                f"Tool argument at {path} is below minimum."
+            )
+        if maximum is not None and value > maximum:
+            raise ToolArgumentSecurityError(
+                f"Tool argument at {path} exceeds maximum."
+            )
+        if (
+            exclusive_minimum_bound is not None
+            and value <= exclusive_minimum_bound
+        ):
+            raise ToolArgumentSecurityError(
+                f"Tool argument at {path} must be above exclusiveMinimum."
+            )
+        if (
+            exclusive_maximum_bound is not None
+            and value >= exclusive_maximum_bound
+        ):
+            raise ToolArgumentSecurityError(
+                f"Tool argument at {path} must be below exclusiveMaximum."
+            )
+
     if isinstance(value, list):
-        max_items = schema.get("maxItems")
-        if isinstance(max_items, int) and len(value) > max_items:
+        max_items = _schema_count_constraint(schema, "maxItems", path)
+        min_items = _schema_count_constraint(schema, "minItems", path)
+        if max_items is not None and len(value) > max_items:
             raise ToolArgumentSecurityError(
                 f"Tool argument at {path} exceeds maxItems."
+            )
+        if min_items is not None and len(value) < min_items:
+            raise ToolArgumentSecurityError(
+                f"Tool argument at {path} is shorter than minItems."
             )
         item_schema = schema.get("items")
         if isinstance(item_schema, dict):
@@ -132,27 +227,50 @@ def _validate_schema(value: Any, schema: dict[str, Any], path: str) -> None:
                 _validate_schema(item, item_schema, f"{path}[{index}]")
 
     if isinstance(value, dict):
-        properties = schema.get("properties")
-        if isinstance(properties, dict):
-            required = schema.get("required", [])
-            if isinstance(required, list):
-                for key in required:
-                    if key not in value:
-                        raise ToolArgumentSecurityError(
-                            f"Missing required tool argument: {path}.{key}"
-                        )
-            additional_properties = schema.get("additionalProperties")
-            if additional_properties is False:
-                unknown = set(value) - set(properties)
-                if unknown:
-                    names = ", ".join(sorted(str(item) for item in unknown)[:5])
-                    raise ToolArgumentSecurityError(
-                        f"Unknown tool arguments at {path}: {names}."
-                    )
-            for key, property_schema in properties.items():
-                if key in value and isinstance(property_schema, dict):
-                    _validate_schema(value[key], property_schema, f"{path}.{key}")
+        max_properties = _schema_count_constraint(schema, "maxProperties", path)
+        min_properties = _schema_count_constraint(schema, "minProperties", path)
+        if max_properties is not None and len(value) > max_properties:
+            raise ToolArgumentSecurityError(
+                f"Tool argument at {path} exceeds maxProperties."
+            )
+        if min_properties is not None and len(value) < min_properties:
+            raise ToolArgumentSecurityError(
+                f"Tool argument at {path} has fewer than minProperties."
+            )
 
+        properties = schema.get("properties", {})
+        if not isinstance(properties, dict):
+            raise ToolArgumentSecurityError(
+                f"Invalid tool schema properties at {path}."
+            )
+        required = schema.get("required", [])
+        if not isinstance(required, list) or any(
+            not isinstance(key, str) for key in required
+        ):
+            raise ToolArgumentSecurityError(
+                f"Invalid tool schema required list at {path}."
+            )
+        for key in required:
+            if key not in value:
+                raise ToolArgumentSecurityError(
+                    f"Missing required tool argument: {path}.{key}"
+                )
+
+        additional_properties = schema.get("additionalProperties")
+        unknown = set(value) - set(properties)
+        if additional_properties is False and unknown:
+            names = ", ".join(sorted(str(item) for item in unknown)[:5])
+            raise ToolArgumentSecurityError(
+                f"Unknown tool arguments at {path}: {names}."
+            )
+        if isinstance(additional_properties, dict):
+            for key in unknown:
+                _validate_schema(
+                    value[key], additional_properties, f"{path}.{key}"
+                )
+        for key, property_schema in properties.items():
+            if key in value and isinstance(property_schema, dict):
+                _validate_schema(value[key], property_schema, f"{path}.{key}")
 
 def validate_tool_arguments(
     parameters: dict[str, Any],
