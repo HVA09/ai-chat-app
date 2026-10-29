@@ -245,3 +245,83 @@ def test_invalid_tool_schema_types_fail_closed(invalid_type):
 
     with pytest.raises(ToolArgumentSecurityError, match="Invalid tool schema type"):
         _validate({"value": 1}, schema)
+
+
+@pytest.mark.parametrize(
+    ("parameters", "arguments", "expected_error"),
+    [
+        (None, {"value": 1}, "Invalid tool schema at"),
+        ("object", {}, "Invalid tool schema at"),
+        (
+            {
+                "type": "object",
+                "properties": {"value": "integer"},
+            },
+            {"value": 1},
+            "Invalid tool schema at",
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {"value": {"type": "array", "items": "integer"}},
+            },
+            {"value": [1]},
+            "Invalid tool schema items",
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {"value": {"type": "string", "enum": "valid"}},
+            },
+            {"value": "valid"},
+            "Invalid tool schema enum",
+        ),
+        (
+            {"type": "object", "additionalProperties": "false"},
+            {"unexpected": "value"},
+            "Invalid tool schema additionalProperties",
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {
+                    "value": {"type": "string", "maxItems": -1},
+                },
+            },
+            {"value": "text"},
+            "Invalid tool schema constraint",
+        ),
+    ],
+)
+def test_malformed_nested_tool_schema_definitions_fail_closed(
+    parameters, arguments, expected_error
+):
+    with pytest.raises(ToolArgumentSecurityError, match=expected_error):
+        validate_tool_arguments(
+            parameters,
+            arguments,
+            max_chars=12_000,
+            max_depth=8,
+        )
+
+
+def test_boolean_subschemas_are_enforced_for_properties_and_array_items():
+    property_schema = {
+        "type": "object",
+        "properties": {"blocked": False, "allowed": True},
+        "additionalProperties": False,
+    }
+
+    _validate({"allowed": {"arbitrary": "JSON"}}, property_schema)
+    with pytest.raises(ToolArgumentSecurityError, match="Invalid tool argument value"):
+        _validate({"blocked": "not allowed"}, property_schema)
+
+    array_schema = {
+        "type": "object",
+        "properties": {"values": {"type": "array", "items": False}},
+        "required": ["values"],
+        "additionalProperties": False,
+    }
+    _validate({"values": []}, array_schema)
+    with pytest.raises(ToolArgumentSecurityError, match="Invalid tool argument value"):
+        _validate({"values": [1]}, array_schema)
