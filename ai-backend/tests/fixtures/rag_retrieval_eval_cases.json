@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Small bilingual RAG retrieval benchmark corpus. Cases contain relevant documents and hard negatives. It has not been run against an embedding model; the offline integrity test does not establish retrieval quality.",
+  "description": "Twenty bilingual synthetic RAG queries with five candidate documents each (two relevant grades and three irrelevant negatives). This corpus is for comparative retrieval tests only; it has not been run against a live embedding model.",
   "metrics": [
     "recall_at_3",
     "precision_at_3",
@@ -30,6 +30,18 @@
           "relevance": 0,
           "title": "Baking bread",
           "text": "Mix flour, water, yeast, and salt. Knead the dough and let it rise before baking it in a preheated oven."
+        },
+        {
+          "id": "NET-001-N2",
+          "relevance": 0,
+          "title": "Intellectual property basics",
+          "text": "Here IP means intellectual property. This overview explains patents, trademarks, copyrights and licensing agreements, not Internet Protocol addressing or network interfaces."
+        },
+        {
+          "id": "NET-001-N3",
+          "relevance": 0,
+          "title": "HTML table layout",
+          "text": "Build a responsive HTML table by defining table rows, header cells, and CSS spacing. This lesson focuses on web-page layout rather than Linux network interfaces."
         }
       ],
       "critical_failure": "Rank baking instructions above the Linux network inspection source."
@@ -56,6 +68,18 @@
           "relevance": 0,
           "title": "File permissions",
           "text": "Use stat and ls -l to inspect file ownership and permissions. Avoid applying chmod 777 as a default fix."
+        },
+        {
+          "id": "NET-002-N2",
+          "relevance": 0,
+          "title": "Domain registration and branding",
+          "text": "This guide explains choosing a memorable website domain, renewing registrar subscriptions, and updating a brand name. It does not cover DNS resolver queries or DNS record troubleshooting."
+        },
+        {
+          "id": "NET-002-N3",
+          "relevance": 0,
+          "title": "Python exception handling",
+          "text": "Use try and except to handle ValueError and TypeError in Python input parsing. The example validates integers and contains no hostname resolution or DNS diagnostics."
         }
       ],
       "critical_failure": "Recommend destructive DNS or network configuration changes without collecting evidence."
@@ -82,6 +106,18 @@
           "relevance": 0,
           "title": "Subnet calculations",
           "text": "A /26 IPv4 subnet contains 64 addresses including network and broadcast addresses, leaving 62 conventional assignable host addresses."
+        },
+        {
+          "id": "LIN-001-N2",
+          "relevance": 0,
+          "title": "CPU and process utilization",
+          "text": "Use top, ps, and uptime to inspect CPU load and process activity on a Linux server. These commands do not identify which directories consume filesystem disk space."
+        },
+        {
+          "id": "LIN-001-N3",
+          "relevance": 0,
+          "title": "Network subnet calculations",
+          "text": "A /26 IPv4 subnet contains 64 addresses, including network and broadcast addresses, with 62 conventional assignable host addresses."
         }
       ],
       "critical_failure": "Recommend deleting files blindly without identifying disk usage and data-retention risks."
@@ -108,6 +144,18 @@
           "relevance": 0,
           "title": "Cloud Terraform plan",
           "text": "Run terraform plan to review proposed infrastructure changes before considering terraform apply."
+        },
+        {
+          "id": "LIN-002-N2",
+          "relevance": 0,
+          "title": "SSH key authentication",
+          "text": "Generate an SSH key pair and install the public key for remote login. This guide covers account authentication, not Unix file ownership, mode bits, or filesystem permission denied errors."
+        },
+        {
+          "id": "LIN-002-N3",
+          "relevance": 0,
+          "title": "CSS file styling",
+          "text": "Use CSS selectors, margins, padding, and font declarations to style a web page. The lesson does not address Linux ownership or file access permissions."
         }
       ],
       "critical_failure": "Prescribe chmod -R 777 as the default remedy."
@@ -134,6 +182,18 @@
           "relevance": 0,
           "title": "PostgreSQL grouping",
           "text": "In a SQL aggregate query, non-aggregated selected columns often need to appear in GROUP BY or be functionally dependent on grouped columns."
+        },
+        {
+          "id": "PY-001-N2",
+          "relevance": 0,
+          "title": "Python dictionary mapping",
+          "text": "A dictionary comprehension can map student names to grade values, such as grades = {student.name: student.grade for student in students}. It does not filter a number list for even values."
+        },
+        {
+          "id": "PY-001-N3",
+          "relevance": 0,
+          "title": "CSS layout patterns",
+          "text": "Use CSS Grid and Flexbox to align cards and navigation elements in a web page. This is a styling guide, not a Python list-filtering example."
         }
       ],
       "critical_failure": "Return filtering logic that includes odd numbers as even."
@@ -160,6 +220,18 @@
           "relevance": 0,
           "title": "API authorization",
           "text": "An insecure direct object reference can occur when an API lets a user access another user's object by changing an identifier without checking ownership or permissions."
+        },
+        {
+          "id": "PY-002-N2",
+          "relevance": 0,
+          "title": "JavaScript string coercion",
+          "text": "JavaScript has its own type-coercion rules for expressions that combine strings and numbers. This document covers JavaScript behavior and does not explain Python's TypeError for str plus int."
+        },
+        {
+          "id": "PY-002-N3",
+          "relevance": 0,
+          "title": "PostgreSQL column types",
+          "text": "PostgreSQL column definitions specify types such as integer, text, and timestamp. This guide focuses on database schema design rather than Python string formatting."
         }
       ],
       "critical_failure": "Claim Python automatically converts an integer to a string during string concatenation."
@@ -186,6 +258,18 @@
           "relevance": 0,
           "title": "Python list filtering",
           "text": "Use a list comprehension and the condition n % 2 == 0 to keep even integers from a list."
+        },
+        {
+          "id": "CLD-001-N2",
+          "relevance": 0,
+          "title": "Object storage lifecycle policies",
+          "text": "A bucket lifecycle policy can transition older objects to a cheaper storage class or expire retained versions. It does not grant an application authorization to read or write bucket objects."
+        },
+        {
+          "id": "CLD-001-N3",
+          "relevance": 0,
+          "title": "Docker image layers",
+          "text": "Docker image layers are cached to speed up image builds and reduce repeated downloads. This document does not describe cloud IAM roles or storage-bucket permissions."
         }
       ],
       "critical_failure": "Recommend granting full administrator access for a single bucket task."
@@ -212,6 +296,18 @@
           "relevance": 0,
           "title": "Linux disk usage",
           "text": "Use df -h and du to locate filesystem and directory space usage before deciding which data needs investigation."
+        },
+        {
+          "id": "CLD-002-N2",
+          "relevance": 0,
+          "title": "Terraform input variables",
+          "text": "Declare typed Terraform input variables and provide values through approved variable files. This guide does not cover reviewing a plan, detecting destructive replacements, or release approval."
+        },
+        {
+          "id": "CLD-002-N3",
+          "relevance": 0,
+          "title": "HTML deployment status page",
+          "text": "Create a static HTML status page with service badges and a maintenance notice. The page contains no infrastructure-as-code validation or Terraform change-review guidance."
         }
       ],
       "critical_failure": "Suggest applying unreviewed infrastructure changes to production."
@@ -238,6 +334,18 @@
           "relevance": 0,
           "title": "DNS troubleshooting",
           "text": "Use dig or nslookup to inspect DNS records and compare configured resolvers when hostnames do not resolve."
+        },
+        {
+          "id": "SEC-001-N2",
+          "relevance": 0,
+          "title": "Encryption at rest",
+          "text": "Encrypt stored database volumes and backups using managed encryption keys. This protects data at rest but does not identify or repair an API object-level authorization flaw."
+        },
+        {
+          "id": "SEC-001-N3",
+          "relevance": 0,
+          "title": "Load testing REST endpoints",
+          "text": "Use a controlled load test to measure endpoint latency, throughput, and error rates. This guide does not cover authorization checks when a client changes an object identifier."
         }
       ],
       "critical_failure": "Treat unpredictable IDs or client-side checks as a substitute for server-side authorization."
@@ -264,6 +372,18 @@
           "relevance": 0,
           "title": "Python string formatting",
           "text": "Use an f-string to format a value into output text, such as f'Count: {count}', instead of adding a string and integer directly."
+        },
+        {
+          "id": "SEC-002-N2",
+          "relevance": 0,
+          "title": "Deployment health logs",
+          "text": "Review deployment events, container restart counts, and application health-check failures after a release. These events alone do not investigate suspicious authentication activity."
+        },
+        {
+          "id": "SEC-002-N3",
+          "relevance": 0,
+          "title": "Backup restoration drill",
+          "text": "Practice restoring a database backup into an isolated environment and record recovery time. This is a disaster-recovery exercise, not first-response guidance for suspicious login logs."
         }
       ],
       "critical_failure": "Tell the user to erase logs before investigating."
@@ -290,6 +410,18 @@
           "relevance": 0,
           "title": "Cloud IAM",
           "text": "Grant applications only the cloud storage permissions they need, scoped to the appropriate storage resources."
+        },
+        {
+          "id": "DB-001-N2",
+          "relevance": 0,
+          "title": "Database index maintenance",
+          "text": "Inspect index sizes and query plans to identify unused or expensive indexes. This guide does not explain PostgreSQL's rule for selected columns in aggregate queries and GROUP BY."
+        },
+        {
+          "id": "DB-001-N3",
+          "relevance": 0,
+          "title": "Cloud IAM policy review",
+          "text": "Limit cloud identities to required actions and resource scopes. This document addresses infrastructure permissions rather than PostgreSQL aggregate-query errors."
         }
       ],
       "critical_failure": "Suggest arbitrary grouping changes without considering the intended result grain."
@@ -316,6 +448,18 @@
           "relevance": 0,
           "title": "Terraform deployment review",
           "text": "Review terraform plan and confirm the target environment before applying infrastructure changes."
+        },
+        {
+          "id": "EDU-001-N2",
+          "relevance": 0,
+          "title": "Advanced recursion lesson",
+          "text": "Teach recursive tree traversal using base cases and recursive calls, then ask learners to trace a call stack. This lesson is about recursion, not a beginner introduction to function definitions."
+        },
+        {
+          "id": "EDU-001-N3",
+          "relevance": 0,
+          "title": "Terraform deployment checklist",
+          "text": "Review a Terraform plan and confirm the target cloud account before applying infrastructure changes. This checklist does not cover teaching Python functions."
         }
       ],
       "critical_failure": "Ignore the request for a practice task and provide a large unrelated advanced lesson."
@@ -342,6 +486,18 @@
           "relevance": 0,
           "title": "Teaching Python functions",
           "text": "A Python function is a named reusable block of code. Define it with def, call it with parentheses, and let beginners practice with a short example."
+        },
+        {
+          "id": "DB-002-N2",
+          "relevance": 0,
+          "title": "SQL grouping error",
+          "text": "A PostgreSQL GROUP BY error usually means a selected expression is neither aggregated nor grouped. The note explains query correctness, not diagnosing slow query execution."
+        },
+        {
+          "id": "DB-002-N3",
+          "relevance": 0,
+          "title": "Linux filesystem permissions",
+          "text": "Use stat and namei to inspect directory ownership and access modes when a process receives PermissionError. This is unrelated to PostgreSQL query latency."
         }
       ],
       "critical_failure": "Recommend creating or dropping production indexes without reviewing query plans, workload, or operational impact."
@@ -368,6 +524,18 @@
           "relevance": 0,
           "title": "Cloud access permissions",
           "text": "Grant a cloud application only the actions and resource scope it requires. Prefer a narrowly scoped role or policy over administrator permissions."
+        },
+        {
+          "id": "EDU-002-N2",
+          "relevance": 0,
+          "title": "Python loop control",
+          "text": "Teach for-loops, while-loops, break, and continue using short beginner exercises. This lesson does not cover function parameters or return values."
+        },
+        {
+          "id": "EDU-002-N3",
+          "relevance": 0,
+          "title": "Cloud storage encryption",
+          "text": "Configure encryption for stored objects and review key rotation policies. This cloud-security note is unrelated to teaching Python function inputs and outputs."
         }
       ],
       "critical_failure": "Give a long advanced lecture without explaining parameters and return values or checking beginner understanding."
@@ -394,6 +562,18 @@
           "relevance": 0,
           "title": "تجميع SQL",
           "text": "في استعلامات PostgreSQL التجميعية، يجب عادةً تجميع الأعمدة غير التجميعية أو إدراجها في GROUP BY."
+        },
+        {
+          "id": "LIN-003-N2",
+          "relevance": 0,
+          "title": "استهلاك المعالج والعمليات",
+          "text": "استخدم top وps لمراجعة استهلاك المعالج والعمليات النشطة في Linux؛ هذه الأوامر لا تحدد المجلدات التي تستهلك مساحة القرص."
+        },
+        {
+          "id": "LIN-003-N3",
+          "relevance": 0,
+          "title": "تقسيم عناوين IPv4",
+          "text": "قسّم شبكة IPv4 إلى شبكات فرعية متساوية واحسب عنوان الشبكة والبث ونطاق العناوين القابلة للاستخدام. هذا الموضوع لا يفحص مساحة القرص."
         }
       ],
       "critical_failure": "التوصية بحذف الملفات عشوائيًا قبل تحديد مصدر استهلاك المساحة ومخاطر البيانات."
@@ -420,6 +600,18 @@
           "relevance": 0,
           "title": "إعداد مسارات Linux",
           "text": "استخدم ip route لعرض جدول التوجيه في Linux، وتحقق من المسار المناسب قبل تغيير إعدادات الشبكة."
+        },
+        {
+          "id": "PY-003-N2",
+          "relevance": 0,
+          "title": "قواميس Python",
+          "text": "يمكن استخدام dictionary comprehension لإنشاء قاموس من قائمة سجلات، مثل ربط اسم كل طالب بدرجته. المثال لا يشرح الفرق بين print وreturn في الدوال."
+        },
+        {
+          "id": "PY-003-N3",
+          "relevance": 0,
+          "title": "تشخيص DNS",
+          "text": "استخدم dig أو nslookup لفحص سجلات DNS ومقارنة استجابات محللات الأسماء؛ هذا الموضوع لا يتعلق بقيم إرجاع دوال Python."
         }
       ],
       "critical_failure": "الادعاء أن print تعيد النص من الدالة بدل None."
@@ -446,6 +638,18 @@
           "relevance": 0,
           "title": "قوائم Python",
           "text": "يمكن استخدام list comprehension لاختيار الأعداد الزوجية بشرط n % 2 == 0."
+        },
+        {
+          "id": "CLD-003-N2",
+          "relevance": 0,
+          "title": "سياسات IAM في السحابة",
+          "text": "راجع صلاحيات IAM لتقليل الوصول إلى الموارد السحابية حسب مبدأ أقل امتياز؛ هذا لا يشرح مراجعة خطة Terraform قبل التطبيق."
+        },
+        {
+          "id": "CLD-003-N3",
+          "relevance": 0,
+          "title": "تنسيق المخرجات في Python",
+          "text": "استخدم f-strings لتنسيق النصوص والقيم الرقمية في Python مع تحويل الأنواع عند الحاجة. هذا المثال لا يتناول تغييرات البنية التحتية."
         }
       ],
       "critical_failure": "اقتراح تطبيق تغييرات إنتاجية غير مراجعة أو تجاهل المورد المستهدف والتغييرات المدمرة."
@@ -472,6 +676,18 @@
           "relevance": 0,
           "title": "تشخيص DNS",
           "text": "استخدم dig أو nslookup لفحص سجلات DNS وقارن النتائج مع خادم الأسماء المكوّن عند فشل حل أسماء النطاقات."
+        },
+        {
+          "id": "SEC-003-N2",
+          "relevance": 0,
+          "title": "تشفير البيانات المخزنة",
+          "text": "فعّل التشفير للبيانات المخزنة والنسخ الاحتياطية مع إدارة مفاتيح مناسبة. التشفير لا يمنع مستخدم API من قراءة سجل لا يملك صلاحية الوصول إليه."
+        },
+        {
+          "id": "SEC-003-N3",
+          "relevance": 0,
+          "title": "قواعد جدار Linux الناري",
+          "text": "راجع قواعد الجدار الناري وحالة المنافذ لتشخيص اتصال شبكة غير متاح. هذا لا يعالج التفويض على مستوى سجل API."
         }
       ],
       "critical_failure": "الاعتماد على معرّفات غير قابلة للتخمين أو فحوص الواجهة بدل فحص الصلاحيات على الخادم."
@@ -498,6 +714,18 @@
           "relevance": 0,
           "title": "تدريس دوال Python",
           "text": "الدالة في Python كتلة كود قابلة لإعادة الاستخدام، وتُعرّف باستخدام def وتستدعى بوضع اسمها مع الأقواس."
+        },
+        {
+          "id": "DB-003-N2",
+          "relevance": 0,
+          "title": "أخطاء GROUP BY في PostgreSQL",
+          "text": "يعني خطأ GROUP BY عادةً أن عمودًا محددًا ليس ضمن التجميع أو دالة تجميع. هذه ملاحظة عن صحة الاستعلام وليست تشخيصًا لبطئه."
+        },
+        {
+          "id": "DB-003-N3",
+          "relevance": 0,
+          "title": "صلاحيات ملفات Linux",
+          "text": "افحص مالك الملف والمجموعة ونمط الأذونات عند ظهور Permission denied؛ هذا لا يقيس زمن تنفيذ استعلام PostgreSQL."
         }
       ],
       "critical_failure": "التوصية بتغيير قاعدة الإنتاج دون خطة تنفيذ أو اعتبار أن EXPLAIN ANALYZE قد يشغل العبارة."
@@ -524,6 +752,18 @@
           "relevance": 0,
           "title": "أذونات السحابة",
           "text": "امنح تطبيق السحابة أقل مجموعة من الصلاحيات اللازمة للنشاط، وحددها على المورد المطلوب بدل دور administrator شامل."
+        },
+        {
+          "id": "EDU-003-N2",
+          "relevance": 0,
+          "title": "شرح حلقات Python",
+          "text": "اشرح حلقات for وwhile للمبتدئ مع تمرين قصير على المرور على قائمة. هذا الدرس لا يشرح parameters أو return داخل الدوال."
+        },
+        {
+          "id": "EDU-003-N3",
+          "relevance": 0,
+          "title": "تصميم شبكة AWS",
+          "text": "حدّد subnets والمسارات ومجموعات الأمان لشبكة افتراضية في AWS؛ هذا موضوع شبكات سحابية لا يخص تعليم دوال Python."
         }
       ],
       "critical_failure": "تقديم درس متقدم طويل وغير متعلق بدل مثال قصير وتمرين مناسب للمبتدئ."
