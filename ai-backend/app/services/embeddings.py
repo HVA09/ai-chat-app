@@ -241,8 +241,25 @@ def _embedding_url(config: EmbeddingConfig, gemini_action: str) -> str:
     return f"{config.base_url}/embeddings"
 
 
+def _parse_embedding_response(response: httpx.Response) -> dict:
+    """Parse a provider response without leaking or propagating malformed JSON errors."""
+    try:
+        payload = response.json()
+    except (ValueError, TypeError) as exc:
+        raise EmbeddingServiceError(
+            "استجابة مزوّد embeddings ليست JSON صالحًا"
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise EmbeddingServiceError("صيغة استجابة embeddings غير متوقعة")
+    return payload
+
+
 def _extract_embedding_vectors(data: dict) -> list[list[float]]:
     """Read both Gemini's singular embedContent response and batch/OpenAI responses."""
+    if not isinstance(data, dict):
+        raise EmbeddingServiceError("صيغة استجابة embeddings غير متوقعة")
+
     single_embedding = data.get("embedding")
     if isinstance(single_embedding, dict) and isinstance(
         single_embedding.get("values"), list
@@ -348,7 +365,7 @@ def embed_documents_sync(texts: Sequence[str]) -> list[list[float]]:
                         f"فشل توليد embeddings: HTTP {response.status_code}"
                     ) from exc
 
-                vectors = _extract_embedding_vectors(response.json())
+                vectors = _extract_embedding_vectors(_parse_embedding_response(response))
                 all_vectors.extend(_validate_embedding_vectors(vectors, len(batch)))
     except httpx.RequestError as exc:
         raise EmbeddingServiceError("تعذر الاتصال بمزوّد embeddings") from exc
@@ -387,7 +404,7 @@ async def embed_query(text: str) -> list[float]:
                     f"فشل توليد embedding للسؤال: HTTP {response.status_code}"
                 ) from exc
 
-            vectors = _extract_embedding_vectors(response.json())
+            vectors = _extract_embedding_vectors(_parse_embedding_response(response))
             validated = _validate_embedding_vectors(vectors, 1)
             return validated[0]
     except httpx.RequestError as exc:
