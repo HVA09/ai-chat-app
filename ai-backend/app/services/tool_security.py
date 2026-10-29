@@ -19,6 +19,38 @@ class ToolArgumentSecurityError(ValueError):
 _MAX_DEPTH_ERROR = "Tool arguments exceed the maximum nesting depth."
 _TYPE_NAMES = {"object", "array", "string", "number", "integer", "boolean", "null"}
 
+_SUPPORTED_SCHEMA_KEYWORDS = frozenset(
+    {
+        "$schema",
+        "$id",
+        "$comment",
+        "title",
+        "description",
+        "default",
+        "examples",
+        "deprecated",
+        "readOnly",
+        "writeOnly",
+        "type",
+        "enum",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "minLength",
+        "maxLength",
+        "minItems",
+        "maxItems",
+        "minProperties",
+        "maxProperties",
+        "properties",
+        "required",
+        "additionalProperties",
+        "items",
+    }
+)
+
+
 _INJECTION_PATTERNS = (
     re.compile(r"ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions?", re.I),
     re.compile(r"disregard\s+(?:all\s+)?(?:previous|prior|above)\s+instructions?", re.I),
@@ -136,6 +168,13 @@ def _validate_schema_definition(schema: Any, path: str) -> None:
         return
     if not isinstance(schema, dict):
         raise ToolArgumentSecurityError(f"Invalid tool schema at {path}.")
+
+    unsupported_keywords = sorted(set(schema) - _SUPPORTED_SCHEMA_KEYWORDS)
+    if unsupported_keywords:
+        names = ", ".join(unsupported_keywords[:5])
+        raise ToolArgumentSecurityError(
+            f"Unsupported tool schema keyword at {path}: {names}."
+        )
 
     if "type" in schema:
         schema_type = schema["type"]
