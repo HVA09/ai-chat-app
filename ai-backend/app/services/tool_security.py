@@ -259,6 +259,45 @@ def _validate_schema_definition(schema: Any, path: str) -> None:
             _validate_schema_definition(additional, f"{path}.*")
 
 
+def _json_schema_equal(left: Any, right: Any) -> bool:
+    """Compare JSON Schema enum values without Python's bool/int equivalence.
+
+    Python treats True == 1 and False == 0, including inside nested containers.
+    JSON Schema distinguishes booleans from numbers, while integer and floating
+    representations of the same JSON number are equivalent.
+    """
+    if isinstance(left, bool) or isinstance(right, bool):
+        return isinstance(left, bool) and isinstance(right, bool) and left is right
+
+    left_is_number = isinstance(left, (int, float))
+    right_is_number = isinstance(right, (int, float))
+    if left_is_number or right_is_number:
+        return left_is_number and right_is_number and left == right
+
+    if isinstance(left, list) or isinstance(right, list):
+        return (
+            isinstance(left, list)
+            and isinstance(right, list)
+            and len(left) == len(right)
+            and all(
+                _json_schema_equal(left_item, right_item)
+                for left_item, right_item in zip(left, right, strict=True)
+            )
+        )
+
+    if isinstance(left, dict) or isinstance(right, dict):
+        return (
+            isinstance(left, dict)
+            and isinstance(right, dict)
+            and left.keys() == right.keys()
+            and all(_json_schema_equal(left[key], right[key]) for key in left)
+        )
+
+    if type(left) is not type(right):
+        return False
+    return left == right
+
+
 def _validate_schema(value: Any, schema: Any, path: str) -> None:
     if isinstance(schema, bool):
         if not schema:
@@ -294,7 +333,9 @@ def _validate_schema(value: Any, schema: Any, path: str) -> None:
             )
 
     enum = schema.get("enum")
-    if isinstance(enum, list) and value not in enum:
+    if isinstance(enum, list) and not any(
+        _json_schema_equal(value, candidate) for candidate in enum
+    ):
         raise ToolArgumentSecurityError(f"Invalid tool argument value at {path}.")
 
     if isinstance(value, str):

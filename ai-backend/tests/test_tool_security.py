@@ -374,3 +374,34 @@ def test_boolean_subschemas_are_enforced_for_properties_and_array_items():
 def test_unsupported_tool_schema_assertions_fail_closed(schema, value):
     with pytest.raises(ToolArgumentSecurityError, match="Unsupported tool schema keyword"):
         _validate(value, schema)
+
+
+@pytest.mark.parametrize(
+    ("enum_values", "value", "should_accept"),
+    [
+        ([1], True, False),
+        ([0], False, False),
+        ([{"enabled": 1}], {"enabled": True}, False),
+        ([{"levels": [1, {"enabled": 0}]}], {"levels": [1.0, {"enabled": False}]}, False),
+        ([1], 1, True),
+        ([1], 1.0, True),
+        ([{"enabled": True}], {"enabled": True}, True),
+        ([{"levels": [1, {"enabled": False}]}], {"levels": [1.0, {"enabled": False}]}, True),
+    ],
+)
+def test_json_schema_enum_distinguishes_booleans_from_numbers(
+    enum_values, value, should_accept
+):
+    schema = {
+        "type": "object",
+        "properties": {"value": {"enum": enum_values}},
+        "required": ["value"],
+        "additionalProperties": False,
+    }
+    arguments = {"value": value}
+
+    if should_accept:
+        _validate(arguments, schema)
+    else:
+        with pytest.raises(ToolArgumentSecurityError, match="Invalid tool argument value"):
+            _validate(arguments, schema)
