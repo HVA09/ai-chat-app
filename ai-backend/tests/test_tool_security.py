@@ -2,7 +2,12 @@
 
 import pytest
 
-from app.services.tool_security import inspect_untrusted_output, wrap_untrusted_tool_output
+from app.services.tool_security import (
+    ToolArgumentSecurityError,
+    inspect_untrusted_output,
+    validate_tool_arguments,
+    wrap_untrusted_tool_output,
+)
 
 
 @pytest.mark.parametrize(
@@ -78,3 +83,151 @@ def test_injection_detection_normalizes_only_the_signal_copy():
     assert result.injection_suspected is True
     assert original in rendered
     assert "Potential prompt injection was detected" in rendered
+
+
+def _validate(arguments, schema):
+    validate_tool_arguments(
+        schema,
+        arguments,
+        max_chars=12_000,
+        max_depth=8,
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected_error"),
+    [
+        (999, "below minimum"),
+        (20_001, "exceeds maximum"),
+        (True, "Invalid tool argument type"),
+    ],
+)
+def test_tool_argument_numeric_bounds_are_enforced(value, expected_error):
+    schema = {
+        "type": "object",
+        "properties": {
+            "max_chars": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 20_000,
+            }
+        },
+        "required": ["max_chars"],
+        "additionalProperties": False,
+    }
+
+    with pytest.raises(ToolArgumentSecurityError, match=expected_error):
+        _validate({"max_chars": value}, schema)
+
+
+def test_tool_argument_numeric_bounds_accept_boundary_values():
+    schema = {
+        "type": "object",
+        "properties": {
+            "max_chars": {
+                "type": "integer",
+                "minimum": 1000,
+                "maximum": 20_000,
+            }
+        },
+        "required": ["max_chars"],
+        "additionalProperties": False,
+    }
+
+    _validate({"max_chars": 1000}, schema)
+    _validate({"max_chars": 20_000}, schema)
+
+
+@pytest.mark.parametrize(
+    ("schema", "value"),
+    [
+        ({"type": "number", "exclusiveMinimum": 0}, 0),
+        ({"type": "number", "exclusiveMaximum": 10}, 10),
+        ({"type": "number", "minimum": 0, "exclusiveMinimum": True}, 0),
+        ({"type": "number", "maximum": 10, "exclusiveMaximum": True}, 10),
+    ],
+)
+def test_tool_argument_exclusive_numeric_bounds_are_enforced(schema, value):
+    with pytest.raises(ToolArgumentSecurityError, match="exclusive"):
+        _validate({"value": value}, {
+            "type": "object",
+            "properties": {"value": schema},
+            "required": ["value"],
+            "additionalProperties": False,
+        })
+
+
+def test_tool_argument_collection_bounds_are_enforced():
+    array_schema = {
+        "type": "object",
+        "properties": {
+            "files": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 2,
+                "items": {"type": "string"},
+            }
+        },
+        "required": ["files"],
+        "additionalProperties": False,
+    }
+
+    with pytest.raises(ToolArgumentSecurityError, match="minItems"):
+        _validate({"files": []}, array_schema)
+    with pytest.raises(ToolArgumentSecurityError, match="maxItems"):
+        _validate({"files": ["a", "b", "c"]}, array_schema)
+    _validate({"files": ["a", "b"]}, array_schema)
+
+    object_schema = {
+        "type": "object",
+        "minProperties": 1,
+        "maxProperties": 1,
+        "additionalProperties": True,
+    }
+    with pytest.raises(ToolArgumentSecurityError, match="minProperties"):
+        _validate({}, object_schema)
+    with pytest.raises(ToolArgumentSecurityError, match="maxProperties"):
+        _validate({"a": 1, "b": 2}, object_schema)
+
+
+def test_tool_schema_rejects_unknown_arguments_even_without_properties():
+    schema = {
+        "type": "object",
+        "required": [],
+        "additionalProperties": False,
+    }
+
+    with pytest.raises(ToolArgumentSecurityError, match="Unknown tool arguments"):
+        _validate({"unexpected": "value"}, schema)
+
+
+def test_tool_schema_can_validate_additional_properties_with_schema():
+    schema = {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": {"type": "integer", "minimum": 1},
+    }
+
+    _validate({"count": 2}, schema)
+    with pytest.raises(ToolArgumentSecurityError, match="below minimum"):
+        _validate({"count": 0}, schema)
+
+
+@pytest.mark.parametrize(
+    ("schema", "value"),
+    [
+        ({"type": "array", "minItems": -1}, []),
+        ({"type": "number", "minimum": float("nan")}, 1),
+        ({"type": "object", "maxProperties": True}, {}),
+    ],
+)
+def test_invalid_tool_schema_constraints_fail_closed(schema, value):
+    with pytest.raises(ToolArgumentSecurityError, match="Invalid tool schema constraint"):
+        if schema["type"] == "object":
+            _validate(value, schema)
+        else:
+            _validate({"value": value}, {
+                "type": "object",
+                "properties": {"value": schema},
+                "required": ["value"],
+            })
