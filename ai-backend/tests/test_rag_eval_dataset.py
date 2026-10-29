@@ -70,7 +70,7 @@ def test_rag_evaluation_cases_have_complete_unique_ids_and_relevance_labels():
         assert isinstance(case["query"], str) and len(case["query"].strip()) >= 20
         assert isinstance(case["critical_failure"], str) and case["critical_failure"].strip()
         documents = case["documents"]
-        assert len(documents) >= 3, case["id"]
+        assert len(documents) >= 5, case["id"]
 
         for document in documents:
             assert REQUIRED_DOCUMENT_FIELDS <= document.keys(), case["id"]
@@ -83,6 +83,9 @@ def test_rag_evaluation_cases_have_complete_unique_ids_and_relevance_labels():
         relevance_levels = [document["relevance"] for document in documents]
         assert 2 in relevance_levels, f"{case['id']} needs a highly relevant document"
         assert 0 in relevance_levels, f"{case['id']} needs at least one hard negative"
+        assert sum(grade == 0 for grade in relevance_levels) >= 3, (
+            f"{case['id']} needs enough negative candidates for meaningful top-k metrics"
+        )
 
     assert len(all_document_ids) == len(set(all_document_ids))
     assert EXPECTED_DOMAINS <= {case["domain"] for case in cases}
@@ -261,7 +264,7 @@ def test_benchmark_runner_calculates_metrics_without_live_provider_calls(monkeyp
                 }
             ],
         },
-        top_k=2,
+        top_k=1,
     )
 
     assert report["embedding_provider"] == "test"
@@ -270,9 +273,9 @@ def test_benchmark_runner_calculates_metrics_without_live_provider_calls(monkeyp
     assert len(report["dataset_sha256"]) == 64
     assert report["case_count"] == 1
     assert report["cases"][0]["ranked_documents"][0]["id"] == "relevant"
-    assert report["macro_average"]["recall_at_2"] == pytest.approx(1.0)
-    assert report["macro_average"]["precision_at_2"] == pytest.approx(0.5)
-    assert report["macro_average"]["ndcg_at_2"] == pytest.approx(1.0)
+    assert report["macro_average"]["recall_at_1"] == pytest.approx(1.0)
+    assert report["macro_average"]["precision_at_1"] == pytest.approx(1.0)
+    assert report["macro_average"]["ndcg_at_1"] == pytest.approx(1.0)
     assert report["macro_average"]["reciprocal_rank"] == pytest.approx(1.0)
     assert list(report["by_domain"]) == ["programming"]
     assert report["by_domain"]["programming"]["recall_at_2"] == pytest.approx(1.0)
@@ -371,7 +374,8 @@ def test_evaluator_validates_dataset_before_provider_calls(monkeypatch):
         runner.evaluate_dataset({"schema_version": 1, "cases": [{"id": "invalid"}]})
 
 
-def test_evaluator_rejects_top_k_larger_than_candidate_pool_before_provider_calls(monkeypatch):
+@pytest.mark.parametrize("top_k", [2, 3])
+def test_evaluator_rejects_top_k_not_smaller_than_candidate_pool_before_provider_calls(monkeypatch, top_k):
     runner = _load_rag_evaluation_runner()
 
     def unexpected_call(*_args, **_kwargs):
@@ -384,8 +388,8 @@ def test_evaluator_rejects_top_k_larger_than_candidate_pool_before_provider_call
     monkeypatch.setattr(runner, "embed_query", unexpected_async_call)
     monkeypatch.setattr(runner, "get_embedding_index_identity", unexpected_call)
 
-    with pytest.raises(ValueError, match="top_k cannot exceed the smallest candidate pool"):
-        runner.evaluate_dataset(_minimal_valid_rag_dataset(), top_k=3)
+    with pytest.raises(ValueError, match="top_k must be smaller than the smallest candidate pool"):
+        runner.evaluate_dataset(_minimal_valid_rag_dataset(), top_k=top_k)
 
 
 def test_evaluator_checks_embedding_configuration_before_requests(monkeypatch):
