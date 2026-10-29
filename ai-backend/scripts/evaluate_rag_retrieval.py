@@ -145,10 +145,10 @@ def evaluate_dataset(dataset: dict[str, Any], top_k: int = 3) -> dict[str, Any]:
     # Validate the full corpus before spending quota on any external requests.
     dataset = validate_dataset(dataset)
     smallest_candidate_pool = min(len(case["documents"]) for case in dataset["cases"])
-    if top_k > smallest_candidate_pool:
+    if top_k >= smallest_candidate_pool:
         raise ValueError(
-            "top_k cannot exceed the smallest candidate pool "
-            f"({smallest_candidate_pool} documents)."
+            "top_k must be smaller than the smallest candidate pool "
+            f"({smallest_candidate_pool} documents) so ranking metrics remain informative."
         )
 
     provider, model, embedding_fingerprint = get_embedding_index_identity()
