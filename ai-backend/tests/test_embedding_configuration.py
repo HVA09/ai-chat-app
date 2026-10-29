@@ -507,3 +507,32 @@ def test_embedding_index_identity_excludes_secrets_and_tracks_model_and_endpoint
     changed_endpoint = embeddings.get_embedding_index_identity()
     assert changed_endpoint[2] != changed_model[2]
 
+
+def test_embedding_response_parser_rejects_invalid_json_and_non_object_payload():
+    class InvalidJsonResponse:
+        def json(self):
+            raise ValueError("raw upstream body must not leak")
+
+    class NonObjectResponse:
+        def json(self):
+            return ["unexpected", "payload"]
+
+    with pytest.raises(
+        embeddings.EmbeddingServiceError,
+        match="ليست JSON صالحًا",
+    ):
+        embeddings._parse_embedding_response(InvalidJsonResponse())
+
+    with pytest.raises(
+        embeddings.EmbeddingServiceError,
+        match="صيغة استجابة embeddings غير متوقعة",
+    ):
+        embeddings._parse_embedding_response(NonObjectResponse())
+
+
+def test_embedding_vector_parser_rejects_non_object_payload():
+    with pytest.raises(
+        embeddings.EmbeddingServiceError,
+        match="صيغة استجابة embeddings غير متوقعة",
+    ):
+        embeddings._extract_embedding_vectors(["unexpected", "payload"])
