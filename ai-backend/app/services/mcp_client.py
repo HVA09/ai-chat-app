@@ -88,7 +88,9 @@ def _tool_schema(tool: Any) -> dict:
     schema = getattr(tool, "inputSchema", None)
     if isinstance(schema, dict):
         return schema
-    return {"type": "object", "properties": {}}
+    # Missing or malformed MCP schemas must not silently permit arbitrary arguments.
+    # Treat the tool as argumentless until the server provides an explicit schema.
+    return {"type": "object", "properties": {}, "additionalProperties": False}
 
 
 def _format_tool_result(result: Any) -> str:

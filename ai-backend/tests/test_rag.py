@@ -244,7 +244,14 @@ def test_build_retrieval_context_returns_stable_sources(db_session):
 
     context, sources = build_retrieval_context([(chunk, file)])
     assert "[SOURCE S1: report.pdf | CHUNK: 3]" in context
+    assert "authorized to access within the current conversation scope" in context
+    assert "files attached to this conversation" not in context
     assert sources == [{"id": "S1", "filename": "report.pdf", "chunk": 3, "file_id": file.id, "snippet": "important evidence"}]
+
+    fallback_context, fallback_sources = rag.build_fallback_file_context([file])
+    assert "authorized to access within the current conversation scope" in fallback_context
+    assert "files attached to this conversation" not in fallback_context
+    assert fallback_sources[0]["id"] == "S1"
 
 
 def test_workspace_knowledge_chunks_are_retrievable_without_conversation_link(

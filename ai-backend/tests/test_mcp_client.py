@@ -199,3 +199,31 @@ def test_mcp_tool_failure_logs_do_not_expose_url_or_exception_details(
     assert secret_in_error not in caplog.text
     assert "error_type=RuntimeError" in caplog.text
     assert "server=private-demo" in caplog.text
+
+
+def test_missing_mcp_input_schema_defaults_to_closed_argumentless_object():
+    from app.services.tool_security import (
+        ToolArgumentSecurityError,
+        validate_tool_arguments,
+    )
+
+    schema = mcp_client._tool_schema(SimpleNamespace(name="no-schema-tool"))
+
+    assert schema == {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    }
+    validate_tool_arguments(
+        schema,
+        {},
+        max_chars=1_000,
+        max_depth=8,
+    )
+    with pytest.raises(ToolArgumentSecurityError, match="Unknown tool arguments"):
+        validate_tool_arguments(
+            schema,
+            {"unrecognized": "must not reach the remote handler"},
+            max_chars=1_000,
+            max_depth=8,
+        )
