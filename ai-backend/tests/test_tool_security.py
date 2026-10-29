@@ -325,3 +325,52 @@ def test_boolean_subschemas_are_enforced_for_properties_and_array_items():
     _validate({"values": []}, array_schema)
     with pytest.raises(ToolArgumentSecurityError, match="Invalid tool argument value"):
         _validate({"values": [1]}, array_schema)
+
+
+@pytest.mark.parametrize(
+    ("schema", "value"),
+    [
+        (
+            {
+                "type": "object",
+                "$defs": {"PositiveInt": {"type": "integer", "minimum": 1}},
+                "properties": {
+                    "value": {"$ref": "#/$defs/PositiveInt"},
+                },
+            },
+            {"value": "not-an-integer"},
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {
+                    "value": {"type": "string", "pattern": "^[0-9]+$"},
+                },
+            },
+            {"value": "not-digits"},
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "oneOf": [{"type": "integer"}, {"type": "string"}],
+                    },
+                },
+            },
+            {"value": "text"},
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {
+                    "value": {"type": "string", "format": "email"},
+                },
+            },
+            {"value": "not-an-email"},
+        ),
+    ],
+)
+def test_unsupported_tool_schema_assertions_fail_closed(schema, value):
+    with pytest.raises(ToolArgumentSecurityError, match="Unsupported tool schema keyword"):
+        _validate(value, schema)
