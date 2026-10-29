@@ -131,16 +131,29 @@ def _schema_numeric_constraint(
 
 
 def _validate_schema(value: Any, schema: dict[str, Any], path: str) -> None:
-    schema_type = schema.get("type")
-    if isinstance(schema_type, list):
-        supported_types = [item for item in schema_type if item in _TYPE_NAMES]
-        if not supported_types or not any(
-            _validate_type(value, item) for item in supported_types
-        ):
-            raise ToolArgumentSecurityError(f"Invalid tool argument type at {path}.")
-    elif isinstance(schema_type, str) and schema_type in _TYPE_NAMES:
-        if not _validate_type(value, schema_type):
-            raise ToolArgumentSecurityError(f"Invalid tool argument type at {path}.")
+    if "type" in schema:
+        schema_type = schema["type"]
+        if isinstance(schema_type, list):
+            if not schema_type or any(
+                not isinstance(item, str) or item not in _TYPE_NAMES
+                for item in schema_type
+            ):
+                raise ToolArgumentSecurityError(
+                    f"Invalid tool schema type at {path}."
+                )
+            if not any(_validate_type(value, item) for item in schema_type):
+                raise ToolArgumentSecurityError(
+                    f"Invalid tool argument type at {path}."
+                )
+        elif isinstance(schema_type, str) and schema_type in _TYPE_NAMES:
+            if not _validate_type(value, schema_type):
+                raise ToolArgumentSecurityError(
+                    f"Invalid tool argument type at {path}."
+                )
+        else:
+            raise ToolArgumentSecurityError(
+                f"Invalid tool schema type at {path}."
+            )
 
     enum = schema.get("enum")
     if isinstance(enum, list) and value not in enum:
