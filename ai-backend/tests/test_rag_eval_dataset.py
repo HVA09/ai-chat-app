@@ -415,7 +415,7 @@ def test_evaluator_checks_embedding_configuration_before_requests(monkeypatch):
     monkeypatch.setattr(runner, "embed_documents_sync", fake_embed_documents)
     monkeypatch.setattr(runner, "embed_query", fake_embed_query)
 
-    report = runner.evaluate_dataset(_minimal_valid_rag_dataset(), top_k=2)
+    report = runner.evaluate_dataset(_minimal_valid_rag_dataset(), top_k=1)
 
     assert events == ["resolve_config", "embed_documents", "embed_query"]
     assert report["embedding_model"] == "test-model"
