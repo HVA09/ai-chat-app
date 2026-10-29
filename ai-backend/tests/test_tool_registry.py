@@ -338,3 +338,40 @@ def test_project_viewer_can_read_but_cannot_modify_project_with_agent_tools(db_s
         .one()
     )
     assert saved.content == "print('safe')"
+
+
+def test_registry_rejects_unsupported_schema_before_calling_handler():
+    calls = []
+
+    async def should_not_run(arguments, context):
+        calls.append((arguments, context))
+        return ToolResult(content="side effect", sources=[], succeeded=True)
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            name="guarded",
+            description="Schema must be enforced",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "value": {"type": "string", "pattern": "^safe$"},
+                },
+                "required": ["value"],
+                "additionalProperties": False,
+            },
+            handler=should_not_run,
+        )
+    )
+
+    result = asyncio.run(
+        registry.execute(
+            "guarded",
+            {"value": "not-safe"},
+            ToolContext(conversation=None, current_user=None, db=None),
+        )
+    )
+
+    assert result.succeeded is False
+    assert "Unsupported tool schema keyword" in result.content
+    assert calls == []
