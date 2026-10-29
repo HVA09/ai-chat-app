@@ -164,6 +164,45 @@ def test_rank_documents_rejects_count_mismatch_and_duplicate_ids():
         )
 
 
+def test_top_k_metrics_change_when_relevant_documents_move_below_cutoff():
+    relevance = {
+        "highly-relevant": 2,
+        "partially-relevant": 1,
+        "negative-a": 0,
+        "negative-b": 0,
+        "negative-c": 0,
+    }
+
+    strong = score_ranked_results(
+        [
+            "highly-relevant",
+            "partially-relevant",
+            "negative-a",
+            "negative-b",
+            "negative-c",
+        ],
+        relevance,
+        k=3,
+    )
+    weak = score_ranked_results(
+        [
+            "negative-a",
+            "negative-b",
+            "highly-relevant",
+            "partially-relevant",
+            "negative-c",
+        ],
+        relevance,
+        k=3,
+    )
+
+    assert strong["recall_at_3"] == pytest.approx(1.0)
+    assert strong["precision_at_3"] == pytest.approx(2 / 3)
+    assert weak["recall_at_3"] == pytest.approx(0.5)
+    assert weak["precision_at_3"] == pytest.approx(1 / 3)
+    assert strong["ndcg_at_3"] > weak["ndcg_at_3"]
+
+
 def test_retrieval_metrics_calculate_recall_precision_and_reciprocal_rank():
     scores = score_ranked_results(
         ["negative", "partial", "relevant"],
