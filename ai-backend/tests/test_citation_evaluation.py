@@ -81,3 +81,32 @@ def test_missing_answer_text_does_not_raise(answer_text):
     assert report["citation_count"] == 0
     assert report["citation_precision"] is None
     assert report["source_coverage"] == 0.0
+
+
+def test_code_examples_do_not_count_as_real_citations():
+    answer = (
+        "The real source is [S1]. "
+        "This inline example `[S99]` is literal text.\n\n"
+        "```python\nprint('[D45]')\n```\n\n"
+        "~~~text\n[W31]\n~~~\n\n"
+        "This unsupported prose citation is [W9]."
+    )
+
+    report = evaluate_answer_citations(answer, [{"id": "S1"}])
+
+    assert report["citation_count"] == 2
+    assert report["valid_citation_count"] == 1
+    assert report["unsupported_citation_count"] == 1
+    assert report["unsupported_citation_ids"] == ["W9"]
+    assert report["citation_precision"] == 0.5
+    assert report["source_coverage"] == 1.0
+
+
+def test_unclosed_fenced_code_does_not_count_literal_source_ids():
+    answer = "The answer ends with an example:\n```text\n[S99]"
+
+    report = evaluate_answer_citations(answer, [{"id": "S1"}])
+
+    assert report["citation_count"] == 0
+    assert report["citation_precision"] is None
+    assert report["source_coverage"] == 0.0
