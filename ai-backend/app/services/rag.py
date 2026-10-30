@@ -11,6 +11,7 @@ from app.models.assistant import Assistant
 from app.models.assistant_file_link import AssistantFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.file_chunk import FileChunk
+from app.services.db_session import commit_and_release_db_connection
 from app.services.embeddings import embed_documents_sync, embed_query
 
 CHUNK_SIZE = 1400
@@ -141,6 +142,10 @@ async def retrieve_relevant_chunks(
     if candidate is None:
         return []
 
+    # The candidate check opens a SQLAlchemy transaction. Return its connection
+    # before waiting for the external embeddings provider; the final ranked query
+    # below will check out a connection only after the provider responds.
+    commit_and_release_db_connection(db)
     query_embedding = await embed_query(query)
 
     return (
