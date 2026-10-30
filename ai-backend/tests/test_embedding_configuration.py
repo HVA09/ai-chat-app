@@ -536,3 +536,35 @@ def test_embedding_vector_parser_rejects_non_object_payload():
         match="صيغة استجابة embeddings غير متوقعة",
     ):
         embeddings._extract_embedding_vectors(["unexpected", "payload"])
+
+
+@pytest.mark.parametrize(
+    "untrusted_url",
+    [
+        "https://generativelanguage.googleapis.com.attacker.example/v1beta",
+        "http://generativelanguage.googleapis.com/v1beta",
+        "https://user:password@generativelanguage.googleapis.com/v1beta",
+        "https://generativelanguage.googleapis.com:8443/v1beta",
+        "https://generativelanguage.googleapis.com/v1beta?next=https://attacker.example",
+    ],
+)
+def test_explicit_gemini_embedding_base_url_rejects_untrusted_origins(
+    monkeypatch, untrusted_url
+):
+    _set_embedding_settings(
+        monkeypatch,
+        AI_PROVIDER="openai",
+        AI_API_KEY="chat-secret",
+        AI_API_BASE_URL="https://api.openai.com/v1",
+        EMBEDDING_PROVIDER="gemini",
+        EMBEDDING_API_KEY="embedding-secret",
+        EMBEDDING_API_BASE_URL=untrusted_url,
+        EMBEDDING_MODEL="gemini-embedding-001",
+        EMBEDDING_DIMENSIONS=768,
+    )
+
+    with pytest.raises(
+        embeddings.EmbeddingServiceError,
+        match="المضيف الرسمي generativelanguage.googleapis.com",
+    ):
+        embeddings._resolve_embedding_config()
