@@ -12,6 +12,7 @@ from app.models.assistant_file_link import AssistantFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.file_chunk import FileChunk
 from app.services.db_session import commit_and_release_db_connection
+from app.services.db_session import commit_and_release_db_connection
 from app.services.embeddings import embed_documents_sync, embed_query
 
 CHUNK_SIZE = 1400
@@ -54,6 +55,9 @@ def index_file_chunks(db: Session, file: FileAttachment) -> int:
         return 0
 
     chunks = chunk_text(text)
+    # The attachment may have just been inserted by the upload route. Commit its
+    # metadata first, then return the connection before the embedding API call.
+    commit_and_release_db_connection(db)
     embeddings = embed_documents_sync(chunks)
 
     db.execute(delete(FileChunk).where(FileChunk.file_id == file.id))
