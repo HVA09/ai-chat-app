@@ -1243,7 +1243,7 @@ def test_chat_context_finds_relevant_legacy_file_beyond_first_twenty(
 
     legacy_files = []
     for index in range(24):
-        text = f"UNRELATED_ARCHIVE_RECORD_{index} contains historical notes only."
+        text = f"UNRELATED_ARCHIVE_RECORD_{index} " + ("historical archive material " * 300)
         legacy_files.append(
             FileAttachment(
                 user_id=user.id,

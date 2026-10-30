@@ -831,7 +831,7 @@ async def _build_file_context(
     # context budget. A fixed oldest-20 limit can silently hide a relevant newer file.
     fallback_files = (
         fallback_files_query
-        .order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc())
+        .order_by(FileAttachment.created_at.asc(), FileAttachment.id.asc())
         .all()
     )
     fallback_files = rank_fallback_files(fallback_files, message)
