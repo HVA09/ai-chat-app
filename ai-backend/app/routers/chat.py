@@ -51,6 +51,7 @@ from app.services.rag import (
     build_fallback_file_context,
     build_retrieval_context,
     retrieve_relevant_chunks,
+    rank_fallback_files,
     safe_context_text,
     safe_source_filename,
 )
@@ -826,12 +827,14 @@ async def _build_file_context(
                 FileAttachment.indexed_embedding_fingerprint != active_embedding_fingerprint,
             )
         )
+    # Scan all authorized legacy candidates before applying the bounded prompt
+    # context budget. A fixed oldest-20 limit can silently hide a relevant newer file.
     fallback_files = (
         fallback_files_query
-        .order_by(FileAttachment.created_at.asc(), FileAttachment.id.asc())
-        .limit(20)
+        .order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc())
         .all()
     )
+    fallback_files = rank_fallback_files(fallback_files, message)
     if context:
         # Keep explicitly attached files even when RAG ranks other sources. Also
         # include bounded plain-text context from accessible files whose index is

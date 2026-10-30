@@ -1,8 +1,11 @@
 """تقطيع النص وفهرسة واسترجاع مقاطع RAG."""
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Sequence
 from datetime import datetime, timezone
+import re
+import unicodedata
 from typing import TypedDict
 
 from sqlalchemy import and_, delete, exists, or_
@@ -45,6 +48,62 @@ def safe_source_filename(filename: str | None) -> str:
     # Filenames are untrusted too; neutralize prompt delimiters only in the
     # rendered label, preserving the original filename in source metadata.
     return safe_context_text(normalized[:255]) or "unnamed file"
+
+
+_FALLBACK_STOP_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "been", "being", "by",
+    "for", "from", "how", "in", "is", "it", "of", "on", "or", "that",
+    "the", "this", "to", "was", "were", "what", "when", "where", "which",
+    "who", "why", "with", "you", "your", "ما", "ماذا", "كيف", "هل", "في",
+    "من", "على", "عن", "إلى", "الى", "هذا", "هذه", "ذلك", "تلك", "هو",
+    "هي", "مع", "التي", "الذي", "ثم", "أو", "او", "و",
+}
+
+
+def _fallback_search_tokens(value: str | None) -> list[str]:
+    normalized = unicodedata.normalize("NFKC", value or "").casefold()
+    return re.findall(r"[\w]+", normalized, flags=re.UNICODE)
+
+
+def rank_fallback_files(
+    files: Sequence[FileAttachment], query: str
+) -> list[FileAttachment]:
+    """Prioritize authorized fallback files by lexical relevance to the user query.
+
+    The caller supplies only files that passed the conversation/workspace/project/
+    assistant access filters. Stable ordering is retained for equal scores.
+    """
+    ordered_files = list(files)
+    query_terms = list(
+        dict.fromkeys(
+            token
+            for token in _fallback_search_tokens(query)
+            if len(token) > 1 and token not in _FALLBACK_STOP_WORDS
+        )
+    )
+    if not query_terms:
+        return ordered_files
+
+    ranked: list[tuple[tuple[int, int, int, int], int, FileAttachment]] = []
+    phrase = " ".join(query_terms)
+    for position, file in enumerate(ordered_files):
+        text_tokens = _fallback_search_tokens(file.extracted_text)
+        token_counts = Counter(text_tokens)
+        filename_tokens = set(_fallback_search_tokens(file.original_filename))
+        matched_terms = [term for term in query_terms if token_counts[term] > 0]
+        filename_matches = sum(term in filename_tokens for term in query_terms)
+        normalized_text = " ".join(text_tokens)
+        phrase_match = int(len(query_terms) > 1 and phrase in normalized_text)
+        score = (
+            len(matched_terms),
+            phrase_match,
+            filename_matches,
+            sum(min(token_counts[term], 3) for term in matched_terms),
+        )
+        ranked.append((score, position, file))
+
+    ranked.sort(key=lambda item: (item[0], -item[1]), reverse=True)
+    return [file for _score, _position, file in ranked]
 
 
 class SourceCitation(TypedDict):

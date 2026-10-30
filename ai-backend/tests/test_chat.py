@@ -1214,6 +1214,93 @@ def test_chat_context_includes_legacy_knowledge_when_rag_returns_current_chunks(
     assert any(source["filename"] == "legacy.txt" for source in sources)
 
 
+def test_chat_context_finds_relevant_legacy_file_beyond_first_twenty(
+    client, db_session, monkeypatch
+):
+    """A relevant legacy file must not be hidden by an oldest-20 fallback cap."""
+    from app.models.conversation import Conversation
+    from app.models.file_attachment import FileAttachment
+    from app.models.workspace import Workspace
+
+    token = _register_and_login(client, "legacy-over-twenty-rag@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    created = client.post("/chat", json={"message": "ابدأ"}, headers=headers)
+    assert created.status_code == 200
+    conversation = (
+        db_session.query(Conversation)
+        .filter(Conversation.id == created.json()["conversation_id"])
+        .one()
+    )
+    user = (
+        db_session.query(User)
+        .filter(User.email == "legacy-over-twenty-rag@example.com")
+        .one()
+    )
+    workspace = Workspace(owner_id=user.id, name="Legacy fallback over twenty")
+    db_session.add(workspace)
+    db_session.flush()
+    conversation.workspace_id = workspace.id
+
+    legacy_files = []
+    for index in range(24):
+        text = f"UNRELATED_ARCHIVE_RECORD_{index} contains historical notes only."
+        legacy_files.append(
+            FileAttachment(
+                user_id=user.id,
+                workspace_id=workspace.id,
+                project_id=None,
+                original_filename=f"archive-{index:02d}.txt",
+                stored_filename=f"archive-{index:02d}.txt",
+                content_type="text/plain",
+                size_bytes=len(text),
+                extracted_text=text,
+            )
+        )
+
+    relevant_text = (
+        "BGP protocol configuration reference: BGP neighbors use autonomous "
+        "system numbers and routing policy."
+    )
+    relevant_file = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        project_id=None,
+        original_filename="bgp-protocol-reference.txt",
+        stored_filename="bgp-protocol-reference.txt",
+        content_type="text/plain",
+        size_bytes=len(relevant_text),
+        extracted_text=relevant_text,
+    )
+    db_session.add_all([*legacy_files, relevant_file])
+    db_session.commit()
+    db_session.refresh(conversation)
+    db_session.refresh(relevant_file)
+
+    async def no_semantic_chunks(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "retrieve_relevant_chunks",
+        no_semantic_chunks,
+    )
+
+    context, sources = asyncio.run(
+        chat_router_module._build_file_context(
+            conversation,
+            "Explain BGP protocol configuration.",
+            db_session,
+        )
+    )
+
+    assert "BGP neighbors use autonomous system numbers" in context
+    assert any(
+        source["file_id"] == relevant_file.id
+        and source["filename"] == "bgp-protocol-reference.txt"
+        for source in sources
+    )
+
+
 def test_chat_context_reports_explicit_attachment_when_text_is_unavailable(
     client, db_session, monkeypatch
 ):
