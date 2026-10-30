@@ -485,3 +485,37 @@ def test_embed_query_wraps_provider_timeout_as_service_error(monkeypatch):
 
     assert isinstance(error.value.__cause__, httpx.ReadTimeout)
 
+def test_index_file_chunks_releases_db_connection_before_embedding_request(
+    db_session, monkeypatch
+):
+    user = User(email="rag-index-release@example.com", hashed_password="hashed")
+    db_session.add(user)
+    db_session.flush()
+    file = FileAttachment(
+        user_id=user.id,
+        original_filename="release.txt",
+        stored_filename="release.txt",
+        content_type="text/plain",
+        size_bytes=50,
+        extracted_text="Linux networking information " * 80,
+    )
+    db_session.add(file)
+    db_session.flush()
+
+    released = []
+
+    def fake_release(session):
+        assert session is db_session
+        released.append(True)
+
+    def fake_embed_documents(chunks):
+        assert released, "the DB connection must be released before embeddings I/O"
+        return [[0.1] * 768 for _ in chunks]
+
+    monkeypatch.setattr(rag, "commit_and_release_db_connection", fake_release)
+    monkeypatch.setattr(rag, "embed_documents_sync", fake_embed_documents)
+
+    indexed = rag.index_file_chunks(db_session, file)
+
+    assert indexed > 0
+    assert released == [True]
