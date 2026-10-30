@@ -1029,6 +1029,7 @@ async def analyze_attached_image(
     if context_parts:
         prompt = "\n\n".join(context_parts) + f"\n\nUSER REQUEST:\n{payload.message}"
 
+    commit_and_release_db_connection(db)
     try:
         with materialize_file(attachment.object_key, image_path) as materialized_path:
             raw = materialized_path.read_bytes()
@@ -1288,6 +1289,7 @@ async def chat(
                 / attachment.stored_filename
             )
             commit_and_release_db_connection(db)
+            commit_and_release_db_connection(db)
             with materialize_file(attachment.object_key, fallback_path) as path:
                 data_file = DataFile(
                     path=path,
@@ -1531,7 +1533,7 @@ async def chat_stream(
         db.add(
             Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
         )
-        db.commit()
+        commit_and_release_db_connection(db)
         safe_calculator_result = calculator_result.replace("\n", "\\n")
 
         async def calculator_event_generator():
@@ -1580,7 +1582,7 @@ async def chat_stream(
                 content=payload.message,
             )
         )
-        db.commit()
+        commit_and_release_db_connection(db)
         safe_code_result = code_result.replace("\n", "\\n")
 
         async def python_event_generator():
@@ -1645,7 +1647,7 @@ async def chat_stream(
         db.add(
             Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
         )
-        db.commit()
+        commit_and_release_db_connection(db)
         safe_analysis_result = analysis_result.replace("\n", "\\n")
         sources = [
             {
@@ -1684,6 +1686,7 @@ async def chat_stream(
     search_query = extract_web_search_query(payload.message)
     if search_query is not None:
         try:
+            commit_and_release_db_connection(db)
             results = await search_web(search_query)
             search_reply, sources = format_web_search_response(search_query, results)
         except WebSearchError as exc:
@@ -1695,7 +1698,7 @@ async def chat_stream(
         db.add(
             Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
         )
-        db.commit()
+        commit_and_release_db_connection(db)
         safe_search_reply = search_reply.replace("\n", "\\n")
         safe_sources = json.dumps(sources, ensure_ascii=False)
 
@@ -1729,7 +1732,7 @@ async def chat_stream(
     db.add(
         Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
     )
-    db.commit()
+    commit_and_release_db_connection(db)
 
     # FastAPI يُبقي اعتماديات الطلب حية حتى ينتهي مولّد StreamingResponse
     selected_provider: str | None = None
@@ -1968,6 +1971,7 @@ async def regenerate_chat_stream(
     history_messages = messages[:user_index]
     history = [{"role": m.role.value, "content": m.content} for m in history_messages[-MAX_HISTORY_MESSAGES:]]
     ai_message, sources = await _augment_message(user_message.content, conversation, db)
+    commit_and_release_db_connection(db)
 
     async def event_generator():
         yield f"event: conversation\ndata: {conversation.id}\n\n"
@@ -2082,6 +2086,7 @@ async def edit_chat_stream(
     history_messages = messages[:target_position]
     history = [{"role": m.role.value, "content": m.content} for m in history_messages[-MAX_HISTORY_MESSAGES:]]
     ai_message, sources = await _augment_message(payload.message, conversation, db)
+    commit_and_release_db_connection(db)
 
     async def event_generator():
         yield f"event: conversation\ndata: {conversation.id}\n\n"
