@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import difflib
+import logging
 import re
 import uuid
 import zipfile
@@ -47,6 +48,9 @@ from app.services.tools.web_search import (
     format_web_search_response,
     search_web,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -488,8 +492,15 @@ async def _create_project_archive(arguments: dict[str, Any], context: ToolContex
             delete_stored_file(object_key, destination)
         except Exception:
             pass
+        # Exception messages can contain SQL, storage, filesystem, or
+        # credential-bearing connection details. Keep those out of the model's
+        # tool context and user-visible response.
+        logger.warning(
+            "Agent project archive creation failed error_type=%s",
+            type(exc).__name__,
+        )
         return ToolResult(
-            content=f"تعذر إنشاء حزمة المشروع: {exc}",
+            content="تعذر إنشاء حزمة المشروع بسبب خطأ داخلي. أعد المحاولة لاحقًا.",
             sources=[],
             succeeded=False,
         )
