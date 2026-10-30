@@ -163,6 +163,12 @@ def _resolve_embedding_config() -> EmbeddingConfig:
 
     if provider == "gemini":
         if configured_base_url:
+            if not _is_official_gemini_api_url(configured_base_url):
+                raise EmbeddingServiceError(
+                    "EMBEDDING_API_BASE_URL لمزوّد Gemini يجب أن يستخدم "
+                    "المضيف الرسمي generativelanguage.googleapis.com عبر HTTPS، "
+                    "دون بيانات اعتماد مضمنة أو query parameters."
+                )
             base_url = _normalize_gemini_base_url(configured_base_url)
         elif (
             not configured_provider
