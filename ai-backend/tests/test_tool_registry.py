@@ -216,7 +216,6 @@ def test_project_archive_failure_does_not_expose_internal_exception_details(
     from types import SimpleNamespace
 
     from app.config import settings
-    from app.services import tools as tools_package
     from app.services.tools import registry as registry_module
 
     secret_detail = "postgresql://internal-user:secret-password@db.internal:5432/app"
@@ -249,7 +248,6 @@ def test_project_archive_failure_does_not_expose_internal_exception_details(
         def rollback(self):
             self.rolled_back = True
 
-    del tools_package
     session = FailingCommitSession()
     context = ToolContext(
         conversation=SimpleNamespace(id=7, workspace_id=None, project_id=None),
