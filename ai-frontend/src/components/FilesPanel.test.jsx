@@ -506,6 +506,130 @@ describe("FilesPanel project knowledge", () => {
     }
   });
 
+  it("does not create a preview URL when a file fetch finishes after unmount", async () => {
+    const originalCreateDescriptor = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "createObjectURL"
+    );
+    const originalRevokeDescriptor = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "revokeObjectURL"
+    );
+    const createObjectURL = vi.fn(() => "blob:late-preview");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(window.URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(window.URL, "revokeObjectURL", {
+      configurable: true,
+      writable: true,
+      value: revokeObjectURL,
+    });
+
+    try {
+      let resolveBlob;
+      listFiles.mockResolvedValueOnce([
+        {
+          id: 103,
+          original_filename: "late-preview.png",
+          content_type: "image/png",
+          size_bytes: 10,
+          is_attached: false,
+          is_ai_indexed: false,
+          has_extracted_text: false,
+        },
+      ]);
+      fetchFileBlob.mockImplementationOnce(
+        () => new Promise((resolve) => { resolveBlob = resolve; })
+      );
+      const user = userEvent.setup();
+      const { unmount } = render(<FilesPanel onClose={vi.fn()} />);
+
+      await user.click(await screen.findByText("late-preview.png"));
+      await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledTimes(1));
+
+      unmount();
+      await act(async () => {
+        resolveBlob(new Blob(["image-bytes"], { type: "image/png" }));
+        await Promise.resolve();
+      });
+
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(revokeObjectURL).not.toHaveBeenCalled();
+    } finally {
+      if (originalCreateDescriptor) {
+        Object.defineProperty(window.URL, "createObjectURL", originalCreateDescriptor);
+      } else {
+        delete window.URL.createObjectURL;
+      }
+      if (originalRevokeDescriptor) {
+        Object.defineProperty(window.URL, "revokeObjectURL", originalRevokeDescriptor);
+      } else {
+        delete window.URL.revokeObjectURL;
+      }
+    }
+  });
+
+  it("ignores a pending preview when the conversation file scope changes", async () => {
+    const originalCreateDescriptor = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "createObjectURL"
+    );
+    const createObjectURL = vi.fn(() => "blob:stale-scope-preview");
+    Object.defineProperty(window.URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: createObjectURL,
+    });
+
+    try {
+      let resolveBlob;
+      listFiles
+        .mockReset()
+        .mockResolvedValueOnce([
+          {
+            id: 104,
+            original_filename: "old-conversation.png",
+            content_type: "image/png",
+            size_bytes: 10,
+            is_attached: false,
+            is_ai_indexed: false,
+            has_extracted_text: false,
+          },
+        ])
+        .mockResolvedValueOnce([]);
+      fetchFileBlob.mockImplementationOnce(
+        () => new Promise((resolve) => { resolveBlob = resolve; })
+      );
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <FilesPanel onClose={vi.fn()} conversationId={11} />
+      );
+
+      await user.click(await screen.findByText("old-conversation.png"));
+      await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledTimes(1));
+
+      rerender(<FilesPanel onClose={vi.fn()} conversationId={22} />);
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(2));
+
+      await act(async () => {
+        resolveBlob(new Blob(["image-bytes"], { type: "image/png" }));
+        await Promise.resolve();
+      });
+
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(screen.queryByAltText("old-conversation.png")).not.toBeInTheDocument();
+    } finally {
+      if (originalCreateDescriptor) {
+        Object.defineProperty(window.URL, "createObjectURL", originalCreateDescriptor);
+      } else {
+        delete window.URL.createObjectURL;
+      }
+    }
+  });
+
   it("does not refresh or schedule upload state updates after the panel unmounts", async () => {
     listFiles.mockReset().mockResolvedValue([]);
     uploadFile.mockReset();
