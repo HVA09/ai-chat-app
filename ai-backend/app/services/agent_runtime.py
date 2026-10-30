@@ -17,6 +17,7 @@ from app.models.conversation import Conversation
 from app.models.user import User
 from app.services.tool_security import wrap_untrusted_tool_output
 from app.services.ai_providers.base import AIToolReply
+from app.services.db_session import commit_and_release_db_connection
 from app.services.mcp_client import discover_mcp_tools
 from app.services.tools.registry import ToolContext, ToolRegistry, ToolResult, tool_registry
 
@@ -191,6 +192,9 @@ class AgentRuntime:
             }
         )
 
+        # Event sinks may inspect job state in the database. Return that
+        # checkout before executing a tool that can wait on external I/O.
+        commit_and_release_db_connection(db)
         try:
             result = await asyncio.wait_for(
                 registry.execute(
@@ -262,6 +266,9 @@ class AgentRuntime:
         )
         messages.append({"role": "user", "content": task})
 
+        # Chat history is loaded by the caller. Release its read transaction
+        # before MCP discovery or any model/provider request can wait externally.
+        commit_and_release_db_connection(db)
         registry = self.registry_factory()
         for spec in await self.mcp_discoverer():
             if registry.get(spec.name) is None and registry.allows(spec.name):
@@ -295,6 +302,9 @@ class AgentRuntime:
             )
 
             available_tools = [] if tool_followups_blocked else tools
+            # Previous event callbacks and tool handlers may have opened a
+            # transaction. Never hold its connection while waiting for the LLM.
+            commit_and_release_db_connection(db)
             reply = await self.provider.get_reply_with_tools(
                 messages,
                 available_tools,
