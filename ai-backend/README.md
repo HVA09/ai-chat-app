@@ -47,7 +47,7 @@ Dockerfile, docker-compose.yml (app, db, redis, celery_worker, nginx, certbot, b
 
 ## تقييم جودة RAG
 
-مجموعة اختبار أولية تضم 20 سؤالًا و60 وثيقة عبر سبعة مجالات، وتدعم مقاييس Recall@k وPrecision@k وnDCG@k وReciprocal Rank. لم تُشغّل على مزوّد حي بعد.
+مجموعة اختبار أولية تضم 20 سؤالًا و100 وثيقة مرشحة (خمس وثائق لكل سؤال) عبر سبعة مجالات، مع استعلام عربي في كل مجال. تدعم مقاييس Recall@k وPrecision@k وnDCG@k وReciprocal Rank، إضافة إلى تشخيص تصدّر الوثائق غير ذات الصلة. لم تُشغّل على مزوّد embeddings حي بعد.
 
 من مجلد `ai-backend`، هذا الأمر محلي ولا يحتاج مفتاح API:
 
