@@ -7,6 +7,7 @@ import {
   deleteFile,
   indexImageForRag,
   reindexFileForRag,
+  fetchFileBlob,
   listFiles,
   uploadFile,
 } from "../lib/filesApi";
@@ -382,6 +383,128 @@ describe("FilesPanel project knowledge", () => {
     expect(listFiles).toHaveBeenCalledTimes(2);
   });
 
+
+  it("revokes image preview blob URLs when the panel unmounts", async () => {
+    const originalCreateDescriptor = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "createObjectURL"
+    );
+    const originalRevokeDescriptor = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "revokeObjectURL"
+    );
+    const createObjectURL = vi.fn(() => "blob:files-panel-preview");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(window.URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(window.URL, "revokeObjectURL", {
+      configurable: true,
+      writable: true,
+      value: revokeObjectURL,
+    });
+
+    try {
+      listFiles.mockResolvedValueOnce([
+        {
+          id: 101,
+          original_filename: "preview.png",
+          content_type: "image/png",
+          size_bytes: 10,
+          is_attached: false,
+          is_ai_indexed: false,
+          has_extracted_text: false,
+        },
+      ]);
+      fetchFileBlob.mockResolvedValueOnce(new Blob(["image-bytes"], { type: "image/png" }));
+      const user = userEvent.setup();
+      const { unmount } = render(<FilesPanel onClose={vi.fn()} />);
+
+      await user.click(await screen.findByText("preview.png"));
+      expect(await screen.findByAltText("preview.png")).toHaveAttribute(
+        "src",
+        "blob:files-panel-preview"
+      );
+
+      unmount();
+
+      expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:files-panel-preview");
+    } finally {
+      if (originalCreateDescriptor) {
+        Object.defineProperty(window.URL, "createObjectURL", originalCreateDescriptor);
+      } else {
+        delete window.URL.createObjectURL;
+      }
+      if (originalRevokeDescriptor) {
+        Object.defineProperty(window.URL, "revokeObjectURL", originalRevokeDescriptor);
+      } else {
+        delete window.URL.revokeObjectURL;
+      }
+    }
+  });
+
+  it("revokes the previous preview URL when a preview is closed", async () => {
+    const originalCreateDescriptor = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "createObjectURL"
+    );
+    const originalRevokeDescriptor = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "revokeObjectURL"
+    );
+    const createObjectURL = vi.fn().mockReturnValue("blob:files-panel-close");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(window.URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(window.URL, "revokeObjectURL", {
+      configurable: true,
+      writable: true,
+      value: revokeObjectURL,
+    });
+
+    try {
+      listFiles.mockResolvedValueOnce([
+        {
+          id: 102,
+          original_filename: "close-preview.png",
+          content_type: "image/png",
+          size_bytes: 10,
+          is_attached: false,
+          is_ai_indexed: false,
+          has_extracted_text: false,
+        },
+      ]);
+      fetchFileBlob.mockResolvedValueOnce(new Blob(["image-bytes"], { type: "image/png" }));
+      const user = userEvent.setup();
+      render(<FilesPanel onClose={vi.fn()} />);
+
+      await user.click(await screen.findByText("close-preview.png"));
+      const image = await screen.findByAltText("close-preview.png");
+      await user.click(image);
+
+      await waitFor(() => {
+        expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+        expect(revokeObjectURL).toHaveBeenCalledWith("blob:files-panel-close");
+      });
+    } finally {
+      if (originalCreateDescriptor) {
+        Object.defineProperty(window.URL, "createObjectURL", originalCreateDescriptor);
+      } else {
+        delete window.URL.createObjectURL;
+      }
+      if (originalRevokeDescriptor) {
+        Object.defineProperty(window.URL, "revokeObjectURL", originalRevokeDescriptor);
+      } else {
+        delete window.URL.revokeObjectURL;
+      }
+    }
+  });
 
   it("does not refresh or schedule upload state updates after the panel unmounts", async () => {
     listFiles.mockReset().mockResolvedValue([]);
