@@ -1218,6 +1218,11 @@ def test_chat_context_finds_relevant_legacy_file_beyond_first_twenty(
     client, db_session, monkeypatch
 ):
     """A relevant legacy file must not be hidden by an oldest-20 fallback cap."""
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="تم")),
+    )
     from app.models.conversation import Conversation
     from app.models.file_attachment import FileAttachment
     from app.models.workspace import Workspace
