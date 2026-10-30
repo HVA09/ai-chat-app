@@ -383,6 +383,45 @@ describe("FilesPanel project knowledge", () => {
   });
 
 
+  it("does not refresh or schedule upload state updates after the panel unmounts", async () => {
+    listFiles.mockReset().mockResolvedValue([]);
+    uploadFile.mockReset();
+    let resolveUpload;
+    uploadFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveUpload = resolve;
+        })
+    );
+
+    const user = userEvent.setup();
+    const { container, unmount } = render(
+      <FilesPanel onClose={vi.fn()} conversationId={31} />
+    );
+
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+    const input = container.querySelector('input[type="file"]');
+    const file = new File(["closing panel"], "late-upload.txt", {
+      type: "text/plain",
+    });
+    await user.upload(input, file);
+    await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
+
+    unmount();
+
+    await act(async () => {
+      resolveUpload({
+        id: 100,
+        original_filename: "late-upload.txt",
+        content_type: "text/plain",
+        size_bytes: 13,
+      });
+      await Promise.resolve();
+    });
+
+    expect(listFiles).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps text file indexing retry available after provider failure", async () => {
     const file = {
       id: 90,
