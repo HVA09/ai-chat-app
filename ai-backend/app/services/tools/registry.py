@@ -848,6 +848,9 @@ tool_registry.register(
             "required": ["code"],
         },
         handler=_python,
+        # Python code can print arbitrary user-controlled strings. Treat output
+        # as untrusted even though execution itself is sandboxed.
+        output_trust="untrusted",
     )
 )
 tool_registry.register(
