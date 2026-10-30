@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.services.db_session import commit_and_release_db_connection
 from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_allowed_ai_models, get_current_user
 from app.audit import log_event
 from app.models.conversation import Conversation
@@ -252,6 +253,10 @@ async def upload_file(
         raise HTTPException(status_code=413, detail="وصلت للحد الأقصى لعدد الملفات")
     current_storage = db.query(func.coalesce(func.sum(FileAttachment.size_bytes), 0)).filter(FileAttachment.user_id == current_user.id).scalar() or 0
 
+    # Quota and access checks are complete. Release the checkout before reading
+    # the streamed upload body or contacting object storage.
+    commit_and_release_db_connection(db)
+
     extension = Path(file.filename or "").suffix.lower()
     stored_filename = f"{uuid.uuid4().hex}{extension}"
     object_key = f"users/{current_user.id}/{stored_filename}"
@@ -323,8 +328,18 @@ async def upload_file(
     db.add(attachment)
     db.flush()
 
+    if conversation_id is not None:
+        db.add(
+            ConversationFileLink(
+                conversation_id=conversation_id,
+                file_id=attachment.id,
+            )
+        )
+
     if extracted_text:
         try:
+            # index_file_chunks commits the file metadata/link and releases its
+            # checkout before the external embeddings request.
             indexed_chunks = index_file_chunks(db, attachment)
             if indexed_chunks:
                 log_event(
@@ -341,13 +356,6 @@ async def upload_file(
                 current_user.id,
             )
 
-    if conversation_id is not None:
-        db.add(
-            ConversationFileLink(
-                conversation_id=conversation_id,
-                file_id=attachment.id,
-            )
-        )
     db.commit()
     db.refresh(attachment)
     log_event(
@@ -542,6 +550,7 @@ def download_file(
 ):
     attachment = _get_accessible_file(file_id, current_user, db)
     path = _user_upload_dir(attachment.user_id) / attachment.stored_filename
+    commit_and_release_db_connection(db)
     try:
         body = open_file(attachment.object_key or f"users/{attachment.user_id}/{attachment.stored_filename}", path)
     except (FileNotFoundError, StorageError) as exc:
@@ -579,6 +588,7 @@ async def index_image_for_rag(
     allowed_models = get_allowed_ai_models(current_user, db)
     model = allowed_models[0] if allowed_models else settings.AI_MODEL
 
+    commit_and_release_db_connection(db)
     try:
         reply, indexed_chunks = await index_image_file(attachment, db, model)
     except (FileNotFoundError, ValueError) as exc:
@@ -625,6 +635,7 @@ def delete_file(
             detail="ليس لديك صلاحية حذف هذا الملف",
         )
     path = _user_upload_dir(attachment.user_id) / attachment.stored_filename
+    commit_and_release_db_connection(db)
     try:
         delete_stored_file(
             attachment.object_key or f"users/{attachment.user_id}/{attachment.stored_filename}",
