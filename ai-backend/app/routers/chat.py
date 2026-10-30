@@ -839,6 +839,7 @@ async def _build_file_context(
         .options(
             load_only(
                 FileAttachment.id,
+                FileAttachment.created_at,
                 FileAttachment.original_filename,
                 FileAttachment.extracted_text,
             )
