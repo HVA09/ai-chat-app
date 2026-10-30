@@ -68,6 +68,19 @@ export default function FilesPanel({
   const [showProjectFiles, setShowProjectFiles] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const fileInputRef = useRef(null);
+  const isMountedRef = useRef(false);
+  const uploadProgressTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (uploadProgressTimeoutRef.current !== null) {
+        window.clearTimeout(uploadProgressTimeoutRef.current);
+        uploadProgressTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (projectId !== null) {
@@ -97,7 +110,12 @@ export default function FilesPanel({
     const requestScopeKey = fileScopeKey;
     // A callback from an older render (for example, an upload that finishes
     // after the user switches conversations) must not start a refresh for the old scope.
-    if (requestScopeKey !== currentFileScopeRef.current) return;
+    if (
+      !isMountedRef.current ||
+      requestScopeKey !== currentFileScopeRef.current
+    ) {
+      return;
+    }
 
     const requestId = ++refreshRequestRef.current;
     setLoading(true);
@@ -109,6 +127,7 @@ export default function FilesPanel({
         showProjectFiles ? projectId : null
       );
       if (
+        !isMountedRef.current ||
         requestId !== refreshRequestRef.current ||
         requestScopeKey !== currentFileScopeRef.current
       ) {
@@ -117,6 +136,7 @@ export default function FilesPanel({
       setFiles(nextFiles);
     } catch (errorValue) {
       if (
+        !isMountedRef.current ||
         requestId !== refreshRequestRef.current ||
         requestScopeKey !== currentFileScopeRef.current
       ) {
@@ -125,6 +145,7 @@ export default function FilesPanel({
       showErrorToast(errorValue, "files.listError");
     } finally {
       if (
+        isMountedRef.current &&
         requestId === refreshRequestRef.current &&
         requestScopeKey === currentFileScopeRef.current
       ) {
@@ -157,11 +178,17 @@ export default function FilesPanel({
 
     for (const file of selectedFiles) {
       try {
-        setUploadProgress(Math.round((completed / selectedFiles.length) * 100));
+        if (isMountedRef.current) {
+          setUploadProgress(
+            Math.round((completed / selectedFiles.length) * 100)
+          );
+        }
         await uploadFile(
           file,
           (progress) => {
-            const overall = ((completed + progress / 100) / selectedFiles.length) * 100;
+            if (!isMountedRef.current) return;
+            const overall =
+              ((completed + progress / 100) / selectedFiles.length) * 100;
             setUploadProgress(Math.round(overall));
           },
           showProjectFiles || showWorkspaceFiles ? null : conversationId,
@@ -176,11 +203,21 @@ export default function FilesPanel({
       }
     }
 
+    if (!isMountedRef.current) return;
+
     setUploadProgress(100);
     try {
       await refresh();
     } finally {
-      window.setTimeout(() => setUploadProgress(null), 250);
+      if (isMountedRef.current) {
+        if (uploadProgressTimeoutRef.current !== null) {
+          window.clearTimeout(uploadProgressTimeoutRef.current);
+        }
+        uploadProgressTimeoutRef.current = window.setTimeout(() => {
+          uploadProgressTimeoutRef.current = null;
+          if (isMountedRef.current) setUploadProgress(null);
+        }, 250);
+      }
     }
 
   };
