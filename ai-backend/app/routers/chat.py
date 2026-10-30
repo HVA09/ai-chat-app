@@ -1409,6 +1409,9 @@ async def chat_stream(
     أحداث SSE: conversation (رقم المحادثة) → chunk (جزء نص، مرارًا) → done | error
     الأسطر الجديدة داخل chunk تُستبدل بـ \\\n نصية عشان ما تكسر صيغة السطر الواحد لكل حدث.
     """
+    # Preserve loaded conversation values through the commit that ends the
+    # request's setup transaction, so the SSE generator never lazily rechecks out.
+    db.expire_on_commit = False
     conversation = _get_or_create_conversation(payload, current_user, db)
     _attach_requested_files(payload.file_ids, conversation, current_user, db)
     if conversation.workspace_id is not None:
@@ -1939,6 +1942,7 @@ async def regenerate_chat_stream(
     db: Session = Depends(get_db),
 ):
     """إعادة توليد آخر رد مساعد بدون إضافة رسالة مستخدم مكررة."""
+    db.expire_on_commit = False
     conversation = (
         db.query(Conversation)
         .filter(
@@ -2058,6 +2062,7 @@ async def edit_chat_stream(
     db: Session = Depends(get_db),
 ):
     """تعديل رسالة مستخدم سابقة ثم إعادة توليد بقية المحادثة من موقع التعديل."""
+    db.expire_on_commit = False
     conversation = (
         db.query(Conversation)
         .filter(
