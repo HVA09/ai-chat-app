@@ -35,6 +35,7 @@ from app.services.storage import (
     materialize_file,
     put_file,
 )
+from app.services.db_session import commit_and_release_db_connection
 from app.services.tool_security import (
     ToolArgumentSecurityError,
     inspect_untrusted_output,
@@ -274,6 +275,9 @@ async def _analyze_data(arguments: dict[str, Any], context: ToolContext) -> Tool
             / str(context.current_user.id)
             / attachment.stored_filename
         )
+        # Attachment metadata is fully loaded; return the DB connection before
+        # object storage I/O and local file analysis.
+        commit_and_release_db_connection(context.db)
         try:
             with materialize_file(attachment.object_key, fallback_path) as path:
                 data_file = DataFile(
@@ -380,6 +384,9 @@ async def _create_project_archive(arguments: dict[str, Any], context: ToolContex
             destination.unlink(missing_ok=True)
             return ToolResult(content="مساحة التخزين في الحساب لا تكفي لحفظ حزمة المشروع.", sources=[], succeeded=False)
 
+        # Quota checks are complete and no DB writes are pending. Do not hold
+        # a pooled connection while uploading the ZIP to object storage.
+        commit_and_release_db_connection(context.db)
         try:
             put_file(destination, object_key, "application/zip")
         except Exception:
