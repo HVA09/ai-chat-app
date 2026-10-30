@@ -4,9 +4,11 @@
 """
 import base64
 import uuid
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import tempfile
 import zipfile
+from urllib.parse import quote
+
 from sqlalchemy import and_, case, func
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
@@ -19,16 +21,17 @@ from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_
 from app.audit import log_event
 from app.models.conversation import Conversation
 from app.models.conversation_file_link import ConversationFileLink
-from app.models.file_attachment import FileAttachment
+from app.models.file_attachment import FileAttachment, extracted_text_fingerprint
 from app.models.file_chunk import FileChunk
 from app.models.project import WorkspaceProject
 from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.file import FileOut
-from app.services.embeddings import EmbeddingServiceError
+from app.services.embeddings import EmbeddingServiceError, get_embedding_index_identity
 from app.services.file_text_extractor import FileTextExtractionError, extract_text
-from app.services.rag import index_file_chunks
+from app.services.project_access import can_edit_project, can_read_project
+from app.services.rag import index_file_chunks, safe_source_filename
 from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
 
@@ -102,7 +105,21 @@ def _validate_office_archive(path: Path, max_uncompressed: int) -> None:
 
             total_uncompressed = 0
             for info in infos:
-                if info.filename.startswith("/") or ".." in Path(info.filename).parts:
+                # ZIP member names can use either slash convention. Reject
+                # absolute paths, drive-qualified paths, and traversal segments
+                # before handing the package to a document parser.
+                normalized_name = info.filename.replace("\\", "/")
+                archive_parts = PurePosixPath(normalized_name).parts
+                has_drive_prefix = (
+                    len(normalized_name) >= 2
+                    and normalized_name[0].isalpha()
+                    and normalized_name[1] == ":"
+                )
+                if (
+                    normalized_name.startswith("/")
+                    or has_drive_prefix
+                    or ".." in archive_parts
+                ):
                     raise HTTPException(status_code=415, detail="مسار داخل ملف Office غير صالح")
                 if info.file_size > max_uncompressed:
                     raise HTTPException(status_code=415, detail="عنصر داخل ملف Office أكبر من الحد المسموح")
@@ -132,6 +149,19 @@ def _get_owned_conversation(conversation_id: int, current_user: User, db: Sessio
     )
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
+
+    # Ownership alone does not preserve permission to edit a conversation after
+    # workspace membership or project access is revoked. File listing, upload,
+    # attach, and detach must enforce the same current scope as chat itself.
+    if conversation.workspace_id is not None:
+        _get_workspace_membership(conversation.workspace_id, current_user, db)
+    if conversation.project_id is not None:
+        project = _get_accessible_project(conversation.project_id, current_user, db)
+        if project.workspace_id != conversation.workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المحادثة غير موجودة",
+            )
     return conversation
 
 
@@ -142,6 +172,11 @@ def _get_accessible_project(
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المشروع غير موجود")
     _get_workspace_membership(project.workspace_id, current_user, db)
+    if not can_read_project(project, current_user, db):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المشروع غير متاح",
+        )
     return project
 
 
@@ -164,6 +199,30 @@ def _get_workspace_membership(
     return membership
 
 
+def _can_read_project_file(
+    file: FileAttachment, current_user: User, db: Session
+) -> bool:
+    """Project file access is narrower than general workspace membership."""
+    if file.project_id is None:
+        return True
+    project = db.get(WorkspaceProject, file.project_id)
+    return project is not None and can_read_project(project, current_user, db)
+
+
+def _require_project_file_edit_access(
+    file: FileAttachment, current_user: User, db: Session
+) -> None:
+    """Reject write/compute operations for project viewers."""
+    if file.project_id is None:
+        return
+    project = db.get(WorkspaceProject, file.project_id)
+    if project is None or not can_edit_project(project, current_user, db):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="لا تملك صلاحية تعديل ملفات هذا المشروع",
+        )
+
+
 def _get_accessible_file(
     file_id: int, current_user: User, db: Session
 ) -> FileAttachment:
@@ -172,11 +231,18 @@ def _get_accessible_file(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
 
     if file.workspace_id is None:
-        if file.user_id != current_user.id:
+        if file.user_id != current_user.id or not _can_read_project_file(
+            file, current_user, db
+        ):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
         return file
 
     _get_workspace_membership(file.workspace_id, current_user, db)
+    if not _can_read_project_file(file, current_user, db):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الملف غير موجود",
+        )
     return file
 
 
@@ -192,11 +258,17 @@ def _file_response(
     response.workspace_id = file.workspace_id
     response.is_owner = file.user_id == current_user.id
 
-    can_delete = response.is_owner
-    if file.workspace_id is not None and not can_delete:
-        membership = _get_workspace_membership(file.workspace_id, current_user, db)
-        can_delete = membership.role in {WorkspaceRole.owner, WorkspaceRole.admin}
-    response.can_delete = can_delete
+    if file.project_id is not None:
+        project = db.get(WorkspaceProject, file.project_id)
+        response.can_delete = (
+            project is not None and can_edit_project(project, current_user, db)
+        )
+    else:
+        can_delete = response.is_owner
+        if file.workspace_id is not None and not can_delete:
+            membership = _get_workspace_membership(file.workspace_id, current_user, db)
+            can_delete = membership.role in {WorkspaceRole.owner, WorkspaceRole.admin}
+        response.can_delete = can_delete
     has_embedding = bool(
         db.query(FileChunk.id)
         .filter(
@@ -205,8 +277,23 @@ def _file_response(
         )
         .first()
     )
-    response.is_ai_indexed = has_embedding or (
-        file.content_type.startswith("image/") and file.extracted_text is not None
+    response.has_extracted_text = bool((file.extracted_text or "").strip())
+    current_text_fingerprint = extracted_text_fingerprint(file.extracted_text)
+    active_embedding_fingerprint = None
+    if has_embedding and current_text_fingerprint:
+        try:
+            _provider, _model, active_embedding_fingerprint = get_embedding_index_identity()
+        except EmbeddingServiceError:
+            # A configuration failure should make the status retryable, not break file listing.
+            active_embedding_fingerprint = None
+
+    response.is_ai_indexed = bool(
+        has_embedding
+        and current_text_fingerprint
+        and file.extracted_text_sha256 == current_text_fingerprint
+        and file.indexed_text_sha256 == current_text_fingerprint
+        and active_embedding_fingerprint
+        and file.indexed_embedding_fingerprint == active_embedding_fingerprint
     )
     return response
 
@@ -223,6 +310,11 @@ async def upload_file(
     project = None
     if project_id is not None:
         project = _get_accessible_project(project_id, current_user, db)
+        if not can_edit_project(project, current_user, db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="لا تملك صلاحية رفع ملفات إلى هذا المشروع",
+            )
         if workspace_id is not None and workspace_id != project.workspace_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -278,7 +370,7 @@ async def upload_file(
 
         sniffed = _sniff_content_type(bytes(header), file.content_type)
         if sniffed is None or sniffed not in ALLOWED_CONTENT_TYPES:
-            raise HTTPException(status_code=415, detail="نوع الملف غير مدعوم أو لا يطابق محتواه (مسموح: صور، PDF، Word، Excel، CSV)")
+            raise HTTPException(status_code=415, detail="نوع الملف غير مدعوم أو لا يطابق محتواه. الصيغ المدعومة: صور JPEG/PNG/GIF/WebP، PDF، Word DOCX، Excel XLSX، CSV، وTXT.")
 
         if sniffed in {
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -305,7 +397,7 @@ async def upload_file(
             log_event(
                 db,
                 "file_text_extraction_failed",
-                f"فشل استخراج نص الملف: {file.filename or stored_filename} ({exc})",
+                f"فشل استخراج نص الملف: {safe_source_filename(file.filename or stored_filename)} ({exc})",
                 current_user.id,
             )
 
@@ -325,21 +417,50 @@ async def upload_file(
 
     if extracted_text:
         try:
-            indexed_chunks = index_file_chunks(db, attachment)
-            if indexed_chunks:
-                log_event(
-                    db,
-                    "file_rag_indexed",
-                    f"تم فهرسة {indexed_chunks} مقطعًا للملف {attachment.original_filename}",
-                    current_user.id,
-                )
-        except EmbeddingServiceError as exc:
+            enforce_daily_ai_limit(current_user, db)
+            if workspace_id is not None:
+                enforce_workspace_daily_ai_limit(workspace_id, current_user, db)
+        except HTTPException as exc:
+            if exc.status_code not in {429, 503}:
+                raise
+            # Keep the uploaded file and extracted text even when indexing is
+            # deferred by quota or a rate-limit service outage. The UI can offer
+            # a retry after the limit/service recovers without another upload.
             log_event(
                 db,
-                "file_rag_index_failed",
-                f"تعذر فهرسة الملف {attachment.original_filename}: {exc}",
+                "file_rag_index_deferred",
+                f"تم حفظ الملف {safe_source_filename(attachment.original_filename)} وتأجيل فهرسته بسبب حد الاستخدام أو تعذر تحديد المعدل (HTTP {exc.status_code})",
                 current_user.id,
+                workspace_id,
             )
+        else:
+            db.add(
+                UsageLog(
+                    user_id=current_user.id,
+                    workspace_id=workspace_id,
+                    endpoint="/files/upload/index",
+                    model=settings.EMBEDDING_MODEL or None,
+                    provider=settings.EMBEDDING_PROVIDER or settings.AI_PROVIDER or None,
+                )
+            )
+            try:
+                indexed_chunks = index_file_chunks(db, attachment)
+                if indexed_chunks:
+                    log_event(
+                        db,
+                        "file_rag_indexed",
+                        f"تم فهرسة {indexed_chunks} مقطعًا للملف {safe_source_filename(attachment.original_filename)}",
+                        current_user.id,
+                        workspace_id,
+                    )
+            except EmbeddingServiceError as exc:
+                log_event(
+                    db,
+                    "file_rag_index_failed",
+                    f"تعذر فهرسة الملف {safe_source_filename(attachment.original_filename)}: {exc}",
+                    current_user.id,
+                    workspace_id,
+                )
 
     if conversation_id is not None:
         db.add(
@@ -353,7 +474,7 @@ async def upload_file(
     log_event(
         db,
         "file_uploaded",
-        f"رفع ملف: {attachment.original_filename} بواسطة {current_user.email}",
+        f"رفع ملف: {safe_source_filename(attachment.original_filename)} بواسطة {current_user.email}",
         current_user.id,
     )
     return _file_response(
@@ -375,6 +496,11 @@ def list_files(
 ):
     if project_id is not None:
         project = _get_accessible_project(project_id, current_user, db)
+        if workspace_id is not None and workspace_id != project.workspace_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="مساحة العمل لا تطابق مساحة عمل المشروع",
+            )
         files = (
             db.query(FileAttachment)
             .filter(FileAttachment.project_id == project.id)
@@ -394,7 +520,14 @@ def list_files(
             .order_by(FileAttachment.created_at.desc(), FileAttachment.id.desc())
             .all()
         )
-        return [_file_response(file, current_user, db) for file in files]
+        # Workspace membership alone does not grant access to every project
+        # inside the workspace. Keep project-scoped file metadata out of the
+        # general workspace library unless the caller can read that project.
+        visible_files = [
+            file for file in files
+            if _can_read_project_file(file, current_user, db)
+        ]
+        return [_file_response(file, current_user, db) for file in visible_files]
 
     if conversation_id is None:
         files = (
@@ -424,6 +557,10 @@ def list_files(
             .order_by(FileAttachment.created_at.desc())
             .all()
         )
+        files = [
+            file for file in files
+            if _can_read_project_file(file, current_user, db)
+        ]
         results = []
         for file in files:
             results.append(_file_response(file, current_user, db, is_attached=True))
@@ -512,6 +649,11 @@ def detach_file_from_conversation(
 ):
     file = _get_accessible_file(file_id, current_user, db)
     conversation = _get_owned_conversation(conversation_id, current_user, db)
+    if file.project_id is not None and file.project_id != conversation.project_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="ملف المشروع لا ينتمي إلى مشروع المحادثة",
+        )
     if file.workspace_id is not None and file.workspace_id != conversation.workspace_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -534,6 +676,28 @@ def detach_file_from_conversation(
     db.commit()
 
 
+def _attachment_content_disposition(filename: str | None) -> str:
+    """Build a safe download header from an untrusted original filename."""
+    raw_name = (filename or "download").strip() or "download"
+    raw_name = "".join(
+        character
+        for character in raw_name
+        if ord(character) >= 32 and ord(character) != 127
+    ) or "download"
+
+    # Quoted ASCII fallback is compatible with older clients. The UTF-8 value
+    # uses RFC 5987 percent-encoding so quotes, separators, and path characters
+    # cannot alter the header structure.
+    ascii_fallback = "".join(
+        character
+        if 32 <= ord(character) <= 126 and character not in {'"', "\\", ";"}
+        else "_"
+        for character in raw_name
+    )[:150] or "download"
+    encoded_name = quote(raw_name, safe="")
+    return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_name}"
+
+
 @router.get("/{file_id}")
 def download_file(
     file_id: int,
@@ -549,8 +713,77 @@ def download_file(
     return StreamingResponse(
         body,
         media_type=attachment.content_type,
-        headers={"Content-Disposition": "attachment; filename=\"" + attachment.original_filename + "\""},
+        headers={"Content-Disposition": _attachment_content_disposition(attachment.original_filename)},
     )
+
+
+@router.post("/{file_id}/reindex", response_model=FileOut)
+def reindex_file_for_rag(
+    file_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Retry semantic indexing for saved extracted text without re-uploading the file."""
+    attachment = _get_accessible_file(file_id, current_user, db)
+    _require_project_file_edit_access(attachment, current_user, db)
+    if not (attachment.extracted_text or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "لا يوجد نص مستخرج قابل للفهرسة في هذا الملف. "
+                "إذا كان الملف صورة، استخدم إجراء فهرسة الصور."
+            ),
+        )
+
+    enforce_daily_ai_limit(current_user, db)
+    if attachment.workspace_id is not None:
+        enforce_workspace_daily_ai_limit(attachment.workspace_id, current_user, db)
+
+    # Persist an attempt record before contacting the embedding provider. Token
+    # usage is not returned by the embedding helper, so only request metadata is
+    # recorded here; this is not an embedding-cost estimate.
+    db.add(
+        UsageLog(
+            user_id=current_user.id,
+            workspace_id=attachment.workspace_id,
+            endpoint="/files/reindex",
+            model=settings.EMBEDDING_MODEL or None,
+            provider=settings.EMBEDDING_PROVIDER or settings.AI_PROVIDER or None,
+        )
+    )
+    db.commit()
+
+    try:
+        indexed_chunks = index_file_chunks(db, attachment)
+    except EmbeddingServiceError as exc:
+        log_event(
+            db,
+            "file_rag_index_failed",
+            f"تعذرت إعادة فهرسة الملف {safe_source_filename(attachment.original_filename)}: {exc}",
+            current_user.id,
+            attachment.workspace_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="تعذرت فهرسة الملف للبحث الذكي الآن. أعد المحاولة لاحقًا.",
+        ) from exc
+
+    if indexed_chunks < 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="لا يوجد نص صالح لإنشاء مقاطع بحث من هذا الملف.",
+        )
+
+    db.commit()
+    db.refresh(attachment)
+    log_event(
+        db,
+        "file_rag_indexed",
+        f"إعادة فهرسة الملف {safe_source_filename(attachment.original_filename)} ({indexed_chunks} مقطع)",
+        current_user.id,
+        attachment.workspace_id,
+    )
+    return _file_response(attachment, current_user, db)
 
 
 @router.post("/{file_id}/index-image", response_model=FileOut)
@@ -561,6 +794,7 @@ async def index_image_for_rag(
 ):
     """يفهرس صورة صراحةً في RAG بدون استدعاء Vision مخفي أثناء كل رسالة."""
     attachment = _get_accessible_file(file_id, current_user, db)
+    _require_project_file_edit_access(attachment, current_user, db)
 
     if not attachment.content_type.startswith("image/"):
         raise HTTPException(
@@ -568,7 +802,57 @@ async def index_image_for_rag(
             detail="يمكن فهرسة الصور فقط",
         )
 
-    if attachment.extracted_text:
+    if (attachment.extracted_text or "").strip():
+        # Skip only when the index matches both the saved source text and the
+        # active embedding configuration. Merely finding an old vector is not
+        # sufficient: source text or provider/model settings may have changed.
+        current_file_response = _file_response(attachment, current_user, db)
+        if current_file_response.is_ai_indexed:
+            return current_file_response
+
+        # A previous attempt may have saved the image description, or an older
+        # index may have become stale after a source/configuration change. Reindex
+        # the stored text without calling the vision model again.
+        enforce_daily_ai_limit(current_user, db)
+        if attachment.workspace_id is not None:
+            enforce_workspace_daily_ai_limit(attachment.workspace_id, current_user, db)
+
+        db.add(
+            UsageLog(
+                user_id=current_user.id,
+                workspace_id=attachment.workspace_id,
+                endpoint="/files/index-image/reindex",
+                model=settings.EMBEDDING_MODEL or None,
+                provider=settings.EMBEDDING_PROVIDER or settings.AI_PROVIDER or None,
+            )
+        )
+        db.commit()
+
+        try:
+            indexed_chunks = index_file_chunks(db, attachment)
+        except EmbeddingServiceError as exc:
+            # Embeddings are generated before index_file_chunks mutates any rows.
+            # Avoid rolling back the transaction that already holds the saved image
+            # description; it must remain available for the next retry.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="تعذر فهرسة وصف الصورة الآن. أعد المحاولة لاحقًا.",
+            ) from exc
+
+        if indexed_chunks < 1:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="لا يوجد نص قابل للفهرسة في وصف الصورة.",
+            )
+
+        db.commit()
+        db.refresh(attachment)
+        log_event(
+            db,
+            "file_rag_indexed",
+            f"إعادة فهرسة وصف الصورة: {safe_source_filename(attachment.original_filename)} ({indexed_chunks} مقطع)",
+            current_user.id,
+        )
         return _file_response(attachment, current_user, db)
 
     enforce_daily_ai_limit(current_user, db)
@@ -606,7 +890,7 @@ async def index_image_for_rag(
     log_event(
         db,
         "file_rag_indexed",
-        f"فهرسة صورة للـ RAG: {attachment.original_filename} ({indexed_chunks} مقطع)",
+        f"فهرسة صورة للـ RAG: {safe_source_filename(attachment.original_filename)} ({indexed_chunks} مقطع)",
         current_user.id,
     )
     return _file_response(attachment, current_user, db)
@@ -637,6 +921,6 @@ def delete_file(
     log_event(
         db,
         "file_deleted",
-        f"حذف ملف: {attachment.original_filename} بواسطة {current_user.email}",
+        f"حذف ملف: {safe_source_filename(attachment.original_filename)} بواسطة {current_user.email}",
         current_user.id,
     )

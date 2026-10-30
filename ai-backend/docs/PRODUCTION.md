@@ -25,8 +25,12 @@ chmod 600 .env.production
 | `DEBUG=false` | |
 | `POSTGRES_PASSWORD` | قوية وعشوائية |
 | `JWT_SECRET_KEY` | `openssl rand -hex 32` |
-| `AI_API_KEY` | مفتاح المزود الحقيقي |
+| `AI_API_KEY` | مفتاح مزوّد المحادثة |
 | `AI_PROVIDER` | openai / anthropic / gemini / deepseek |
+| `EMBEDDING_PROVIDER` | اختياري: gemini / openai / openai-compatible؛ الفارغ يتبع AI_PROVIDER |
+| `EMBEDDING_API_KEY` | مفتاح مستقل إذا كان مزوّد embeddings مختلفًا |
+| `EMBEDDING_API_BASE_URL` | عنوان API مستقل عند الحاجة |
+| `EMBEDDING_MODEL` | الفارغ يختار نموذجًا افتراضيًا حسب المزوّد |
 | `FRONTEND_URL` | https://your-domain.com |
 | `CORS_ORIGINS` | `["https://your-domain.com"]` |
 | `PAYMENT_PROVIDER` | stripe أو paypal |

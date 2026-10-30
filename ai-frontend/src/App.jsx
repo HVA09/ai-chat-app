@@ -17,6 +17,7 @@ import useSavedPrompts from "./hooks/useSavedPrompts";
 import useNotifications from "./hooks/useNotifications";
 import useBookmarks from "./hooks/useBookmarks";
 import useMemories from "./hooks/useMemories";
+import MemorySuggestionsPanel from "./components/MemorySuggestionsPanel";
 import useAiModels from "./hooks/useAiModels";
 import useNotificationPreferences from "./hooks/useNotificationPreferences";
 import useConversationPreferences from "./hooks/useConversationPreferences";
@@ -49,6 +50,7 @@ import useEditMessageGeneration from "./hooks/useEditMessageGeneration";
 import useSendMessageGeneration from "./hooks/useSendMessageGeneration";
 import { analyzeImage, compareChatModels } from "./lib/chatApi";
 import api, { restoreSession } from "./lib/api";
+import { createMemory, suggestMemories } from "./lib/memoriesApi";
 
 
 // مُحمَّلة عند الحاجة فقط (lazy) — كل وحدة تصير ملف منفصل (code splitting)،
@@ -123,6 +125,12 @@ export default function App() {
   const [lang, setLang] = useState("ar");
   const [messages, setMessages] = useState(() => [getWelcomeMessage(t)]);
   const [conversationId, setConversationId] = useState(null);
+  const [memorySuggestions, setMemorySuggestions] = useState([]);
+  const [showMemorySuggestions, setShowMemorySuggestions] = useState(false);
+  const [memorySuggestionsLoading, setMemorySuggestionsLoading] = useState(false);
+  const [savingSuggestedMemoryContent, setSavingSuggestedMemoryContent] = useState("");
+  const memorySuggestionsRequestRef = useRef(0);
+  const activeMemoryConversationIdRef = useRef(null);
   const [activeConversationTitle, setActiveConversationTitle] = useState("");
   const [selectedConversationIds, setSelectedConversationIds] = useState([]);
   const [conversationSearch, setConversationSearch] = useState("");
@@ -231,6 +239,15 @@ export default function App() {
   useEffect(() => {
     messageCountRef.current = messages.length;
   }, [messages.length]);
+
+  useEffect(() => {
+    activeMemoryConversationIdRef.current = conversationId;
+    memorySuggestionsRequestRef.current += 1;
+    setMemorySuggestions([]);
+    setShowMemorySuggestions(false);
+    setMemorySuggestionsLoading(false);
+    setSavingSuggestedMemoryContent("");
+  }, [conversationId]);
 
   const empty = useMemo(() => messages.length === 0, [messages.length]);
   const { toolActivityLabel, handleToolEvent } = useToolActivity({ setToolActivity });
@@ -404,6 +421,7 @@ export default function App() {
 
   const {
     memories,
+    refreshMemories,
     handleToggleMessageMemory,
     resetMemories,
   } = useMemories({
@@ -414,6 +432,80 @@ export default function App() {
     editingMessageIndex,
     setToast,
   });
+
+  const handleSuggestMemories = async () => {
+    if (
+      !conversationId ||
+      loading ||
+      readOnlyConversation ||
+      memorySuggestionsLoading ||
+      savingSuggestedMemoryContent
+    ) return;
+
+    const requestedConversationId = conversationId;
+    const requestId = ++memorySuggestionsRequestRef.current;
+    setMemorySuggestionsLoading(true);
+    try {
+      const result = await suggestMemories(requestedConversationId);
+      if (
+        requestId !== memorySuggestionsRequestRef.current ||
+        activeMemoryConversationIdRef.current !== requestedConversationId
+      ) {
+        return;
+      }
+      setMemorySuggestions(Array.isArray(result?.suggestions) ? result.suggestions : []);
+      setShowMemorySuggestions(true);
+    } catch (err) {
+      if (
+        requestId === memorySuggestionsRequestRef.current &&
+        activeMemoryConversationIdRef.current === requestedConversationId
+      ) {
+        setToast({
+          message: err?.response?.data?.detail || t("memory.suggestError"),
+          type: "error",
+        });
+      }
+    } finally {
+      if (requestId === memorySuggestionsRequestRef.current) {
+        setMemorySuggestionsLoading(false);
+      }
+    }
+  };
+
+  const handleSaveSuggestedMemory = async (suggestion) => {
+    if (!suggestion?.content || savingSuggestedMemoryContent) return;
+    const requestedConversationId = activeMemoryConversationIdRef.current;
+    setSavingSuggestedMemoryContent(suggestion.content);
+    try {
+      await createMemory(suggestion.content);
+      await refreshMemories();
+      if (activeMemoryConversationIdRef.current === requestedConversationId) {
+        const remaining = memorySuggestions.filter(
+          (item) => item.content !== suggestion.content
+        );
+        setMemorySuggestions(remaining);
+        if (remaining.length === 0) setShowMemorySuggestions(false);
+      }
+      setToast({ message: t("memory.suggestSaved"), type: "success" });
+    } catch (err) {
+      setToast({
+        message: err?.response?.data?.detail || t("memory.suggestError"),
+        type: "error",
+      });
+    } finally {
+      if (activeMemoryConversationIdRef.current === requestedConversationId) {
+        setSavingSuggestedMemoryContent("");
+      }
+    }
+  };
+
+  const handleDismissMemorySuggestion = (suggestion) => {
+    const remaining = memorySuggestions.filter(
+      (item) => item.content !== suggestion.content
+    );
+    setMemorySuggestions(remaining);
+    if (remaining.length === 0) setShowMemorySuggestions(false);
+  };
 
   const {
     aiModels,
@@ -1337,6 +1429,31 @@ export default function App() {
               ) : null}
             </div>
           ) : null}
+          {conversationId && !readOnlyConversation ? (
+            <div className="mx-auto mb-2 flex w-full max-w-4xl justify-end">
+              <button
+                type="button"
+                onClick={handleSuggestMemories}
+                disabled={loading || memorySuggestionsLoading || Boolean(savingSuggestedMemoryContent)}
+                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                {memorySuggestionsLoading ? t("memory.suggesting") : t("memory.suggest")}
+              </button>
+            </div>
+          ) : null}
+
+          {showMemorySuggestions && conversationId ? (
+            <div className="mx-auto w-full max-w-4xl">
+              <MemorySuggestionsPanel
+                suggestions={memorySuggestions}
+                savingContent={savingSuggestedMemoryContent}
+                onSave={handleSaveSuggestedMemory}
+                onDismiss={handleDismissMemorySuggestion}
+                onClose={() => setShowMemorySuggestions(false)}
+              />
+            </div>
+          ) : null}
+
           {conversationId && (conversationSummary || summaryLoading) ? (
             <div className="chat-summary mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
               <div className="flex flex-wrap items-center justify-between gap-2">

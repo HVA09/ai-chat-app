@@ -117,3 +117,113 @@ def test_mcp_server_config_parses_allowed_tools(monkeypatch):
     config = _load_server_configs()[0]
 
     assert config.allowed_tools == ("add", "lookup")
+
+
+def test_mcp_discovery_logs_do_not_expose_server_url_or_exception_details(
+    monkeypatch, caplog
+):
+    secret_in_url = "url-secret-token"
+    secret_in_error = "private-upstream-diagnostic"
+
+    class FailingDiscoveryClient:
+        def __init__(self, url):
+            self.url = url
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def list_tools(self):
+            raise RuntimeError(
+                f"upstream failed with {secret_in_error} from {self.url}"
+            )
+
+    monkeypatch.setattr(mcp_client.settings, "MCP_ENABLED", True)
+    monkeypatch.setattr(
+        mcp_client.settings,
+        "MCP_SERVERS_JSON",
+        (
+            '[{"name":"private-demo",'
+            '"url":"https://example.test/mcp?token=url-secret-token",'
+            '"enabled":true,"allowed_tools":["lookup"]}]'
+        ),
+    )
+    monkeypatch.setattr(mcp_client, "Client", FailingDiscoveryClient)
+
+    with caplog.at_level("WARNING", logger="app.services.mcp_client"):
+        assert asyncio.run(discover_mcp_tools()) == []
+
+    assert secret_in_url not in caplog.text
+    assert secret_in_error not in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+    assert "server=private-demo" in caplog.text
+
+
+def test_mcp_tool_failure_logs_do_not_expose_url_or_exception_details(
+    monkeypatch, caplog
+):
+    secret_in_url = "handler-url-secret"
+    secret_in_error = "handler-private-diagnostic"
+
+    class FailingToolClient:
+        def __init__(self, url):
+            self.url = url
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def call_tool(self, name, arguments):
+            raise RuntimeError(
+                f"tool {name} failed with {secret_in_error} for {self.url}"
+            )
+
+    monkeypatch.setattr(mcp_client, "Client", FailingToolClient)
+    server = mcp_client.MCPServerConfig(
+        name="private-demo",
+        url=f"https://example.test/mcp?token={secret_in_url}",
+        allowed_tools=("lookup",),
+    )
+
+    with caplog.at_level("WARNING", logger="app.services.mcp_client"):
+        result = asyncio.run(
+            mcp_client._call_remote_tool(server, "lookup", {"q": "test"})
+        )
+
+    assert result.succeeded is False
+    assert secret_in_url not in caplog.text
+    assert secret_in_error not in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+    assert "server=private-demo" in caplog.text
+
+
+def test_missing_mcp_input_schema_defaults_to_closed_argumentless_object():
+    from app.services.tool_security import (
+        ToolArgumentSecurityError,
+        validate_tool_arguments,
+    )
+
+    schema = mcp_client._tool_schema(SimpleNamespace(name="no-schema-tool"))
+
+    assert schema == {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    }
+    validate_tool_arguments(
+        schema,
+        {},
+        max_chars=1_000,
+        max_depth=8,
+    )
+    with pytest.raises(ToolArgumentSecurityError, match="Unknown tool arguments"):
+        validate_tool_arguments(
+            schema,
+            {"unrecognized": "must not reach the remote handler"},
+            max_chars=1_000,
+            max_depth=8,
+        )

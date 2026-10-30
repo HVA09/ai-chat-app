@@ -1,0 +1,772 @@
+{
+  "schema_version": 1,
+  "description": "Twenty bilingual synthetic RAG queries with five candidate documents each (two relevant grades and three irrelevant negatives). This corpus is for comparative retrieval tests only; it has not been run against a live embedding model.",
+  "metrics": [
+    "recall_at_3",
+    "precision_at_3",
+    "ndcg_at_3",
+    "reciprocal_rank"
+  ],
+  "cases": [
+    {
+      "id": "NET-001",
+      "domain": "networking",
+      "query": "كيف أرى عناوين IP وواجهات الشبكة في Linux؟",
+      "documents": [
+        {
+          "id": "NET-001-R1",
+          "relevance": 2,
+          "title": "Linux network inspection",
+          "text": "Use ip addr to list IP addresses and network interfaces. Use ip link to inspect interface state and ip route to view routing tables."
+        },
+        {
+          "id": "NET-001-R2",
+          "relevance": 1,
+          "title": "Linux connectivity checks",
+          "text": "For basic network troubleshooting, compare interface addresses, routes, DNS resolution, and connectivity tests. Record the command output before changing configuration."
+        },
+        {
+          "id": "NET-001-N1",
+          "relevance": 0,
+          "title": "Baking bread",
+          "text": "Mix flour, water, yeast, and salt. Knead the dough and let it rise before baking it in a preheated oven."
+        },
+        {
+          "id": "NET-001-N2",
+          "relevance": 0,
+          "title": "Intellectual property basics",
+          "text": "Here IP means intellectual property. This overview explains patents, trademarks, copyrights and licensing agreements, not Internet Protocol addressing or network interfaces."
+        },
+        {
+          "id": "NET-001-N3",
+          "relevance": 0,
+          "title": "HTML table layout",
+          "text": "Build a responsive HTML table by defining table rows, header cells, and CSS spacing. This lesson focuses on web-page layout rather than Linux network interfaces."
+        }
+      ],
+      "critical_failure": "Rank baking instructions above the Linux network inspection source."
+    },
+    {
+      "id": "NET-002",
+      "domain": "networking",
+      "query": "A server can reach an IP address but domain names fail; what should I check for DNS?",
+      "documents": [
+        {
+          "id": "NET-002-R1",
+          "relevance": 2,
+          "title": "DNS troubleshooting",
+          "text": "When an IP works but a domain name does not, inspect DNS resolution with dig or nslookup, configured resolvers, search domains, and DNS response codes before concluding the cause."
+        },
+        {
+          "id": "NET-002-R2",
+          "relevance": 1,
+          "title": "Name resolution configuration",
+          "text": "Check the configured DNS resolver and query the expected record type. Compare results from the configured resolver with a known resolver where permitted."
+        },
+        {
+          "id": "NET-002-N1",
+          "relevance": 0,
+          "title": "File permissions",
+          "text": "Use stat and ls -l to inspect file ownership and permissions. Avoid applying chmod 777 as a default fix."
+        },
+        {
+          "id": "NET-002-N2",
+          "relevance": 0,
+          "title": "Domain registration and branding",
+          "text": "This guide explains choosing a memorable website domain, renewing registrar subscriptions, and updating a brand name. It does not cover DNS resolver queries or DNS record troubleshooting."
+        },
+        {
+          "id": "NET-002-N3",
+          "relevance": 0,
+          "title": "Python exception handling",
+          "text": "Use try and except to handle ValueError and TypeError in Python input parsing. The example validates integers and contains no hostname resolution or DNS diagnostics."
+        }
+      ],
+      "critical_failure": "Recommend destructive DNS or network configuration changes without collecting evidence."
+    },
+    {
+      "id": "LIN-001",
+      "domain": "linux",
+      "query": "How can I identify which directories are consuming disk space on a Linux server?",
+      "documents": [
+        {
+          "id": "LIN-001-R1",
+          "relevance": 2,
+          "title": "Disk usage",
+          "text": "Use df -h to inspect filesystem capacity and du -xhd1 /path to summarize directory usage on one filesystem. Check the path carefully before deleting files."
+        },
+        {
+          "id": "LIN-001-R2",
+          "relevance": 1,
+          "title": "Linux log investigation",
+          "text": "Use journalctl and log rotation status to investigate log growth. Preserve relevant logs before removing or truncating data."
+        },
+        {
+          "id": "LIN-001-N1",
+          "relevance": 0,
+          "title": "Subnet calculations",
+          "text": "A /26 IPv4 subnet contains 64 addresses including network and broadcast addresses, leaving 62 conventional assignable host addresses."
+        },
+        {
+          "id": "LIN-001-N2",
+          "relevance": 0,
+          "title": "CPU and process utilization",
+          "text": "Use top, ps, and uptime to inspect CPU load and process activity on a Linux server. These commands do not identify which directories consume filesystem disk space."
+        },
+        {
+          "id": "LIN-001-N3",
+          "relevance": 0,
+          "title": "Network subnet calculations",
+          "text": "A /26 IPv4 subnet contains 64 addresses, including network and broadcast addresses, with 62 conventional assignable host addresses."
+        }
+      ],
+      "critical_failure": "Recommend deleting files blindly without identifying disk usage and data-retention risks."
+    },
+    {
+      "id": "LIN-002",
+      "domain": "linux",
+      "query": "How should I fix a permission denied error without making every file world-writable?",
+      "documents": [
+        {
+          "id": "LIN-002-R1",
+          "relevance": 2,
+          "title": "Linux permissions",
+          "text": "Inspect owner, group, mode, and the process identity with ls -l, stat, id, and namei -l. Correct only the necessary owner, group, or permission; do not use chmod 777 as a general fix."
+        },
+        {
+          "id": "LIN-002-R2",
+          "relevance": 1,
+          "title": "Least privilege operations",
+          "text": "Use the smallest filesystem privilege needed for the service and validate access as the intended user. Avoid broad recursive permission changes unless their scope is proven safe."
+        },
+        {
+          "id": "LIN-002-N1",
+          "relevance": 0,
+          "title": "Cloud Terraform plan",
+          "text": "Run terraform plan to review proposed infrastructure changes before considering terraform apply."
+        },
+        {
+          "id": "LIN-002-N2",
+          "relevance": 0,
+          "title": "SSH key authentication",
+          "text": "Generate an SSH key pair and install the public key for remote login. This guide covers account authentication, not Unix file ownership, mode bits, or filesystem permission denied errors."
+        },
+        {
+          "id": "LIN-002-N3",
+          "relevance": 0,
+          "title": "CSS file styling",
+          "text": "Use CSS selectors, margins, padding, and font declarations to style a web page. The lesson does not address Linux ownership or file access permissions."
+        }
+      ],
+      "critical_failure": "Prescribe chmod -R 777 as the default remedy."
+    },
+    {
+      "id": "PY-001",
+      "domain": "programming",
+      "query": "In Python, how do I create a list containing only even numbers from an existing list?",
+      "documents": [
+        {
+          "id": "PY-001-R1",
+          "relevance": 2,
+          "title": "Python list comprehensions",
+          "text": "A list comprehension can filter values: even_numbers = [number for number in numbers if number % 2 == 0]. The condition checks that the remainder after division by two is zero."
+        },
+        {
+          "id": "PY-001-R2",
+          "relevance": 1,
+          "title": "Python iteration",
+          "text": "A for loop can build a result list by checking each item and appending it when item % 2 == 0. Choose a loop for clarity when multiple steps are needed."
+        },
+        {
+          "id": "PY-001-N1",
+          "relevance": 0,
+          "title": "PostgreSQL grouping",
+          "text": "In a SQL aggregate query, non-aggregated selected columns often need to appear in GROUP BY or be functionally dependent on grouped columns."
+        },
+        {
+          "id": "PY-001-N2",
+          "relevance": 0,
+          "title": "Python dictionary mapping",
+          "text": "A dictionary comprehension can map student names to grade values, such as grades = {student.name: student.grade for student in students}. It does not filter a number list for even values."
+        },
+        {
+          "id": "PY-001-N3",
+          "relevance": 0,
+          "title": "CSS layout patterns",
+          "text": "Use CSS Grid and Flexbox to align cards and navigation elements in a web page. This is a styling guide, not a Python list-filtering example."
+        }
+      ],
+      "critical_failure": "Return filtering logic that includes odd numbers as even."
+    },
+    {
+      "id": "PY-002",
+      "domain": "programming",
+      "query": "What causes Python's TypeError when concatenating a string with an integer?",
+      "documents": [
+        {
+          "id": "PY-002-R1",
+          "relevance": 2,
+          "title": "Python type errors",
+          "text": "Python does not concatenate str and int values with +. Convert the integer using str(value), or use an f-string such as f'Count: {count}', depending on the intended output."
+        },
+        {
+          "id": "PY-002-R2",
+          "relevance": 1,
+          "title": "Python input conversion",
+          "text": "input() returns text. Convert numeric input with int() or float() before numeric calculations, and handle invalid input where appropriate."
+        },
+        {
+          "id": "PY-002-N1",
+          "relevance": 0,
+          "title": "API authorization",
+          "text": "An insecure direct object reference can occur when an API lets a user access another user's object by changing an identifier without checking ownership or permissions."
+        },
+        {
+          "id": "PY-002-N2",
+          "relevance": 0,
+          "title": "JavaScript string coercion",
+          "text": "JavaScript has its own type-coercion rules for expressions that combine strings and numbers. This document covers JavaScript behavior and does not explain Python's TypeError for str plus int."
+        },
+        {
+          "id": "PY-002-N3",
+          "relevance": 0,
+          "title": "PostgreSQL column types",
+          "text": "PostgreSQL column definitions specify types such as integer, text, and timestamp. This guide focuses on database schema design rather than Python string formatting."
+        }
+      ],
+      "critical_failure": "Claim Python automatically converts an integer to a string during string concatenation."
+    },
+    {
+      "id": "CLD-001",
+      "domain": "cloud",
+      "query": "How do I grant a cloud application access to one storage bucket without giving it administrator permissions?",
+      "documents": [
+        {
+          "id": "CLD-001-R1",
+          "relevance": 2,
+          "title": "Cloud IAM least privilege",
+          "text": "Create a dedicated identity and grant only the storage actions and resource scope the application requires. Prefer a bucket-specific resource policy or narrowly scoped role over administrator permissions."
+        },
+        {
+          "id": "CLD-001-R2",
+          "relevance": 1,
+          "title": "Cloud credential handling",
+          "text": "Use a workload identity or short-lived credentials where supported. Do not hardcode long-lived access keys in source code or logs."
+        },
+        {
+          "id": "CLD-001-N1",
+          "relevance": 0,
+          "title": "Python list filtering",
+          "text": "Use a list comprehension and the condition n % 2 == 0 to keep even integers from a list."
+        },
+        {
+          "id": "CLD-001-N2",
+          "relevance": 0,
+          "title": "Object storage lifecycle policies",
+          "text": "A bucket lifecycle policy can transition older objects to a cheaper storage class or expire retained versions. It does not grant an application authorization to read or write bucket objects."
+        },
+        {
+          "id": "CLD-001-N3",
+          "relevance": 0,
+          "title": "Docker image layers",
+          "text": "Docker image layers are cached to speed up image builds and reduce repeated downloads. This document does not describe cloud IAM roles or storage-bucket permissions."
+        }
+      ],
+      "critical_failure": "Recommend granting full administrator access for a single bucket task."
+    },
+    {
+      "id": "CLD-002",
+      "domain": "cloud",
+      "query": "What should I review before applying Terraform changes to a real environment?",
+      "documents": [
+        {
+          "id": "CLD-002-R1",
+          "relevance": 2,
+          "title": "Terraform change review",
+          "text": "Run terraform fmt and terraform validate, inspect terraform plan, confirm workspace and target account, review destructive replacements, and obtain approval before terraform apply."
+        },
+        {
+          "id": "CLD-002-R2",
+          "relevance": 1,
+          "title": "Infrastructure rollback planning",
+          "text": "Plan how to recover state and restore service before applying high-impact infrastructure changes. Do not assume every provider operation can be automatically rolled back."
+        },
+        {
+          "id": "CLD-002-N1",
+          "relevance": 0,
+          "title": "Linux disk usage",
+          "text": "Use df -h and du to locate filesystem and directory space usage before deciding which data needs investigation."
+        },
+        {
+          "id": "CLD-002-N2",
+          "relevance": 0,
+          "title": "Terraform input variables",
+          "text": "Declare typed Terraform input variables and provide values through approved variable files. This guide does not cover reviewing a plan, detecting destructive replacements, or release approval."
+        },
+        {
+          "id": "CLD-002-N3",
+          "relevance": 0,
+          "title": "HTML deployment status page",
+          "text": "Create a static HTML status page with service badges and a maintenance notice. The page contains no infrastructure-as-code validation or Terraform change-review guidance."
+        }
+      ],
+      "critical_failure": "Suggest applying unreviewed infrastructure changes to production."
+    },
+    {
+      "id": "SEC-001",
+      "domain": "security",
+      "query": "An API user can change an object ID in a URL and read another user's record; what is the likely flaw?",
+      "documents": [
+        {
+          "id": "SEC-001-R1",
+          "relevance": 2,
+          "title": "Object-level authorization",
+          "text": "This is an object-level authorization failure, often called IDOR or BOLA. Enforce ownership or access policy server-side for every object operation; hiding identifiers in the UI is not sufficient."
+        },
+        {
+          "id": "SEC-001-R2",
+          "relevance": 1,
+          "title": "API security testing",
+          "text": "Test object access using two test accounts and verify that unauthorized reads, updates, and deletes are rejected without revealing the object's existence when policy requires that."
+        },
+        {
+          "id": "SEC-001-N1",
+          "relevance": 0,
+          "title": "DNS troubleshooting",
+          "text": "Use dig or nslookup to inspect DNS records and compare configured resolvers when hostnames do not resolve."
+        },
+        {
+          "id": "SEC-001-N2",
+          "relevance": 0,
+          "title": "Encryption at rest",
+          "text": "Encrypt stored database volumes and backups using managed encryption keys. This protects data at rest but does not identify or repair an API object-level authorization flaw."
+        },
+        {
+          "id": "SEC-001-N3",
+          "relevance": 0,
+          "title": "Load testing REST endpoints",
+          "text": "Use a controlled load test to measure endpoint latency, throughput, and error rates. This guide does not cover authorization checks when a client changes an object identifier."
+        }
+      ],
+      "critical_failure": "Treat unpredictable IDs or client-side checks as a substitute for server-side authorization."
+    },
+    {
+      "id": "SEC-002",
+      "domain": "security",
+      "query": "What is a safe first response to suspicious authentication logs on a server I administer?",
+      "documents": [
+        {
+          "id": "SEC-002-R1",
+          "relevance": 2,
+          "title": "Defensive incident response",
+          "text": "Preserve logs and timestamps, verify the alert scope, check related authentication and network events, contain confirmed unauthorized access according to the incident plan, and document actions."
+        },
+        {
+          "id": "SEC-002-R2",
+          "relevance": 1,
+          "title": "Secure credential response",
+          "text": "If compromise is confirmed, rotate affected credentials using the approved process, revoke sessions or keys where appropriate, and investigate the initial access vector before restoring normal access."
+        },
+        {
+          "id": "SEC-002-N1",
+          "relevance": 0,
+          "title": "Python string formatting",
+          "text": "Use an f-string to format a value into output text, such as f'Count: {count}', instead of adding a string and integer directly."
+        },
+        {
+          "id": "SEC-002-N2",
+          "relevance": 0,
+          "title": "Deployment health logs",
+          "text": "Review deployment events, container restart counts, and application health-check failures after a release. These events alone do not investigate suspicious authentication activity."
+        },
+        {
+          "id": "SEC-002-N3",
+          "relevance": 0,
+          "title": "Backup restoration drill",
+          "text": "Practice restoring a database backup into an isolated environment and record recovery time. This is a disaster-recovery exercise, not first-response guidance for suspicious login logs."
+        }
+      ],
+      "critical_failure": "Tell the user to erase logs before investigating."
+    },
+    {
+      "id": "DB-001",
+      "domain": "database",
+      "query": "Why does PostgreSQL reject a SELECT query when a selected column is neither grouped nor aggregated?",
+      "documents": [
+        {
+          "id": "DB-001-R1",
+          "relevance": 2,
+          "title": "PostgreSQL GROUP BY",
+          "text": "Selected columns in an aggregate query generally must be aggregated or listed in GROUP BY, unless PostgreSQL can establish functional dependency. Review the exact selected expressions and grouping keys."
+        },
+        {
+          "id": "DB-001-R2",
+          "relevance": 1,
+          "title": "SQL aggregate debugging",
+          "text": "When fixing a GROUP BY error, decide the intended result grain first, then add appropriate grouping or aggregate functions. Adding columns to GROUP BY blindly can change result cardinality."
+        },
+        {
+          "id": "DB-001-N1",
+          "relevance": 0,
+          "title": "Cloud IAM",
+          "text": "Grant applications only the cloud storage permissions they need, scoped to the appropriate storage resources."
+        },
+        {
+          "id": "DB-001-N2",
+          "relevance": 0,
+          "title": "Database index maintenance",
+          "text": "Inspect index sizes and query plans to identify unused or expensive indexes. This guide does not explain PostgreSQL's rule for selected columns in aggregate queries and GROUP BY."
+        },
+        {
+          "id": "DB-001-N3",
+          "relevance": 0,
+          "title": "Cloud IAM policy review",
+          "text": "Limit cloud identities to required actions and resource scopes. This document addresses infrastructure permissions rather than PostgreSQL aggregate-query errors."
+        }
+      ],
+      "critical_failure": "Suggest arbitrary grouping changes without considering the intended result grain."
+    },
+    {
+      "id": "EDU-001",
+      "domain": "teaching",
+      "query": "Explain Python functions to a beginner with a small example, then give one practice task without providing its answer.",
+      "documents": [
+        {
+          "id": "EDU-001-R1",
+          "relevance": 2,
+          "title": "Beginner Python teaching",
+          "text": "A function is a named reusable block of code. Define it with def, give it a descriptive name, and call it by writing its name followed by parentheses. Teach one idea with a small example, then ask the learner to practice."
+        },
+        {
+          "id": "EDU-001-R2",
+          "relevance": 1,
+          "title": "Step-by-step tutoring",
+          "text": "When tutoring beginners, identify one error at a time, explain why it happens in simple language, show a corrected example when requested, and avoid moving on before the learner understands."
+        },
+        {
+          "id": "EDU-001-N1",
+          "relevance": 0,
+          "title": "Terraform deployment review",
+          "text": "Review terraform plan and confirm the target environment before applying infrastructure changes."
+        },
+        {
+          "id": "EDU-001-N2",
+          "relevance": 0,
+          "title": "Advanced recursion lesson",
+          "text": "Teach recursive tree traversal using base cases and recursive calls, then ask learners to trace a call stack. This lesson is about recursion, not a beginner introduction to function definitions."
+        },
+        {
+          "id": "EDU-001-N3",
+          "relevance": 0,
+          "title": "Terraform deployment checklist",
+          "text": "Review a Terraform plan and confirm the target cloud account before applying infrastructure changes. This checklist does not cover teaching Python functions."
+        }
+      ],
+      "critical_failure": "Ignore the request for a practice task and provide a large unrelated advanced lesson."
+    },
+    {
+      "id": "DB-002",
+      "domain": "database",
+      "query": "How can I investigate a slow PostgreSQL query before changing the production database?",
+      "documents": [
+        {
+          "id": "DB-002-R1",
+          "relevance": 2,
+          "title": "PostgreSQL query plans",
+          "text": "Use EXPLAIN to inspect a PostgreSQL query plan. EXPLAIN ANALYZE actually executes the statement, so be careful with data-changing statements and use a safe test environment when execution could alter data."
+        },
+        {
+          "id": "DB-002-R2",
+          "relevance": 1,
+          "title": "PostgreSQL performance checks",
+          "text": "Check the query's filters, join keys, row estimates, existing indexes, and representative table statistics. Compare measured behavior and explain plans before proposing an index or query rewrite."
+        },
+        {
+          "id": "DB-002-N1",
+          "relevance": 0,
+          "title": "Teaching Python functions",
+          "text": "A Python function is a named reusable block of code. Define it with def, call it with parentheses, and let beginners practice with a short example."
+        },
+        {
+          "id": "DB-002-N2",
+          "relevance": 0,
+          "title": "SQL grouping error",
+          "text": "A PostgreSQL GROUP BY error usually means a selected expression is neither aggregated nor grouped. The note explains query correctness, not diagnosing slow query execution."
+        },
+        {
+          "id": "DB-002-N3",
+          "relevance": 0,
+          "title": "Linux filesystem permissions",
+          "text": "Use stat and namei to inspect directory ownership and access modes when a process receives PermissionError. This is unrelated to PostgreSQL query latency."
+        }
+      ],
+      "critical_failure": "Recommend creating or dropping production indexes without reviewing query plans, workload, or operational impact."
+    },
+    {
+      "id": "EDU-002",
+      "domain": "teaching",
+      "query": "A beginner is confused about why Python functions need parameters and return values; how should I teach this simply?",
+      "documents": [
+        {
+          "id": "EDU-002-R1",
+          "relevance": 2,
+          "title": "Teaching Python function inputs and outputs",
+          "text": "Explain a function parameter as an input name that receives a value when the function is called. Explain return as the result sent back to the caller, and contrast it with print, which only displays output. Use a tiny example and ask the learner to predict the result."
+        },
+        {
+          "id": "EDU-002-R2",
+          "relevance": 1,
+          "title": "Beginner tutoring sequence",
+          "text": "Teach one concept at a time, use a short worked example, ask the learner to try a similar exercise, and review their answer before introducing the next concept. Avoid presenting several unrelated abstractions at once."
+        },
+        {
+          "id": "EDU-002-N1",
+          "relevance": 0,
+          "title": "Cloud access permissions",
+          "text": "Grant a cloud application only the actions and resource scope it requires. Prefer a narrowly scoped role or policy over administrator permissions."
+        },
+        {
+          "id": "EDU-002-N2",
+          "relevance": 0,
+          "title": "Python loop control",
+          "text": "Teach for-loops, while-loops, break, and continue using short beginner exercises. This lesson does not cover function parameters or return values."
+        },
+        {
+          "id": "EDU-002-N3",
+          "relevance": 0,
+          "title": "Cloud storage encryption",
+          "text": "Configure encryption for stored objects and review key rotation policies. This cloud-security note is unrelated to teaching Python function inputs and outputs."
+        }
+      ],
+      "critical_failure": "Give a long advanced lecture without explaining parameters and return values or checking beginner understanding."
+    },
+    {
+      "id": "LIN-003",
+      "domain": "linux",
+      "query": "كيف أعرف أي مجلد يستهلك مساحة القرص في Linux دون حذف ملفات عشوائيًا؟",
+      "documents": [
+        {
+          "id": "LIN-003-R1",
+          "relevance": 2,
+          "title": "فحص مساحة القرص",
+          "text": "استخدم df -h لمعرفة المساحة المتاحة لكل نظام ملفات، ثم du -xhd1 /path لمعرفة حجم المجلدات على النظام نفسه. افحص المسارات والملفات الكبيرة قبل حذف أي شيء."
+        },
+        {
+          "id": "LIN-003-R2",
+          "relevance": 1,
+          "title": "فحص سجلات Linux",
+          "text": "قد تتضخم سجلات systemd أو سجلات التطبيقات. افحص journalctl وإعدادات تدوير السجلات، واحتفظ بالسجلات المهمة قبل تقليصها أو حذفها."
+        },
+        {
+          "id": "LIN-003-N1",
+          "relevance": 0,
+          "title": "تجميع SQL",
+          "text": "في استعلامات PostgreSQL التجميعية، يجب عادةً تجميع الأعمدة غير التجميعية أو إدراجها في GROUP BY."
+        },
+        {
+          "id": "LIN-003-N2",
+          "relevance": 0,
+          "title": "استهلاك المعالج والعمليات",
+          "text": "استخدم top وps لمراجعة استهلاك المعالج والعمليات النشطة في Linux؛ هذه الأوامر لا تحدد المجلدات التي تستهلك مساحة القرص."
+        },
+        {
+          "id": "LIN-003-N3",
+          "relevance": 0,
+          "title": "تقسيم عناوين IPv4",
+          "text": "قسّم شبكة IPv4 إلى شبكات فرعية متساوية واحسب عنوان الشبكة والبث ونطاق العناوين القابلة للاستخدام. هذا الموضوع لا يفحص مساحة القرص."
+        }
+      ],
+      "critical_failure": "التوصية بحذف الملفات عشوائيًا قبل تحديد مصدر استهلاك المساحة ومخاطر البيانات."
+    },
+    {
+      "id": "PY-003",
+      "domain": "programming",
+      "query": "في Python، لماذا تعيد الدالة None عندما أستخدم print بدل return؟",
+      "documents": [
+        {
+          "id": "PY-003-R1",
+          "relevance": 2,
+          "title": "الفرق بين print و return",
+          "text": "تعرض print قيمة على الشاشة فقط، أما return فتعيد القيمة إلى المكان الذي استدعى الدالة. إذا انتهت دالة دون تنفيذ return بقيمة، فإن Python تعيد None تلقائيًا."
+        },
+        {
+          "id": "PY-003-R2",
+          "relevance": 1,
+          "title": "قيم إرجاع الدوال",
+          "text": "يمكن استدعاء نتيجة الدالة وتخزينها في متغير لاستخدامها لاحقًا. استخدم return للقيم التي تحتاجها أجزاء أخرى من البرنامج، واستخدم print عندما يكون الهدف عرض النص للمستخدم."
+        },
+        {
+          "id": "PY-003-N1",
+          "relevance": 0,
+          "title": "إعداد مسارات Linux",
+          "text": "استخدم ip route لعرض جدول التوجيه في Linux، وتحقق من المسار المناسب قبل تغيير إعدادات الشبكة."
+        },
+        {
+          "id": "PY-003-N2",
+          "relevance": 0,
+          "title": "قواميس Python",
+          "text": "يمكن استخدام dictionary comprehension لإنشاء قاموس من قائمة سجلات، مثل ربط اسم كل طالب بدرجته. المثال لا يشرح الفرق بين print وreturn في الدوال."
+        },
+        {
+          "id": "PY-003-N3",
+          "relevance": 0,
+          "title": "تشخيص DNS",
+          "text": "استخدم dig أو nslookup لفحص سجلات DNS ومقارنة استجابات محللات الأسماء؛ هذا الموضوع لا يتعلق بقيم إرجاع دوال Python."
+        }
+      ],
+      "critical_failure": "الادعاء أن print تعيد النص من الدالة بدل None."
+    },
+    {
+      "id": "CLD-003",
+      "domain": "cloud",
+      "query": "كيف أراجع خطة Terraform قبل تطبيق تغييرات على بيئة الإنتاج؟",
+      "documents": [
+        {
+          "id": "CLD-003-R1",
+          "relevance": 2,
+          "title": "مراجعة تغييرات Terraform",
+          "text": "شغّل terraform fmt وterraform validate، ثم راجع terraform plan، وتأكد من الحساب والـworkspace المستهدفين، وافحص الاستبدالات أو الحذف المخطط لها، وخذ موافقة قبل terraform apply على الإنتاج."
+        },
+        {
+          "id": "CLD-003-R2",
+          "relevance": 1,
+          "title": "خطة التراجع للبنية التحتية",
+          "text": "قبل تغييرات البنية التحتية عالية التأثير، خطط لاستعادة الحالة والخدمة وتحقق من النسخ الاحتياطية. لا تفترض أن كل عملية يوفرها مزود السحابة يمكن التراجع عنها تلقائيًا."
+        },
+        {
+          "id": "CLD-003-N1",
+          "relevance": 0,
+          "title": "قوائم Python",
+          "text": "يمكن استخدام list comprehension لاختيار الأعداد الزوجية بشرط n % 2 == 0."
+        },
+        {
+          "id": "CLD-003-N2",
+          "relevance": 0,
+          "title": "سياسات IAM في السحابة",
+          "text": "راجع صلاحيات IAM لتقليل الوصول إلى الموارد السحابية حسب مبدأ أقل امتياز؛ هذا لا يشرح مراجعة خطة Terraform قبل التطبيق."
+        },
+        {
+          "id": "CLD-003-N3",
+          "relevance": 0,
+          "title": "تنسيق المخرجات في Python",
+          "text": "استخدم f-strings لتنسيق النصوص والقيم الرقمية في Python مع تحويل الأنواع عند الحاجة. هذا المثال لا يتناول تغييرات البنية التحتية."
+        }
+      ],
+      "critical_failure": "اقتراح تطبيق تغييرات إنتاجية غير مراجعة أو تجاهل المورد المستهدف والتغييرات المدمرة."
+    },
+    {
+      "id": "SEC-003",
+      "domain": "security",
+      "query": "كيف أمنع مستخدم API من قراءة سجل مستخدم آخر بمجرد تغيير المعرّف في الرابط؟",
+      "documents": [
+        {
+          "id": "SEC-003-R1",
+          "relevance": 2,
+          "title": "صلاحيات الوصول إلى الكائنات",
+          "text": "هذه مشكلة تفويض على مستوى الكائن، وتسمى أحيانًا IDOR أو BOLA. افحص الملكية أو سياسة الوصول على الخادم في كل عملية قراءة وتعديل وحذف؛ إخفاء المعرّف في الواجهة ليس بديلًا عن التحقق الخادمي."
+        },
+        {
+          "id": "SEC-003-R2",
+          "relevance": 1,
+          "title": "اختبارات عزل API",
+          "text": "اختبر بوجود حسابين منفصلين وحاول الوصول إلى الكائنات المملوكة للحساب الآخر. تأكد من رفض القراءة والتعديل والحذف غير المصرح به وعدم تسريب بيانات السجل."
+        },
+        {
+          "id": "SEC-003-N1",
+          "relevance": 0,
+          "title": "تشخيص DNS",
+          "text": "استخدم dig أو nslookup لفحص سجلات DNS وقارن النتائج مع خادم الأسماء المكوّن عند فشل حل أسماء النطاقات."
+        },
+        {
+          "id": "SEC-003-N2",
+          "relevance": 0,
+          "title": "تشفير البيانات المخزنة",
+          "text": "فعّل التشفير للبيانات المخزنة والنسخ الاحتياطية مع إدارة مفاتيح مناسبة. التشفير لا يمنع مستخدم API من قراءة سجل لا يملك صلاحية الوصول إليه."
+        },
+        {
+          "id": "SEC-003-N3",
+          "relevance": 0,
+          "title": "قواعد جدار Linux الناري",
+          "text": "راجع قواعد الجدار الناري وحالة المنافذ لتشخيص اتصال شبكة غير متاح. هذا لا يعالج التفويض على مستوى سجل API."
+        }
+      ],
+      "critical_failure": "الاعتماد على معرّفات غير قابلة للتخمين أو فحوص الواجهة بدل فحص الصلاحيات على الخادم."
+    },
+    {
+      "id": "DB-003",
+      "domain": "database",
+      "query": "كيف أشخّص استعلام PostgreSQL البطيء قبل تغيير قاعدة بيانات الإنتاج؟",
+      "documents": [
+        {
+          "id": "DB-003-R1",
+          "relevance": 2,
+          "title": "خطط تنفيذ PostgreSQL",
+          "text": "استخدم EXPLAIN لفحص خطة تنفيذ الاستعلام. ينفذ EXPLAIN ANALYZE العبارة فعليًا، لذلك افهم أثرها أولًا وتجنب استخدامه بلا تفكير مع أوامر تعديل البيانات في الإنتاج."
+        },
+        {
+          "id": "DB-003-R2",
+          "relevance": 1,
+          "title": "فحوص أداء SQL",
+          "text": "راجع المرشحات ومفاتيح الربط وتقديرات عدد الصفوف والفهارس الموجودة وإحصاءات الجداول. حدّد النتيجة المطلوبة ومقدار البيانات قبل إضافة فهرس أو تغيير الاستعلام."
+        },
+        {
+          "id": "DB-003-N1",
+          "relevance": 0,
+          "title": "تدريس دوال Python",
+          "text": "الدالة في Python كتلة كود قابلة لإعادة الاستخدام، وتُعرّف باستخدام def وتستدعى بوضع اسمها مع الأقواس."
+        },
+        {
+          "id": "DB-003-N2",
+          "relevance": 0,
+          "title": "أخطاء GROUP BY في PostgreSQL",
+          "text": "يعني خطأ GROUP BY عادةً أن عمودًا محددًا ليس ضمن التجميع أو دالة تجميع. هذه ملاحظة عن صحة الاستعلام وليست تشخيصًا لبطئه."
+        },
+        {
+          "id": "DB-003-N3",
+          "relevance": 0,
+          "title": "صلاحيات ملفات Linux",
+          "text": "افحص مالك الملف والمجموعة ونمط الأذونات عند ظهور Permission denied؛ هذا لا يقيس زمن تنفيذ استعلام PostgreSQL."
+        }
+      ],
+      "critical_failure": "التوصية بتغيير قاعدة الإنتاج دون خطة تنفيذ أو اعتبار أن EXPLAIN ANALYZE قد يشغل العبارة."
+    },
+    {
+      "id": "EDU-003",
+      "domain": "teaching",
+      "query": "كيف أشرح للمبتدئ parameters و return في دوال Python بتمرين قصير؟",
+      "documents": [
+        {
+          "id": "EDU-003-R1",
+          "relevance": 2,
+          "title": "شرح مدخلات الدوال ومخرجاتها",
+          "text": "اشرح parameter بوصفه اسمًا يستقبل قيمة عند استدعاء الدالة، واشرح return بوصفها القيمة التي ترجعها الدالة إلى المستدعي. استخدم مثالًا صغيرًا مثل def square(number): return number * number."
+        },
+        {
+          "id": "EDU-003-R2",
+          "relevance": 1,
+          "title": "تسلسل تعليم المبتدئين",
+          "text": "قدّم مفهومًا واحدًا في كل مرة، واعرض مثالًا قصيرًا، ثم اطلب من المتعلم حل تمرين مشابه دون كشف الحل فورًا. صحّح خطأ واحدًا واشرح سببه قبل الانتقال."
+        },
+        {
+          "id": "EDU-003-N1",
+          "relevance": 0,
+          "title": "أذونات السحابة",
+          "text": "امنح تطبيق السحابة أقل مجموعة من الصلاحيات اللازمة للنشاط، وحددها على المورد المطلوب بدل دور administrator شامل."
+        },
+        {
+          "id": "EDU-003-N2",
+          "relevance": 0,
+          "title": "شرح حلقات Python",
+          "text": "اشرح حلقات for وwhile للمبتدئ مع تمرين قصير على المرور على قائمة. هذا الدرس لا يشرح parameters أو return داخل الدوال."
+        },
+        {
+          "id": "EDU-003-N3",
+          "relevance": 0,
+          "title": "تصميم شبكة AWS",
+          "text": "حدّد subnets والمسارات ومجموعات الأمان لشبكة افتراضية في AWS؛ هذا موضوع شبكات سحابية لا يخص تعليم دوال Python."
+        }
+      ],
+      "critical_failure": "تقديم درس متقدم طويل وغير متعلق بدل مثال قصير وتمرين مناسب للمبتدئ."
+    }
+  ]
+}

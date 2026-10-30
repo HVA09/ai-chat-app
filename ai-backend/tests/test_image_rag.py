@@ -25,6 +25,22 @@ def _register_and_login(client, email, password="StrongPass123"):
     return client.cookies.get("access_token")
 
 
+
+def _mark_file_as_indexed(file):
+    from datetime import datetime, timezone
+    from app.models.file_attachment import extracted_text_fingerprint
+    from app.services.embeddings import get_embedding_index_identity
+
+    provider, model, fingerprint = get_embedding_index_identity()
+    text_fingerprint = extracted_text_fingerprint(file.extracted_text)
+    file.extracted_text_sha256 = text_fingerprint
+    file.indexed_text_sha256 = text_fingerprint
+    file.indexed_embedding_fingerprint = fingerprint
+    file.indexed_embedding_provider = provider
+    file.indexed_embedding_model = model
+    file.indexed_at = datetime.now(timezone.utc)
+
+
 def test_index_image_for_rag_is_explicit_and_persists_usage(client, monkeypatch, db_session, tmp_path):
     token = _register_and_login(client, "image-index@example.com")
     headers = {"Authorization": f"Bearer {token}"}
@@ -65,6 +81,7 @@ def test_index_image_for_rag_is_explicit_and_persists_usage(client, monkeypatch,
                 embedding=[0.1] * 768,
             )
         )
+        _mark_file_as_indexed(file)
         db.flush()
         return 1
 
@@ -154,3 +171,337 @@ def test_index_image_for_rag_materializes_remote_object(monkeypatch, tmp_path):
     )
     assert get_vision_reply.call_args.args[1] == expected_data_url
     assert file.extracted_text == "[IMAGE DESCRIPTION] مخطط تجريبي"
+
+
+def test_index_image_retries_embedding_for_saved_description_without_vision(
+    client, monkeypatch, db_session, tmp_path
+):
+    token = _register_and_login(client, "image-index-retry@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    monkeypatch.setattr(
+        files_router.settings, "UPLOAD_DIR", str(tmp_path / "uploads")
+    )
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda db, file: 0)
+
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("retry-chart.png", PNG_HEADER, "image/png")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+
+    attachment = db_session.get(FileAttachment, file_id)
+    attachment.extracted_text = (
+        "[IMAGE DESCRIPTION] A chart shows monthly revenue increasing."
+    )
+    db_session.commit()
+
+    calls = []
+
+    def fake_index_file_chunks(db, file):
+        calls.append(file.extracted_text)
+        db.add(
+            FileChunk(
+                file_id=file.id,
+                chunk_index=0,
+                content=file.extracted_text,
+                embedding=[0.1] * 768,
+            )
+        )
+        _mark_file_as_indexed(file)
+        db.flush()
+        return 1
+
+    monkeypatch.setattr(files_router, "index_file_chunks", fake_index_file_chunks)
+    vision_reply = AsyncMock(
+        side_effect=AssertionError(
+            "A saved image description must be reindexed without another vision request"
+        )
+    )
+    monkeypatch.setattr(image_rag, "get_ai_vision_reply", vision_reply)
+
+    response = client.post(f"/files/{file_id}/index-image", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["is_ai_indexed"] is True
+    assert calls == [
+        "[IMAGE DESCRIPTION] A chart shows monthly revenue increasing."
+    ]
+    vision_reply.assert_not_awaited()
+    assert (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file_id, FileChunk.embedding.is_not(None))
+        .count()
+        == 1
+    )
+
+
+def test_index_image_retry_reports_provider_failure_without_losing_description(
+    client, monkeypatch, db_session, tmp_path
+):
+    from app.services.embeddings import EmbeddingServiceError
+
+    token = _register_and_login(client, "image-index-retry-failure@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    monkeypatch.setattr(
+        files_router.settings, "UPLOAD_DIR", str(tmp_path / "uploads")
+    )
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda db, file: 0)
+
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("retry-failed-chart.png", PNG_HEADER, "image/png")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+
+    attachment = db_session.get(FileAttachment, file_id)
+    saved_description = (
+        "[IMAGE DESCRIPTION] A chart shows quarterly revenue."
+    )
+    attachment.extracted_text = saved_description
+    db_session.commit()
+
+    def fail_index(_db, _file):
+        raise EmbeddingServiceError("private upstream detail")
+
+    monkeypatch.setattr(files_router, "index_file_chunks", fail_index)
+    vision_reply = AsyncMock(
+        side_effect=AssertionError(
+            "A saved image description must not trigger a second vision request"
+        )
+    )
+    monkeypatch.setattr(image_rag, "get_ai_vision_reply", vision_reply)
+
+    response = client.post(f"/files/{file_id}/index-image", headers=headers)
+
+    assert response.status_code == 503
+    assert "private upstream detail" not in response.text
+    db_session.expire_all()
+    persisted = db_session.get(FileAttachment, file_id)
+    assert persisted.extracted_text == saved_description
+    vision_reply.assert_not_awaited()
+    assert (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file_id, FileChunk.embedding.is_not(None))
+        .count()
+        == 0
+    )
+
+
+def test_index_image_preserves_description_when_embeddings_fail(monkeypatch, tmp_path):
+    from app.services.embeddings import EmbeddingServiceError
+
+    file = SimpleNamespace(
+        user_id=81,
+        stored_filename="chart.png",
+        object_key="users/81/chart.png",
+        content_type="image/png",
+        extracted_text=None,
+    )
+    remote_path = tmp_path / "image-for-failed-index.png"
+    remote_path.write_bytes(PNG_HEADER)
+
+    @contextmanager
+    def fake_materialize(_object_key, _fallback_path):
+        yield remote_path
+
+    monkeypatch.setattr(image_rag, "materialize_file", fake_materialize)
+    monkeypatch.setattr(
+        image_rag,
+        "get_ai_vision_reply",
+        AsyncMock(return_value=AIReply(text="Quarterly revenue chart")),
+    )
+    def fail_index(_db, _file):
+        raise EmbeddingServiceError("provider unavailable")
+
+    monkeypatch.setattr(image_rag, "index_file_chunks", fail_index)
+
+    class FakeDB:
+        def flush(self):
+            pass
+
+    reply, indexed_chunks = asyncio.run(
+        image_rag.index_image_file(file, FakeDB(), "test-model")
+    )
+
+    assert reply.text == "Quarterly revenue chart"
+    assert indexed_chunks == 0
+    assert file.extracted_text == "[IMAGE DESCRIPTION] Quarterly revenue chart"
+
+
+def test_failed_image_embedding_stays_retryable_from_file_response(
+    client, monkeypatch, db_session, tmp_path
+):
+    """A saved description without semantic chunks must not disable retry in the UI."""
+    from app.services.embeddings import EmbeddingServiceError
+
+    token = _register_and_login(client, "image-retryable-status@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    monkeypatch.setattr(
+        files_router.settings, "UPLOAD_DIR", str(tmp_path / "uploads")
+    )
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda _db, _file: 0)
+
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("retryable-chart.png", PNG_HEADER, "image/png")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+    assert uploaded.json()["is_ai_indexed"] is False
+
+    vision_reply = AsyncMock(
+        return_value=AIReply(
+            text="A chart shows monthly revenue increasing.",
+            input_tokens=5,
+            output_tokens=7,
+            provider="test-provider",
+            latency_ms=10,
+        )
+    )
+    monkeypatch.setattr(image_rag, "get_ai_vision_reply", vision_reply)
+
+    def fail_embedding_index(_db, _file):
+        raise EmbeddingServiceError("embedding provider unavailable")
+
+    monkeypatch.setattr(image_rag, "index_file_chunks", fail_embedding_index)
+
+    first_response = client.post(
+        f"/files/{file_id}/index-image",
+        headers=headers,
+    )
+
+    assert first_response.status_code == 200
+    assert first_response.json()["is_ai_indexed"] is False
+    db_session.expire_all()
+    saved_file = db_session.get(FileAttachment, file_id)
+    assert saved_file.extracted_text == (
+        "[IMAGE DESCRIPTION] A chart shows monthly revenue increasing."
+    )
+    vision_reply.assert_awaited_once()
+
+    def successful_retry(db, file):
+        db.query(FileChunk).filter(
+            FileChunk.file_id == file.id
+        ).delete(synchronize_session=False)
+        db.add(
+            FileChunk(
+                file_id=file.id,
+                chunk_index=0,
+                content=file.extracted_text or "",
+                embedding=[0.1] * 768,
+            )
+        )
+        _mark_file_as_indexed(file)
+        db.flush()
+        return 1
+
+    # The retry route indexes the persisted description directly, without
+    # charging for another multimodal vision request.
+    monkeypatch.setattr(files_router, "index_file_chunks", successful_retry)
+    second_response = client.post(
+        f"/files/{file_id}/index-image",
+        headers=headers,
+    )
+
+    assert second_response.status_code == 200
+    assert second_response.json()["is_ai_indexed"] is True
+    vision_reply.assert_awaited_once()
+    assert (
+        db_session.query(FileChunk)
+        .filter(
+            FileChunk.file_id == file_id,
+            FileChunk.embedding.is_not(None),
+        )
+        .count()
+        == 1
+    )
+
+
+def test_index_image_reindexes_stale_existing_embeddings_without_vision(
+    client, monkeypatch, db_session, tmp_path
+):
+    """A vector from an older text/model must not make a stale image look indexed."""
+    from app.models.file_attachment import extracted_text_fingerprint
+
+    token = _register_and_login(client, "image-stale-index-retry@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    monkeypatch.setattr(
+        files_router.settings, "UPLOAD_DIR", str(tmp_path / "uploads")
+    )
+    monkeypatch.setattr(files_router, "index_file_chunks", lambda _db, _file: 0)
+
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("stale-chart.png", PNG_HEADER, "image/png")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201
+    file_id = uploaded.json()["id"]
+
+    attachment = db_session.get(FileAttachment, file_id)
+    current_description = (
+        "[IMAGE DESCRIPTION] Updated chart description with latest values."
+    )
+    attachment.extracted_text = current_description
+    attachment.indexed_text_sha256 = extracted_text_fingerprint(
+        "Old chart description from a previous source version."
+    )
+    attachment.indexed_embedding_fingerprint = "0" * 64
+    attachment.indexed_embedding_provider = "old-provider"
+    attachment.indexed_embedding_model = "old-model"
+    db_session.add(
+        FileChunk(
+            file_id=file_id,
+            chunk_index=0,
+            content="Old chart description from a previous source version.",
+            embedding=[0.1] * 768,
+        )
+    )
+    db_session.commit()
+
+    calls = []
+
+    def fake_index_file_chunks(db, file):
+        calls.append(file.extracted_text)
+        db.query(FileChunk).filter(
+            FileChunk.file_id == file.id
+        ).delete(synchronize_session=False)
+        db.add(
+            FileChunk(
+                file_id=file.id,
+                chunk_index=0,
+                content=file.extracted_text or "",
+                embedding=[0.2] * 768,
+            )
+        )
+        _mark_file_as_indexed(file)
+        db.flush()
+        return 1
+
+    monkeypatch.setattr(files_router, "index_file_chunks", fake_index_file_chunks)
+    vision_reply = AsyncMock(
+        side_effect=AssertionError(
+            "A saved description with stale embeddings must not trigger another vision request"
+        )
+    )
+    monkeypatch.setattr(image_rag, "get_ai_vision_reply", vision_reply)
+
+    response = client.post(f"/files/{file_id}/index-image", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["is_ai_indexed"] is True
+    assert calls == [current_description]
+    vision_reply.assert_not_awaited()
+
+    chunks = (
+        db_session.query(FileChunk)
+        .filter(FileChunk.file_id == file_id)
+        .all()
+    )
+    assert len(chunks) == 1
+    assert chunks[0].content == current_description

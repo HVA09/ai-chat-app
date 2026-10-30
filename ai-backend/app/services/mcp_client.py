@@ -88,7 +88,9 @@ def _tool_schema(tool: Any) -> dict:
     schema = getattr(tool, "inputSchema", None)
     if isinstance(schema, dict):
         return schema
-    return {"type": "object", "properties": {}}
+    # Missing or malformed MCP schemas must not silently permit arbitrary arguments.
+    # Treat the tool as argumentless until the server provides an explicit schema.
+    return {"type": "object", "properties": {}, "additionalProperties": False}
 
 
 def _format_tool_result(result: Any) -> str:
@@ -124,10 +126,10 @@ async def _call_remote_tool(
             result = await client.call_tool(remote_name, arguments)
     except Exception as exc:
         logger.warning(
-            "MCP tool call failed server=%s tool=%s error=%s",
+            "MCP tool call failed server=%s tool=%s error_type=%s",
             server.name,
             remote_name,
-            exc,
+            type(exc).__name__,
         )
         return ToolResult(
             content=f"تعذر الاتصال بأداة MCP '{remote_name}' على الخادم '{server.name}'.",
@@ -155,11 +157,12 @@ async def discover_mcp_tools() -> list[ToolSpec]:
             async with Client(server.url) as client:
                 result = await client.list_tools()
         except Exception as exc:
+            # Do not log a server URL or exception text: either may contain
+            # credentials supplied in the URL, query string, or upstream error.
             logger.warning(
-                "MCP discovery failed server=%s url=%s error=%s",
+                "MCP discovery failed server=%s error_type=%s",
                 server.name,
-                server.url,
-                exc,
+                type(exc).__name__,
             )
             continue
 
