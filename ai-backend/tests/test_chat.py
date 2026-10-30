@@ -1424,3 +1424,64 @@ def test_chat_stream_sends_localized_provider_rate_limit_message(client, monkeyp
     assert "check the provider's quota" in response.text
     assert "too many requests" not in response.text
 
+def test_chat_releases_db_connection_before_waiting_for_model_provider(
+    client, monkeypatch
+):
+    released = []
+
+    def fake_release(db):
+        released.append(db)
+
+    async def fake_ai_reply(*_args, **_kwargs):
+        assert released, "database connection must be released before provider wait"
+        return AIReply(text="safe reply")
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "commit_and_release_db_connection",
+        fake_release,
+    )
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", fake_ai_reply)
+
+    token = _register_and_login(client, "db-release-chat@example.com")
+    response = client.post(
+        "/chat",
+        json={"message": "Explain a simple networking concept"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["reply"] == "safe reply"
+    assert released
+
+
+def test_chat_stream_releases_db_connection_before_provider_stream(
+    client, monkeypatch
+):
+    released = []
+
+    def fake_release(db):
+        released.append(db)
+
+    async def fake_stream(*_args, **_kwargs):
+        assert released, "database connection must be released before streaming provider output"
+        yield "streamed reply"
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "commit_and_release_db_connection",
+        fake_release,
+    )
+    monkeypatch.setattr(chat_router_module, "stream_ai_reply", fake_stream)
+
+    token = _register_and_login(client, "db-release-chat-stream@example.com")
+    response = client.post(
+        "/chat/stream",
+        json={"message": "Explain a simple networking concept"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert "event: chunk" in response.text
+    assert "streamed reply" in response.text
+    assert released
