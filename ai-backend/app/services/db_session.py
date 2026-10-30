@@ -10,13 +10,20 @@ def commit_and_release_db_connection(db: Session) -> None:
     response). This preserves loaded ORM attributes across the commit so a later
     access does not silently check out another connection.
     """
-    db.expire_on_commit = False
-    if not db.in_transaction():
+    commit = getattr(db, "commit", None)
+    in_transaction = getattr(db, "in_transaction", None)
+    if not callable(commit) or not callable(in_transaction):
         return
 
-    if db.is_active:
-        db.commit()
+    db.expire_on_commit = False
+    if not in_transaction():
+        return
+
+    if getattr(db, "is_active", True):
+        commit()
     else:
         # A previous SQL error left the transaction in a failed state. Clear it
         # before subsequent work rather than keeping a poisoned checkout.
-        db.rollback()
+        rollback = getattr(db, "rollback", None)
+        if callable(rollback):
+            rollback()
