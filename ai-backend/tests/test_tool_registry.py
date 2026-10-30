@@ -210,6 +210,73 @@ def test_project_archive_rejects_unsafe_or_duplicate_paths(files, expected):
     assert expected in result.content
 
 
+def test_project_archive_failure_does_not_expose_internal_exception_details(
+    monkeypatch, tmp_path, caplog
+):
+    from types import SimpleNamespace
+
+    from app.config import settings
+    from app.services import tools as tools_package
+    from app.services.tools import registry as registry_module
+
+    secret_detail = "postgresql://internal-user:secret-password@db.internal:5432/app"
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(registry_module, "put_file", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(registry_module, "delete_stored_file", lambda *_args, **_kwargs: None)
+
+    class FakeQuery:
+        def filter(self, *_args, **_kwargs):
+            return self
+
+        def scalar(self):
+            return 0
+
+    class FailingCommitSession:
+        rolled_back = False
+
+        def query(self, *_args, **_kwargs):
+            return FakeQuery()
+
+        def add(self, _item):
+            return None
+
+        def flush(self):
+            return None
+
+        def commit(self):
+            raise RuntimeError(secret_detail)
+
+        def rollback(self):
+            self.rolled_back = True
+
+    del tools_package
+    session = FailingCommitSession()
+    context = ToolContext(
+        conversation=SimpleNamespace(id=7, workspace_id=None, project_id=None),
+        current_user=SimpleNamespace(id=123),
+        db=session,
+    )
+
+    with caplog.at_level("WARNING", logger="app.services.tools.registry"):
+        result = asyncio.run(
+            _create_project_archive(
+                {
+                    "project_name": "safe-project",
+                    "files": [{"path": "README.md", "content": "safe content"}],
+                },
+                context,
+            )
+        )
+
+    assert result.succeeded is False
+    assert "خطأ داخلي" in result.content
+    assert secret_detail not in result.content
+    assert secret_detail not in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
+    assert session.rolled_back is True
+    assert list((tmp_path / "123").glob("*.zip")) == []
+
+
 def test_project_archive_rejects_more_than_50_files():
     files = [{"path": f"file-{index}.txt", "content": "x"} for index in range(51)]
 
