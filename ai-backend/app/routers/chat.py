@@ -66,6 +66,16 @@ from app.services.tools.web_search import WebSearchError, extract_web_search_que
 router = APIRouter(prefix="/chat", tags=["Chat"])
 logger = get_logger("chat")
 
+
+def _release_db_connection_before_streaming(db: Session) -> None:
+    """Return a checked-out connection before a non-Agent SSE stream waits externally.
+
+    The endpoint sets expire_on_commit=False before committing stream setup, so loaded
+    ORM scalar values remain available after this release commit without a lazy refresh.
+    Later database writes acquire a connection only when persistence is needed.
+    """
+    db.commit()
+
 MAX_HISTORY_MESSAGES = 20  # يحدّ من نمو الاستعلام وتكلفة/زمن استدعاء AI بمحادثة طويلة جدًا
 MAX_SUMMARY_CONTEXT_CHARS = 8_000
 MAX_FILE_CONTEXT_CHARS = 24_000
@@ -1398,11 +1408,16 @@ async def chat_stream(
     أحداث SSE: conversation (رقم المحادثة) → chunk (جزء نص، مرارًا) → done | error
     الأسطر الجديدة داخل chunk تُستبدل بـ \\\n نصية عشان ما تكسر صيغة السطر الواحد لكل حدث.
     """
+    agent_task = extract_agent_request(payload.message)
+    if agent_task is None:
+        # Set this before any commit; otherwise loaded ORM values may expire and
+        # trigger a new checkout from the bounded pool while the stream is open.
+        db.expire_on_commit = False
+
     conversation = _get_or_create_conversation(payload, current_user, db)
     _attach_requested_files(payload.file_ids, conversation, current_user, db)
     if conversation.workspace_id is not None:
         enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
-    agent_task = extract_agent_request(payload.message)
     if agent_task is not None:
         async def agent_event_generator():
             queue: asyncio.Queue[dict] = asyncio.Queue()
@@ -1552,6 +1567,7 @@ async def chat_stream(
                 return
             yield "event: done\ndata: {}\n\n"
 
+        _release_db_connection_before_streaming(db)
         return StreamingResponse(calculator_event_generator(), media_type="text/event-stream")
 
     code_request = extract_code_request(payload.message)
@@ -1601,6 +1617,7 @@ async def chat_stream(
                 return
             yield "event: done\ndata: {}\n\n"
 
+        _release_db_connection_before_streaming(db)
         return StreamingResponse(python_event_generator(), media_type="text/event-stream")
 
     analysis_filename = extract_data_analysis_request(payload.message)
@@ -1670,6 +1687,7 @@ async def chat_stream(
                 return
             yield "event: done\ndata: {}\n\n"
 
+        _release_db_connection_before_streaming(db)
         return StreamingResponse(data_analysis_event_generator(), media_type="text/event-stream")
 
     search_query = extract_web_search_query(payload.message)
@@ -1712,6 +1730,7 @@ async def chat_stream(
                 return
             yield "event: done\ndata: {}\n\n"
 
+        _release_db_connection_before_streaming(db)
         return StreamingResponse(web_search_event_generator(), media_type="text/event-stream")
 
     history = _build_history(conversation, db)
@@ -1819,6 +1838,7 @@ async def chat_stream(
 
         yield "event: done\ndata: {}\n\n"
 
+    _release_db_connection_before_streaming(db)
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
@@ -1927,6 +1947,7 @@ async def regenerate_chat_stream(
     db: Session = Depends(get_db),
 ):
     """إعادة توليد آخر رد مساعد بدون إضافة رسالة مستخدم مكررة."""
+    db.expire_on_commit = False
     conversation = (
         db.query(Conversation)
         .filter(
@@ -2033,6 +2054,7 @@ async def regenerate_chat_stream(
 
         yield "event: done\ndata: {}\n\n"
 
+    _release_db_connection_before_streaming(db)
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
@@ -2045,6 +2067,7 @@ async def edit_chat_stream(
     db: Session = Depends(get_db),
 ):
     """تعديل رسالة مستخدم سابقة ثم إعادة توليد بقية المحادثة من موقع التعديل."""
+    db.expire_on_commit = False
     conversation = (
         db.query(Conversation)
         .filter(
@@ -2152,4 +2175,5 @@ async def edit_chat_stream(
 
         yield "event: done\ndata: {}\n\n"
 
+    _release_db_connection_before_streaming(db)
     return StreamingResponse(event_generator(), media_type="text/event-stream")
