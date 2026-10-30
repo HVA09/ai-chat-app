@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.conversation import Conversation
 from app.models.user import User
+from app.services.prompt_context import safe_context_text
 from app.services.tool_security import wrap_untrusted_tool_output
 from app.services.ai_providers.base import AIToolReply
 from app.services.mcp_client import discover_mcp_tools
@@ -147,10 +148,25 @@ class AgentRuntime:
     def _history(
         messages: list[dict[str, str]] | None, limit: int
     ) -> list[dict[str, str]]:
-        return list(messages or [])[-limit:]
+        selected = list(messages or [])[-limit:]
+        sanitized: list[dict[str, Any]] = []
+        for message in selected:
+            copied = dict(message)
+            content = copied.get("content")
+            if isinstance(content, str):
+                copied["content"] = safe_context_text(content)
+            sanitized.append(copied)
+        return sanitized
 
     @staticmethod
-    def _assistant_tool_message(reply: AIToolReply) -> dict:
+    def _assistant_tool_message(
+        reply: AIToolReply,
+        tool_calls: list[Any] | None = None,
+    ) -> dict:
+        # Providers can return more calls than this runtime's per-round budget.
+        # Keep only calls that will actually execute; otherwise the next provider
+        # request would contain orphaned tool-call IDs with no matching tool result.
+        selected_calls = reply.tool_calls if tool_calls is None else tool_calls
         return {
             "role": "assistant",
             "content": reply.text or None,
@@ -163,7 +179,7 @@ class AgentRuntime:
                         "arguments": json.dumps(call.arguments, ensure_ascii=False),
                     },
                 }
-                for call in reply.tool_calls
+                for call in selected_calls
             ],
         }
 
@@ -260,7 +276,7 @@ class AgentRuntime:
         messages: list[dict] = self._history(
             history, self.limits.max_history_messages
         )
-        messages.append({"role": "user", "content": task})
+        messages.append({"role": "user", "content": safe_context_text(task)})
 
         registry = self.registry_factory()
         for spec in await self.mcp_discoverer():
@@ -348,7 +364,7 @@ class AgentRuntime:
                 )
 
             calls = reply.tool_calls[: self.limits.max_tool_calls_per_round]
-            messages.append(self._assistant_tool_message(reply))
+            messages.append(self._assistant_tool_message(reply, calls))
 
             if len(reply.tool_calls) > len(calls):
                 await self._emit(

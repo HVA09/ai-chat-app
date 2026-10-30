@@ -17,3 +17,4 @@ class FileOut(BaseModel):
     is_owner: bool = False
     can_delete: bool = False
     is_ai_indexed: bool = False
+    has_extracted_text: bool = False

@@ -68,3 +68,374 @@ def test_extract_pdf_file(tmp_path: Path):
         writer.write(file)
 
     assert extract_text(path, "application/pdf") == ""
+
+
+def test_docx_extraction_stops_reading_blocks_after_character_limit(
+    tmp_path: Path, monkeypatch
+):
+    from app.services import file_text_extractor
+
+    class FakeParagraph:
+        def __init__(self, text: str):
+            self.text = text
+
+    class FakeTable:
+        pass
+
+    class TrackingBlocks:
+        def __init__(self):
+            self.visited = 0
+
+        def __iter__(self):
+            self.visited += 1
+            yield FakeParagraph("A" * 1000)
+            self.visited += 1
+            yield FakeParagraph("This later paragraph should not be visited.")
+
+    blocks = TrackingBlocks()
+
+    class FakeDocument:
+        def iter_inner_content(self):
+            return iter(blocks)
+
+    monkeypatch.setattr(file_text_extractor, "Document", lambda _path: FakeDocument())
+    monkeypatch.setattr(file_text_extractor, "Paragraph", FakeParagraph)
+    monkeypatch.setattr(file_text_extractor, "Table", FakeTable)
+
+    text = file_text_extractor._read_docx_file(tmp_path / "fake.docx", max_chars=20)
+
+    assert text.startswith("A" * 20)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+    assert blocks.visited == 1
+    assert "later paragraph" not in text
+
+
+def test_docx_extraction_preserves_paragraph_and_table_order(tmp_path: Path):
+    path = tmp_path / "ordered.docx"
+    document = Document()
+    document.add_paragraph("Before table")
+    table = document.add_table(rows=1, cols=1)
+    table.cell(0, 0).text = "Table content"
+    document.add_paragraph("After table")
+    document.save(path)
+
+    text = extract_text(
+        path,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+
+    assert text.index("Before table") < text.index("Table content")
+    assert text.index("Table content") < text.index("After table")
+
+
+def test_pdf_extraction_stops_at_character_limit_and_skips_later_pages(
+    tmp_path: Path, monkeypatch
+):
+    """Large text from a page must not be accumulated beyond the configured limit."""
+    from app.services import file_text_extractor
+
+    class FakePage:
+        def __init__(self, content: str):
+            self.content = content
+            self.extract_calls = 0
+
+        def extract_text(self):
+            self.extract_calls += 1
+            return self.content
+
+    first_page = FakePage("short")
+    oversized_page = FakePage("A" * 1000)
+    later_page = FakePage("This page must never be visited.")
+
+    class TrackingPages:
+        def __init__(self):
+            self.visited = 0
+
+        def __iter__(self):
+            for page in (first_page, oversized_page, later_page):
+                self.visited += 1
+                yield page
+
+    pages = TrackingPages()
+
+    class FakeReader:
+        def __init__(self, _path):
+            self.pages = pages
+
+    monkeypatch.setattr(file_text_extractor, "PdfReader", FakeReader)
+
+    text = file_text_extractor._read_pdf_file(tmp_path / "fake.pdf", max_chars=20)
+
+    assert text.startswith("short\n\n" + "A" * 13)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+    assert pages.visited == 2
+    assert first_page.extract_calls == 1
+    assert oversized_page.extract_calls == 1
+    assert later_page.extract_calls == 0
+    assert "This page must never be visited." not in text
+
+
+def test_xlsx_extraction_bounds_accumulated_rows_and_closes_workbook(
+    tmp_path: Path, monkeypatch
+):
+    """A single oversized spreadsheet cell must not be accumulated into context."""
+    from app.services import file_text_extractor
+
+    class FakeWorksheet:
+        title = "Data"
+
+        def __init__(self):
+            self.rows_yielded = 0
+
+        def iter_rows(self, values_only=True):
+            self.rows_yielded += 1
+            yield ("A" * 1000,)
+            self.rows_yielded += 1
+            yield ("This later row must not be visited.",)
+
+    worksheet = FakeWorksheet()
+
+    class FakeWorkbook:
+        worksheets = [worksheet]
+
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    workbook = FakeWorkbook()
+    monkeypatch.setattr(
+        file_text_extractor,
+        "load_workbook",
+        lambda **_kwargs: workbook,
+    )
+
+    original_limit = file_text_extractor._limit
+
+    def assert_bounded_input(text: str, max_chars: int) -> str:
+        assert len(text) <= max_chars
+        return original_limit(text, max_chars)
+
+    monkeypatch.setattr(file_text_extractor, "_limit", assert_bounded_input)
+
+    text = file_text_extractor._read_xlsx_file(tmp_path / "fake.xlsx", max_chars=20)
+
+    assert text.startswith("[ورقة: Data]\n" + "A" * 7)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+    assert worksheet.rows_yielded == 1
+    assert workbook.closed
+    assert "This later row must not be visited." not in text
+
+
+def test_docx_extraction_stops_when_a_block_exactly_fills_character_budget(
+    tmp_path: Path, monkeypatch
+):
+    from app.services import file_text_extractor
+
+    class FakeParagraph:
+        def __init__(self, text: str):
+            self.text = text
+
+    class FakeTable:
+        pass
+
+    class TrackingBlocks:
+        def __init__(self):
+            self.visited = 0
+
+        def __iter__(self):
+            self.visited += 1
+            yield FakeParagraph("A" * 20)
+            self.visited += 1
+            yield FakeParagraph("This later paragraph must not be visited.")
+
+    blocks = TrackingBlocks()
+
+    class FakeDocument:
+        def iter_inner_content(self):
+            return iter(blocks)
+
+    monkeypatch.setattr(file_text_extractor, "Document", lambda _path: FakeDocument())
+    monkeypatch.setattr(file_text_extractor, "Paragraph", FakeParagraph)
+    monkeypatch.setattr(file_text_extractor, "Table", FakeTable)
+
+    text = file_text_extractor._read_docx_file(tmp_path / "fake.docx", max_chars=20)
+
+    assert text.startswith("A" * 20)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+    assert blocks.visited == 1
+    assert "later paragraph" not in text
+
+
+def test_pdf_extraction_stops_when_a_page_exactly_fills_character_budget(
+    tmp_path: Path, monkeypatch
+):
+    from app.services import file_text_extractor
+
+    class FakePage:
+        def __init__(self, content: str):
+            self.content = content
+            self.extract_calls = 0
+
+        def extract_text(self):
+            self.extract_calls += 1
+            return self.content
+
+    first_page = FakePage("A" * 20)
+    later_page = FakePage("This page must not be extracted.")
+
+    class TrackingPages:
+        def __init__(self):
+            self.visited = 0
+
+        def __iter__(self):
+            for page in (first_page, later_page):
+                self.visited += 1
+                yield page
+
+    pages = TrackingPages()
+
+    class FakeReader:
+        def __init__(self, _path):
+            self.pages = pages
+
+    monkeypatch.setattr(file_text_extractor, "PdfReader", FakeReader)
+
+    text = file_text_extractor._read_pdf_file(tmp_path / "fake.pdf", max_chars=20)
+
+    assert text.startswith("A" * 20)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+    assert pages.visited == 1
+    assert first_page.extract_calls == 1
+    assert later_page.extract_calls == 0
+
+
+def test_xlsx_extraction_stops_when_a_row_exactly_fills_character_budget(
+    tmp_path: Path, monkeypatch
+):
+    from app.services import file_text_extractor
+
+    class FakeWorksheet:
+        title = "Data"
+
+        def __init__(self):
+            self.rows_yielded = 0
+
+        def iter_rows(self, values_only=True):
+            self.rows_yielded += 1
+            yield ("A" * 7,)
+            self.rows_yielded += 1
+            yield ("This later row must not be visited.",)
+
+    worksheet = FakeWorksheet()
+
+    class FakeWorkbook:
+        worksheets = [worksheet]
+
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    workbook = FakeWorkbook()
+    monkeypatch.setattr(
+        file_text_extractor,
+        "load_workbook",
+        lambda **_kwargs: workbook,
+    )
+
+    text = file_text_extractor._read_xlsx_file(tmp_path / "fake.xlsx", max_chars=20)
+
+    assert text.startswith("[ورقة: Data]\n" + "A" * 7)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+    assert worksheet.rows_yielded == 1
+    assert workbook.closed
+    assert "This later row must not be visited." not in text
+
+
+def _guard_bounded_binary_reads(monkeypatch, target_path: Path, maximum_size: int):
+    """Fail if extraction switches back to whole-file reads or unbounded read()."""
+    original_open = Path.open
+    observed_sizes = []
+
+    class GuardedReader:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return self.handle.__exit__(exc_type, exc_value, traceback)
+
+        def read(self, size=-1):
+            assert 0 <= size <= maximum_size, (
+                f"expected a bounded read <= {maximum_size} bytes, got {size}"
+            )
+            observed_sizes.append(size)
+            return self.handle.read(size)
+
+    def guarded_open(self, *args, **kwargs):
+        handle = original_open(self, *args, **kwargs)
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if self == target_path and mode == "rb":
+            return GuardedReader(handle)
+        return handle
+
+    def fail_read_bytes(_self):
+        raise AssertionError("extractor must not load the whole file via read_bytes()")
+
+    monkeypatch.setattr(Path, "open", guarded_open)
+    monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
+    return observed_sizes
+
+
+def test_text_extraction_reads_only_a_bounded_prefix(tmp_path: Path, monkeypatch):
+    from app.services import file_text_extractor
+
+    path = tmp_path / "large.txt"
+    path.write_text("A" * 10_000, encoding="utf-8")
+    observed = _guard_bounded_binary_reads(monkeypatch, path, maximum_size=32 * 4)
+
+    text = file_text_extractor._read_text_file(path, max_chars=32)
+
+    assert observed == [32 * 4]
+    assert text.startswith("A" * 32)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+
+
+def test_csv_extraction_bounds_bytes_and_truncates_an_oversized_field(
+    tmp_path: Path, monkeypatch
+):
+    from app.services import file_text_extractor
+
+    path = tmp_path / "large.csv"
+    path.write_text("A" * 10_000, encoding="utf-8")
+    observed = _guard_bounded_binary_reads(monkeypatch, path, maximum_size=32 * 4)
+
+    text = file_text_extractor._read_csv_file(path, max_chars=32)
+
+    assert observed == [32 * 4]
+    assert text.startswith("A" * 32)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text
+
+
+def test_csv_extraction_handles_a_large_field_with_default_character_budget(
+    tmp_path: Path, monkeypatch
+):
+    from app.services import file_text_extractor
+
+    path = tmp_path / "very-large-field.csv"
+    path.write_text("A" * 200_000, encoding="utf-8")
+    max_chars = file_text_extractor.DEFAULT_MAX_CHARS
+    observed = _guard_bounded_binary_reads(
+        monkeypatch, path, maximum_size=max_chars * 4
+    )
+
+    text = file_text_extractor._read_csv_file(path, max_chars=max_chars)
+
+    assert observed == [max_chars * 4]
+    assert text.startswith("A" * max_chars)
+    assert "[تم اختصار المحتوى بسبب الحد المسموح]" in text

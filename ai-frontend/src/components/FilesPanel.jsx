@@ -9,6 +9,7 @@ import {
   listFiles,
   uploadFile,
   indexImageForRag,
+  reindexFileForRag,
 } from "../lib/filesApi";
 import { getErrorMessage } from "../lib/errors";
 
@@ -29,6 +30,14 @@ function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function canManageFileIndex(file) {
+  return (
+    file.project_id === null ||
+    file.project_id === undefined ||
+    Boolean(file.can_delete)
+  );
 }
 
 export default function FilesPanel({
@@ -59,6 +68,31 @@ export default function FilesPanel({
   const [showProjectFiles, setShowProjectFiles] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const fileInputRef = useRef(null);
+  const isMountedRef = useRef(false);
+  const uploadProgressTimeoutRef = useRef(null);
+  const previewRequestRef = useRef(0);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      previewRequestRef.current += 1;
+      if (uploadProgressTimeoutRef.current !== null) {
+        window.clearTimeout(uploadProgressTimeoutRef.current);
+        uploadProgressTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  // Object URLs hold browser-managed blob resources. Revoke the previous URL
+  // whenever a preview is replaced/closed, and also when the panel unmounts.
+  useEffect(() => {
+    const previewUrl = preview?.url;
+    if (!previewUrl) return undefined;
+    return () => {
+      window.URL.revokeObjectURL(previewUrl);
+    };
+  }, [preview?.url]);
 
   useEffect(() => {
     if (projectId !== null) {
@@ -88,7 +122,12 @@ export default function FilesPanel({
     const requestScopeKey = fileScopeKey;
     // A callback from an older render (for example, an upload that finishes
     // after the user switches conversations) must not start a refresh for the old scope.
-    if (requestScopeKey !== currentFileScopeRef.current) return;
+    if (
+      !isMountedRef.current ||
+      requestScopeKey !== currentFileScopeRef.current
+    ) {
+      return;
+    }
 
     const requestId = ++refreshRequestRef.current;
     setLoading(true);
@@ -100,6 +139,7 @@ export default function FilesPanel({
         showProjectFiles ? projectId : null
       );
       if (
+        !isMountedRef.current ||
         requestId !== refreshRequestRef.current ||
         requestScopeKey !== currentFileScopeRef.current
       ) {
@@ -108,6 +148,7 @@ export default function FilesPanel({
       setFiles(nextFiles);
     } catch (errorValue) {
       if (
+        !isMountedRef.current ||
         requestId !== refreshRequestRef.current ||
         requestScopeKey !== currentFileScopeRef.current
       ) {
@@ -116,6 +157,7 @@ export default function FilesPanel({
       showErrorToast(errorValue, "files.listError");
     } finally {
       if (
+        isMountedRef.current &&
         requestId === refreshRequestRef.current &&
         requestScopeKey === currentFileScopeRef.current
       ) {
@@ -125,11 +167,16 @@ export default function FilesPanel({
   };
 
   useEffect(() => {
+    // A preview request belongs to the current file scope. Close any existing
+    // preview and invalidate pending blob fetches when that scope changes.
+    previewRequestRef.current += 1;
+    setPreview(null);
     refresh();
     return () => {
       // Invalidate pending loads when the conversation/workspace/project scope changes
       // or this modal unmounts.
       refreshRequestRef.current += 1;
+      previewRequestRef.current += 1;
     };
   }, [conversationId, showWorkspaceFiles, showProjectFiles, workspaceId, projectId]);
 
@@ -148,11 +195,17 @@ export default function FilesPanel({
 
     for (const file of selectedFiles) {
       try {
-        setUploadProgress(Math.round((completed / selectedFiles.length) * 100));
+        if (isMountedRef.current) {
+          setUploadProgress(
+            Math.round((completed / selectedFiles.length) * 100)
+          );
+        }
         await uploadFile(
           file,
           (progress) => {
-            const overall = ((completed + progress / 100) / selectedFiles.length) * 100;
+            if (!isMountedRef.current) return;
+            const overall =
+              ((completed + progress / 100) / selectedFiles.length) * 100;
             setUploadProgress(Math.round(overall));
           },
           showProjectFiles || showWorkspaceFiles ? null : conversationId,
@@ -167,11 +220,21 @@ export default function FilesPanel({
       }
     }
 
+    if (!isMountedRef.current) return;
+
     setUploadProgress(100);
     try {
       await refresh();
     } finally {
-      window.setTimeout(() => setUploadProgress(null), 250);
+      if (isMountedRef.current) {
+        if (uploadProgressTimeoutRef.current !== null) {
+          window.clearTimeout(uploadProgressTimeoutRef.current);
+        }
+        uploadProgressTimeoutRef.current = window.setTimeout(() => {
+          uploadProgressTimeoutRef.current = null;
+          if (isMountedRef.current) setUploadProgress(null);
+        }, 250);
+      }
     }
 
   };
@@ -206,7 +269,7 @@ export default function FilesPanel({
   };
 
   const handleIndexImage = async (file) => {
-    if (!file.content_type.startsWith("image/") || file.is_ai_indexed) return;
+    if (!canManageFileIndex(file) || !file.content_type.startsWith("image/") || file.is_ai_indexed) return;
 
     setIndexingId(file.id);
     try {
@@ -214,6 +277,20 @@ export default function FilesPanel({
       await refresh();
     } catch (err) {
       showErrorToast(err, "files.imageIndexError");
+    } finally {
+      setIndexingId(null);
+    }
+  };
+
+  const handleReindexFile = async (file) => {
+    if (!canManageFileIndex(file) || !file.has_extracted_text || file.is_ai_indexed) return;
+
+    setIndexingId(file.id);
+    try {
+      await reindexFileForRag(file.id);
+      await refresh();
+    } catch (err) {
+      showErrorToast(err, "files.reindexError");
     } finally {
       setIndexingId(null);
     }
@@ -236,17 +313,34 @@ export default function FilesPanel({
       downloadFile(file.id, file.original_filename);
       return;
     }
+
+    const requestId = ++previewRequestRef.current;
+    const requestScopeKey = currentFileScopeRef.current;
     try {
       const blob = await fetchFileBlob(file.id);
+      if (
+        !isMountedRef.current ||
+        requestId !== previewRequestRef.current ||
+        requestScopeKey !== currentFileScopeRef.current
+      ) {
+        return;
+      }
       const url = window.URL.createObjectURL(blob);
       setPreview({ url, contentType: file.content_type, name: file.original_filename });
     } catch (err) {
+      if (
+        !isMountedRef.current ||
+        requestId !== previewRequestRef.current ||
+        requestScopeKey !== currentFileScopeRef.current
+      ) {
+        return;
+      }
       showErrorToast(err, "files.previewError");
     }
   };
 
   const closePreview = () => {
-    if (preview) window.URL.revokeObjectURL(preview.url);
+    previewRequestRef.current += 1;
     setPreview(null);
   };
 
@@ -434,16 +528,43 @@ export default function FilesPanel({
                   >
                     ⬇
                   </button>
-                  {file.content_type.startsWith("image/") && (
+                  {file.content_type.startsWith("image/") && canManageFileIndex(file) && (
                     <button
                       onClick={() => handleIndexImage(file)}
                       disabled={Boolean(file.is_ai_indexed) || indexingId === file.id}
-                      title={file.is_ai_indexed ? t("files.imageIndexed") : t("files.indexImageForAi")}
+                      title={
+                        file.is_ai_indexed
+                          ? t("files.imageIndexed")
+                          : file.has_extracted_text
+                            ? t("files.retryIndexForAi")
+                            : t("files.indexImageForAi")
+                      }
+                      aria-label={
+                        file.is_ai_indexed
+                          ? t("files.imageIndexed")
+                          : file.has_extracted_text
+                            ? t("files.retryIndexForAi")
+                            : t("files.indexImageForAi")
+                      }
                       className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-slate-400"
                     >
                       {indexingId === file.id ? "..." : file.is_ai_indexed ? "✅" : "✨"}
                     </button>
                   )}
+                  {!file.content_type.startsWith("image/") &&
+                    canManageFileIndex(file) &&
+                    file.has_extracted_text &&
+                    !file.is_ai_indexed && (
+                      <button
+                        onClick={() => handleReindexFile(file)}
+                        disabled={indexingId === file.id}
+                        title={t("files.retryIndexForAi")}
+                        aria-label={t("files.retryIndexForAi")}
+                        className="rounded-lg px-1.5 py-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                      >
+                        {indexingId === file.id ? "..." : "✨"}
+                      </button>
+                    )}
                   {conversationId && file.is_attached && file.content_type.startsWith("image/") && onAnalyzeImage && (
                     <button
                       onClick={() => handleAnalyzeImage(file)}
@@ -490,8 +611,30 @@ export default function FilesPanel({
                     <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                       {t("files.indexed")}
                     </span>
-                  ) : null}
+                  ) : (
+                    <span
+                      title={
+                        !file.has_extracted_text && !file.content_type.startsWith("image/")
+                          ? t("files.noExtractedTextHelp")
+                          : undefined
+                      }
+                      className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                    >
+                      {file.has_extracted_text
+                        ? t("files.indexingPending")
+                        : file.content_type.startsWith("image/")
+                          ? t("files.imageNotIndexed")
+                          : t("files.noExtractedText")}
+                    </span>
+                  )}
                 </div>
+                {!file.is_ai_indexed &&
+                  !file.has_extracted_text &&
+                  !file.content_type.startsWith("image/") && (
+                    <p className="mt-2 ps-[3.25rem] text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      {t("files.noExtractedTextHelp")}
+                    </p>
+                  )}
               </div>
             ))}
             </div>

@@ -30,7 +30,11 @@ class Settings(BaseSettings):
     AI_FALLBACK_API_KEY: str = ""
     AI_FALLBACK_API_BASE_URL: str = ""
     AI_FALLBACK_MODEL: str = ""
-    EMBEDDING_MODEL: str = "gemini-embedding-001"
+    # Optional independent embeddings configuration. Blank values preserve AI-provider fallback.
+    EMBEDDING_PROVIDER: str = ""
+    EMBEDDING_API_KEY: str = ""
+    EMBEDDING_API_BASE_URL: str = ""
+    EMBEDDING_MODEL: str = ""
     EMBEDDING_DIMENSIONS: int = 768
     DAILY_AI_REQUEST_LIMIT: int = 20
     MAX_AI_OUTPUT_TOKENS: int = 1200
