@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.services.db_session import commit_and_release_db_connection
 from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_allowed_ai_models, get_current_user
 from app.logging_config import get_logger
 from app.models.assistant import Assistant
@@ -207,6 +208,9 @@ async def compare_ai_models(
         if workspace_id is not None:
             enforce_workspace_daily_ai_limit(workspace_id, current_user, db)
 
+        # The quota checks and context reads are complete; release their checkout
+        # before waiting for this model response.
+        commit_and_release_db_connection(db)
         reply = await get_ai_reply(prompt, history, model=model)
         db.add(
             UsageLog(
@@ -1283,6 +1287,7 @@ async def chat(
                 / str(current_user.id)
                 / attachment.stored_filename
             )
+            commit_and_release_db_connection(db)
             with materialize_file(attachment.object_key, fallback_path) as path:
                 data_file = DataFile(
                     path=path,
@@ -1332,6 +1337,7 @@ async def chat(
     search_query = extract_web_search_query(payload.message)
     if search_query is not None:
         try:
+            commit_and_release_db_connection(db)
             results = await search_web(search_query)
             search_reply, sources = format_web_search_response(search_query, results)
         except WebSearchError as exc:
@@ -1362,6 +1368,9 @@ async def chat(
     history = _build_history(conversation, db)
     ai_message, sources = await _augment_message(payload.message, conversation, db)
 
+    # Context assembly is complete. Keep the new user message pending, but return
+    # the read transaction's connection before waiting for the model provider.
+    commit_and_release_db_connection(db)
     db.add(
         Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
     )
