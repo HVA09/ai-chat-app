@@ -70,11 +70,13 @@ export default function FilesPanel({
   const fileInputRef = useRef(null);
   const isMountedRef = useRef(false);
   const uploadProgressTimeoutRef = useRef(null);
+  const previewRequestRef = useRef(0);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      previewRequestRef.current += 1;
       if (uploadProgressTimeoutRef.current !== null) {
         window.clearTimeout(uploadProgressTimeoutRef.current);
         uploadProgressTimeoutRef.current = null;
@@ -165,11 +167,16 @@ export default function FilesPanel({
   };
 
   useEffect(() => {
+    // A preview request belongs to the current file scope. Close any existing
+    // preview and invalidate pending blob fetches when that scope changes.
+    previewRequestRef.current += 1;
+    setPreview(null);
     refresh();
     return () => {
       // Invalidate pending loads when the conversation/workspace/project scope changes
       // or this modal unmounts.
       refreshRequestRef.current += 1;
+      previewRequestRef.current += 1;
     };
   }, [conversationId, showWorkspaceFiles, showProjectFiles, workspaceId, projectId]);
 
@@ -306,16 +313,34 @@ export default function FilesPanel({
       downloadFile(file.id, file.original_filename);
       return;
     }
+
+    const requestId = ++previewRequestRef.current;
+    const requestScopeKey = currentFileScopeRef.current;
     try {
       const blob = await fetchFileBlob(file.id);
+      if (
+        !isMountedRef.current ||
+        requestId !== previewRequestRef.current ||
+        requestScopeKey !== currentFileScopeRef.current
+      ) {
+        return;
+      }
       const url = window.URL.createObjectURL(blob);
       setPreview({ url, contentType: file.content_type, name: file.original_filename });
     } catch (err) {
+      if (
+        !isMountedRef.current ||
+        requestId !== previewRequestRef.current ||
+        requestScopeKey !== currentFileScopeRef.current
+      ) {
+        return;
+      }
       showErrorToast(err, "files.previewError");
     }
   };
 
   const closePreview = () => {
+    previewRequestRef.current += 1;
     setPreview(null);
   };
 
