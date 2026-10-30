@@ -82,6 +82,16 @@ export default function FilesPanel({
     };
   }, []);
 
+  // Object URLs hold browser-managed blob resources. Revoke the previous URL
+  // whenever a preview is replaced/closed, and also when the panel unmounts.
+  useEffect(() => {
+    const previewUrl = preview?.url;
+    if (!previewUrl) return undefined;
+    return () => {
+      window.URL.revokeObjectURL(previewUrl);
+    };
+  }, [preview?.url]);
+
   useEffect(() => {
     if (projectId !== null) {
       setShowProjectFiles(true);
@@ -306,7 +316,6 @@ export default function FilesPanel({
   };
 
   const closePreview = () => {
-    if (preview) window.URL.revokeObjectURL(preview.url);
     setPreview(null);
   };
 
