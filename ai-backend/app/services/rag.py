@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from datetime import datetime, timezone
+import heapq
 import re
 import unicodedata
 from typing import TypedDict
@@ -33,6 +34,7 @@ CHUNK_SIZE = 1400
 CHUNK_OVERLAP = 200
 TOP_K = 6
 MAX_RETRIEVAL_CONTEXT_CHARS = 18_000
+MAX_FALLBACK_FILE_CANDIDATES = 20
 
 
 def safe_source_filename(filename: str | None) -> str:
@@ -66,14 +68,21 @@ def _fallback_search_tokens(value: str | None) -> list[str]:
 
 
 def rank_fallback_files(
-    files: Sequence[FileAttachment], query: str
+    files: Iterable[FileAttachment],
+    query: str,
+    *,
+    limit: int = MAX_FALLBACK_FILE_CANDIDATES,
 ) -> list[FileAttachment]:
-    """Prioritize authorized fallback files by lexical relevance to the user query.
+    """Keep the most relevant authorized fallback candidates with bounded memory.
 
-    The caller supplies only files that passed the conversation/workspace/project/
-    assistant access filters. Stable ordering is retained for equal scores.
+    The input may be a streaming SQLAlchemy query. All eligible rows are scored so
+    a relevant newer file is not hidden by an arbitrary database-order limit, but
+    only the best `limit` FileAttachment objects are retained in memory.
+    Stable source order is preserved for equal scores.
     """
-    ordered_files = list(files)
+    if limit < 1:
+        return []
+
     query_terms = list(
         dict.fromkeys(
             token
@@ -81,29 +90,32 @@ def rank_fallback_files(
             if len(token) > 1 and token not in _FALLBACK_STOP_WORDS
         )
     )
-    if not query_terms:
-        return ordered_files
-
-    ranked: list[tuple[tuple[int, int, int, int], int, FileAttachment]] = []
     phrase = " ".join(query_terms)
-    for position, file in enumerate(ordered_files):
+    best: list[tuple[tuple[int, int, int, int, int], FileAttachment]] = []
+
+    for position, file in enumerate(files):
         text_tokens = _fallback_search_tokens(file.extracted_text)
         token_counts = Counter(text_tokens)
         filename_tokens = set(_fallback_search_tokens(file.original_filename))
         matched_terms = [term for term in query_terms if token_counts[term] > 0]
         filename_matches = sum(term in filename_tokens for term in query_terms)
         normalized_text = " ".join(text_tokens)
-        phrase_match = int(len(query_terms) > 1 and phrase in normalized_text)
+        phrase_match = int(bool(query_terms) and len(query_terms) > 1 and phrase in normalized_text)
         score = (
             len(matched_terms),
             phrase_match,
             filename_matches,
             sum(min(token_counts[term], 3) for term in matched_terms),
+            -position,
         )
-        ranked.append((score, position, file))
+        candidate = (score, file)
+        if len(best) < limit:
+            heapq.heappush(best, candidate)
+        elif score > best[0][0]:
+            heapq.heapreplace(best, candidate)
 
-    ranked.sort(key=lambda item: (item[0], -item[1]), reverse=True)
-    return [file for _score, _position, file in ranked]
+    best.sort(key=lambda item: item[0], reverse=True)
+    return [file for _score, file in best]
 
 
 class SourceCitation(TypedDict):

@@ -10,7 +10,7 @@ from pathlib import Path
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.config import settings
 from app.database import get_db
@@ -48,6 +48,7 @@ from app.services.ai_service import get_ai_reply, get_ai_vision_reply, stream_ai
 from app.services.embeddings import EmbeddingServiceError
 from app.services.rag import (
     MAX_RETRIEVAL_CONTEXT_CHARS,
+    MAX_FALLBACK_FILE_CANDIDATES,
     build_fallback_file_context,
     build_retrieval_context,
     retrieve_relevant_chunks,
@@ -829,12 +830,23 @@ async def _build_file_context(
         )
     # Scan all authorized legacy candidates before applying the bounded prompt
     # context budget. A fixed oldest-20 limit can silently hide a relevant newer file.
-    fallback_files = (
+    # Stream authorized rows in small batches. Score every candidate, but retain
+    # only the best matches and only the columns used by the prompt builder.
+    fallback_files = rank_fallback_files(
         fallback_files_query
         .order_by(FileAttachment.created_at.asc(), FileAttachment.id.asc())
-        .all()
+        .distinct()
+        .options(
+            load_only(
+                FileAttachment.id,
+                FileAttachment.original_filename,
+                FileAttachment.extracted_text,
+            )
+        )
+        .yield_per(50),
+        message,
+        limit=MAX_FALLBACK_FILE_CANDIDATES,
     )
-    fallback_files = rank_fallback_files(fallback_files, message)
     if context:
         # Keep explicitly attached files even when RAG ranks other sources. Also
         # include bounded plain-text context from accessible files whose index is

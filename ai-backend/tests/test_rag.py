@@ -37,6 +37,45 @@ def _mark_file_as_indexed(*files):
         file.indexed_at = datetime.now(timezone.utc)
 
 
+def test_rank_fallback_files_streams_and_keeps_most_relevant_candidates():
+    files = [
+        FileAttachment(
+            original_filename=f"archive-{index}.txt",
+            extracted_text=("unrelated historical reference " * 80),
+        )
+        for index in range(30)
+    ]
+    relevant = FileAttachment(
+        original_filename="bgp-routing.txt",
+        extracted_text="BGP routing protocol configuration and autonomous systems.",
+    )
+    files.append(relevant)
+
+    ranked = rag.rank_fallback_files(
+        iter(files),
+        "Explain BGP routing protocol",
+        limit=3,
+    )
+
+    assert len(ranked) == 3
+    assert ranked[0] is relevant
+    assert relevant in ranked
+
+
+def test_rank_fallback_files_preserves_source_order_for_empty_query():
+    files = [
+        FileAttachment(
+            original_filename=f"file-{index}.txt",
+            extracted_text=f"Some content {index}.",
+        )
+        for index in range(5)
+    ]
+
+    ranked = rag.rank_fallback_files(iter(files), "", limit=2)
+
+    assert ranked == files[:2]
+
+
 def test_chunk_text_creates_overlapping_chunks():
     text = " ".join(f"word{i}" for i in range(500))
     chunks = rag.chunk_text(text, chunk_size=120, overlap=20)
