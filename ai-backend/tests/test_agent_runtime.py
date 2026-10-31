@@ -438,3 +438,74 @@ def test_runtime_truncates_tool_call_history_to_executed_budget():
 
 async def _async_append(items, item):
     items.append(item)
+
+
+def test_runtime_does_not_discover_global_mcp_tools_for_regular_users():
+    from types import SimpleNamespace
+
+    from app.models.user import UserRole
+
+    discovery_calls = 0
+
+    async def forbidden_discovery():
+        nonlocal discovery_calls
+        discovery_calls += 1
+        raise AssertionError("Regular users must not contact global MCP servers.")
+
+    provider = CaptureToolsProvider()
+    result = asyncio.run(
+        AgentRuntime(
+            provider=provider,
+            registry_factory=ToolRegistry,
+            mcp_discoverer=forbidden_discovery,
+        ).run(
+            task="ordinary user agent task",
+            history=[],
+            conversation=object(),
+            current_user=SimpleNamespace(role=UserRole.user),
+            db=object(),
+        )
+    )
+
+    assert result.status == "completed"
+    assert discovery_calls == 0
+    assert provider.tool_names == []
+
+
+def test_runtime_allows_global_mcp_tools_for_administrators_only():
+    from types import SimpleNamespace
+
+    from app.models.user import UserRole
+
+    discovery_calls = 0
+    mcp_tool = ToolSpec(
+        name="mcp__demo__read",
+        description="Read from the configured admin MCP service",
+        parameters={"type": "object", "properties": {}},
+        handler=_demo_tool,
+    )
+
+    async def discover_for_admin():
+        nonlocal discovery_calls
+        discovery_calls += 1
+        return [mcp_tool]
+
+    provider = CaptureToolsProvider()
+    registry = ToolRegistry(allowed_names={"mcp__demo__read"})
+    result = asyncio.run(
+        AgentRuntime(
+            provider=provider,
+            registry_factory=lambda: registry,
+            mcp_discoverer=discover_for_admin,
+        ).run(
+            task="administrator agent task",
+            history=[],
+            conversation=object(),
+            current_user=SimpleNamespace(role=UserRole.admin),
+            db=object(),
+        )
+    )
+
+    assert result.status == "completed"
+    assert discovery_calls == 1
+    assert provider.tool_names == ["mcp__demo__read"]
