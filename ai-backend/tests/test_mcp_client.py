@@ -398,3 +398,59 @@ def test_mcp_server_url_allows_query_tokens_without_logging_them(monkeypatch):
     config = _load_server_configs()[0]
 
     assert config.url.endswith(f"?token={token}")
+
+
+def test_mcp_discovery_skips_sanitized_name_collisions(monkeypatch, caplog):
+    class CollidingToolsClient(FakeClient):
+        async def list_tools(self):
+            return SimpleNamespace(
+                tools=[
+                    SimpleNamespace(
+                        name="read-file",
+                        description="Read one file",
+                        input_schema={
+                            "type": "object",
+                            "properties": {},
+                            "additionalProperties": False,
+                        },
+                    ),
+                    SimpleNamespace(
+                        name="read_file",
+                        description="Read another file",
+                        input_schema={
+                            "type": "object",
+                            "properties": {},
+                            "additionalProperties": False,
+                        },
+                    ),
+                    SimpleNamespace(
+                        name="list-files",
+                        description="List files",
+                        input_schema={
+                            "type": "object",
+                            "properties": {},
+                            "additionalProperties": False,
+                        },
+                    ),
+                ]
+            )
+
+    monkeypatch.setattr(mcp_client.settings, "MCP_ENABLED", True)
+    monkeypatch.setattr(
+        mcp_client.settings,
+        "MCP_SERVERS_JSON",
+        (
+            '[{"name":"demo","url":"https://example.test/mcp",'
+            '"enabled":true,"allowed_tools":["read-file","read_file","list-files"]}]'
+        ),
+    )
+    monkeypatch.setattr(mcp_client, "Client", CollidingToolsClient)
+
+    with caplog.at_level("WARNING", logger="app.services.mcp_client"):
+        specs = asyncio.run(discover_mcp_tools())
+
+    assert [spec.name for spec in specs] == [
+        "mcp__demo__read_file",
+        "mcp__demo__list_files",
+    ]
+    assert "sanitized name collision" in caplog.text
