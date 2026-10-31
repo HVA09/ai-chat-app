@@ -69,7 +69,7 @@ def _load_server_configs() -> list[MCPServerConfig]:
         try:
             parsed_url = urlsplit(url)
             # Accessing .port validates malformed and out-of-range port values.
-            _port = parsed_url.port
+            parsed_url.port
         except ValueError as exc:
             raise MCPIntegrationError(
                 f"Invalid MCP server URL for '{name}'."
