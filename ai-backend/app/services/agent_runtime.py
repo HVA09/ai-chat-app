@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.conversation import Conversation
-from app.models.user import User
+from app.models.user import User, UserRole
+from app.services.prompt_context import safe_context_text
 from app.services.tool_security import wrap_untrusted_tool_output
 from app.services.ai_providers.base import AIToolReply
 from app.services.mcp_client import discover_mcp_tools
@@ -26,41 +27,65 @@ RegistryFactory = Callable[[], ToolRegistry]
 MCPDiscoverer = Callable[[], Awaitable[list[Any]]]
 
 
-AGENT_RUNTIME_VERSION = "1"
+AGENT_RUNTIME_VERSION = "2"
 
 
-def get_agent_tool_policy_snapshot() -> dict[str, Any]:
+def get_agent_tool_policy_snapshot(
+    user_role: UserRole | None = None,
+) -> dict[str, Any]:
     try:
         allowed_tools = sorted(json.loads(settings.AGENT_ALLOWED_TOOLS_JSON))
     except (TypeError, json.JSONDecodeError):
         allowed_tools = []
-    try:
-        raw_servers = json.loads(settings.MCP_SERVERS_JSON)
-    except (TypeError, json.JSONDecodeError):
-        raw_servers = []
+
+    # MCP settings are application-wide. Hide endpoint names and allowlists from
+    # ordinary users, and do not report them as available while the feature is
+    # disabled. The execution runtime applies the same authorization gate.
+    mcp_enabled_for_user = (
+        bool(settings.MCP_ENABLED) and user_role == UserRole.admin
+    )
+    raw_servers: list[Any] = []
+    if mcp_enabled_for_user:
+        try:
+            configured_servers = json.loads(settings.MCP_SERVERS_JSON)
+        except (TypeError, json.JSONDecodeError):
+            configured_servers = []
+        if isinstance(configured_servers, list):
+            raw_servers = configured_servers
+
     mcp_servers = []
-    for item in raw_servers if isinstance(raw_servers, list) else []:
-        if not isinstance(item, dict) or not item.get("enabled", True):
+    for item in raw_servers:
+        if not isinstance(item, dict) or item.get("enabled") is not True:
             continue
-        mcp_servers.append({
-            "name": str(item.get("name") or "").strip(),
-            "allowed_tools": sorted(
-                str(name).strip()
-                for name in (item.get("allowed_tools") or [])
-                if str(name).strip()
-            ),
-        })
+        server_name = str(item.get("name") or "").strip()
+        allowed_names = item.get("allowed_tools", [])
+        if not isinstance(allowed_names, list):
+            allowed_names = []
+        if server_name:
+            mcp_servers.append({
+                "name": server_name,
+                "allowed_tools": sorted(
+                    str(name).strip()
+                    for name in allowed_names
+                    if str(name).strip()
+                ),
+            })
     return {
         "runtime_version": AGENT_RUNTIME_VERSION,
+        "mcp_access_policy": "application_admin_only",
+        "mcp_enabled_for_user": mcp_enabled_for_user,
         "allowed_tools": [name for name in allowed_tools if name],
-        "mcp_servers": [item for item in mcp_servers if item["name"]],
+        "mcp_servers": mcp_servers,
     }
 
 
-def get_agent_configuration_version(limits: AgentRuntimeLimits | None = None) -> str:
+def get_agent_configuration_version(
+    limits: AgentRuntimeLimits | None = None,
+    user_role: UserRole | None = None,
+) -> str:
     limits = limits or AgentRuntimeLimits()
     snapshot = {
-        **get_agent_tool_policy_snapshot(),
+        **get_agent_tool_policy_snapshot(user_role=user_role),
         "limits": {
             "max_rounds": limits.max_rounds,
             "max_tool_calls_per_round": limits.max_tool_calls_per_round,
@@ -147,10 +172,25 @@ class AgentRuntime:
     def _history(
         messages: list[dict[str, str]] | None, limit: int
     ) -> list[dict[str, str]]:
-        return list(messages or [])[-limit:]
+        selected = list(messages or [])[-limit:]
+        sanitized: list[dict[str, Any]] = []
+        for message in selected:
+            copied = dict(message)
+            content = copied.get("content")
+            if isinstance(content, str):
+                copied["content"] = safe_context_text(content)
+            sanitized.append(copied)
+        return sanitized
 
     @staticmethod
-    def _assistant_tool_message(reply: AIToolReply) -> dict:
+    def _assistant_tool_message(
+        reply: AIToolReply,
+        tool_calls: list[Any] | None = None,
+    ) -> dict:
+        # Providers can return more calls than this runtime's per-round budget.
+        # Keep only calls that will actually execute; otherwise the next provider
+        # request would contain orphaned tool-call IDs with no matching tool result.
+        selected_calls = reply.tool_calls if tool_calls is None else tool_calls
         return {
             "role": "assistant",
             "content": reply.text or None,
@@ -163,7 +203,7 @@ class AgentRuntime:
                         "arguments": json.dumps(call.arguments, ensure_ascii=False),
                     },
                 }
-                for call in reply.tool_calls
+                for call in selected_calls
             ],
         }
 
@@ -260,10 +300,19 @@ class AgentRuntime:
         messages: list[dict] = self._history(
             history, self.limits.max_history_messages
         )
-        messages.append({"role": "user", "content": task})
+        messages.append({"role": "user", "content": safe_context_text(task)})
 
         registry = self.registry_factory()
-        for spec in await self.mcp_discoverer():
+        # MCP servers and credentials are configured globally at the application
+        # level. Until per-user/workspace connector authorization exists, only
+        # administrators may discover or invoke these shared external tools.
+        # Do not even contact an external MCP server for ordinary user requests.
+        mcp_specs = (
+            await self.mcp_discoverer()
+            if getattr(current_user, "role", None) == UserRole.admin
+            else []
+        )
+        for spec in mcp_specs:
             if registry.get(spec.name) is None and registry.allows(spec.name):
                 registry.register(spec)
 
@@ -348,7 +397,7 @@ class AgentRuntime:
                 )
 
             calls = reply.tool_calls[: self.limits.max_tool_calls_per_round]
-            messages.append(self._assistant_tool_message(reply))
+            messages.append(self._assistant_tool_message(reply, calls))
 
             if len(reply.tool_calls) > len(calls):
                 await self._emit(

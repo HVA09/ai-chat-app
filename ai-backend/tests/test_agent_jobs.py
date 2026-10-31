@@ -62,8 +62,10 @@ def test_create_agent_job_returns_accepted_without_running_inline(client, monkey
     assert payload["status"] == "queued"
     assert payload["pause_requested"] is False
     assert payload["celery_task_id"] == "celery-" + str(payload["id"])
-    assert payload["agent_version"].startswith("agent-1-")
+    assert payload["agent_version"].startswith("agent-2-")
     assert payload["tool_policy_snapshot"]["allowed_tools"]
+    assert payload["tool_policy_snapshot"]["mcp_enabled_for_user"] is False
+    assert payload["tool_policy_snapshot"]["mcp_servers"] == []
     assert fake_task.calls == [payload["id"]]
 
     fetched = client.get(f"/agent-jobs/{payload['id']}", headers=headers)
@@ -581,3 +583,55 @@ def test_cancel_paused_agent_job_transitions_to_cancelled(client, monkeypatch):
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
     assert cancelled.json()["cancel_requested"] is True
+
+def test_agent_job_read_paths_redact_legacy_global_mcp_snapshots(
+    client, db_session, monkeypatch
+):
+    """Legacy job JSON must not reveal application-wide MCP server names."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "MCP_ENABLED", True)
+    token = _register_and_login(client, "agent-job-legacy-mcp-redaction@example.com")
+    workspace = _create_workspace(client, token)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    import app.routers.agent_jobs as agent_jobs_router
+
+    fake_task = _FakeAgentTask()
+    monkeypatch.setattr(agent_jobs_router, "execute_agent_job", fake_task)
+    monkeypatch.setattr(agent_jobs_router, "celery_app", object())
+
+    created = client.post(
+        "/agent-jobs",
+        json={"workspace_id": workspace["id"], "task": "legacy MCP snapshot"},
+        headers=headers,
+    )
+    assert created.status_code == 202
+    job_id = created.json()["id"]
+
+    job = db_session.query(AgentJob).filter(AgentJob.id == job_id).one()
+    job.tool_policy_snapshot = {
+        "runtime_version": "1",
+        "mcp_access_policy": "legacy_global",
+        "mcp_enabled_for_user": True,
+        "allowed_tools": ["calculator"],
+        "mcp_servers": [
+            {
+                "name": "private-internal-service",
+                "allowed_tools": ["read_sensitive_records"],
+            }
+        ],
+    }
+    db_session.commit()
+
+    detail = client.get(f"/agent-jobs/{job_id}", headers=headers)
+    listed = client.get("/agent-jobs", headers=headers)
+
+    assert detail.status_code == 200
+    assert listed.status_code == 200
+    for payload in [detail.json(), listed.json()[0]]:
+        snapshot = payload["tool_policy_snapshot"]
+        assert snapshot["mcp_enabled_for_user"] is False
+        assert snapshot["mcp_servers"] == []
+        assert "private-internal-service" not in str(snapshot)
+        assert "read_sensitive_records" not in str(snapshot)

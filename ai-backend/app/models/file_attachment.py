@@ -1,9 +1,10 @@
 """
 نموذج الملفات المرفوعة — البيانات الوصفية بقاعدة البيانات، والملف نفسه على القرص
 """
+import hashlib
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, Text, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -30,6 +31,14 @@ class FileAttachment(Base):
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Hashes identify the exact normalized text and embedding space used for RAG.
+    # Legacy rows remain NULL until reindexed; their old vectors are not trusted.
+    extracted_text_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    indexed_text_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    indexed_embedding_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    indexed_embedding_provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    indexed_embedding_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")
@@ -43,4 +52,22 @@ class FileAttachment(Base):
     )
     assistant_links = relationship(
         "AssistantFileLink", back_populates="file", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+
+def extracted_text_fingerprint(text: str | None) -> str | None:
+    """SHA-256 of the normalized text shape consumed by chunk_text()."""
+    normalized = " ".join((text or "").split())
+    if not normalized:
+        return None
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+@event.listens_for(FileAttachment, "before_insert")
+@event.listens_for(FileAttachment, "before_update")
+def _sync_extracted_text_fingerprint(_mapper, _connection, attachment) -> None:
+    """Keep the current-source fingerprint in sync with extracted_text."""
+    attachment.extracted_text_sha256 = extracted_text_fingerprint(
+        attachment.extracted_text
     )

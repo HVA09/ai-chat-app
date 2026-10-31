@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import difflib
+import logging
 import re
 import uuid
 import zipfile
@@ -23,9 +24,11 @@ from app.config import settings
 from app.models.conversation import Conversation
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
+from app.models.project import WorkspaceProject
 from app.models.project_file import ProjectFile
 from app.models.user import User
 from app.schemas.project_files import ProjectFileCreate
+from app.services.project_access import can_edit_project, can_read_project
 from app.services.tools.calculator import CalculatorError, calculate_expression
 from app.services.tools.code_execution import CodeExecutionError, execute_python_code
 from app.services.tools.data_analysis import DataAnalysisError, DataFile, analyze_file
@@ -45,6 +48,9 @@ from app.services.tools.web_search import (
     format_web_search_response,
     search_web,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,6 +179,38 @@ class ToolRegistry:
                 injection_suspected=security.injection_suspected,
             )
         return result
+
+
+def _project_permission_denial(
+    context: ToolContext,
+    *,
+    require_edit: bool,
+) -> str | None:
+    """Recheck current project ACL before an agent tool reads or mutates project files."""
+    conversation = context.conversation
+    if conversation is None or conversation.project_id is None:
+        return None
+
+    project = context.db.get(WorkspaceProject, conversation.project_id)
+    if (
+        project is None
+        or project.workspace_id != conversation.workspace_id
+        or context.current_user is None
+    ):
+        return "المشروع غير متاح لهذه المحادثة."
+
+    allowed = (
+        can_edit_project(project, context.current_user, context.db)
+        if require_edit
+        else can_read_project(project, context.current_user, context.db)
+    )
+    if not allowed:
+        return (
+            "ليس لديك صلاحية تعديل هذا المشروع."
+            if require_edit
+            else "المشروع غير متاح لك أو ليس لديك صلاحية قراءته."
+        )
+    return None
 
 
 def _get_attached_data_attachment(
@@ -308,6 +346,10 @@ async def _analyze_data(arguments: dict[str, Any], context: ToolContext) -> Tool
 
 async def _create_project_archive(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
     """Create a safe, text-only project ZIP and expose it through the existing files API."""
+    permission_denial = _project_permission_denial(context, require_edit=True)
+    if permission_denial:
+        return ToolResult(content=permission_denial, sources=[], succeeded=False)
+
     project_name = str(arguments.get("project_name") or "ai-project").strip()
     files = arguments.get("files")
     if not project_name or not isinstance(files, list) or not files:
@@ -333,7 +375,15 @@ async def _create_project_archive(arguments: dict[str, Any], context: ToolContex
         if not raw_path or not isinstance(content, str):
             return ToolResult(content="ملف غير صالح: يجب أن يكون path نصًا وcontent نصًا.", sources=[], succeeded=False)
         path_obj = Path(raw_path)
-        if path_obj.is_absolute() or ".." in path_obj.parts or raw_path.startswith("/"):
+        # Path.is_absolute() follows the current OS. On Linux, Windows drive paths
+        # such as C:/Windows/file.txt look relative, but can become absolute paths
+        # when the ZIP is extracted on Windows. Reject drive-prefixed paths too.
+        if (
+            path_obj.is_absolute()
+            or ".." in path_obj.parts
+            or raw_path.startswith("/")
+            or re.match(r"^[A-Za-z]:", raw_path)
+        ):
             return ToolResult(content=f"مسار ملف غير آمن: {raw_path}", sources=[], succeeded=False)
         normalized = "/".join(part for part in path_obj.parts if part not in {"", "."})
         if not normalized:
@@ -442,8 +492,15 @@ async def _create_project_archive(arguments: dict[str, Any], context: ToolContex
             delete_stored_file(object_key, destination)
         except Exception:
             pass
+        # Exception messages can contain SQL, storage, filesystem, or
+        # credential-bearing connection details. Keep those out of the model's
+        # tool context and user-visible response.
+        logger.warning(
+            "Agent project archive creation failed error_type=%s",
+            type(exc).__name__,
+        )
         return ToolResult(
-            content=f"تعذر إنشاء حزمة المشروع: {exc}",
+            content="تعذر إنشاء حزمة المشروع بسبب خطأ داخلي. أعد المحاولة لاحقًا.",
             sources=[],
             succeeded=False,
         )
@@ -475,6 +532,10 @@ def _validated_project_path(raw_path: Any) -> str:
 
 async def _list_project_files(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
     del arguments
+    permission_denial = _project_permission_denial(context, require_edit=False)
+    if permission_denial:
+        return ToolResult(content=permission_denial, sources=[], succeeded=False)
+
     project_id = _current_project_id(context)
     if project_id is None:
         return ToolResult(
@@ -510,6 +571,10 @@ async def _list_project_files(arguments: dict[str, Any], context: ToolContext) -
 
 
 async def _read_project_file(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
+    permission_denial = _project_permission_denial(context, require_edit=False)
+    if permission_denial:
+        return ToolResult(content=permission_denial, sources=[], succeeded=False)
+
     project_id = _current_project_id(context)
     if project_id is None:
         return ToolResult(
@@ -562,6 +627,10 @@ async def _read_project_file(arguments: dict[str, Any], context: ToolContext) ->
 
 
 async def _search_project_files(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
+    permission_denial = _project_permission_denial(context, require_edit=False)
+    if permission_denial:
+        return ToolResult(content=permission_denial, sources=[], succeeded=False)
+
     project_id = _current_project_id(context)
     if project_id is None:
         return ToolResult(
@@ -619,6 +688,10 @@ async def _search_project_files(arguments: dict[str, Any], context: ToolContext)
 
 async def _edit_project_file(arguments: dict[str, Any], context: ToolContext) -> ToolResult:
     """Safely create or update one source file inside the current project."""
+    permission_denial = _project_permission_denial(context, require_edit=True)
+    if permission_denial:
+        return ToolResult(content=permission_denial, sources=[], succeeded=False)
+
     project_id = context.conversation.project_id
     if project_id is None:
         return ToolResult(
@@ -775,6 +848,9 @@ tool_registry.register(
             "required": ["code"],
         },
         handler=_python,
+        # Python code can print arbitrary user-controlled strings. Treat output
+        # as untrusted even though execution itself is sandboxed.
+        output_trust="untrusted",
     )
 )
 tool_registry.register(

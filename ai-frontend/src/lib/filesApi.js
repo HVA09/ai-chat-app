@@ -91,3 +91,8 @@ export async function indexImageForRag(id) {
   const { data } = await api.post(`/files/${id}/index-image`);
   return data;
 }
+
+export async function reindexFileForRag(id) {
+  const { data } = await api.post(`/files/${id}/reindex`);
+  return data;
+}

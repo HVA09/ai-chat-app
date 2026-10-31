@@ -2,7 +2,15 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import FilesPanel from "./FilesPanel";
-import { attachFileToConversation, deleteFile, listFiles, uploadFile } from "../lib/filesApi";
+import {
+  attachFileToConversation,
+  deleteFile,
+  indexImageForRag,
+  reindexFileForRag,
+  fetchFileBlob,
+  listFiles,
+  uploadFile,
+} from "../lib/filesApi";
 
 vi.mock("../lib/filesApi", () => ({
   attachFileToConversation: vi.fn(),
@@ -11,6 +19,7 @@ vi.mock("../lib/filesApi", () => ({
   downloadFile: vi.fn(),
   fetchFileBlob: vi.fn(),
   indexImageForRag: vi.fn(),
+  reindexFileForRag: vi.fn(),
   listFiles: vi.fn().mockResolvedValue([]),
   uploadFile: vi.fn().mockResolvedValue({}),
 }));
@@ -40,6 +49,8 @@ vi.mock("react-i18next", () => ({
       "files.detach": "Detach",
       "files.confirmDelete": "Delete this file?",
       "files.delete": "Delete",
+      "files.noExtractedText": "No searchable text was extracted from this file",
+      "files.noExtractedTextHelp": "The upload succeeded, but no searchable text was found. A scanned PDF may need OCR; try a text-searchable PDF or paste the relevant text.",
     })[key] ?? key,
   }),
 }));
@@ -47,6 +58,35 @@ vi.mock("react-i18next", () => ({
 describe("FilesPanel project knowledge", () => {
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("explains when an uploaded document has no searchable text", async () => {
+    listFiles.mockResolvedValueOnce([
+      {
+        id: 81,
+        original_filename: "scanned.pdf",
+        content_type: "application/pdf",
+        size_bytes: 100,
+        is_attached: false,
+        is_ai_indexed: false,
+        has_extracted_text: false,
+        can_delete: true,
+      },
+    ]);
+
+    render(<FilesPanel onClose={vi.fn()} />);
+
+    const status = await screen.findByText(
+      "No searchable text was extracted from this file"
+    );
+    expect(status.getAttribute("title")).toBe(
+      "The upload succeeded, but no searchable text was found. A scanned PDF may need OCR; try a text-searchable PDF or paste the relevant text."
+    );
+    expect(
+      await screen.findByText(
+        "The upload succeeded, but no searchable text was found. A scanned PDF may need OCR; try a text-searchable PDF or paste the relevant text."
+      )
+    ).toBeTruthy();
   });
 
   it("shows a global toast when loading files fails", async () => {
@@ -342,5 +382,455 @@ describe("FilesPanel project knowledge", () => {
     await waitFor(() => expect(screen.getByText("100%")).toBeInTheDocument());
     expect(listFiles).toHaveBeenCalledTimes(2);
   });
+
+
+  it("revokes image preview blob URLs when the panel unmounts", async () => {
+    const originalCreateDescriptor = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "createObjectURL"
+    );
+    const originalRevokeDescriptor = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "revokeObjectURL"
+    );
+    const createObjectURL = vi.fn(() => "blob:files-panel-preview");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(window.URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(window.URL, "revokeObjectURL", {
+      configurable: true,
+      writable: true,
+      value: revokeObjectURL,
+    });
+
+    try {
+      listFiles.mockResolvedValueOnce([
+        {
+          id: 101,
+          original_filename: "preview.png",
+          content_type: "image/png",
+          size_bytes: 10,
+          is_attached: false,
+          is_ai_indexed: false,
+          has_extracted_text: false,
+        },
+      ]);
+      fetchFileBlob.mockResolvedValueOnce(new Blob(["image-bytes"], { type: "image/png" }));
+      const user = userEvent.setup();
+      const { unmount } = render(<FilesPanel onClose={vi.fn()} />);
+
+      await user.click(await screen.findByText("preview.png"));
+      expect(await screen.findByAltText("preview.png")).toHaveAttribute(
+        "src",
+        "blob:files-panel-preview"
+      );
+
+      unmount();
+
+      expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:files-panel-preview");
+    } finally {
+      if (originalCreateDescriptor) {
+        Object.defineProperty(window.URL, "createObjectURL", originalCreateDescriptor);
+      } else {
+        delete window.URL.createObjectURL;
+      }
+      if (originalRevokeDescriptor) {
+        Object.defineProperty(window.URL, "revokeObjectURL", originalRevokeDescriptor);
+      } else {
+        delete window.URL.revokeObjectURL;
+      }
+    }
+  });
+
+  it("revokes the previous preview URL when a preview is closed", async () => {
+    const originalCreateDescriptor = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "createObjectURL"
+    );
+    const originalRevokeDescriptor = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "revokeObjectURL"
+    );
+    const createObjectURL = vi.fn().mockReturnValue("blob:files-panel-close");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(window.URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(window.URL, "revokeObjectURL", {
+      configurable: true,
+      writable: true,
+      value: revokeObjectURL,
+    });
+
+    try {
+      listFiles.mockResolvedValueOnce([
+        {
+          id: 102,
+          original_filename: "close-preview.png",
+          content_type: "image/png",
+          size_bytes: 10,
+          is_attached: false,
+          is_ai_indexed: false,
+          has_extracted_text: false,
+        },
+      ]);
+      fetchFileBlob.mockResolvedValueOnce(new Blob(["image-bytes"], { type: "image/png" }));
+      const user = userEvent.setup();
+      render(<FilesPanel onClose={vi.fn()} />);
+
+      await user.click(await screen.findByText("close-preview.png"));
+      const image = await screen.findByAltText("close-preview.png");
+      await user.click(image);
+
+      await waitFor(() => {
+        expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+        expect(revokeObjectURL).toHaveBeenCalledWith("blob:files-panel-close");
+      });
+    } finally {
+      if (originalCreateDescriptor) {
+        Object.defineProperty(window.URL, "createObjectURL", originalCreateDescriptor);
+      } else {
+        delete window.URL.createObjectURL;
+      }
+      if (originalRevokeDescriptor) {
+        Object.defineProperty(window.URL, "revokeObjectURL", originalRevokeDescriptor);
+      } else {
+        delete window.URL.revokeObjectURL;
+      }
+    }
+  });
+
+  it("does not create a preview URL when a file fetch finishes after unmount", async () => {
+    const originalCreateDescriptor = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "createObjectURL"
+    );
+    const originalRevokeDescriptor = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "revokeObjectURL"
+    );
+    const createObjectURL = vi.fn(() => "blob:late-preview");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(window.URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(window.URL, "revokeObjectURL", {
+      configurable: true,
+      writable: true,
+      value: revokeObjectURL,
+    });
+
+    try {
+      let resolveBlob;
+      listFiles.mockResolvedValueOnce([
+        {
+          id: 103,
+          original_filename: "late-preview.png",
+          content_type: "image/png",
+          size_bytes: 10,
+          is_attached: false,
+          is_ai_indexed: false,
+          has_extracted_text: false,
+        },
+      ]);
+      fetchFileBlob.mockImplementationOnce(
+        () => new Promise((resolve) => { resolveBlob = resolve; })
+      );
+      const user = userEvent.setup();
+      const { unmount } = render(<FilesPanel onClose={vi.fn()} />);
+
+      await user.click(await screen.findByText("late-preview.png"));
+      await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledTimes(1));
+
+      unmount();
+      await act(async () => {
+        resolveBlob(new Blob(["image-bytes"], { type: "image/png" }));
+        await Promise.resolve();
+      });
+
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(revokeObjectURL).not.toHaveBeenCalled();
+    } finally {
+      if (originalCreateDescriptor) {
+        Object.defineProperty(window.URL, "createObjectURL", originalCreateDescriptor);
+      } else {
+        delete window.URL.createObjectURL;
+      }
+      if (originalRevokeDescriptor) {
+        Object.defineProperty(window.URL, "revokeObjectURL", originalRevokeDescriptor);
+      } else {
+        delete window.URL.revokeObjectURL;
+      }
+    }
+  });
+
+  it("ignores a pending preview when the conversation file scope changes", async () => {
+    const originalCreateDescriptor = Object.getOwnPropertyDescriptor(
+      window.URL,
+      "createObjectURL"
+    );
+    const createObjectURL = vi.fn(() => "blob:stale-scope-preview");
+    Object.defineProperty(window.URL, "createObjectURL", {
+      configurable: true,
+      writable: true,
+      value: createObjectURL,
+    });
+
+    try {
+      let resolveBlob;
+      listFiles
+        .mockReset()
+        .mockResolvedValueOnce([
+          {
+            id: 104,
+            original_filename: "old-conversation.png",
+            content_type: "image/png",
+            size_bytes: 10,
+            is_attached: false,
+            is_ai_indexed: false,
+            has_extracted_text: false,
+          },
+        ])
+        .mockResolvedValueOnce([]);
+      fetchFileBlob.mockImplementationOnce(
+        () => new Promise((resolve) => { resolveBlob = resolve; })
+      );
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <FilesPanel onClose={vi.fn()} conversationId={11} />
+      );
+
+      await user.click(await screen.findByText("old-conversation.png"));
+      await waitFor(() => expect(fetchFileBlob).toHaveBeenCalledTimes(1));
+
+      rerender(<FilesPanel onClose={vi.fn()} conversationId={22} />);
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(2));
+
+      await act(async () => {
+        resolveBlob(new Blob(["image-bytes"], { type: "image/png" }));
+        await Promise.resolve();
+      });
+
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(screen.queryByAltText("old-conversation.png")).not.toBeInTheDocument();
+    } finally {
+      if (originalCreateDescriptor) {
+        Object.defineProperty(window.URL, "createObjectURL", originalCreateDescriptor);
+      } else {
+        delete window.URL.createObjectURL;
+      }
+    }
+  });
+
+  it("does not refresh or schedule upload state updates after the panel unmounts", async () => {
+    listFiles.mockReset().mockResolvedValue([]);
+    uploadFile.mockReset();
+    let resolveUpload;
+    uploadFile.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveUpload = resolve;
+        })
+    );
+
+    const user = userEvent.setup();
+    const { container, unmount } = render(
+      <FilesPanel onClose={vi.fn()} conversationId={31} />
+    );
+
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+    const input = container.querySelector('input[type="file"]');
+    const file = new File(["closing panel"], "late-upload.txt", {
+      type: "text/plain",
+    });
+    await user.upload(input, file);
+    await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
+
+    unmount();
+
+    await act(async () => {
+      resolveUpload({
+        id: 100,
+        original_filename: "late-upload.txt",
+        content_type: "text/plain",
+        size_bytes: 13,
+      });
+      await Promise.resolve();
+    });
+
+    expect(listFiles).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps text file indexing retry available after provider failure", async () => {
+    const file = {
+      id: 90,
+      original_filename: "network-notes.txt",
+      content_type: "text/plain",
+      size_bytes: 48,
+      created_at: "2026-10-25T12:00:00Z",
+      workspace_id: null,
+      project_id: null,
+      has_extracted_text: true,
+      is_attached: false,
+      is_ai_indexed: false,
+      can_delete: false,
+    };
+    listFiles
+      .mockReset()
+      .mockResolvedValueOnce([file])
+      .mockResolvedValueOnce([{ ...file, is_ai_indexed: true }]);
+    reindexFileForRag
+      .mockReset()
+      .mockRejectedValueOnce({
+        response: { data: { detail: "Embedding provider unavailable" } },
+      })
+      .mockResolvedValueOnce({ ...file, is_ai_indexed: true });
+
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    try {
+      render(<FilesPanel onClose={vi.fn()} />);
+      const retryButton = await screen.findByTitle("files.retryIndexForAi");
+      expect(retryButton).not.toBeDisabled();
+
+      await user.click(retryButton);
+      await waitFor(() => {
+        expect(reindexFileForRag).toHaveBeenCalledTimes(1);
+        expect(retryButton).not.toBeDisabled();
+      });
+      expect(listFiles).toHaveBeenCalledTimes(1);
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Embedding provider unavailable" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+
+      await user.click(retryButton);
+      await waitFor(() => expect(reindexFileForRag).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(2));
+      expect(await screen.findByText("files.indexed")).toBeInTheDocument();
+    } finally {
+      dispatchSpy.mockRestore();
+    }
+  });
+
+  it("keeps image indexing retry available after provider failure", async () => {
+    const file = {
+      id: 89,
+      original_filename: "retry-chart.png",
+      content_type: "image/png",
+      size_bytes: 42,
+      created_at: "2026-10-25T12:00:00Z",
+      workspace_id: null,
+      project_id: null,
+      is_attached: false,
+      is_ai_indexed: false,
+      can_delete: false,
+    };
+    listFiles
+      .mockReset()
+      .mockResolvedValueOnce([file])
+      .mockResolvedValueOnce([{ ...file, is_ai_indexed: true }]);
+    indexImageForRag
+      .mockReset()
+      .mockRejectedValueOnce({
+        response: { data: { detail: "Embedding provider unavailable" } },
+      })
+      .mockResolvedValueOnce({ id: file.id, is_ai_indexed: true });
+
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const user = userEvent.setup();
+
+    try {
+      render(<FilesPanel onClose={vi.fn()} />);
+      const indexButton = await screen.findByTitle("files.indexImageForAi");
+      expect(indexButton).not.toBeDisabled();
+
+      await user.click(indexButton);
+      await waitFor(() => {
+        expect(indexImageForRag).toHaveBeenCalledTimes(1);
+        expect(indexButton).not.toBeDisabled();
+      });
+      expect(listFiles).toHaveBeenCalledTimes(1);
+      expect(
+        dispatchSpy.mock.calls.some(
+          ([event]) =>
+            event.type === "app:toast" &&
+            event.detail?.message === "Embedding provider unavailable" &&
+            event.detail?.type === "error"
+        )
+      ).toBe(true);
+
+      await user.click(indexButton);
+      await waitFor(() => expect(indexImageForRag).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(2));
+
+      const indexedButton = await screen.findByTitle("files.imageIndexed");
+      expect(indexedButton).toBeDisabled();
+    } finally {
+      dispatchSpy.mockRestore();
+    }
+  });
+
+
+  it("hides image and text indexing controls from read-only project viewers", async () => {
+    const projectFiles = [
+      {
+        id: 201,
+        original_filename: "viewer-notes.txt",
+        content_type: "text/plain",
+        size_bytes: 64,
+        created_at: "2026-10-27T00:00:00Z",
+        workspace_id: 7,
+        project_id: 88,
+        has_extracted_text: true,
+        is_ai_indexed: false,
+        is_attached: false,
+        can_delete: false,
+      },
+      {
+        id: 202,
+        original_filename: "viewer-chart.png",
+        content_type: "image/png",
+        size_bytes: 32,
+        created_at: "2026-10-27T00:00:00Z",
+        workspace_id: 7,
+        project_id: 88,
+        has_extracted_text: false,
+        is_ai_indexed: false,
+        is_attached: false,
+        can_delete: false,
+      },
+    ];
+    listFiles.mockReset().mockResolvedValue(projectFiles);
+
+    render(
+      <FilesPanel
+        onClose={vi.fn()}
+        workspaceId={7}
+        projectId={88}
+      />
+    );
+
+    expect(await screen.findByText("viewer-notes.txt")).toBeInTheDocument();
+    expect(await screen.findByText("viewer-chart.png")).toBeInTheDocument();
+    expect(screen.queryByTitle("files.retryIndexForAi")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("files.indexImageForAi")).not.toBeInTheDocument();
+    expect(reindexFileForRag).not.toHaveBeenCalled();
+    expect(indexImageForRag).not.toHaveBeenCalled();
+  });
+
 
 });

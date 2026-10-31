@@ -5,12 +5,13 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.agent_job import AgentJob
 from app.models.agent_workflow_step import AgentWorkflowStep
 from app.models.conversation import Conversation, Message, MessageRole
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.agent_jobs import (
     AgentJobCancelOut,
@@ -22,6 +23,24 @@ from app.services.agent_runtime import get_agent_configuration_version, get_agen
 from app.tasks import execute_agent_job, celery_app
 
 router = APIRouter(prefix="/agent-jobs", tags=["Agent Jobs"])
+
+
+def _job_response_for_user(job: AgentJob, current_user: User) -> AgentJobOut:
+    """Redact historical/global MCP configuration from user-visible job records."""
+    response = AgentJobOut.model_validate(job)
+    if current_user.role != UserRole.admin or not settings.MCP_ENABLED:
+        snapshot = dict(response.tool_policy_snapshot or {})
+        snapshot.update(
+            {
+                "mcp_access_policy": "application_admin_only",
+                "mcp_enabled_for_user": False,
+                "mcp_servers": [],
+            }
+        )
+        response = response.model_copy(
+            update={"tool_policy_snapshot": snapshot}
+        )
+    return response
 
 
 def _get_membership(workspace_id: int, current_user: User, db: Session) -> WorkspaceMember:
@@ -103,8 +122,8 @@ def create_agent_job(
         conversation_id=conversation.id,
         task=task,
         status="queued",
-        agent_version=get_agent_configuration_version(),
-        tool_policy_snapshot=get_agent_tool_policy_snapshot(),
+        agent_version=get_agent_configuration_version(user_role=current_user.role),
+        tool_policy_snapshot=get_agent_tool_policy_snapshot(user_role=current_user.role),
     )
     db.add(job)
     db.flush()
@@ -146,7 +165,7 @@ def create_agent_job(
             detail="تعذر جدولة مهمة الوكيل حاليًا",
         ) from exc
 
-    return job
+    return _job_response_for_user(job, current_user)
 
 
 @router.get("", response_model=list[AgentJobOut])
@@ -161,7 +180,8 @@ def list_agent_jobs(
         _get_membership(workspace_id, current_user, db)
         query = query.filter(AgentJob.workspace_id == workspace_id)
     limit = min(max(limit, 1), 100)
-    return query.order_by(AgentJob.created_at.desc(), AgentJob.id.desc()).limit(limit).all()
+    jobs = query.order_by(AgentJob.created_at.desc(), AgentJob.id.desc()).limit(limit).all()
+    return [_job_response_for_user(job, current_user) for job in jobs]
 
 
 @router.get("/{job_id}", response_model=AgentJobOut)
@@ -170,7 +190,7 @@ def get_agent_job(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return _get_owned_job(job_id, current_user, db)
+    return _job_response_for_user(_get_owned_job(job_id, current_user, db), current_user)
 
 
 @router.post("/{job_id}/pause", response_model=AgentJobPauseOut)
@@ -276,7 +296,7 @@ def resume_agent_job(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="تعذر استئناف مهمة الوكيل حاليًا",
         ) from exc
-    return job
+    return _job_response_for_user(job, current_user)
 
 
 @router.post("/{job_id}/cancel", response_model=AgentJobCancelOut)

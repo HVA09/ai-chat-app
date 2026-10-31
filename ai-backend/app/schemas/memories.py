@@ -26,3 +26,26 @@ class MemoryOut(BaseModel):
     content: str
     created_at: datetime
     updated_at: datetime
+
+
+
+class MemorySuggestionsRequest(BaseModel):
+    conversation_id: int = Field(gt=0)
+
+
+class MemorySuggestion(BaseModel):
+    content: str = Field(min_length=1, max_length=300)
+    evidence: str = Field(min_length=1, max_length=250)
+
+    @field_validator("content", "evidence")
+    @classmethod
+    def normalize_suggestion_text(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("النص لا يمكن أن يكون فارغًا")
+        return normalized
+
+
+class MemorySuggestionsOut(BaseModel):
+    conversation_id: int
+    suggestions: list[MemorySuggestion] = Field(default_factory=list)
