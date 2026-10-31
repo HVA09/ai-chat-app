@@ -304,6 +304,8 @@ def test_agent_configuration_version_tracks_tool_policy(monkeypatch):
     snapshot = get_agent_tool_policy_snapshot()
     assert snapshot["allowed_tools"] == ["calculator", "python"]
     assert snapshot["mcp_access_policy"] == "application_admin_only"
+    assert snapshot["mcp_enabled_for_user"] is False
+    assert snapshot["mcp_servers"] == []
     assert first.startswith("agent-2-")
 
     monkeypatch.setattr(
@@ -510,3 +512,52 @@ def test_runtime_allows_global_mcp_tools_for_administrators_only():
     assert result.status == "completed"
     assert discovery_calls == 1
     assert provider.tool_names == ["mcp__demo__read"]
+
+
+def test_agent_tool_policy_snapshot_is_scoped_to_admin_and_mcp_enabled(monkeypatch):
+    import json
+
+    from app.models.user import UserRole
+    from app.services.agent_runtime import (
+        get_agent_configuration_version,
+        get_agent_tool_policy_snapshot,
+    )
+
+    monkeypatch.setattr(settings, "MCP_ENABLED", True)
+    monkeypatch.setattr(
+        settings,
+        "MCP_SERVERS_JSON",
+        json.dumps(
+            [
+                {
+                    "name": "private-internal-service",
+                    "url": "https://internal.example/mcp",
+                    "enabled": True,
+                    "allowed_tools": ["read_private_records"],
+                }
+            ]
+        ),
+    )
+
+    user_snapshot = get_agent_tool_policy_snapshot(user_role=UserRole.user)
+    admin_snapshot = get_agent_tool_policy_snapshot(user_role=UserRole.admin)
+
+    assert user_snapshot["mcp_enabled_for_user"] is False
+    assert user_snapshot["mcp_servers"] == []
+    assert admin_snapshot["mcp_enabled_for_user"] is True
+    assert admin_snapshot["mcp_servers"] == [
+        {
+            "name": "private-internal-service",
+            "allowed_tools": ["read_private_records"],
+        }
+    ]
+    assert get_agent_configuration_version(user_role=UserRole.user) != (
+        get_agent_configuration_version(user_role=UserRole.admin)
+    )
+
+    monkeypatch.setattr(settings, "MCP_ENABLED", False)
+    disabled_admin_snapshot = get_agent_tool_policy_snapshot(
+        user_role=UserRole.admin
+    )
+    assert disabled_admin_snapshot["mcp_enabled_for_user"] is False
+    assert disabled_admin_snapshot["mcp_servers"] == []
