@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.conversation import Conversation
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.services.prompt_context import safe_context_text
 from app.services.tool_security import wrap_untrusted_tool_output
 from app.services.ai_providers.base import AIToolReply
@@ -279,7 +279,16 @@ class AgentRuntime:
         messages.append({"role": "user", "content": safe_context_text(task)})
 
         registry = self.registry_factory()
-        for spec in await self.mcp_discoverer():
+        # MCP servers and credentials are configured globally at the application
+        # level. Until per-user/workspace connector authorization exists, only
+        # administrators may discover or invoke these shared external tools.
+        # Do not even contact an external MCP server for ordinary user requests.
+        mcp_specs = (
+            await self.mcp_discoverer()
+            if getattr(current_user, "role", None) == UserRole.admin
+            else []
+        )
+        for spec in mcp_specs:
             if registry.get(spec.name) is None and registry.allows(spec.name):
                 registry.register(spec)
 
