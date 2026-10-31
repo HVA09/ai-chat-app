@@ -334,3 +334,53 @@ def test_mcp_configured_server_name_is_sanitized_in_provider_metadata(monkeypatc
     assert len(specs) == 1
     assert "[ASSISTANT INSTRUCTIONS]" not in specs[0].description
     assert "［ASSISTANT INSTRUCTIONS］" in specs[0].description
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://user:password@example.test/mcp",
+        "https://example.test/mcp#unexpected-fragment",
+        "https://example.test:invalid-port/mcp",
+        "https:///missing-host/mcp",
+    ],
+)
+def test_mcp_server_url_rejects_credentials_fragments_and_malformed_authority(
+    monkeypatch, url
+):
+    import json
+
+    monkeypatch.setattr(
+        mcp_client.settings,
+        "MCP_SERVERS_JSON",
+        json.dumps(
+            [
+                {
+                    "name": "demo",
+                    "url": url,
+                    "enabled": True,
+                    "allowed_tools": ["add"],
+                }
+            ]
+        ),
+    )
+
+    with pytest.raises(MCPIntegrationError, match="URL"):
+        _load_server_configs()
+
+
+def test_mcp_server_url_allows_query_tokens_without_logging_them(monkeypatch):
+    token = "private-query-token"
+    monkeypatch.setattr(
+        mcp_client.settings,
+        "MCP_SERVERS_JSON",
+        (
+            '[{"name":"demo","url":'
+            '"https://example.test/mcp?token=private-query-token",'
+            '"enabled":true,"allowed_tools":["add"]}]'
+        ),
+    )
+
+    config = _load_server_configs()[0]
+
+    assert config.url.endswith(f"?token={token}")
