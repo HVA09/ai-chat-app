@@ -303,7 +303,8 @@ def test_agent_configuration_version_tracks_tool_policy(monkeypatch):
     first = get_agent_configuration_version()
     snapshot = get_agent_tool_policy_snapshot()
     assert snapshot["allowed_tools"] == ["calculator", "python"]
-    assert first.startswith("agent-1-")
+    assert snapshot["mcp_access_policy"] == "application_admin_only"
+    assert first.startswith("agent-2-")
 
     monkeypatch.setattr(
         settings,
@@ -311,7 +312,7 @@ def test_agent_configuration_version_tracks_tool_policy(monkeypatch):
         "[\"calculator\",\"web_search\"]",
     )
     second = get_agent_configuration_version()
-    assert second.startswith("agent-1-")
+    assert second.startswith("agent-2-")
     assert second != first
 
 class CapturePromptProvider:
