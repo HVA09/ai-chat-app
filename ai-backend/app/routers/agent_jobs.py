@@ -11,7 +11,7 @@ from app.dependencies import get_current_user
 from app.models.agent_job import AgentJob
 from app.models.agent_workflow_step import AgentWorkflowStep
 from app.models.conversation import Conversation, Message, MessageRole
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.agent_jobs import (
     AgentJobCancelOut,
