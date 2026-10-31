@@ -107,14 +107,28 @@ def _safe_tool_name(server_name: str, tool_name: str) -> str:
     return sanitized[:96]
 
 
+_DROP_REMOTE_SCHEMA_ANNOTATIONS = {
+    "$schema",
+    "$id",
+    "$comment",
+    "default",
+    "examples",
+}
+
+
 def _sanitize_schema_descriptions(value: Any, *, depth: int = 0) -> Any:
-    """Copy a remote MCP schema while neutralizing untrusted description text."""
+    """Copy a remote MCP schema and remove/sanitize untrusted annotations."""
     if depth > 16:
         raise MCPIntegrationError("MCP tool input schema is nested too deeply.")
     if isinstance(value, dict):
         sanitized: dict[str, Any] = {}
         for key, item in value.items():
-            if key == "description" and isinstance(item, str):
+            # These annotation fields are not needed to validate tool arguments.
+            # Removing them avoids exposing arbitrary remote prose/examples as
+            # model-facing hints that might contain prompt injection.
+            if key in _DROP_REMOTE_SCHEMA_ANNOTATIONS:
+                continue
+            if key in {"description", "title"} and isinstance(item, str):
                 sanitized[key] = safe_context_text(item[:1000])
             else:
                 sanitized[key] = _sanitize_schema_descriptions(
