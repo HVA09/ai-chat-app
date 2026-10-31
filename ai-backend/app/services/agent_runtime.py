@@ -30,39 +30,62 @@ MCPDiscoverer = Callable[[], Awaitable[list[Any]]]
 AGENT_RUNTIME_VERSION = "2"
 
 
-def get_agent_tool_policy_snapshot() -> dict[str, Any]:
+def get_agent_tool_policy_snapshot(
+    user_role: UserRole | None = None,
+) -> dict[str, Any]:
     try:
         allowed_tools = sorted(json.loads(settings.AGENT_ALLOWED_TOOLS_JSON))
     except (TypeError, json.JSONDecodeError):
         allowed_tools = []
-    try:
-        raw_servers = json.loads(settings.MCP_SERVERS_JSON)
-    except (TypeError, json.JSONDecodeError):
-        raw_servers = []
+
+    # MCP settings are application-wide. Hide endpoint names and allowlists from
+    # ordinary users, and do not report them as available while the feature is
+    # disabled. The execution runtime applies the same authorization gate.
+    mcp_enabled_for_user = (
+        bool(settings.MCP_ENABLED) and user_role == UserRole.admin
+    )
+    raw_servers: list[Any] = []
+    if mcp_enabled_for_user:
+        try:
+            configured_servers = json.loads(settings.MCP_SERVERS_JSON)
+        except (TypeError, json.JSONDecodeError):
+            configured_servers = []
+        if isinstance(configured_servers, list):
+            raw_servers = configured_servers
+
     mcp_servers = []
-    for item in raw_servers if isinstance(raw_servers, list) else []:
-        if not isinstance(item, dict) or not item.get("enabled", True):
+    for item in raw_servers:
+        if not isinstance(item, dict) or item.get("enabled") is not True:
             continue
-        mcp_servers.append({
-            "name": str(item.get("name") or "").strip(),
-            "allowed_tools": sorted(
-                str(name).strip()
-                for name in (item.get("allowed_tools") or [])
-                if str(name).strip()
-            ),
-        })
+        server_name = str(item.get("name") or "").strip()
+        allowed_names = item.get("allowed_tools", [])
+        if not isinstance(allowed_names, list):
+            allowed_names = []
+        if server_name:
+            mcp_servers.append({
+                "name": server_name,
+                "allowed_tools": sorted(
+                    str(name).strip()
+                    for name in allowed_names
+                    if str(name).strip()
+                ),
+            })
     return {
         "runtime_version": AGENT_RUNTIME_VERSION,
         "mcp_access_policy": "application_admin_only",
+        "mcp_enabled_for_user": mcp_enabled_for_user,
         "allowed_tools": [name for name in allowed_tools if name],
-        "mcp_servers": [item for item in mcp_servers if item["name"]],
+        "mcp_servers": mcp_servers,
     }
 
 
-def get_agent_configuration_version(limits: AgentRuntimeLimits | None = None) -> str:
+def get_agent_configuration_version(
+    limits: AgentRuntimeLimits | None = None,
+    user_role: UserRole | None = None,
+) -> str:
     limits = limits or AgentRuntimeLimits()
     snapshot = {
-        **get_agent_tool_policy_snapshot(),
+        **get_agent_tool_policy_snapshot(user_role=user_role),
         "limits": {
             "max_rounds": limits.max_rounds,
             "max_tool_calls_per_round": limits.max_tool_calls_per_round,
