@@ -244,7 +244,7 @@ async def discover_mcp_tools() -> list[ToolSpec]:
             specs.append(
                 ToolSpec(
                     name=registry_name,
-                    description=f"[MCP:{server.name}] {description}",
+                    description=f"[MCP:{safe_context_text(server.name)}] {description}",
                     parameters=parameters,
                     handler=handler,
                     output_trust="untrusted",
