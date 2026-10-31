@@ -354,7 +354,7 @@
 
 ### نقطة تحقق إضافية — 2026-10-31 (رأس PR الفعلي وفحص Render)
 
-- [x] إعادة جلب PR #665 مباشرة: الرأس الحالي `30d4d3f6083d1e9e847bcd4f53d7fb39b20a6d78`، الحالة Open / Draft / Unmerged.
+- [x] إعادة جلب PR #665 قبل إضافة نقطة التوثيق مباشرة: الرأس الذي فُحص وقتها `30d4d3f6083d1e9e847bcd4f53d7fb39b20a6d78`، والحالة Open / Draft / Unmerged. commit التوثيق الحالي منفصل ولا يغيّر كود التطبيق.
 - [x] التحقق من أن CI run [41222498687](https://github.com/HVA09/ai-chat-app/actions/runs/41222498687) وCodeQL run [41222498715](https://github.com/HVA09/ai-chat-app/actions/runs/41222498715) مرتبطان بالرأس نفسه، وكلاهما انتهى بنجاح.
 - [x] قراءة Render services وdeploy history دون أي كتابة: backend والواجهة مرتبطان بفرع `main` مع `autoDeploy=yes` و`autoDeployTrigger=commit`. آخر نشر حي قرأناه للـbackend يستخدم commit `bed46de7e8936f0cee08ae4dcc65581bee4af3da`، وللواجهة `63c994ed23a6ce69a3c5abf417ff6b5e145e3026`؛ لم يظهر نشر من فرع PR #665.
 - [x] التأكد أن خيوط CodeQL القديمة على `embeddings.py` و`test_web_search.py` معلّمة resolved وoutdated. لا تظهر مراجعة بشرية معتمدة؛ مراجعة الـdiff البشرية ما زالت مطلوبة.
