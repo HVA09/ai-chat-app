@@ -27,7 +27,7 @@ RegistryFactory = Callable[[], ToolRegistry]
 MCPDiscoverer = Callable[[], Awaitable[list[Any]]]
 
 
-AGENT_RUNTIME_VERSION = "1"
+AGENT_RUNTIME_VERSION = "2"
 
 
 def get_agent_tool_policy_snapshot() -> dict[str, Any]:
@@ -53,6 +53,7 @@ def get_agent_tool_policy_snapshot() -> dict[str, Any]:
         })
     return {
         "runtime_version": AGENT_RUNTIME_VERSION,
+        "mcp_access_policy": "application_admin_only",
         "allowed_tools": [name for name in allowed_tools if name],
         "mcp_servers": [item for item in mcp_servers if item["name"]],
     }
