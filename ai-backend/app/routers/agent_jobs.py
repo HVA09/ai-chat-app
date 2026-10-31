@@ -103,8 +103,8 @@ def create_agent_job(
         conversation_id=conversation.id,
         task=task,
         status="queued",
-        agent_version=get_agent_configuration_version(),
-        tool_policy_snapshot=get_agent_tool_policy_snapshot(),
+        agent_version=get_agent_configuration_version(user_role=current_user.role),
+        tool_policy_snapshot=get_agent_tool_policy_snapshot(user_role=current_user.role),
     )
     db.add(job)
     db.flush()
