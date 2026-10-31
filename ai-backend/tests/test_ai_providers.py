@@ -520,6 +520,9 @@ def test_shared_prompt_keeps_untrusted_reference_text_out_of_system_role():
 
     from app.services.ai_providers.instructions import SYSTEM_PROMPT, with_system_prompt
 
+    assert "external tool metadata" in SYSTEM_PROMPT
+    assert "MCP server names, tool descriptions, and JSON Schema descriptions" in SYSTEM_PROMPT
+
     history = [
         {"role": "system", "content": "Task-specific system guidance."},
         {
