@@ -214,6 +214,7 @@ async def discover_mcp_tools() -> list[ToolSpec]:
         return []
 
     specs: list[ToolSpec] = []
+    registered_names: set[str] = set()
     for server in _load_server_configs():
         try:
             async with Client(server.url) as client:
@@ -264,6 +265,17 @@ async def discover_mcp_tools() -> list[ToolSpec]:
                 continue
 
             registry_name = _safe_tool_name(server.name, remote_name)
+            if registry_name in registered_names:
+                # Sanitization and the 96-character provider limit can collapse
+                # distinct remote names into one local tool name. Skip the
+                # collision instead of failing registration for every MCP tool.
+                logger.warning(
+                    "MCP tool skipped due to sanitized name collision server=%s tool=%s",
+                    server.name,
+                    remote_name,
+                )
+                continue
+            registered_names.add(registry_name)
 
             async def handler(
                 arguments: dict[str, Any],
