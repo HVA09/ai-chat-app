@@ -7,6 +7,7 @@ import logging
 import re
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 from mcp import Client
 from mcp.types import TextContent
@@ -65,7 +66,26 @@ def _load_server_configs() -> list[MCPServerConfig]:
             continue
         if not re.match(r"^https?://[^\s]+$", url, flags=re.IGNORECASE):
             raise MCPIntegrationError(f"Invalid MCP server URL for '{name}'.")
-        if settings.ENVIRONMENT == "production" and not url.lower().startswith("https://"):
+        try:
+            parsed_url = urlsplit(url)
+            # Accessing .port validates malformed and out-of-range port values.
+            _port = parsed_url.port
+        except ValueError as exc:
+            raise MCPIntegrationError(
+                f"Invalid MCP server URL for '{name}'."
+            ) from exc
+        if (
+            parsed_url.scheme.lower() not in {"http", "https"}
+            or not parsed_url.hostname
+            or parsed_url.username is not None
+            or parsed_url.password is not None
+            or parsed_url.fragment
+        ):
+            raise MCPIntegrationError(
+                f"MCP server URL for '{name}' must have a valid host and must not "
+                "embed credentials or a fragment."
+            )
+        if settings.ENVIRONMENT == "production" and parsed_url.scheme.lower() != "https":
             raise MCPIntegrationError(
                 f"MCP server '{name}' must use HTTPS in production."
             )
