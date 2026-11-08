@@ -92,7 +92,7 @@ jobs:
               )
               if check.returncode == 0:
                   with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
-                      env_file.write(f"STAGING_BACKUP_KEY={key}\\n")
+                      env_file.write(f"STAGING_BACKUP_KEY={key}\n")
                   print("Selected a sanitized staging backup archive.")
                   sys.exit(0)
 
