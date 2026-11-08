@@ -662,15 +662,16 @@
 | #671 التوثيق | `d2ebd1cf7182632cc8dcb9b9a205d5e191a82293` | [42511420056](https://github.com/HVA09/ai-chat-app/actions/runs/42511420056) — الوظائف الخمس نجحت | [42511419989](https://github.com/HVA09/ai-chat-app/actions/runs/42511419989) — التحليلان نجحا | Draft / غير مدمج |
 | #672 FilesPanel | `0731d6e5e895a080cc3ac66c31a69401d9946db6` | [42498986649](https://github.com/HVA09/ai-chat-app/actions/runs/42498986649) — الوظائف الخمس نجحت | [42498986713](https://github.com/HVA09/ai-chat-app/actions/runs/42498986713) — التحليلان نجحا | Draft / غير مدمج |
 | #673 Restore guard | `fb2851c4b006343bf5ab10e2e9ee5df00b3ea170` | [42509122698](https://github.com/HVA09/ai-chat-app/actions/runs/42509122698) — الوظائف الخمس نجحت | [42509122706](https://github.com/HVA09/ai-chat-app/actions/runs/42509122706) — التحليلان نجحا | Draft / غير مدمج |
-| #676 تقليل انتظار DB | `08e4da88fbfbdb14b322572a0953b3039484e3bd` | [42514810785](https://github.com/HVA09/ai-chat-app/actions/runs/42514810785) — Frontend وSDK وPreview Builder وProduction Compose نجحت؛ Backend `pytest -q` كان قيد التنفيذ عند آخر فحص | [42514810881](https://github.com/HVA09/ai-chat-app/actions/runs/42514810881) — Python وJavaScript/TypeScript نجحا | Draft / غير مدمج |
+| #676 تقليل انتظار DB | `cbb77b847f61dc6dc27841fae86abe692fd50b5c` | [42515286192](https://github.com/HVA09/ai-chat-app/actions/runs/42515286192) — الفحوص أُعيدت بعد إضافة تحرير قبل حذف Object Storage؛ Backend/Frontend ما زالا قيد التنفيذ والبقية قيد الانتظار عند آخر فحص | [42515286122](https://github.com/HVA09/ai-chat-app/actions/runs/42515286122) — التحليلان قيد التنفيذ/الانتظار عند آخر فحص | Draft / غير مدمج |
 
 نجاح #664 و#671 و#672 و#673 يخص الرؤوس المعروضة فقط. لا تنقل هذه النتائج إلى أي commit لاحق.
 
 ### 25.2 مراجعة جديدة لمسار SSE لتحليل الملفات
 
 - أثناء مراجعة الكود على فرع #676، ظهر أن مسار `POST /chat/stream` في فرع `data_analysis` يستدعي `materialize_file()` قبل تحرير اتصال SQLAlchemy، بخلاف مسار `POST /chat` العادي.
-- أضيف إلى #676 تحرير صريح عبر `commit_and_release_connection(db)` قبل مادة الملف، مع اختبار ترتيب يثبت: release → materialize → release النهائي قبل إنشاء `StreamingResponse`.
-- أحدث HEAD لـ#676 هو `08e4da88fbfbdb14b322572a0953b3039484e3bd`. لا يُعتبر هذا التعديل مقبولًا حتى ينتهي Backend CI وCodeQL على هذا الرأس. نجاح HEAD الأسبق `6dddb7b` لا يكفي لاعتماد هذا التعديل.
+- أضيف إلى #676 تحرير صريح عبر `commit_and_release_connection(db)` قبل مادة الملف في `/chat/stream`، مع اختبار ترتيب يثبت: release → materialize → release النهائي قبل إنشاء `StreamingResponse`.
+- أثناء جرد storage helper calls ظهر أيضًا أن endpoint حذف الملف يستدعي `delete_stored_file()` مع DB checkout مفتوح؛ أضيف تحرير الاتصال بعد التحقق من الصلاحية وقبل Object Storage deletion، مع اختبار ترتيب `release → storage_delete`.
+- أحدث HEAD لـ#676 هو `cbb77b847f61dc6dc27841fae86abe692fd50b5c`. CI/CodeQL أعيدا على هذا الرأس الجديد بعد التعديلين؛ لا تعتمد نتائج `08e4da8` أو `6dddb7b` بديلًا عنه.
 - فرع #676 متراكم فوق #664 وليس فوق `main`. المقارنة الحالية مع فرع الأب: 28 commits ahead و0 behind؛ لا تعِد توجيهه إلى `main` قبل قرار مستقل بشأن #664.
 
 ### 25.3 ملاحظات أمان إضافية على Restore guard
