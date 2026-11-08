@@ -282,3 +282,37 @@
 - هذه الإضافة توثيق داخل فرع PR #671 فقط. لا تعديل على main أو Render أو Supabase أو Environment Variables أو الأسرار أو قواعد البيانات، ولا نشر.
 - يبقى تجميد الميزات الجديدة ساريًا.
 - ترتيب الخطوات: (1) حماية main يدويًا من GitHub Settings ثم التحقق؛ (2) استكمال مراجعة #672 وعدم دمجه قبل موافقة صريحة منفصلة؛ (3) لا إجراء إضافي على duplicate-key إلا إذا ظهر خارج الاختبارات؛ (4) مراجعة #671 على HEAD النهائي بعد انتهاء فحوص هذا التحديث؛ (5) مواصلة بوابات H الأخرى: Restore إلى قاعدة اختبار معزولة، Android acceptance، دورة الملفات، وQueuePool/SSE تحت نشر مرحلي مضبوط.
+
+## 13. تحديث مؤكد — تفعيل حماية main — 2026-11-08
+
+هذا القسم أحدث من اللقطات السابقة في الأقسام 1–12، ويصحح حالة الحوكمة القديمة التي كانت تسجل أن main غير محمي. تبقى تلك اللقطات محفوظة كسجل تاريخي لتسلسل العمل، ولا تمثل الحالة الحالية.
+
+### 13.1 نتيجة إعداد GitHub بواسطة مالك المستودع
+
+- أنشأ مالك المستودع Classic Branch Protection Rule للفرع `main`، ثم حفظ إعداداتها بنجاح. ظهرت رسالة GitHub: `Branch protection rule settings saved.`
+- أُعيدت قراءة كائن الفرع مباشرة بعد الحفظ: `protected=true` و`protection.enabled=true`.
+- يظل SHA الحالي لـ`main`: `b690c149610a704f78d7f4ee9e6f377be7466703`؛ لم يتغير أثناء إعداد الحماية.
+- GitHub يؤكد أن فحوص الحالة مطلوبة للجميع (`enforcement_level=everyone`) وأن contexts المطلوبة هي بالضبط:
+  - `backend`
+  - `frontend`
+  - `sdk`
+  - `preview-builder`
+  - `production-compose`
+- أظهرت صورة الإعدادات المحفوظة أن `Require a pull request before merging` و`Require status checks to pass before merging` و`Do not allow bypassing the above settings` مفعّلة. كما بقي `Require approvals` غير مفعّل، و`Allow force pushes` و`Allow deletions` غير مفعّلين.
+- endpoint التفصيلي لقراءة branch protection أعاد 403 من تكامل GitHub، لذلك لا نزعم قراءة كل الحقول عبر API؛ التأكيد مركّب من كائن الفرع الحي، وقائمة الفحوص المطلوبة فيه، وصور GitHub التي عرضت الخيارات ورسالة الحفظ.
+- واجهة Repository Rulesets أعادت `[]`؛ هذا لا ينفي الحماية، لأن الحماية المفعلة هنا هي Classic Branch Protection Rule وليست Repository Ruleset.
+
+### 13.2 حالة طلبَي السحب بعد تفعيل الحماية
+
+- PR #672: Open / Draft / غير مدمج، HEAD `d6216bd4d61b84fc232f848a91992ed09f0e37d3`. CI run [42484813720](https://github.com/HVA09/ai-chat-app/actions/runs/42484813720) وجميع وظائفه الخمس نجحت؛ CodeQL run [42484813719](https://github.com/HVA09/ai-chat-app/actions/runs/42484813719) نجح لتحليلي Python وJavaScript/TypeScript.
+- PR #671: Open / Draft / غير مدمج، HEAD `2bab1b7bd7916bebe00fbafe01d5399f6fc2024b`. CI run [42488818392](https://github.com/HVA09/ai-chat-app/actions/runs/42488818392) نجح في الوظائف الخمس؛ CodeQL run [42488818393](https://github.com/HVA09/ai-chat-app/actions/runs/42488818393) نجح للتحليلين.
+- بيانات GitHub المباشرة أكدت أن كِلا الطلبين ما زالا Draft ومفتوحين وغير مدمجين، وأن رأسيهما لم يتغيرا في هذا التحقق.
+- لا تعتبر فحوص #671 الحالية صالحة بعد إضافة هذا القسم؛ تحديث الملف سينشئ HEAD جديدًا ويستلزم انتظار CI وCodeQL على ذلك الرأس النهائي.
+- لم يحدث دمج أو نشر أو تعديل على Render أو Supabase أو الأسرار أو قواعد بيانات الإنتاج.
+
+### 13.3 الخطوة التالية
+
+1. إعادة تشغيل/قراءة CI وCodeQL تلقائيًا على HEAD الجديد لـ#671 بعد توثيق هذا التحديث.
+2. إجراء المراجعة النهائية للكود والاختبارين في #672؛ يظل Draft إلى حين قرار المستخدم الصريح. لا يُدمج لمجرد نجاح CI.
+3. بعد ذلك تُستكمل بوابات H الأخرى: Restore إلى قاعدة اختبار معزولة، مراجعة Auto Deploy الحي في Render دون تعديل، Android acceptance، دورة الملفات، ومراقبة QueuePool/SSE باختبار مرحلي مضبوط.
+4. الميزات الجديدة تظل مجمدة، ولا تغيير على `main` أو الإنتاج دون موافقة منفصلة محددة.
