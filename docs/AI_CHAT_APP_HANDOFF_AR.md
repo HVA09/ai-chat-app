@@ -650,3 +650,41 @@
 - Supabase `ai-chat-prod-db` حالته `ACTIVE_HEALTHY`؛ لم تُنشأ branch مدفوعة لأن التكلفة المعروضة كانت `$0.01344/hour`.
 - لم يحدث Deploy أو Restart أو Blueprint sync أو restore أو تعديل secrets/Environment Variables أو قاعدة الإنتاج أو Redis.
 - لا تُستخدم موافقة صاحب المشروع على إعدادات Render أو على الاستمرار في الفحص كبديل لموافقة دمج منفصلة وصريحة.
+
+
+## 25. تحديث مراجعة QueuePool وRestore — 2026-11-08
+
+### 25.1 نتائج مؤكدة على الرؤوس الحالية قبل هذا التحديث
+
+| PR | HEAD | CI | CodeQL | الحالة |
+|---|---|---|---|---|
+| #664 QueuePool/SSE | `97933094ab3573b24070234cad7aa148ce82af94` | [42504844968](https://github.com/HVA09/ai-chat-app/actions/runs/42504844968) — الوظائف الخمس نجحت؛ Backend `525 passed, 4 warnings, 0 failures` | [42504844942](https://github.com/HVA09/ai-chat-app/actions/runs/42504844942) — التحليلان نجحا | Draft / غير مدمج |
+| #671 التوثيق | `d2ebd1cf7182632cc8dcb9b9a205d5e191a82293` | [42511420056](https://github.com/HVA09/ai-chat-app/actions/runs/42511420056) — الوظائف الخمس نجحت | [42511419989](https://github.com/HVA09/ai-chat-app/actions/runs/42511419989) — التحليلان نجحا | Draft / غير مدمج |
+| #672 FilesPanel | `0731d6e5e895a080cc3ac66c31a69401d9946db6` | [42498986649](https://github.com/HVA09/ai-chat-app/actions/runs/42498986649) — الوظائف الخمس نجحت | [42498986713](https://github.com/HVA09/ai-chat-app/actions/runs/42498986713) — التحليلان نجحا | Draft / غير مدمج |
+| #673 Restore guard | `fb2851c4b006343bf5ab10e2e9ee5df00b3ea170` | [42509122698](https://github.com/HVA09/ai-chat-app/actions/runs/42509122698) — الوظائف الخمس نجحت | [42509122706](https://github.com/HVA09/ai-chat-app/actions/runs/42509122706) — التحليلان نجحا | Draft / غير مدمج |
+| #676 تقليل انتظار DB | `08e4da88fbfbdb14b322572a0953b3039484e3bd` | [42514810785](https://github.com/HVA09/ai-chat-app/actions/runs/42514810785) — Frontend وSDK وPreview Builder وProduction Compose نجحت؛ Backend `pytest -q` كان قيد التنفيذ عند آخر فحص | [42514810881](https://github.com/HVA09/ai-chat-app/actions/runs/42514810881) — Python وJavaScript/TypeScript نجحا | Draft / غير مدمج |
+
+نجاح #664 و#671 و#672 و#673 يخص الرؤوس المعروضة فقط. لا تنقل هذه النتائج إلى أي commit لاحق.
+
+### 25.2 مراجعة جديدة لمسار SSE لتحليل الملفات
+
+- أثناء مراجعة الكود على فرع #676، ظهر أن مسار `POST /chat/stream` في فرع `data_analysis` يستدعي `materialize_file()` قبل تحرير اتصال SQLAlchemy، بخلاف مسار `POST /chat` العادي.
+- أضيف إلى #676 تحرير صريح عبر `commit_and_release_connection(db)` قبل مادة الملف، مع اختبار ترتيب يثبت: release → materialize → release النهائي قبل إنشاء `StreamingResponse`.
+- أحدث HEAD لـ#676 هو `08e4da88fbfbdb14b322572a0953b3039484e3bd`. لا يُعتبر هذا التعديل مقبولًا حتى ينتهي Backend CI وCodeQL على هذا الرأس. نجاح HEAD الأسبق `6dddb7b` لا يكفي لاعتماد هذا التعديل.
+- فرع #676 متراكم فوق #664 وليس فوق `main`. المقارنة الحالية مع فرع الأب: 28 commits ahead و0 behind؛ لا تعِد توجيهه إلى `main` قبل قرار مستقل بشأن #664.
+
+### 25.3 ملاحظات أمان إضافية على Restore guard
+
+- PR #673 يحصر المصدر في `database/staging-sanitized/`، ويضيف allowlist صارمة لاسم S3 object key قبل كتابته في `GITHUB_ENV`, إلى جانب منع CR/LF وequals والمسارات المتداخلة وpath traversal.
+- يبقى الـrestore غير جاهز للتشغيل: GitHub Environment `supabase-staging` ومراجِعوه المطلوبون و`SUPABASE_STAGING_DB_URL` و`SUPABASE_STAGING_PROJECT_REF` لم تُنشأ/تُضبط بعد، ولا توجد نسخة منقحة مثبتة في prefix المخصص.
+- مراجعة إضافية أوصت بتقوية تحقق هوية TLS؛ `sslmode=require` يطلب تشفير الاتصال لكنه لا يساوي التحقق الكامل من هوية شهادة الخادم. ينبغي مراجعة دعم `sslmode=verify-full` مع شهادة CA الصحيحة قبل استخدام restore destructive على staging.
+- لم يُشغّل workflow ولم تُقرأ الأسرار ولم تتغير قاعدة Supabase الإنتاجية.
+
+### 25.4 الحالة التشغيلية والقرار
+
+- Render Backend وFrontend ما زالا `autoDeploy=yes` و`autoDeployTrigger=checksPass` على `main`. Preview Builder بقي كما هو.
+- Render logs الحالية لم تكن متاحة في إحدى محاولات المراجعة بسبب Loki 503؛ سجل الأحداث التاريخية يعرض Backend `server_failed` بسبب health-check timeout في 2026-10-25 ثم `server_available` بعد نحو 100 ثانية. لا يستنتج من ذلك وجود عطل حالي.
+- Supabase الإنتاجي `ai-chat-prod-db` كان `ACTIVE_HEALTHY`، ولا توجد فروع. عرض تكلفة branch هو `$0.01344/hour`; لا فرع جديد ولا تكلفة تم إنشاؤها.
+- تبقى PR #664 و#671 و#672 و#673 و#676 مفتوحة كـDraft وغير مدمجة. لا Deploy أو Restart أو Blueprint sync أو Restore أو تغيير Secrets/Environment Variables أو قاعدة إنتاج دون موافقة مستقلة.
+- يظل تجميد الميزات الجديدة ساريًا حتى اكتمال مراجعة الطلبات وقبول Android ودورة الملفات واختبار SSE/QueuePool التشغيلي على staging معزول.
+- هذا التحديث يغيّر HEAD لفرع توثيق #671؛ يجب اعتماد CI وCodeQL على commit التوثيق الجديد نفسه، ولا تستخدم نتيجة `d2ebd1c` بديلًا عنه.
