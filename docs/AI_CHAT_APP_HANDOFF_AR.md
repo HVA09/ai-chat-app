@@ -659,10 +659,10 @@
 | PR | HEAD | CI | CodeQL | الحالة |
 |---|---|---|---|---|
 | #664 QueuePool/SSE | `97933094ab3573b24070234cad7aa148ce82af94` | [42504844968](https://github.com/HVA09/ai-chat-app/actions/runs/42504844968) — الوظائف الخمس نجحت؛ Backend `525 passed, 4 warnings, 0 failures` | [42504844942](https://github.com/HVA09/ai-chat-app/actions/runs/42504844942) — التحليلان نجحا | Draft / غير مدمج |
-| #671 التوثيق | `d2ebd1cf7182632cc8dcb9b9a205d5e191a82293` | [42511420056](https://github.com/HVA09/ai-chat-app/actions/runs/42511420056) — الوظائف الخمس نجحت | [42511419989](https://github.com/HVA09/ai-chat-app/actions/runs/42511419989) — التحليلان نجحا | Draft / غير مدمج |
+| #671 التوثيق | `9703d32a7f311a91272c7aef7dc4ffcdea8d79e8` | [42515582435](https://github.com/HVA09/ai-chat-app/actions/runs/42515582435) — الوظائف الخمس نجحت | [42515582508](https://github.com/HVA09/ai-chat-app/actions/runs/42515582508) — التحليلان نجحا | Draft / غير مدمج |
 | #672 FilesPanel | `0731d6e5e895a080cc3ac66c31a69401d9946db6` | [42498986649](https://github.com/HVA09/ai-chat-app/actions/runs/42498986649) — الوظائف الخمس نجحت | [42498986713](https://github.com/HVA09/ai-chat-app/actions/runs/42498986713) — التحليلان نجحا | Draft / غير مدمج |
-| #673 Restore guard | `fb2851c4b006343bf5ab10e2e9ee5df00b3ea170` | [42509122698](https://github.com/HVA09/ai-chat-app/actions/runs/42509122698) — الوظائف الخمس نجحت | [42509122706](https://github.com/HVA09/ai-chat-app/actions/runs/42509122706) — التحليلان نجحا | Draft / غير مدمج |
-| #676 تقليل انتظار DB | `cbb77b847f61dc6dc27841fae86abe692fd50b5c` | [42515286192](https://github.com/HVA09/ai-chat-app/actions/runs/42515286192) — الفحوص أُعيدت بعد إضافة تحرير قبل حذف Object Storage؛ Backend/Frontend ما زالا قيد التنفيذ والبقية قيد الانتظار عند آخر فحص | [42515286122](https://github.com/HVA09/ai-chat-app/actions/runs/42515286122) — التحليلان قيد التنفيذ/الانتظار عند آخر فحص | Draft / غير مدمج |
+| #673 Restore guard | `128bbf0e65c4781880988fad1c259524b975456b` | [42516489089](https://github.com/HVA09/ai-chat-app/actions/runs/42516489089) — Backend `pytest -q` قيد التنفيذ؛ Frontend وSDK وPreview Builder وProduction Compose نجحت | [42516488976](https://github.com/HVA09/ai-chat-app/actions/runs/42516488976) — التحليلان نجحا | Draft / غير مدمج |
+| #676 تقليل انتظار DB | `3c3af317ccf4d355eef0568639e4c459f9aa7178` | [42515943139](https://github.com/HVA09/ai-chat-app/actions/runs/42515943139) — الوظائف الخمس نجحت؛ Backend `529 passed, 4 warnings, 0 failures` | [42515943145](https://github.com/HVA09/ai-chat-app/actions/runs/42515943145) — التحليلان نجحا | Draft / غير مدمج |
 
 نجاح #664 و#671 و#672 و#673 يخص الرؤوس المعروضة فقط. لا تنقل هذه النتائج إلى أي commit لاحق.
 
@@ -672,14 +672,16 @@
 - أضيف إلى #676 تحرير صريح عبر `commit_and_release_connection(db)` قبل مادة الملف في `/chat/stream`، مع اختبار ترتيب يثبت: release → materialize → release النهائي قبل إنشاء `StreamingResponse`.
 - أثناء جرد storage helper calls ظهر أيضًا أن endpoint حذف الملف يستدعي `delete_stored_file()` مع DB checkout مفتوح؛ أضيف تحرير الاتصال بعد التحقق من الصلاحية وقبل Object Storage deletion، مع اختبار ترتيب `release → storage_delete`.
 - جرد `registry.py` كشف عمليات Materialization/Storage/Search داخل Agent tools. لم تُعدّل في #676؛ يلزم لها تصميم حدود معاملة خاص لأن الوكيل يحتفظ بنفس Session أثناء تنفيذ عدة أدوات.
-- أحدث HEAD لـ#676 هو `cbb77b847f61dc6dc27841fae86abe692fd50b5c`. CI/CodeQL أعيدا على هذا الرأس الجديد بعد التعديلين؛ لا تعتمد نتائج `08e4da8` أو `6dddb7b` بديلًا عنه.
-- فرع #676 متراكم فوق #664 وليس فوق `main`. المقارنة الحالية مع فرع الأب: 30 commits ahead و0 behind؛ لا تعِد توجيهه إلى `main` قبل قرار مستقل بشأن #664.
+- أحدث HEAD لـ#676 هو `3c3af317ccf4d355eef0568639e4c459f9aa7178`. اكتملت فحوصه: 529 اختبارًا ناجحًا و4 تحذيرات و0 فشل، وجميع وظائف CI وCodeQL ناجحة. كان هناك فشل سابق في fixture PNG (رفع 415 بسبب escaping مزدوج) وتم إصلاحه وإضافة assert لرمز 201 قبل قراءة file id.
+- فرع #676 متراكم فوق #664 وليس فوق `main`. المقارنة الحالية مع فرع الأب: 32 commits ahead و0 behind؛ لا تعِد توجيهه إلى `main` قبل قرار مستقل بشأن #664.
 
 ### 25.3 ملاحظات أمان إضافية على Restore guard
 
 - PR #673 يحصر المصدر في `database/staging-sanitized/`، ويضيف allowlist صارمة لاسم S3 object key قبل كتابته في `GITHUB_ENV`, إلى جانب منع CR/LF وequals والمسارات المتداخلة وpath traversal.
-- يبقى الـrestore غير جاهز للتشغيل: GitHub Environment `supabase-staging` ومراجِعوه المطلوبون و`SUPABASE_STAGING_DB_URL` و`SUPABASE_STAGING_PROJECT_REF` لم تُنشأ/تُضبط بعد، ولا توجد نسخة منقحة مثبتة في prefix المخصص.
-- مراجعة إضافية أوصت بتقوية تحقق هوية TLS؛ `sslmode=require` يطلب تشفير الاتصال لكنه لا يساوي التحقق الكامل من هوية شهادة الخادم. ينبغي مراجعة دعم `sslmode=verify-full` مع شهادة CA الصحيحة قبل استخدام restore destructive على staging.
+- يفرض guard الآن `sslmode=verify-full` مع `sslrootcert=/ca/supabase-root-ca.pem`، ويتطلب السر `SUPABASE_STAGING_ROOT_CA_CERT_PEM` ويكتب الشهادة مؤقتًا بملف صلاحياته 0600 ثم يركّبها read-only داخل حاويات Postgres. `sslmode=require` وحده مرفوض.
+- يقبل guard فقط معاملي URL `sslmode` و`sslrootcert`، ويرفض `host` و`hostaddr` وغيرهما، ويقيد مضيف Supavisor إلى صيغة المنطقة `aws-<number>-<region>.pooler.supabase.com` بدل suffix عام.
+- CI على HEAD `128bbf0e65c4781880988fad1c259524b975456b`: CodeQL نجح والتحليلان الأمنيان أخضران؛ Backend `pytest -q` لا يزال قيد التنفيذ وقت هذا السجل. لا تنقل النتائج إلى commit أحدث.
+- يبقى الـrestore غير جاهز للتشغيل: GitHub Environment `supabase-staging` ومراجِعوه المطلوبون و`SUPABASE_STAGING_DB_URL` و`SUPABASE_STAGING_ROOT_CA_CERT_PEM` و`SUPABASE_STAGING_PROJECT_REF` لم تُنشأ/تُضبط بعد، ولا توجد نسخة منقحة مثبتة في prefix المخصص.
 - لم يُشغّل workflow ولم تُقرأ الأسرار ولم تتغير قاعدة Supabase الإنتاجية.
 
 ### 25.4 الحالة التشغيلية والقرار
@@ -690,3 +692,11 @@
 - تبقى PR #664 و#671 و#672 و#673 و#676 مفتوحة كـDraft وغير مدمجة. لا Deploy أو Restart أو Blueprint sync أو Restore أو تغيير Secrets/Environment Variables أو قاعدة إنتاج دون موافقة مستقلة.
 - يظل تجميد الميزات الجديدة ساريًا حتى اكتمال مراجعة الطلبات وقبول Android ودورة الملفات واختبار SSE/QueuePool التشغيلي على staging معزول.
 - هذا التحديث يغيّر HEAD لفرع توثيق #671؛ يجب اعتماد CI وCodeQL على commit التوثيق الجديد نفسه، ولا تستخدم نتيجة `d2ebd1c` بديلًا عنه.
+
+
+### 25.5 تحديث سجل الفحوص والرؤوس — 2026-11-08
+
+- PR #676 على HEAD `3c3af317ccf4d355eef0568639e4c459f9aa7178`: CI [42515943139](https://github.com/HVA09/ai-chat-app/actions/runs/42515943139) نجح في الوظائف الخمس، وBackend `529 passed, 4 warnings, 0 failures`. CodeQL [42515943145](https://github.com/HVA09/ai-chat-app/actions/runs/42515943145) نجح في Python وJavaScript/TypeScript.
+- PR #671 قبل هذا التحديث التوثيقي على HEAD `9703d32a7f311a91272c7aef7dc4ffcdea8d79e8`: CI [42515582435](https://github.com/HVA09/ai-chat-app/actions/runs/42515582435) وCodeQL [42515582508](https://github.com/HVA09/ai-chat-app/actions/runs/42515582508) اكتمل كل منهما بنجاح في الوظائف المطلوبة.
+- PR #673 على HEAD `128bbf0e65c4781880988fad1c259524b975456b`: CodeQL [42516488976](https://github.com/HVA09/ai-chat-app/actions/runs/42516488976) نجح؛ Backend CI [42516489089](https://github.com/HVA09/ai-chat-app/actions/runs/42516489089) بقي في `pytest -q` عند آخر استعلام. Frontend وSDK وPreview Builder وProduction Compose نجحت.
+- هذا التحديث ينشئ Commit جديدًا في PR #671؛ يجب اعتماد CI وCodeQL على رأس التوثيق الجديد نفسه، ولا تُستخدم نتائج `9703d32` بديلًا عنه.
