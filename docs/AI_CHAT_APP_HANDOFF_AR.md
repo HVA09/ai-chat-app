@@ -540,3 +540,17 @@
 - متطلبات التشغيل غير مهيأة حاليًا/لم يتم التحقق منها: يجب توفير secret `SUPABASE_STAGING_DB_URL` وvariable `SUPABASE_STAGING_PROJECT_REF` لقاعدة منفصلة مؤكدة. بدون ذلك يفشل الـworkflow مبكرًا. لم تُقرأ أي أسرار ولم يتم إعداد متغيرات أو موارد.
 - لم يُشغّل restore workflow، ولم تنفذ استعادة، ولا يوجد deploy أو تعديل لقاعدة الإنتاج.
 - #673 Draft فقط ولا يدمج أو ينشر قبل مراجعة المالك. هذا PR لا يوفر مسار استعادة للإنتاج؛ أي مسار إنتاجي مستقبلي يحتاج workflow منفصلًا وموافقة محمية.
+
+
+## 22. توحيد مسار حماية استعادة Supabase وتصحيح تكرار PR — 2026-11-08
+
+- **تصحيح مرجعي:** الرقم #673 هو PR قائم بعنوان `security: restrict Supabase restore to protected staging and sanitized backups`، وليس Issue مستقلًا. أي إحالة سابقة إلى "Issue #673" تُفهم على أنها PR #673.
+- PR #673 هو طلب الحماية الأساسي الوحيد. HEAD الحالي: `8d311abee17ab7ff81065575b1c04af360a5ae70`، والفرع مبني على `main` مباشرة.
+- نُقلت إليه تحسينات أمان الاستعادة: دعم direct Supabase وSupavisor session-pooler مع استخراج Project Ref من المضيف أو اسم المستخدم، رفض الإنتاج، طلب `sslmode=require` والمنفذ 5432، حصر المصدر في `database/staging-sanitized/`، وربط Job الاستعادة بـGitHub Environment `supabase-staging` الذي يجب أن يفعّل مالكه Required reviewers.
+- يجب توفير GitHub Environment secret `SUPABASE_STAGING_DB_URL` وvariable `SUPABASE_STAGING_PROJECT_REF` بعد إعداد الحماية. لم يتم إنشاء Environment أو إضافة أسرار/متغيرات، ولم توجد نسخة staging منقحة مثبتة؛ لذا يبقى Workflow غير جاهز للتشغيل حتى تكتمل هذه المتطلبات.
+- اختبارات guard تغطي direct/pooler، project-ref mismatch، الإنتاج، وجهات مجهولة، المنفذ وTLS وقاعدة البيانات. فحوص الرأس الحالي #673 قيد التنفيذ: CI [42507473454](https://github.com/HVA09/ai-chat-app/actions/runs/42507473454)، CodeQL [42507473461](https://github.com/HVA09/ai-chat-app/actions/runs/42507473461).
+- PR #675 الذي أنشئ كطلب موازٍ بالخطأ أُغلق كنسخة مكررة، دون دمج: [PR #675](https://github.com/HVA09/ai-chat-app/pull/675). لا تستخدمه مرجعًا للتطوير؛ المرجع الوحيد #673.
+- PR #671 HEAD الحالي: `cb0a5ffbe79934e7c281c97c20dcd21f991bcc05`. CI [42507299888](https://github.com/HVA09/ai-chat-app/actions/runs/42507299888) قيد التنفيذ، وCodeQL [42507299872](https://github.com/HVA09/ai-chat-app/actions/runs/42507299872) نجح.
+- PR #664 HEAD `97933094` اجتاز CI وCodeQL، وBackend سجل `525 passed, 4 warnings`.
+- PR #672 HEAD `0731d6e` اجتاز CI وCodeQL. لا دمج أو نشر لأي من هذه المسارات دون موافقة مستقلة من المالك.
+- لم يحدث Restore أو Deploy أو Restart أو تعديل secrets أو environment variables أو Supabase production أو Render أثناء هذا التوحيد.
