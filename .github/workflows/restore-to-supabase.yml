@@ -1,15 +1,29 @@
-name: Restore production backup to Supabase
+name: Restore sanitized backup to Supabase staging
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm_staging_restore:
+        description: "Confirm destructive restore into the isolated staging Supabase project"
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: supabase-staging-restore
+  cancel-in-progress: false
+
 jobs:
-  restore:
+  restore-staging:
+    # This workflow is deliberately staging-only and can only be dispatched from main.
+    if: github.ref == 'refs/heads/main' && inputs.confirm_staging_restore == true
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Configure this GitHub Environment with required reviewers before adding its secret.
+    environment: supabase-staging
     env:
       BACKUP_BUCKET: ${{ secrets.S3_BUCKET }}
       BACKUP_ENDPOINT: ${{ secrets.S3_ENDPOINT_URL }}
@@ -17,25 +31,30 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
       AWS_EC2_METADATA_DISABLED: "true"
-      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_STAGING_DB_URL: ${{ secrets.SUPABASE_STAGING_DB_URL }}
+      SUPABASE_STAGING_PROJECT_REF: ${{ vars.SUPABASE_STAGING_PROJECT_REF }}
+      STAGING_BACKUP_PREFIX: database/staging-sanitized/
 
     steps:
-      - name: Verify required secrets are present
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate staging target and required configuration
         shell: bash
         run: |
           set -euo pipefail
-          for name in BACKUP_BUCKET BACKUP_ENDPOINT BACKUP_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SUPABASE_DB_URL; do
+          for name in BACKUP_BUCKET BACKUP_ENDPOINT BACKUP_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SUPABASE_STAGING_DB_URL SUPABASE_STAGING_PROJECT_REF; do
             if [[ -z "${!name:-}" ]]; then
-              echo "Missing required secret/config: $name"
+              echo "Missing required staging restore configuration: $name"
               exit 1
             fi
           done
+          python3 .github/scripts/validate_supabase_staging_target.py
 
-      - name: Find newest existing production backup
+      - name: Find newest sanitized staging backup
         shell: bash
         run: |
           set -euo pipefail
-
           python3 - <<'PY'
           import json
           import os
@@ -45,7 +64,7 @@ jobs:
           cmd = [
               "aws", "s3api", "list-objects-v2",
               "--bucket", os.environ["BACKUP_BUCKET"],
-              "--prefix", "database/",
+              "--prefix", os.environ["STAGING_BACKUP_PREFIX"],
               "--endpoint-url", os.environ["BACKUP_ENDPOINT"],
               "--region", os.environ["BACKUP_REGION"],
               "--output", "json",
@@ -56,7 +75,7 @@ jobs:
               item for item in payload.get("Contents", [])
               if item.get("Key", "").endswith(".dump")
           ]
-          objects.sort(key=lambda x: x.get("LastModified", ""), reverse=True)
+          objects.sort(key=lambda item: item.get("LastModified", ""), reverse=True)
 
           for item in objects:
               key = item["Key"]
@@ -72,40 +91,66 @@ jobs:
                   stderr=subprocess.DEVNULL,
               )
               if check.returncode == 0:
-                  with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
-                      f.write(f"BACKUP_KEY={key}\n")
-                  print(f"Selected newest existing backup: {key}")
+                  with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+                      env_file.write(f"STAGING_BACKUP_KEY={key}\\n")
+                  print("Selected a sanitized staging backup archive.")
                   sys.exit(0)
 
-          raise SystemExit("No existing .dump backup was found in object storage.")
+          raise SystemExit("No sanitized .dump archive found under database/staging-sanitized/.")
           PY
 
-      - name: Download backup
+      - name: Download sanitized staging backup
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/db-backup"
-          aws s3 cp             "s3://$BACKUP_BUCKET/$BACKUP_KEY"             "$RUNNER_TEMP/db-backup/production.dump"             --endpoint-url "$BACKUP_ENDPOINT"             --region "$BACKUP_REGION"             --only-show-errors
-          test -s "$RUNNER_TEMP/db-backup/production.dump"
+          aws s3 cp \
+            "s3://$BACKUP_BUCKET/$STAGING_BACKUP_KEY" \
+            "$RUNNER_TEMP/db-backup/staging.dump" \
+            --endpoint-url "$BACKUP_ENDPOINT" \
+            --region "$BACKUP_REGION" \
+            --only-show-errors
+          test -s "$RUNNER_TEMP/db-backup/staging.dump"
 
       - name: Validate backup archive
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm             -v "$RUNNER_TEMP/db-backup:/backup"             postgres:18-alpine             sh -c 'pg_restore --list /backup/production.dump >/dev/null'
+          docker run --rm \
+            -v "$RUNNER_TEMP/db-backup:/backup" \
+            postgres:18-alpine \
+            sh -c 'pg_restore --list /backup/staging.dump >/dev/null'
 
-      - name: Restore public schema to Supabase
+      - name: Restore public schema to isolated staging Supabase
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm             -e SUPABASE_DB_URL="$SUPABASE_DB_URL"             -v "$RUNNER_TEMP/db-backup:/backup"             postgres:18-alpine             sh -c '
-              pg_restore                 --exit-on-error                 --clean                 --if-exists                 --no-owner                 --no-privileges                 --schema=public                 --dbname="$SUPABASE_DB_URL"                 /backup/production.dump
+          docker run --rm \
+            -e SUPABASE_STAGING_DB_URL="$SUPABASE_STAGING_DB_URL" \
+            -v "$RUNNER_TEMP/db-backup:/backup" \
+            postgres:18-alpine \
+            sh -c '
+              pg_restore \
+                --exit-on-error \
+                --clean \
+                --if-exists \
+                --no-owner \
+                --no-privileges \
+                --schema=public \
+                --dbname="$SUPABASE_STAGING_DB_URL" \
+                /backup/staging.dump
             '
 
-      - name: Verify Supabase connectivity
+      - name: Verify staging database connectivity
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm             -e SUPABASE_DB_URL="$SUPABASE_DB_URL"             postgres:18-alpine             sh -c '
-              psql                 "$SUPABASE_DB_URL"                 -Atc "select version()"
-            '
+          docker run --rm \
+            -e SUPABASE_STAGING_DB_URL="$SUPABASE_STAGING_DB_URL" \
+            postgres:18-alpine \
+            sh -c 'psql "$SUPABASE_STAGING_DB_URL" -Atc "select current_database()"'
+
+      - name: Remove local backup
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/db-backup"
