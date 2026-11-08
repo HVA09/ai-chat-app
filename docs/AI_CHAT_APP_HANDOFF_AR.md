@@ -458,3 +458,47 @@
 3. إجراء قبول Android ودورة الملفات الفعلية على بيئة آمنة قبل دمج تغيير FilesPanel.
 4. إكمال استعادة Supabase إلى قاعدة معزولة واختبار النسخ الاحتياطي/الاستعادة دون تعديل قاعدة الإنتاج.
 5. يظل تجميد الميزات الجديدة قائمًا. لا تغيّر `main` أو Render أو Supabase أو الأسرار أو الموارد دون موافقة مستقلة محددة.
+
+
+## 20. نتائج الاختبار التكاملي لـPostgreSQL ومراجعة الحواجز — 2026-11-08
+
+### 20.1 اكتمال PR #664 على الرأس الحالي
+
+- HEAD: `97933094ab3573b24070234cad7aa148ce82af94`.
+- CI [42504844968](https://github.com/HVA09/ai-chat-app/actions/runs/42504844968): الوظائف الخمس كلها `success` (Backend وFrontend وSDK وPreview Builder وProduction Compose).
+- CodeQL [42504844942](https://github.com/HVA09/ai-chat-app/actions/runs/42504844942): Python وJavaScript/TypeScript كلاهما `success`.
+- سجل Backend النهائي: `525 passed, 4 warnings in 296.46s`، ولا يوجد Failed tests.
+- الاختبار الإضافي في `ai-backend/tests/test_chat.py` ينشئ QueuePool مستقلًا بحجم اتصال واحد ويستخدم `TEST_DATABASE_URL` فقط. يرفض أي عنوان مضيف بعيد، ويسمح فقط بـ`localhost` أو `127.0.0.1`، لذلك لا يمكن لهذا الاختبار أن يتصل بـSupabase أو بقاعدة إنتاج بعيدة. في GitHub Actions يشير المتغير إلى PostgreSQL service المؤقت الخاص بالـCI.
+- التحقق العملي داخل الاختبار: الجلسة الأولى تحصل على الاتصال، ثم يقوم helper بتحريره؛ بعدها تستطيع جلسة ثانية الحصول على الاتصال الوحيد وتنفيذ استعلام، مع بقاء كائن Session الأول موجودًا. بعد إغلاق الثانية تعيد الأولى الحصول على اتصال عندما تحتاج إلى حفظ لاحق.
+- هذا يثبت سلوك تحرير الاتصال في اختبار PostgreSQL معزول، ولا يحاكي ضغط إنتاج متعدد المستخدمين ولا يثبت زوال كل حالات QueuePool في Render.
+- مقارنة الفرع بـ`main`: `ahead_by=15`, `behind_by=0`؛ لا توجد حاجة Rebase ظاهرة. الملفات المعدلة ما زالت ثلاثة: `chat.py` و`test_chat.py` وخارطة H-to-T.
+- PR #664 يبقى Open / Draft / غير مدمج إلى أن تتم مراجعة المالك والبوابات التشغيلية.
+
+### 20.2 متابعة حدود إصلاح SSE
+
+- PR #664 يعالج الاحتفاظ بالاتصال أثناء انتظار مولّد SSE بعد بناء `StreamingResponse`.
+- لا يغطي جميع فترات الانتظار السابقة لإنشاء الاستجابة. مراجعة الكود أظهرت `_augment_message()` قد ينتظر RAG query embedding، ومسار البحث ينتظر `search_web()` قبل إصدار الاستجابة.
+- فتحت [Issue #674](https://github.com/HVA09/ai-chat-app/issues/674) لقياس ومعالجة هذه الفترات باختبارات PostgreSQL bounded-pool، مع اختبار حالات الاستثناء والمهلة وانقطاع العميل. لا تغيّر Agent-mode دون مراجعة مستقلة لأن الأدوات قد تحتاج DB أثناء التنفيذ.
+
+### 20.3 حماية استعادة النسخ الاحتياطية
+
+- فتحت [Issue #673](https://github.com/HVA09/ai-chat-app/issues/673) بعد مراجعة `.github/workflows/restore-to-supabase.yml`.
+- الملف يستخدم `SUPABASE_DB_URL` مع `pg_restore --clean --if-exists`. لم تُقرأ قيمة السر ولم تُشغّل الـworkflow؛ لا نعرف من قراءة آمنة ما إذا كانت الوجهة غير إنتاجية.
+- المشروع الفعلي `ai-chat-prod-db` حالته `ACTIVE_HEALTHY`، ولا توجد Supabase branches حاليًا.
+- المنظمة على Free، وتكلفة فرع Supabase المعروضة هي `$0.01344/hour`. لم ننشئ فرعًا ولم نوافق على أي تكلفة.
+- ممنوع تشغيل استعادة تجريبية قبل فصل الوجهة والتحقق من المشروع/hostname بقائمة سماح ورفض صريح لمعرّف الإنتاج، مع حماية خاصة لأي استعادة إنتاجية.
+
+### 20.4 ملاحظات تشغيل Render
+
+- القراءة الحية تؤكد Backend وFrontend على `main` مع `autoDeploy=yes` و`autoDeployTrigger=checksPass`; Preview Builder بقي `commit` وخارج نطاق التغيير.
+- حدث Render تاريخي واحد للخلفية: `server_failed` بسبب HTTP health check timeout بعد 5 ثوانٍ عند `2026-10-25 17:07:57 UTC`، وتلاه `server_available` عند `17:09:38 UTC`. نسجله كحادثة تعافت، وليس عطلًا حاليًا.
+- لا توجد أحداث فشل مماثلة في صفحة أحداث Frontend التي فُحصت. محاولة قراءة application logs الحالية تعذرت بسبب Loki `503`; لا يجوز الاستنتاج أن أخطاء QueuePool غير موجودة حاليًا.
+- لم يحدث Deploy أو Restart أو Blueprint sync أو تعديل أسرار أو Environment Variables أو قاعدة الإنتاج أو Redis.
+
+### 20.5 بوابات لا تزال مفتوحة
+
+1. قبول Android ورحلة رفع/قراءة/ربط/حذف الملفات فعليًا؛ هذا لا يُستبدل بـCI.
+2. staging دائم أو اختبار محلي معزول ببيانات اختبار لتنفيذ ضغط SSE/QueuePool وقياس checkout wait/hold duration وأخطاء Timeout. لا تستخدم Render production أو Supabase production.
+3. إغلاق Issue #674 باختبارات للفترات السابقة للاستجابة.
+4. إغلاق Issue #673 قبل أي restore workflow.
+5. إبقاء #664 و#671 و#672 Draft حتى المراجعة والموافقة المنفصلة؛ نجاح CI لا يمنح إذن دمج.
