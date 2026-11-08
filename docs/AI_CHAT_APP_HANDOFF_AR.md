@@ -328,3 +328,16 @@
 - PR #672 ما زال Open / Draft / غير مدمج على HEAD `d6216bd4d61b84fc232f848a91992ed09f0e37d3`، وCI وCodeQL السابقان على ذلك الرأس ناجحان.
 - `main` ما زال محميًا عند SHA `b690c149610a704f78d7f4ee9e6f377be7466703`; لم يحدث دمج أو نشر أو تعديل على Render/Supabase أو قواعد بيانات الإنتاج.
 - هذه النتائج تخص HEAD `cb22b6b...`؛ أي تحديث لاحق للفرع التوثيقي ينشئ HEAD جديدًا ويستلزم اعتماد فحوصه هو، لا إعادة استخدام هذه النتائج.
+
+
+## 15. نتيجة التحقق المكتملة على HEAD 9367cf0 — 2026-11-08
+
+- أُعيد فحص PR #671 بعد اكتمال CI وCodeQL على HEAD `9367cf0757e7426a26ebc9720c2e7624c7827645`.
+- CI [42497065942](https://github.com/HVA09/ai-chat-app/actions/runs/42497065942): جميع الوظائف الخمس نجحت؛ Backend اكتملت بعد `pytest -q`.
+- CodeQL [42497065912](https://github.com/HVA09/ai-chat-app/actions/runs/42497065912): تحليلا Python وJavaScript/TypeScript نجحا.
+- فحوص Backend في هذا التشغيل: `pip-audit` و`compileall` و`alembic upgrade head` نجحت، وpytest: `520 passed, 4 warnings in 204.93s`.
+- أُعيد تأكيد حماية `main`: `protected=true`، وcontexts المطلوبة للجميع هي `backend`, `frontend`, `sdk`, `preview-builder`, `production-compose`. لم يتغير main عن SHA `b690c149610a704f78d7f4ee9e6f377be7466703`.
+- PR #672 باقٍ Open / Draft / غير مدمج، HEAD `d6216bd4d61b84fc232f848a91992ed09f0e37d3`؛ check-runs الخمسة وCodeQL على رأسه ناجحة. تمت مراجعة patch: تغييران محصوران في FilesPanel واختباراته، دون تغييرات خارج النطاق. لا توجد reviews أو review threads مسجلة.
+- حدّثنا وصف PR #671 ليشير إلى نتيجة HEAD `9367cf0` وإلى أن CodeQL ناجح لكنه غير مطلوب ضمن branch protection الحالية.
+- أي commit توثيقي جديد بعد هذا السجل سيُنشئ HEAD مختلفًا؛ يجب التحقق من CI وCodeQL على ذلك الرأس نفسه. لا تعِد استخدام نجاحات HEAD `9367cf0` لإثبات فحوص commit أحدث.
+- لم يحدث دمج أو نشر أو تعديل على Render/Supabase أو متغيرات البيئة أو قواعد بيانات الإنتاج. تبقى الميزات الجديدة مجمدة.
