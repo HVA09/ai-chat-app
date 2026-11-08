@@ -482,7 +482,7 @@
 
 ### 20.3 حماية استعادة النسخ الاحتياطية
 
-- فتحت [Issue #673](https://github.com/HVA09/ai-chat-app/issues/673) بعد مراجعة `.github/workflows/restore-to-supabase.yml`.
+- فتحت [PR #673](https://github.com/HVA09/ai-chat-app/pull/673) بعد مراجعة `.github/workflows/restore-to-supabase.yml`.
 - الملف يستخدم `SUPABASE_DB_URL` مع `pg_restore --clean --if-exists`. لم تُقرأ قيمة السر ولم تُشغّل الـworkflow؛ لا نعرف من قراءة آمنة ما إذا كانت الوجهة غير إنتاجية.
 - المشروع الفعلي `ai-chat-prod-db` حالته `ACTIVE_HEALTHY`، ولا توجد Supabase branches حاليًا.
 - المنظمة على Free، وتكلفة فرع Supabase المعروضة هي `$0.01344/hour`. لم ننشئ فرعًا ولم نوافق على أي تكلفة.
@@ -522,3 +522,21 @@
 - HEAD `b0d4dcc96b9b3a94121e190197c4fcd9b3ddae45`: CI [42506908727](https://github.com/HVA09/ai-chat-app/actions/runs/42506908727) نجح في الوظائف الخمس؛ Backend pytest `520 passed, 4 warnings`.
 - CodeQL [42506908725](https://github.com/HVA09/ai-chat-app/actions/runs/42506908725) نجح في Python وJavaScript/TypeScript.
 - PR #671 يبقى Open / Draft / غير مدمج.
+
+
+## 21. PR أمان استعادة Supabase — 2026-11-08
+
+- أنشئ PR [#673](https://github.com/HVA09/ai-chat-app/pull/673) من الفرع `fix/guard-supabase-restore-target-20261108`، والرأس الحالي `5df676a21021bbc796c360f3a6575699f67204ec`. PR مفتوح وDraft وغير مدمج.
+- مقارنة الفرع مع `main`: 3 commits ahead، و0 behind.
+- الملفات الثلاثة:
+  - `.github/workflows/restore-to-supabase.yml`
+  - `ai-backend/scripts/restore_target_guard.py`
+  - `ai-backend/tests/test_restore_target_guard.py`
+- الـworkflow صار staging-only: لا يوجد خيار production، ويطلب `confirm_staging_restore=true` مع secret `SUPABASE_STAGING_DB_URL` وrepository variable `SUPABASE_STAGING_PROJECT_REF`.
+- guard يستخرج project ref من direct Supabase host أو Supavisor username، ويشترط التطابق مع allowlist، ويرفض ref الإنتاج المعروف `wfhijmawoojcmfdgibxg`، والوجهات غير القابلة للتحقق، والمرجع المفقود أو المختلف. يعاد الفحص في preflight، وفي job الاستعادة، ومباشرة قبل `pg_restore`.
+- الاختبارات تغطي صيغ direct/pooler المقبولة ورفض الإنتاج والاختلاف والوجهات غير القابلة للتحقق. إجمالي الحالات الممثلة 10.
+- CI [42507086611](https://github.com/HVA09/ai-chat-app/actions/runs/42507086611): نجحت Frontend وSDK وPreview Builder وProduction Compose؛ Backend `pytest -q` ما زال قيد التنفيذ وقت تحديث هذه الوثيقة.
+- CodeQL [42507086739](https://github.com/HVA09/ai-chat-app/actions/runs/42507086739): تحليلا Python وJavaScript/TypeScript نجحا.
+- متطلبات التشغيل غير مهيأة حاليًا/لم يتم التحقق منها: يجب توفير secret `SUPABASE_STAGING_DB_URL` وvariable `SUPABASE_STAGING_PROJECT_REF` لقاعدة منفصلة مؤكدة. بدون ذلك يفشل الـworkflow مبكرًا. لم تُقرأ أي أسرار ولم يتم إعداد متغيرات أو موارد.
+- لم يُشغّل restore workflow، ولم تنفذ استعادة، ولا يوجد deploy أو تعديل لقاعدة الإنتاج.
+- #673 Draft فقط ولا يدمج أو ينشر قبل مراجعة المالك. هذا PR لا يوفر مسار استعادة للإنتاج؛ أي مسار إنتاجي مستقبلي يحتاج workflow منفصلًا وموافقة محمية.
