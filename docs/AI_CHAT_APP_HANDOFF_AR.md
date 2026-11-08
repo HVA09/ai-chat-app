@@ -554,3 +554,48 @@
 - PR #664 HEAD `97933094` اجتاز CI وCodeQL، وBackend سجل `525 passed, 4 warnings`.
 - PR #672 HEAD `0731d6e` اجتاز CI وCodeQL. لا دمج أو نشر لأي من هذه المسارات دون موافقة مستقلة من المالك.
 - لم يحدث Restore أو Deploy أو Restart أو تعديل secrets أو environment variables أو Supabase production أو Render أثناء هذا التوحيد.
+
+
+## 23. حالة الاستقرار وتحديث مسار استعادة Supabase — 2026-11-08
+
+### 23.1 طلبات الإصلاح والفحوص المعتمدة على الرأس الحالي وقت هذا التحديث
+
+| PR | HEAD | CI | CodeQL | الحالة |
+|---|---|---|---|---|
+| #664 QueuePool/SSE | `97933094ab3573b24070234cad7aa148ce82af94` | [42504844968](https://github.com/HVA09/ai-chat-app/actions/runs/42504844968) — جميع الوظائف الخمس ناجحة؛ Backend 525 passed و4 warnings | [42504844942](https://github.com/HVA09/ai-chat-app/actions/runs/42504844942) — التحليلان ناجحان | Open / Draft / غير مدمج |
+| #671 التوثيق | `f48ff23dd4e333809e7565ee42ae716be7af904b` | [42507531406](https://github.com/HVA09/ai-chat-app/actions/runs/42507531406) — جميع الوظائف الخمس ناجحة | [42507531419](https://github.com/HVA09/ai-chat-app/actions/runs/42507531419) — التحليلان ناجحان | Open / Draft / غير مدمج |
+| #672 FilesPanel | `0731d6e5e895a080cc3ac66c31a69401d9946db6` | [42498986649](https://github.com/HVA09/ai-chat-app/actions/runs/42498986649) — جميع الوظائف الخمس ناجحة | [42498986713](https://github.com/HVA09/ai-chat-app/actions/runs/42498986713) — التحليلان ناجحان | Open / Draft / غير مدمج |
+| #673 حماية استعادة Supabase | `fb2851c4b006343bf5ab10e2e9ee5df00b3ea170` | [42509122698](https://github.com/HVA09/ai-chat-app/actions/runs/42509122698) — SDK وFrontend وPreview Builder وProduction Compose ناجحة؛ Backend pytest قيد التنفيذ عند التحديث | [42509122706](https://github.com/HVA09/ai-chat-app/actions/runs/42509122706) — Python ناجح؛ JavaScript/TypeScript قيد التنفيذ عند التحديث | Open / Draft / غير مدمج |
+
+كل نتيجة مرتبطة بالـSHA المحدد فقط. لا تُنقل نتيجة فحص من رأس سابق إلى رأس جديد.
+
+### 23.2 تعزيز أمان PR #673
+
+- أضاف PR #673 حماية staging-only: اختيار destination محصور في staging، تأكيد يدوي، تشغيل من `main` فقط، وGitHub Environment `supabase-staging` مع Required reviewers قبل إضافة بيانات اتصال staging.
+- يقبل guard فقط Direct Supabase host أو Supavisor session-pooler username حين يثبت Project Ref المطابق للمتغير المعتمد، ويرفض Production Ref المعروف `wfhijmawoojcmfdgibxg`، والوجهات غير القابلة للتحقق، والمنفذ غير المسموح أو غياب `sslmode=require`.
+- مصدر النسخ محصور في `database/staging-sanitized/`. لا توجد نسخة منقحة مثبتة في هذا المسار حسب آخر تحقق؛ لذلك يفشل workflow بأمان إلى أن تتوفر نسخة منقحة ومراجعة.
+- أثناء المراجعة ظهر خطر حقن عبر اسم S3 object key إذا احتوى newline أو equals وتمت كتابته إلى `GITHUB_ENV`. أُضيفت دالة `is_safe_staging_backup_key` لا تقبل إلا اسم ملف `.dump` واحدًا تحت prefix المحدد، ثم أضيفت إعادة تحقق مباشرة قبل الكتابة. اختبارات جديدة تغطي أسماء سليمة وأسطر CR/LF وequals وnested paths وpath traversal وprefix غير صحيح.
+- إجمالي حالات guard الممثلة أصبح 23 حالة. لا نعتبر الفحوص الجديدة ناجحة حتى ينتهي CI وCodeQL على HEAD `fb2851c` نفسه.
+- لم تُقرأ الأسرار أو قيم متغيرات البيئة، ولم يُنشأ GitHub Environment أو Supabase branch في هذه الجولة، ولم يُشغّل restore workflow، ولم تحدث استعادة أو أي عملية على قاعدة الإنتاج.
+
+### 23.3 توسيع نطاق Issue #674 بعد مراجعة كل المستدعين
+
+تحول Issue [#674](https://github.com/HVA09/ai-chat-app/issues/674) من متابعة فترتي RAG وweb search فقط إلى مراجعة جميع فترات انتظار الخدمات الخارجية مع Session مفتوحة. جرد الاستدعاءات على `main` أكد الآتي:
+
+1. `retrieve_relevant_chunks()` ينفذ استعلام candidate ثم ينتظر `embed_query()` قبل استعلام المقاطع النهائي.
+2. `POST /chat` ينتظر `_augment_message()` ثم `get_ai_reply()` قبل حفظ الرسائل وسجل الاستخدام.
+3. `POST /v1/chat` يستخدم `_augment_message()` ثم ينتظر `get_ai_reply()`.
+4. `POST /chat/vision` ينتظر `get_ai_vision_reply()` بعد قراءة المحادثة والملف والسياق وقبل الحفظ.
+5. مسارا chat العادي وstream ينتظران `search_web()` قبل حفظ الرد أو إنشاء الاستجابة.
+6. regenerate وedit streaming ينتظران `_augment_message()` قبل إعادة الاتصال أو إنشاء `StreamingResponse`.
+
+لا تطبق `db.commit()` داخل helper عام بصورة عمياء؛ بعض المسارات لديها file-link writes أو ORM attributes تعتمد عليها بعد await، وDeveloper API يستخدم نفس `_augment_message()`. يجب تصميم حدود المعاملة لكل route واختبارها، مع إبقاء Agent mode خارج release عام لأن الأدوات تحتاج DB أثناء التشغيل.
+
+### 23.4 الحدود والقرارات الثابتة
+
+- نجاح #664 في PostgreSQL بــQueuePool بحجم اتصال واحد يثبت سيناريو إعادة الاتصال بعد release قبل SSE؛ لا يثبت زوال QueuePool exhaustion تحت حمل Render الحقيقي.
+- نجاح #671 و#672 و#664 لا يعني قبول Android أو دورة الملفات يدويًا.
+- لا توجد بيئة Backend/Frontend staging منفصلة مثبتة في Render. خدمة Preview Builder ليست بيئة staging مؤكدة.
+- Supabase `ai-chat-prod-db` كان `ACTIVE_HEALTHY`، ولا توجد فروع. عرض تكلفة الفرع كان `$0.01344/hour`; لم يتم إنشاء فرع مدفوع.
+- إعداد Render Backend وFrontend هو `autoDeploy=yes` و`autoDeployTrigger=checksPass`. Preview Builder بقي خارج هذا التغيير.
+- لا دمج أو نشر أو restore أو تعديل أسرار/Environment Variables أو قواعد إنتاج دون موافقة منفصلة صريحة. تجميد الميزات الجديدة مستمر.
