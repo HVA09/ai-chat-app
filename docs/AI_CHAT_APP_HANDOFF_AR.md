@@ -341,3 +341,24 @@
 - حدّثنا وصف PR #671 ليشير إلى نتيجة HEAD `9367cf0` وإلى أن CodeQL ناجح لكنه غير مطلوب ضمن branch protection الحالية.
 - أي commit توثيقي جديد بعد هذا السجل سيُنشئ HEAD مختلفًا؛ يجب التحقق من CI وCodeQL على ذلك الرأس نفسه. لا تعِد استخدام نجاحات HEAD `9367cf0` لإثبات فحوص commit أحدث.
 - لم يحدث دمج أو نشر أو تعديل على Render/Supabase أو متغيرات البيئة أو قواعد بيانات الإنتاج. تبقى الميزات الجديدة مجمدة.
+
+
+## 16. تحديث الحماية — جعل CodeQL إلزاميًا — 2026-11-08
+
+هذا التحديث يصحح أي فقرة سابقة في السجل كانت تقول إن CodeQL ناجح لكنه غير مطلوب؛ تلك الفقرات تصف الحالة قبل تعديل مالك المستودع لقاعدة الحماية.
+
+- حفظ مالك المستودع تحديث Branch protection rule على `main`، وأظهرت واجهة GitHub رسالة `Branch protection rule settings saved.`
+- أعادت قراءة GitHub المباشرة بعد الحفظ: `protected=true` و`protection.enabled=true`، و`required_status_checks.enforcement_level=everyone`.
+- أصبحت contexts السبعة المطلوبة بالضبط:
+  1. `backend`
+  2. `frontend`
+  3. `sdk`
+  4. `preview-builder`
+  5. `production-compose`
+  6. `Analyze (python)`
+  7. `Analyze (javascript-typescript)`
+- رأس `main` ما زال `b690c149610a704f78d7f4ee9e6f377be7466703`؛ لا يوجد commit أو merge على main نتيجة تغيير الحماية.
+- على PR #671، الرأس `8ffe0e1feb8c07c95eee65ad64cff11b1f3e1c97` اجتاز CI [42497639597](https://github.com/HVA09/ai-chat-app/actions/runs/42497639597) وCodeQL [42497639580](https://github.com/HVA09/ai-chat-app/actions/runs/42497639580) بنجاح. هذه الفحوص تخص الرأس المذكور تحديدًا.
+- PR #672 ما زال Open / Draft / غير مدمج على HEAD `d6216bd4d61b84fc232f848a91992ed09f0e37d3`، وفحوصه السابقة على هذا الرأس ناجحة.
+- لم يحدث دمج أو نشر أو تعديل على Render أو Supabase أو متغيرات البيئة أو قواعد بيانات الإنتاج. تجميد الميزات مستمر.
+- إذا أُضيف commit جديد إلى فرع #671 لتحديث هذا السجل، فيجب اعتماد CI وCodeQL على الرأس الجديد قبل Ready أو الدمج؛ لا تُستخدم نتائج `8ffe0e1` لتغطية رأس مختلف.
