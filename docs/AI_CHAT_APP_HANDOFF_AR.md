@@ -164,3 +164,61 @@
 3. إغلاق حماية `main` من GitHub Settings، ثم إعادة قراءة حالة الفرع للتأكد.
 4. طلب تأكيد مساحة Render `My Workspace` قبل قراءة إعدادات الخدمة الحية.
 5. بعد تأمين الحماية وفهم Auto Deploy، استكمال Restore إلى قاعدة اختبار، ثم قبول Android ودورة الملفات، دون تغييرات إنتاجية غير معتمدة.
+
+
+## 11. تحقق Render الحي ونتيجة CI — 2026-11-08
+
+### 11.1 مساحة العمل والخدمات
+
+أكد المستخدم أن مساحة Render الصحيحة هي `My Workspace`، وتم تمرير workspace ID `tea-dagsi5ou01pc73f2g470` صراحةً لكل استعلام. القراءة فقط كشفت:
+
+| الخدمة | النوع | الفرع/الجذر | Auto Deploy | Trigger الحي | ملاحظات |
+|---|---|---|---|---|---|
+| `ai-chat-backend` | Web / Docker | `main` / `ai-backend` | yes | `commit` | Free، Ohio، health check `/health`، URL `https://ai-chat-backend-ltxa.onrender.com` |
+| `ai-chat-frontend` | Static | `main` / `ai-frontend` | yes | `commit` | build `yarn install; yarn build`، publish `dist`، URL `https://ai-chat-frontend-v8ma.onrender.com` |
+| `ai-chat-preview-builder` | Web / Docker | `main` / جذر المستودع | yes | `commit` | Free، Ohio، URL `https://ai-chat-preview-builder.onrender.com`؛ خدمة منفصلة لا تظهر في render.yaml الحالي |
+| `ai-chat-redis` | Key Value | — | — | — | موجود، status `available`، Free، Ohio، version 8.1.4، persistence off، memory policy allkeys-lru |
+
+توجد كذلك ثلاث خدمات Static معاينة بأسماء `ai-chat-aurora-showcase-20261024` و`ai-chat-aurora-preview-20261024` و`ai-chat-sidebar-preview-20261023`، وكلها متوقفة عن Auto Deploy (`no/off`) ومربوطة بفروع معاينة/تصميم منفصلة؛ لا تعتبرها خدمات الإنتاج الأساسية.
+
+### 11.2 مقارنة سياسة النشر
+
+- الخدمة الحية Backend والخدمة الحية Frontend تستخدمان `autoDeploy=yes` مع `autoDeployTrigger=commit`.
+- ملف `render.yaml` على `main` يحدد `autoDeployTrigger: checksPass` لكل من Backend وFrontend.
+- هذه **مخالفة إعدادات مؤكدة** بين Render live وBlueprint. لم يتم تطبيق Blueprint أو تغيير الإعدادات.
+- خدمة Preview Builder الحية تستخدم `commit` أيضًا، لكنها ليست معرّفة ضمن خدمات `render.yaml` الحالية؛ يلزم توثيق سبب وجودها وهل يجب إدارتها من Blueprint منفصل، ولا تضفها إلى Blueprint دون مراجعة.
+- خدمة `ai-chat-redis` موجودة فعلًا في Render. لا تسجلها كخدمة مفقودة.
+
+### 11.3 حالة كود الخدمات المنشور
+
+أحدث deploy حي ظاهر في قائمة Render:
+
+- Backend: deploy `dep-dbekrsla647c73ecuj00` على commit `bed46de7e8936f0cee08ae4dcc65581bee4af3da`، status `live`، مكتمل 2026-10-25 00:34 UTC.
+- Frontend: deploy `dep-dbeks16bs3rs73c64pqg` على commit `63c994ed23a6ce69a3c5abf417ff6b5e145e3026`، status `live`، مكتمل 2026-10-25 00:32 UTC.
+- Preview Builder: deploy `dep-dbguq6tg1s2s73ef0q2g` على commit `b690c149610a704f78d7f4ee9e6f377be7466703`، status `live`، مكتمل 2026-10-28 12:41 UTC.
+
+**تفسير المقارنة بدل الاستنتاج من التاريخ وحده:** مقارنة Backend deploy commit مع main أظهرت أن commits الثلاثة اللاحقة تغيّر ملفات Frontend و`docs/POST_RELEASE_ROADMAP_H_TO_T_AR.md` فقط، ولا تغيّر ملفات Backend. ومقارنة Frontend deploy commit مع main أظهرت أن التغييرين اللاحقين يخصان وثائق خارطة الطريق فقط. لذلك لا يوجد في هذه المقارنة دليل على أن كود Backend أو Frontend التشغيلي متأخر عن الكود الحالي الخاص بنطاق خدمته، رغم أن SHA المنشور أقدم. لا تُجبر redeploy لمجرد اختلاف SHA.
+
+### 11.4 إعدادات الذكاء الاصطناعي الحية
+
+- `render.yaml` يضع افتراضيًا `AI_PROVIDER=openai` و`AI_API_BASE_URL=https://api.openai.com/v1`.
+- المستخدم سبق أن قدّم إعدادًا غير سري يقول `AI_PROVIDER=gemini` مع Gemini OpenAI-compatible base URL.
+- استجابة قراءة خدمة Render لم تتضمن قيم Environment Variables؛ لذلك **القيم الفعلية الحالية على Backend غير مؤكدة**. لا تستنتج أن الإنتاج يستخدم OpenAI أو Gemini من ملف Blueprint وحده.
+- لا تستدعِ تحديث Environment Variables ولا تستعرض قيم أسرار. في مراجعة يدوية آمنة من لوحة الخدمة، تحقق من أسماء `AI_PROVIDER` و`AI_API_BASE_URL` و`AI_MODEL` وإعدادات embeddings، دون نسخ أي مفاتيح أو أسرار في المحادثة.
+
+### 11.5 تشخيص فشل Frontend في CI على الرأس `b02487afacc8a96067e9a76f730486e548cfd799`
+
+- CI run [42482552239](https://github.com/HVA09/ai-chat-app/actions/runs/42482552239): SDK وProduction Compose وPreview Builder نجحت؛ Frontend فشلت؛ Backend ظلت `in_progress` عند آخر قراءة.
+- CodeQL run [42482552320](https://github.com/HVA09/ai-chat-app/actions/runs/42482552320): تحليلا Python وJavaScript/TypeScript نجحا.
+- Frontend: 486 اختبارًا نجح، لكن Vitest اكتشف Unhandled Error واحدًا؛ خطوة `npm run build` تخطّتها الوظيفة بعد فشل `npm test`.
+- الخطأ: `ReferenceError: window is not defined` من callback في `FilesPanel.jsx:174`، الذي ينفذ `window.setTimeout(() => setUploadProgress(null), 250)` بعد اكتمال رفع الملف.
+- لا يوجد تنظيف واضح لهذا المؤقت عند إلغاء تركيب FilesPanel. يظهر أن اختبار رفع ملف المعرفة ينهي الاختبار/بيئة jsdom قبل انقضاء 250ms؛ وهذا استنتاج قوي من stack trace وطبيعة المؤقت، وليس إثباتًا نهائيًا لأي test case بعينه.
+- الإصلاح المنفصل المقترح: إضافة مرجع للمؤقت وتنظيفه في effect cleanup عند unmount، مع حراسة تحديث الحالة بعد unmount، وإضافة اختبار يثبت إلغاء المؤقت/عدم تحديث الحالة بعد الإغلاق. يجب أن يكون هذا في PR كود صغير مستقل، لا في PR #671 التوثيقي.
+- لا تعدّل كود FilesPanel ضمن PR #671. لا تعتبر Frontend CI ناجحًا بسبب أن 486 اختبارًا مر؛ الـunhandled error جعل الوظيفة تفشل.
+
+### 11.6 الحالة بعد هذه القراءة
+
+- لا تغييرات Render أو Production أو GitHub settings أو Environment Variables.
+- لا redeploy تم تشغيله.
+- #671 بقي Open / Draft / غير مدمج عند آخر تحقق؛ لا تجعله Ready قبل حل/تجاوز فشل Frontend بطريقة مثبتة وانتهاء Backend على HEAD الحالي.
+- الخطوات التالية: (1) تحقق من اكتمال Backend run الحالية؛ (2) بعد اكتمال CI يمكن إعادة تشغيل الوظيفة الفاشلة مرة واحدة لتحديد إن كان الفشل متكررًا، دون تغيير رأس PR؛ (3) إذا تكرر، افتح PR كود مستقل لإصلاح تنظيف مؤقت FilesPanel؛ (4) تحقق/صحّح Render Auto Deploy بعد إغلاق حماية main ومراجعة السياسة؛ (5) اختبر Restore في قاعدة معزولة ثم اقبل Android ودورة الملفات.
