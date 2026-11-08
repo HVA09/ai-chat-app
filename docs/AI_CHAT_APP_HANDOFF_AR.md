@@ -362,3 +362,51 @@
 - PR #672 ما زال Open / Draft / غير مدمج على HEAD `d6216bd4d61b84fc232f848a91992ed09f0e37d3`، وفحوصه السابقة على هذا الرأس ناجحة.
 - لم يحدث دمج أو نشر أو تعديل على Render أو Supabase أو متغيرات البيئة أو قواعد بيانات الإنتاج. تجميد الميزات مستمر.
 - إذا أُضيف commit جديد إلى فرع #671 لتحديث هذا السجل، فيجب اعتماد CI وCodeQL على الرأس الجديد قبل Ready أو الدمج؛ لا تُستخدم نتائج `8ffe0e1` لتغطية رأس مختلف.
+
+## 17. تحديث استقرار الملفات وRender — 2026-11-08
+
+### 17.1 PR #672 — توسيع إصلاح unmount لقائمة الرفع
+
+- الحالة الحية: Open / Draft / غير مدمج، mergeable=true.
+- HEAD: 0731d6e5e895a080cc3ac66c31a69401d9946db6؛ 5 commits؛ ملفان فقط؛ +145/-2.
+- الملفات: ai-frontend/src/components/FilesPanel.jsx وai-frontend/src/components/FilesPanel.test.jsx.
+- أثناء المراجعة وُجدت حالة إضافية: إذا رفع المستخدم عدة ملفات وأزال FilesPanel أثناء رفع أول ملف، كان loop يمكن أن يبدأ upload للملف التالي بعد unmount.
+- أُضيف guard في بداية كل iteration: إذا لم يعد المكوّن mounted، يتوقف loop قبل بدء ملف جديد. لا يدّعي التغيير إلغاء طلب الرفع الشبكي الجاري بالفعل.
+- أُضيف اختبار ثالث يثبت أن الملف التالي لا يبدأ بعد unmount أثناء رفع الأول. الاختبارات الثلاثة الجديدة تغطي: عدم بدء الملفات المتبقية، تنظيف مؤقت تقدم الرفع، وعدم جدولة المؤقت إذا اكتمل upload بعد unmount.
+- نتائج CI [42498986649](https://github.com/HVA09/ai-chat-app/actions/runs/42498986649): جميع الوظائف الخمس نجحت.
+  - Frontend: 73 test files و489 tests passed؛ npm run build نجح.
+  - Backend: pip-audit وcompileall وalembic upgrade head نجحت؛ pytest: 520 passed, 4 warnings.
+  - Preview Builder: pytest وDocker build نجحا.
+  - SDK: اختبارات Python وJavaScript نجحت.
+  - Production Compose: validation وبناء Backend image نجحا.
+- CodeQL [42498986713](https://github.com/HVA09/ai-chat-app/actions/runs/42498986713): تحليلا Python وJavaScript/TypeScript نجحا.
+- رسالة PostgreSQL duplicate-key على uq_scheduled_task_runs_task_scheduled_for تطابق الاختبار السلبي test_scheduled_run_slot_is_unique في ai-backend/tests/test_scheduled_tasks.py، الذي يتوقع صراحةً IntegrityError عند إدخال سجل مكرر. لا تعد الرسالة وحدها دليلًا على عطل إنتاجي.
+- لم تُسجل مراجعات GitHub أو review threads على #672 عند آخر تحقق. يظل Draft حتى مراجعة المالك وقبول Android/الملفات في بيئة الاستخدام؛ نجاح CI لا يساوي قبولًا إنتاجيًا.
+
+### 17.2 تحقق Render حي — قراءة فقط
+
+تم استخدام workspace المؤكد My Workspace (ID tea-dagsi5ou01pc73f2g470) دون أي تغييرات:
+
+| الخدمة | الفرع | Auto Deploy | Trigger الحي |
+|---|---|---|---|
+| ai-chat-backend | main | yes | commit |
+| ai-chat-frontend | main | yes | commit |
+| ai-chat-preview-builder | main | yes | commit |
+
+- render.yaml على main يحدد autoDeployTrigger: checksPass لكل من ai-chat-backend وai-chat-frontend. توجد إذن مخالفة إعداد حية: commit مقابل checksPass.
+- ai-chat-preview-builder خدمة حيّة لكنها غير معرفة في render.yaml الحالي. لا تضفها أو تطبق Blueprint قبل تقرير ما إذا كانت خدمة دائمة مستقلة أو موردًا تجريبيًا.
+- Backend وFrontend مربوطتان بـmain وAuto Deploy مفعّل. لا يعني هذا أنهما نُشرتا بعد تغييرات PR #672؛ PR ما زال Draft وغير مدمج.
+- قائمة Render Postgres في مساحة العمل أعادت No Postgres instances found. هذا لا يعني فقد قاعدة الإنتاج: render.yaml يذكر أن PostgreSQL خارجي عبر Supabase وDATABASE_URL قيمة سرية خارج Blueprint. لا تختبر الإنتاج ولا تستنتج حالة Supabase من غياب Render Postgres.
+- Redis / Key Value ai-chat-redis موجود وحالته available على الخطة المجانية في Ohio؛ persistence mode off وسياسة الذاكرة allkeys_lru وفق الإعداد الحي.
+- قائمة أحداث Backend وFrontend أعادت [] ضمن نافذة الاستعلام الافتراضية (آخر 7 أيام). لا تثبت غياب حوادث أقدم.
+- أداة قراءة الخدمة لم تعرض Environment Variables. لذلك لا تزال قيمة AI_PROVIDER الحية غير مؤكدة؛ لا تستنتج أنها OpenAI أو Gemini من render.yaml أو من إعداد قدّمه المستخدم سابقًا. لم تُقرأ أسرار أو مفاتيح.
+- لم يحدث Deploy أو Restart أو Blueprint sync أو تعديل Auto Deploy أو Environment Variables أو Database أو Redis. التحقق كله قراءة فقط.
+
+### 17.3 الخطوات التالية
+
+1. PR #672 لديه فحوص CI وCodeQL ناجحة على HEAD 0731d6e؛ أبقه Draft لحين قرار المالك وقبول Android/دورة الملفات. لا دمج تلقائي.
+2. PR #671 وثائقي؛ حدّث هذا السجل ثم تحقق من CI/CodeQL على آخر HEAD جديد قبل Ready.
+3. قرار مستقل مطلوب لمواءمة Auto Deploy الحي على Backend/Frontend مع checksPass. لا تطبق Blueprint ولا تغيّر الخدمة قبل موافقة صريحة بعد مراجعة أثر التغيير.
+4. راجع خدمة Preview Builder المنفصلة قبل أي Blueprint sync.
+5. استكمل Restore اختباريًا إلى قاعدة Supabase معزولة، ثم Android acceptance، دورة الملفات، وQueuePool/SSE staging. لا تشغيل على قاعدة الإنتاج.
+6. يبقى تجميد الميزات الجديدة ساريًا. لا تعديل على main أو خدمات الإنتاج دون موافقة منفصلة محددة.
