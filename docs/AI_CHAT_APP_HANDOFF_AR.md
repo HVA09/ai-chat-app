@@ -316,3 +316,15 @@
 2. إجراء المراجعة النهائية للكود والاختبارين في #672؛ يظل Draft إلى حين قرار المستخدم الصريح. لا يُدمج لمجرد نجاح CI.
 3. بعد ذلك تُستكمل بوابات H الأخرى: Restore إلى قاعدة اختبار معزولة، مراجعة Auto Deploy الحي في Render دون تعديل، Android acceptance، دورة الملفات، ومراقبة QueuePool/SSE باختبار مرحلي مضبوط.
 4. الميزات الجديدة تظل مجمدة، ولا تغيير على `main` أو الإنتاج دون موافقة منفصلة محددة.
+
+
+## 14. إغلاق فحوص HEAD السابق بعد تفعيل الحماية — 2026-11-08
+
+- أُعيد فحص PR #671 ورأسه `cb22b6b8d01a02098a4913d76201ea59eceb11cd`؛ بقي Open / Draft / غير مدمج.
+- CI run [42496215664](https://github.com/HVA09/ai-chat-app/actions/runs/42496215664) اكتمل بنجاح على هذا الرأس، وجميع الوظائف الخمس نجحت: backend وfrontend وsdk وpreview-builder وproduction-compose.
+- Backend job logs تؤكد: `520 passed, 4 warnings in 204.93s`. كما نجحت `pip-audit` و`compileall` و`alembic upgrade head`. التحذيرات الأربعة تشمل deprecation في `crypt` وStarlette، وتحذير SQLAlchemy عن transaction already deassociated؛ ليست حالات فشل للاختبارات.
+- CodeQL run [42496215661](https://github.com/HVA09/ai-chat-app/actions/runs/42496215661) اكتمل بنجاح؛ تحليلا Python وJavaScript/TypeScript نجحا. كذلك ظهرت check باسم `CodeQL` بحالة success.
+- تنبيه حوكمة: قراءة كائن `main` تؤكد أن required status contexts الحالية هي فقط الخمسة CI المذكورة أعلاه. نتائج CodeQL ناجحة لكنها **ليست حاليًا ضمن required status checks**. التوصية هي إضافة السياستين الدقيقتين `Analyze (python)` و`Analyze (javascript-typescript)` إلى Branch protection بعد ظهورهما في قائمة الفحوص، ثم إعادة قراءة كائن الفرع للتحقق؛ لا تعتبر CodeQL إلزاميًا قبل ذلك.
+- PR #672 ما زال Open / Draft / غير مدمج على HEAD `d6216bd4d61b84fc232f848a91992ed09f0e37d3`، وCI وCodeQL السابقان على ذلك الرأس ناجحان.
+- `main` ما زال محميًا عند SHA `b690c149610a704f78d7f4ee9e6f377be7466703`; لم يحدث دمج أو نشر أو تعديل على Render/Supabase أو قواعد بيانات الإنتاج.
+- هذه النتائج تخص HEAD `cb22b6b...`؛ أي تحديث لاحق للفرع التوثيقي ينشئ HEAD جديدًا ويستلزم اعتماد فحوصه هو، لا إعادة استخدام هذه النتائج.
