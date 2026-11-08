@@ -222,3 +222,61 @@
 - لا redeploy تم تشغيله.
 - #671 بقي Open / Draft / غير مدمج عند آخر تحقق؛ لا تجعله Ready قبل حل/تجاوز فشل Frontend بطريقة مثبتة وانتهاء Backend على HEAD الحالي.
 - الخطوات التالية: (1) تحقق من اكتمال Backend run الحالية؛ (2) بعد اكتمال CI يمكن إعادة تشغيل الوظيفة الفاشلة مرة واحدة لتحديد إن كان الفشل متكررًا، دون تغيير رأس PR؛ (3) إذا تكرر، افتح PR كود مستقل لإصلاح تنظيف مؤقت FilesPanel؛ (4) تحقق/صحّح Render Auto Deploy بعد إغلاق حماية main ومراجعة السياسة؛ (5) اختبر Restore في قاعدة معزولة ثم اقبل Android ودورة الملفات.
+
+## 12. إضافة متابعة مؤكدة — مراجعة PR #672 وتحديث حالة الفحوص — 2026-11-08
+
+هذه الإضافة أحدث من اللقطات التاريخية السابقة في هذا الملف، وت supersede أي حالة أقدم في الأقسام 3 و8 و10 و11 تخص PR #671 أو خطأ FilesPanel. لا تحذف اللقطات السابقة؛ تُحفظ لتفسير تسلسل التشخيص.
+
+### 12.1 التحقق الحي من main والحوكمة
+
+- تمت إعادة قراءة كائن الفرع من GitHub: main عند SHA `b690c149610a704f78d7f4ee9e6f377be7466703`.
+- الاستجابة الحية: `protected=false` و`protection.enabled=false` و`required_status_checks.enforcement_level=off`، ولا توجد contexts مطلوبة.
+- قائمة Repository Rulesets أعادت `[]`.
+- النتيجة: حماية main لم تُفعّل بعد، وهي مانع قبل الدمج. يجب على مالك المستودع تفعيل Branch protection أو Ruleset من GitHub Settings، ثم إعادة التحقق من الحالة الحية. لا تدّعِ الحماية مفعّلة قبل ظهور دليل.
+
+### 12.2 PR #672 — إصلاح مؤقت تقدم رفع الملفات
+
+- الرابط: https://github.com/HVA09/ai-chat-app/pull/672
+- الحالة الحية: Open / Draft / غير مدمج، و`mergeable=true`.
+- الفرع: `fix/filespanel-upload-timer-cleanup-20261108`.
+- HEAD: `d6216bd4d61b84fc232f848a91992ed09f0e37d3`؛ الأساس `main` عند `b690c149610a704f78d7f4ee9e6f377be7466703`.
+- 3 commits، ملفان فقط، +113/-2:
+  - `ai-frontend/src/components/FilesPanel.jsx`
+  - `ai-frontend/src/components/FilesPanel.test.jsx`
+- المراجعة الثابتة للفرق: إضافة مرجع لمؤقت تقدم الرفع، وحراسة mounted-state، وإلغاء المؤقت عند unmount، ومنع جدولة مؤقت جديد عند اكتمال الرفع بعد unmount. الاختباران الجديدان يغطّيان إلغاء المؤقت بعد جدولته، وعدم جدولته عند اكتمال upload متأخر بعد unmount. لا توجد تغييرات خارج النطاق في الفرق.
+- حدود النطاق: هذا الإصلاح يمنع تحديث حالة الواجهة وجدولة المؤقت بعد unmount؛ ولا يدّعي إلغاء طلب الرفع الشبكي الجاري نفسه.
+
+#### نتائج الفحوص المرتبطة بالرأس نفسه
+
+- CI run [42484813720](https://github.com/HVA09/ai-chat-app/actions/runs/42484813720): الوظائف الخمس كلها `success`:
+  - Frontend: 73 test files و488 tests passed؛ `npm run build` نجح.
+  - Backend: `pip-audit` و`compileall` و`alembic upgrade head` نجحت؛ pytest: 520 passed و4 warnings.
+  - Preview Builder: pytest وDocker build نجحا.
+  - SDK: اختبارات Python وJavaScript نجحت.
+  - Production Compose: التحقق من Compose وبناء صورة Backend نجحا.
+- CodeQL run [42484813719](https://github.com/HVA09/ai-chat-app/actions/runs/42484813719): Python وJavaScript/TypeScript كلاهما `success`.
+- لم تُسجل مراجعات GitHub أو review threads على #672 حتى آخر فحص.
+- التوصية: نتيجة الكود والفحوص مشجعة للمراجعة البشرية، لكن PR يبقى Draft إلى حين استكمال بوابة حماية main وموافقة المالك. لا دمج تلقائي ولا نشر إنتاجي.
+
+### 12.3 متابعة منفصلة: duplicate-key في Scheduled Task Runner
+
+- أثناء Backend CI ظهر في سجل حاوية PostgreSQL عند `2026-11-08 13:29:24.677 UTC`:
+  `duplicate key value violates unique constraint "uq_scheduled_task_runs_task_scheduled_for"`.
+- في نفس التشغيل اكتمل pytest بنتيجة `520 passed, 4 warnings` وبحالة Job `success`.
+- الحدث في PostgreSQL container الخاص ببيئة CI، ولا يوجد دليل في هذا السجل يثبت أنه وقع في قاعدة إنتاج أو أثّر في نجاح pytest. لكنه ليس أمرًا يجب تجاهله.
+- يبقى عمل triage مستقل: تحديد موضع الإدراج/المهمة المجدولة التي اصطدمت بالقيد، وهل السلوك متوقع نتيجة تزامن/إعادة محاولة أم خطأ يحتاج معالجة idempotency. لا توسّع PR #672 بهذا الإصلاح، ولا تغيّر قاعدة إنتاج.
+
+### 12.4 PR #671 — نتائج أحدث HEAD
+
+- الرابط: https://github.com/HVA09/ai-chat-app/pull/671
+- الحالة الحية: Open / Draft / غير مدمج؛ HEAD `acc188b3d913ea75f16d9b39fb9c52200ed6bd58`؛ الملفان كلاهما داخل `docs/`.
+- CI run [42482918330](https://github.com/HVA09/ai-chat-app/actions/runs/42482918330): جميع الوظائف الخمس نجحت على HEAD نفسه.
+- CodeQL run [42482918372](https://github.com/HVA09/ai-chat-app/actions/runs/42482918372): تحليلا Python وJavaScript/TypeScript نجحا على HEAD نفسه.
+- لا توجد مراجعات أو review threads مسجلة على #671 حتى آخر فحص.
+- يجب أن يُراجع المحتوى التوثيقي النهائي قبل تحويله إلى Ready؛ لا تعتمد على أرقام/حالات الفحوص القديمة الواردة في اللقطات السابقة من هذا الملف.
+
+### 12.5 حدود التغيير وقرار المتابعة
+
+- هذه الإضافة توثيق داخل فرع PR #671 فقط. لا تعديل على main أو Render أو Supabase أو Environment Variables أو الأسرار أو قواعد البيانات، ولا نشر.
+- يبقى تجميد الميزات الجديدة ساريًا.
+- ترتيب الخطوات: (1) حماية main يدويًا من GitHub Settings ثم التحقق؛ (2) استكمال مراجعة #672 وعدم دمجه قبل موافقة صريحة منفصلة؛ (3) فرز duplicate-key في عمل مستقل؛ (4) مراجعة #671 على HEAD النهائي بعد انتهاء فحوص هذا التحديث؛ (5) مواصلة بوابات H الأخرى: Restore إلى قاعدة اختبار معزولة، Android acceptance، دورة الملفات، وQueuePool/SSE تحت نشر مرحلي مضبوط.
