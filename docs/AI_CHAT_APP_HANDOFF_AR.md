@@ -671,8 +671,9 @@
 - أثناء مراجعة الكود على فرع #676، ظهر أن مسار `POST /chat/stream` في فرع `data_analysis` يستدعي `materialize_file()` قبل تحرير اتصال SQLAlchemy، بخلاف مسار `POST /chat` العادي.
 - أضيف إلى #676 تحرير صريح عبر `commit_and_release_connection(db)` قبل مادة الملف في `/chat/stream`، مع اختبار ترتيب يثبت: release → materialize → release النهائي قبل إنشاء `StreamingResponse`.
 - أثناء جرد storage helper calls ظهر أيضًا أن endpoint حذف الملف يستدعي `delete_stored_file()` مع DB checkout مفتوح؛ أضيف تحرير الاتصال بعد التحقق من الصلاحية وقبل Object Storage deletion، مع اختبار ترتيب `release → storage_delete`.
+- جرد `registry.py` كشف عمليات Materialization/Storage/Search داخل Agent tools. لم تُعدّل في #676؛ يلزم لها تصميم حدود معاملة خاص لأن الوكيل يحتفظ بنفس Session أثناء تنفيذ عدة أدوات.
 - أحدث HEAD لـ#676 هو `cbb77b847f61dc6dc27841fae86abe692fd50b5c`. CI/CodeQL أعيدا على هذا الرأس الجديد بعد التعديلين؛ لا تعتمد نتائج `08e4da8` أو `6dddb7b` بديلًا عنه.
-- فرع #676 متراكم فوق #664 وليس فوق `main`. المقارنة الحالية مع فرع الأب: 28 commits ahead و0 behind؛ لا تعِد توجيهه إلى `main` قبل قرار مستقل بشأن #664.
+- فرع #676 متراكم فوق #664 وليس فوق `main`. المقارنة الحالية مع فرع الأب: 30 commits ahead و0 behind؛ لا تعِد توجيهه إلى `main` قبل قرار مستقل بشأن #664.
 
 ### 25.3 ملاحظات أمان إضافية على Restore guard
 
