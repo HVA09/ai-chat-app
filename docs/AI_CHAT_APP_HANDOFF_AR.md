@@ -599,3 +599,54 @@
 - Supabase `ai-chat-prod-db` كان `ACTIVE_HEALTHY`، ولا توجد فروع. عرض تكلفة الفرع كان `$0.01344/hour`; لم يتم إنشاء فرع مدفوع.
 - إعداد Render Backend وFrontend هو `autoDeploy=yes` و`autoDeployTrigger=checksPass`. Preview Builder بقي خارج هذا التغيير.
 - لا دمج أو نشر أو restore أو تعديل أسرار/Environment Variables أو قواعد إنتاج دون موافقة منفصلة صريحة. تجميد الميزات الجديدة مستمر.
+
+
+## 24. آخر حالة مؤكدة بعد اكتمال فحوص QueuePool وPR #676 — 2026-11-08
+
+> هذا القسم هو أحدث سجل لحالة طلبات الدمج والفحوص. الأقسام السابقة، بما فيها §23، تمثل لقطات تاريخية عند وقت كتابتها؛ عند التعارض يُعتمد هذا القسم ورؤوس GitHub Actions الدقيقة المذكورة أدناه.
+
+### 24.1 الحالة الحية لطلبات الدمج
+
+| PR | HEAD | CI | CodeQL | الحالة |
+|---|---|---|---|---|
+| #664 QueuePool/SSE | `97933094ab3573b24070234cad7aa148ce82af94` | [42504844968](https://github.com/HVA09/ai-chat-app/actions/runs/42504844968) — الوظائف الخمس نجحت؛ Backend 525 passed و4 warnings | [42504844942](https://github.com/HVA09/ai-chat-app/actions/runs/42504844942) — Python وJavaScript/TypeScript نجحا | Open / Draft / غير مدمج |
+| #671 توثيق الاستقرار | `2006a107a181475c26d393e046c7b9b2711cb93e` | [42509313236](https://github.com/HVA09/ai-chat-app/actions/runs/42509313236) — الوظائف الخمس نجحت | [42509313256](https://github.com/HVA09/ai-chat-app/actions/runs/42509313256) — التحليلان نجحا | Open / Draft / غير مدمج |
+| #672 FilesPanel | `0731d6e5e895a080cc3ac66c31a69401d9946db6` | [42498986649](https://github.com/HVA09/ai-chat-app/actions/runs/42498986649) — الوظائف الخمس نجحت | [42498986713](https://github.com/HVA09/ai-chat-app/actions/runs/42498986713) — التحليلان نجحا | Open / Draft / غير مدمج |
+| #673 حماية Restore | `fb2851c4b006343bf5ab10e2e9ee5df00b3ea170` | [42509122698](https://github.com/HVA09/ai-chat-app/actions/runs/42509122698) — الوظائف الخمس نجحت | [42509122706](https://github.com/HVA09/ai-chat-app/actions/runs/42509122706) — التحليلان نجحا | Open / Draft / غير مدمج |
+| #676 تقليل حجز الاتصالات قبل الانتظار الخارجي | `6dddb7bab3e84e6c345089556320dfea3baf64be` | [42510878191](https://github.com/HVA09/ai-chat-app/actions/runs/42510878191) — الوظائف الخمس نجحت؛ Backend **529 passed, 4 warnings, 0 failures** | [42510878131](https://github.com/HVA09/ai-chat-app/actions/runs/42510878131) — التحليلان نجحا | Open / Draft / غير مدمج |
+
+كل فحص أعلاه مرتبط بالـHEAD المعروض في نفس الصف. أي تحديث لاحق للكود أو التوثيق يغيّر HEAD ويتطلب فحوصًا جديدة.
+
+### 24.2 تفاصيل PR #676 وعلاقته بـ#664
+
+- PR #676 فرعه `fix/pre-await-db-checkout-release-20261108` وقاعدته الحالية فرع PR #664 `fix/release-db-pool-before-streams-20261025`، وليس `main`. المقارنة: 26 commits ahead و0 behind من فرع الأب.
+- الترتيب المقصود: مراجعة وقرار منفصل على #664 أولًا، ثم بعد دمج الأب يجب retarget #676 إلى `main` وإعادة فحوصه على القاعدة الجديدة. لا تدمج الفرع المتراكم مباشرة إلى `main` دون هذه الخطوة.
+- أُضيف `commit_and_release_connection()` ليحفظ ORM scalar values عبر commit واحد (تعطيل مؤقت لـ`expire_on_commit` ثم إعادة إعداد الجلسة الأصلي).
+- نقاط التحرير قبل الانتظار الخارجي تشمل: RAG query embeddings، normal chat provider، Developer API provider، web search العادي والمتدفق، conversation title/summary، vision، data-file materialization، image indexing + sync embeddings، file upload/object storage + document embeddings، وfile download/object streaming.
+- Agent mode بقي خارج التحرير العام لأنه ينفذ عمليات DB خلال تشغيل الأدوات.
+- الاختبارات تضيف ترتيب الأحداث لهذه المسارات. Backend 529 passed و4 warnings؛ لا failures. GitHub Actions يستخدم PostgreSQL/pgvector وValkey مؤقتة، بينما عمليات AI/storage في اختبارات هذه المسارات mocked.
+- حد المعاملة موثق: روابط المحادثة/الملفات المعلقة يتم حفظها قبل انتظار provider/search، لكن رسالة المستخدم تبقى خارج commit حتى نجاح provider/search. في upload، يحفظ سجل الملف قبل embedding كي لا يبقى اتصال DB محجوزًا أثناء synchronous HTTP؛ فشل embedding المتوقع يستخدم النص المستخرج fallback، لكن فشل DB غير المتوقع لاحقًا قد يترك ملفًا غير مرتبط داخل مكتبة المستخدم. راجع وصف #676 قبل أي اعتماد.
+- نجاح الاختبارات يثبت ترتيب release في سيناريوهات CI، ولا يثبت أن QueuePool exhaustion قد انتهى تحت حمل Render الحقيقي.
+
+### 24.3 حالة Issue #673 و#674
+
+- [Issue #673](https://github.com/HVA09/ai-chat-app/issues/673) وPR #673: حواجز restore staging ورفض وجهة الإنتاج واشتراط GitHub Environment/required reviewers، بالإضافة إلى S3 object-key allowlist لمنع CR/LF/equals/path traversal قبل كتابة `GITHUB_ENV`. CI وCodeQL نجحا على HEAD #673 المعروض أعلاه.
+- Workflow الاستعادة لم يُشغّل. لم يتم إنشاء GitHub Environment أو إضافة `SUPABASE_STAGING_DB_URL` secret أو `SUPABASE_STAGING_PROJECT_REF` variable. لا توجد نسخة منقحة معروفة تحت `database/staging-sanitized/`; لذا يبقى restore غير جاهز للتشغيل حتى تجهيز الوجهة والنسخة المنقحة بأمان.
+- [Issue #674](https://github.com/HVA09/ai-chat-app/issues/674) يتابع جميع فترات انتظار DB الخارجية التي تمت مراجعتها. PR #676 هو تنفيذ مرحلي لهذه المهمة، ويغطي نقاط RAG/chat/API/search/vision/title-summary/upload/download/file-indexing.
+- مسح Routers المساعدين والمشاريع والمهام المجدولة لم يُظهر awaits واضحة في نطاق AI/embeddings/storage ضمن الملفات التي تمت مراجعتها؛ لا تعمم هذا على جميع HTTP integrations أو كل وحدات التطبيق. أعد المراجعة عند ظهور QueuePool metrics جديدة.
+
+### 24.4 بوابات الاستقرار المتبقية
+
+1. إبقاء #664 و#671 و#672 و#673 و#676 مسودات، وعدم الدمج أو النشر دون موافقة مستقلة على كل طلب.
+2. بعد قرار #664، retarget #676 إلى `main` وإعادة CI/CodeQL على HEAD الجديد.
+3. اختبار ضغط QueuePool/SSE على staging حقيقي معزول وقياس checkout duration، queue wait، timeout count، وSSE completion under concurrency. لا توجد حاليًا خدمة Backend/Frontend staging مثبتة في Render.
+4. اختبار Android يدويًا لرفع الملفات والتنقل بين المحادثات ودورة الملفات بعد PR #672.
+5. إثبات استعادة backup منقح إلى Supabase staging منفصل بعد إعداد environment/secrets ووجود ملف staging backup؛ لا تستخدم production URL.
+6. الإبقاء على تجميد الميزات الجديدة حتى اجتياز البوابات السابقة.
+
+### 24.5 إعدادات الإنتاج التي لم تتغير
+
+- Render Backend وFrontend ما زالا على `main` مع `autoDeploy=yes` و`autoDeployTrigger=checksPass`. Preview Builder خارج هذا التغيير.
+- Supabase `ai-chat-prod-db` حالته `ACTIVE_HEALTHY`؛ لم تُنشأ branch مدفوعة لأن التكلفة المعروضة كانت `$0.01344/hour`.
+- لم يحدث Deploy أو Restart أو Blueprint sync أو restore أو تعديل secrets/Environment Variables أو قاعدة الإنتاج أو Redis.
+- لا تُستخدم موافقة صاحب المشروع على إعدادات Render أو على الاستمرار في الفحص كبديل لموافقة دمج منفصلة وصريحة.
