@@ -502,3 +502,23 @@
 3. إغلاق Issue #674 باختبارات للفترات السابقة للاستجابة.
 4. إغلاق Issue #673 قبل أي restore workflow.
 5. إبقاء #664 و#671 و#672 Draft حتى المراجعة والموافقة المنفصلة؛ نجاح CI لا يمنح إذن دمج.
+
+
+## 21. PR #675 — تقييد Workflow الاستعادة إلى staging فقط — 2026-11-08
+
+- PR [#675](https://github.com/HVA09/ai-chat-app/pull/675) مفتوح كـDraft، غير مدمج، وفرعه `fix/guard-supabase-staging-restore-20261108` مبني على `main`.
+- HEAD وقت التوثيق: `28b9637c6415d2ec4ff214884bba835dcf50467c`.
+- الملفات الثلاثة: `.github/workflows/restore-to-supabase.yml`، `.github/scripts/validate_supabase_staging_target.py`، `ai-backend/tests/test_restore_target_guard.py`.
+- Workflow الاستعادة الجديد staging-only: تشغيل يدوي من `main` مع input تأكيد صريح، ويستخدم GitHub Environment `supabase-staging`، وسرًا منفصلًا `SUPABASE_STAGING_DB_URL` ومتغيرًا `SUPABASE_STAGING_PROJECT_REF`.
+- Script التحقق يرفض Project Ref الإنتاج المعروف `wfhijmawoojcmfdgibxg`، ويطلب host مطابقًا تمامًا لـ`db.<staging-ref>.supabase.co`، اتصال PostgreSQL مباشر على 5432، قاعدة `postgres`، وTLS عبر `sslmode=require`. لا يطبع بيانات الاتصال.
+- مصدر النسخ مقيد بـ`database/staging-sanitized/` بدل مجلد نسخ الإنتاج `database/`. لا توجد نسخة منقحة مثبتة في هذا المسار؛ لذلك سيظل التشغيل يفشل بأمان حتى توفير ملف منقح ومراجع.
+- أضيفت 7 اختبارات وحدات لحالات القبول والرفض. CI/CodeQL على هذا الرأس بدأت وقت التوثيق؛ لا تعتبرها ناجحة قبل اكتمالها على نفس الرأس.
+- إعداد يدوي قبل أي تشغيل مستقبلي: إنشاء GitHub Environment باسم `supabase-staging`، تفعيل Required reviewers، ثم إضافة Environment secret `SUPABASE_STAGING_DB_URL` وEnvironment variable `SUPABASE_STAGING_PROJECT_REF`. لم ننشئ هذا الـEnvironment أو نضف أي secrets/vars.
+- لم ننشئ قاعدة Supabase، ولم ننشئ فرعًا مدفوعًا، ولم نشغّل الاستعادة، ولم نعدّل قاعدة الإنتاج أو Render.
+- Issue [#673](https://github.com/HVA09/ai-chat-app/issues/673) يتابع نفس حاجز السلامة؛ PR #675 هو التنفيذ الأولي لذلك العمل.
+
+### 21.1 أحدث نتائج PR #671 بعد تحديث سجل الاستمرارية
+
+- HEAD `b0d4dcc96b9b3a94121e190197c4fcd9b3ddae45`: CI [42506908727](https://github.com/HVA09/ai-chat-app/actions/runs/42506908727) نجح في الوظائف الخمس؛ Backend pytest `520 passed, 4 warnings`.
+- CodeQL [42506908725](https://github.com/HVA09/ai-chat-app/actions/runs/42506908725) نجح في Python وJavaScript/TypeScript.
+- PR #671 يبقى Open / Draft / غير مدمج.
