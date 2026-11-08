@@ -383,7 +383,7 @@
 - رسالة PostgreSQL duplicate-key على uq_scheduled_task_runs_task_scheduled_for تطابق الاختبار السلبي test_scheduled_run_slot_is_unique في ai-backend/tests/test_scheduled_tasks.py، الذي يتوقع صراحةً IntegrityError عند إدخال سجل مكرر. لا تعد الرسالة وحدها دليلًا على عطل إنتاجي.
 - لم تُسجل مراجعات GitHub أو review threads على #672 عند آخر تحقق. يظل Draft حتى مراجعة المالك وقبول Android/الملفات في بيئة الاستخدام؛ نجاح CI لا يساوي قبولًا إنتاجيًا.
 
-### 17.2 تحقق Render حي — قراءة فقط
+### 17.2 تحقق Render حي — لقطة تاريخية للقراءة فقط قبل تعديل Auto Deploy
 
 تم استخدام workspace المؤكد My Workspace (ID tea-dagsi5ou01pc73f2g470) دون أي تغييرات:
 
@@ -399,6 +399,7 @@
 - قائمة Render Postgres في مساحة العمل أعادت No Postgres instances found. هذا لا يعني فقد قاعدة الإنتاج: render.yaml يذكر أن PostgreSQL خارجي عبر Supabase وDATABASE_URL قيمة سرية خارج Blueprint. لا تختبر الإنتاج ولا تستنتج حالة Supabase من غياب Render Postgres.
 - Redis / Key Value ai-chat-redis موجود وحالته available على الخطة المجانية في Ohio؛ persistence mode off وسياسة الذاكرة allkeys_lru وفق الإعداد الحي.
 - قائمة أحداث Backend وFrontend أعادت [] ضمن نافذة الاستعلام الافتراضية (آخر 7 أيام). لا تثبت غياب حوادث أقدم.
+- **تنبيه زمني:** جدول Trigger أعلاه يسجل لقطة التدقيق السابقة لتعديل المالك في 2026-11-08؛ الحالة الحية الأحدث موثقة في القسم 18، وهو المرجع الحالي.
 - أداة قراءة الخدمة لم تعرض Environment Variables. لذلك لا تزال قيمة AI_PROVIDER الحية غير مؤكدة؛ لا تستنتج أنها OpenAI أو Gemini من render.yaml أو من إعداد قدّمه المستخدم سابقًا. لم تُقرأ أسرار أو مفاتيح.
 - لم يحدث Deploy أو Restart أو Blueprint sync أو تعديل Auto Deploy أو Environment Variables أو Database أو Redis. التحقق كله قراءة فقط.
 
@@ -406,7 +407,24 @@
 
 1. PR #672 لديه فحوص CI وCodeQL ناجحة على HEAD 0731d6e؛ أبقه Draft لحين قرار المالك وقبول Android/دورة الملفات. لا دمج تلقائي.
 2. PR #671 وثائقي؛ حدّث هذا السجل ثم تحقق من CI/CodeQL على آخر HEAD جديد قبل Ready.
-3. قرار مستقل مطلوب لمواءمة Auto Deploy الحي على Backend/Frontend مع checksPass. لا تطبق Blueprint ولا تغيّر الخدمة قبل موافقة صريحة بعد مراجعة أثر التغيير.
+3. تمت مواءمة Auto Deploy على Backend وFrontend مع checksPass بتغيير مباشر من المالك في Render؛ تفاصيل التحقق الحي في القسم 18. لم يتم استخدام Blueprint sync.
 4. راجع خدمة Preview Builder المنفصلة قبل أي Blueprint sync.
 5. استكمل Restore اختباريًا إلى قاعدة Supabase معزولة، ثم Android acceptance، دورة الملفات، وQueuePool/SSE staging. لا تشغيل على قاعدة الإنتاج.
 6. يبقى تجميد الميزات الجديدة ساريًا. لا تعديل على main أو خدمات الإنتاج دون موافقة منفصلة محددة.
+
+## 18. تحديث إعداد Auto Deploy بعد موافقة المالك — 2026-11-08
+
+نفّذ المالك تغيير إعداد Auto Deploy يدويًا من لوحة Render، ثم أُعيد التحقق عبر قراءة تفاصيل الخدمتين مباشرة. النتيجة الحية:
+
+| الخدمة | الفرع | Auto Deploy | Trigger الحي | آخر تحديث للإعداد |
+|---|---|---|---|---|
+| ai-chat-backend | main | yes | checksPass | 2026-11-08 16:49:58 UTC |
+| ai-chat-frontend | main | yes | checksPass | 2026-11-08 16:52:31 UTC |
+
+- تحقق مستقل: استجابة Render لكل خدمة تؤكد `autoDeploy=yes` و`autoDeployTrigger=checksPass` والفرع `main`.
+- هذا يطابق `render.yaml` على `main` بالنسبة إلى Backend وFrontend.
+- لم يتغير إعداد `ai-chat-preview-builder`، ولا تزال خارج نطاق هذا التعديل.
+- لم يحدث Deploy يدوي أو Restart أو Blueprint sync، ولم تتغير Environment Variables أو الأسرار أو قاعدة البيانات أو Redis.
+- الإعداد `After CI Checks Pass` يتحكم في توقيت Auto Deploy فقط؛ لا يعني أن PRs المفتوحة أو Draft تم دمجها أو نشرها.
+- PR #671 وPR #672 يظلان Draft وغير مدمجين إلى أن يراجع المالك ويصدر موافقة مستقلة على كل PR. لا تعتبر موافقة إعداد Render موافقة دمج.
+- فحوص PR #671 على HEAD السابق `aba81282d3ecb9da200cc8ad6478a61e09144e89` اكتملت بنجاح: CI run `42499577766` بجميع الوظائف الخمس، وCodeQL run `42499577781` بتحليلي Python وJavaScript/TypeScript. أي تحديث توثيقي جديد ينشئ HEAD جديدًا ويتطلب إعادة فحوصه.
