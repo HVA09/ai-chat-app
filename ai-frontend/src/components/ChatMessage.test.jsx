@@ -29,6 +29,10 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+async function openMessageActions(user) {
+  await user.click(screen.getByRole("button", { name: "Message actions" }));
+}
+
 describe("ChatMessage voice output", () => {
   it("speaks assistant text when read aloud is pressed", async () => {
     const user = userEvent.setup();
@@ -49,6 +53,7 @@ describe("ChatMessage voice output", () => {
 
     document.documentElement.lang = "en";
     render(<ChatMessage role="assistant" text="Hello from AI" time="10:00" />);
+    await openMessageActions(user);
 
     await user.click(screen.getByRole("button", { name: "Read aloud" }));
 
@@ -104,6 +109,7 @@ describe("ChatMessage feedback", () => {
         onFeedback={onFeedback}
       />
     );
+    await openMessageActions(user);
 
     expect(screen.getByRole("button", { name: "Helpful" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Not helpful" })).toBeInTheDocument();
@@ -126,6 +132,7 @@ describe("ChatMessage feedback", () => {
         onFeedback={onFeedback}
       />
     );
+    await openMessageActions(user);
 
     expect(screen.getByText("Feedback saved")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Not helpful" }));
@@ -144,13 +151,15 @@ describe("ChatMessage feedback", () => {
         onToggleBookmark={onToggleBookmark}
       />
     );
+    await openMessageActions(user);
 
     expect(screen.getByRole("button", { name: "Save message" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Save message" }));
     expect(onToggleBookmark).toHaveBeenCalled();
   });
 
-  it("shows remove-bookmark label when bookmarked", () => {
+  it("shows remove-bookmark label when bookmarked", async () => {
+    const user = userEvent.setup();
     render(
       <ChatMessage
         role="assistant"
@@ -160,6 +169,7 @@ describe("ChatMessage feedback", () => {
         onToggleBookmark={vi.fn()}
       />
     );
+    await openMessageActions(user);
 
     expect(screen.getByRole("button", { name: "Remove from bookmarks" })).toBeInTheDocument();
   });
@@ -236,13 +246,15 @@ describe("ChatMessage memory", () => {
         onToggleRemember={onToggleRemember}
       />
     );
+    await openMessageActions(user);
 
     expect(screen.getByRole("button", { name: "Save to memory" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Save to memory" }));
     expect(onToggleRemember).toHaveBeenCalled();
   });
 
-  it("shows remove-from-memory when the message is remembered", () => {
+  it("shows remove-from-memory when the message is remembered", async () => {
+    const user = userEvent.setup();
     render(
       <ChatMessage
         role="user"
@@ -253,11 +265,13 @@ describe("ChatMessage memory", () => {
         onToggleRemember={vi.fn()}
       />
     );
+    await openMessageActions(user);
 
     expect(screen.getByRole("button", { name: "Remove from memory" })).toBeInTheDocument();
   });
 
-  it("does not show memory controls for assistant messages", () => {
+  it("does not show memory controls for assistant messages", async () => {
+    const user = userEvent.setup();
     render(
       <ChatMessage
         role="assistant"
@@ -267,6 +281,7 @@ describe("ChatMessage memory", () => {
         onToggleRemember={vi.fn()}
       />
     );
+    await openMessageActions(user);
 
     expect(screen.queryByRole("button", { name: "Save to memory" })).not.toBeInTheDocument();
   });
@@ -286,12 +301,14 @@ describe("ChatMessage branching", () => {
         onBranch={onBranch}
       />
     );
+    await openMessageActions(user);
 
     await user.click(screen.getByRole("button", { name: "Branch conversation" }));
     expect(onBranch).toHaveBeenCalled();
   });
 
-  it("keeps message actions inside a wrapping toolbar on narrow layouts", () => {
+  it("keeps message actions inside a wrapping toolbar on narrow layouts", async () => {
+    const user = userEvent.setup();
     render(
       <ChatMessage
         role="user"
@@ -307,14 +324,57 @@ describe("ChatMessage branching", () => {
         onToggleRemember={vi.fn()}
       />
     );
+    await openMessageActions(user);
 
     const branchButton = screen.getByRole("button", { name: "Branch conversation" });
-    const actions = branchButton.closest(".chat-message-actions");
+    const actions = branchButton.closest(".chat-message-actions-panel");
 
     expect(actions).toBeInTheDocument();
     expect(actions).toHaveClass("flex-wrap", "min-w-0", "max-w-full");
     expect(actions.closest(".chat-message-header")).toHaveClass("flex-wrap");
     expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+  });
+});
+
+
+describe("ChatMessage contextual actions", () => {
+  it("keeps actions collapsed until the trigger is opened", async () => {
+    const user = userEvent.setup();
+    render(<ChatMessage role="assistant" text="A contextual answer" time="10:00" canRegenerate onRegenerate={vi.fn()} />);
+    const trigger = screen.getByRole("button", { name: "Message actions" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Read aloud" })).not.toBeInTheDocument();
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("group", { name: "Actions for this message" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Read aloud" })).toBeInTheDocument();
+  });
+
+  it("closes on Escape and restores focus to the trigger", async () => {
+    const user = userEvent.setup();
+    render(<ChatMessage role="assistant" text="Answer" time="10:00" />);
+    const trigger = screen.getByRole("button", { name: "Message actions" });
+    await user.click(trigger);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("group", { name: "Actions for this message" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("closes the panel after running an action", async () => {
+    const user = userEvent.setup();
+    const onEdit = vi.fn();
+    render(<ChatMessage role="user" text="Question" time="10:00" canEdit onEdit={onEdit} />);
+    const trigger = screen.getByRole("button", { name: "Message actions" });
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("group", { name: "Actions for this message" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("does not render a trigger when no actions are available", () => {
+    render(<ChatMessage role="user" text="A plain question" time="10:00" />);
+    expect(screen.queryByRole("button", { name: "Message actions" })).not.toBeInTheDocument();
   });
 });
