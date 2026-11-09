@@ -209,8 +209,7 @@ jobs:
           print("No application data was copied from production.")
           PY
 
-      - name: Audit ORM metadata drift against Stage (read-only; tracked in issue #680)
-        continue-on-error: true
+      - name: Verify ORM metadata matches the Stage schema
         run: python -m alembic check
 
       - name: Run read-only FastAPI database smoke against Stage
