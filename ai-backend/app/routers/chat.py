@@ -1960,7 +1960,6 @@ async def regenerate_chat_stream(
     history = [{"role": m.role.value, "content": m.content} for m in history_messages[-MAX_HISTORY_MESSAGES:]]
     ai_message, sources = await _augment_message(user_message.content, conversation, db)
 
-    conversation_id = conversation_id
     user_id = current_user.id
     workspace_id = conversation.workspace_id
     ai_model = conversation.ai_model
