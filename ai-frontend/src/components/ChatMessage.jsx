@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useId, useMemo, useState } from "react";
+import MessageActionsMenu from "./MessageActionsMenu";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useTranslation } from "react-i18next";
@@ -176,6 +177,12 @@ export default function ChatMessage({
     ? t("memory.remove")
     : t("memory.save");
 
+  const messageActionsLabel = document.documentElement.lang === "ar" ? "إجراءات الرسالة" : "Message actions";
+  const messageActionsPanelLabel = document.documentElement.lang === "ar" ? "أوامر هذه الرسالة" : "Actions for this message";
+  const hasMessageActions = isUser
+    ? Boolean((canEdit && onEdit) || onToggleBookmark || (canRemember && onToggleRemember) || (canDelete && onDelete) || (canBranch && onBranch))
+    : Boolean(text || onToggleBookmark || (canFeedback && onFeedback) || (canRegenerate && onRegenerate) || (canDelete && onDelete) || (canBranch && onBranch));
+
   const toggleSourcePreview = (sourceId) => {
     const normalizedId = String(sourceId || "").trim();
     if (!normalizedId) return;
@@ -248,133 +255,37 @@ export default function ChatMessage({
             <span>{time}</span>
           </div>
 
-          {isUser && (canEdit || canDelete || canBranch || canRemember) ? (
-            <div className="chat-message-actions flex min-w-0 max-w-full flex-wrap items-center gap-1">
-              {canEdit && onEdit ? (
-                <button
-                  type="button"
-                  onClick={onEdit}
-                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  aria-label={editLabel}
-                  title={editLabel}
-                >
-                  {editLabel}
-                </button>
-              ) : null}
-              {onToggleBookmark ? (
-                <button
-                  type="button"
-                  onClick={onToggleBookmark}
-                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  aria-label={bookmarkLabel}
-                  title={bookmarkLabel}
-                >
-                  {isBookmarked ? "★" : "☆"}
-                </button>
-              ) : null}
-              {canRemember && onToggleRemember ? (
-                <button
-                  type="button"
-                  onClick={onToggleRemember}
-                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  aria-label={rememberLabel}
-                  title={rememberLabel}
-                >
-                  {isRemembered ? "🧠✓" : "🧠"}
-                </button>
-              ) : null}
-              {canDelete && onDelete ? (
-                <button
-                  type="button"
-                  onClick={onDelete}
-                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  aria-label={deleteLabel}
-                  title={deleteLabel}
-                >
-                  {deleteLabel}
-                </button>
-              ) : null}
-              {canBranch && onBranch ? (
-                <button
-                  type="button"
-                  onClick={onBranch}
-                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-white/10 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  aria-label={branchLabel}
-                  title={branchLabel}
-                >
-                  {branchLabel}
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-
-          {!isUser && text ? (
-            <div className="chat-message-actions flex min-w-0 max-w-full flex-wrap items-center gap-1">
-              <button
-                type="button"
-                onClick={toggleVoiceOutput}
-                className="chat-voice-output-button rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                aria-label={speaking ? stopVoiceOutputLabel : voiceOutputLabel}
-                title={speaking ? stopVoiceOutputLabel : voiceOutputLabel}
-                aria-pressed={speaking}
-              >
-                {speaking ? "◼" : "🔊"}
-              </button>
-              <button
-                type="button"
-                onClick={copyMessage}
-                className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                aria-label={copyLabel}
-                title={copyLabel}
-              >
-                {copyLabel}
-              </button>
-              {onToggleBookmark ? (
-                <button
-                  type="button"
-                  onClick={onToggleBookmark}
-                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                  aria-label={bookmarkLabel}
-                  title={bookmarkLabel}
-                >
-                  {isBookmarked ? "★" : "☆"}
-                </button>
-              ) : null}
-              {canRegenerate && onRegenerate ? (
-                <button
-                  type="button"
-                  onClick={onRegenerate}
-                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                  aria-label={regenerateLabel}
-                  title={regenerateLabel}
-                >
-                  {regenerateLabel}
-                </button>
-              ) : null}
-              {canDelete && onDelete ? (
-                <button
-                  type="button"
-                  onClick={onDelete}
-                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                  aria-label={deleteLabel}
-                  title={deleteLabel}
-                >
-                  {deleteLabel}
-                </button>
-              ) : null}
-              {canBranch && onBranch ? (
-                <button
-                  type="button"
-                  onClick={onBranch}
-                  className="rounded-md px-2 py-1 text-xs font-medium transition hover:bg-slate-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-slate-400"
-                  aria-label={branchLabel}
-                  title={branchLabel}
-                >
-                  {branchLabel}
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+          <MessageActionsMenu hasActions={hasMessageActions} label={messageActionsLabel} panelLabel={messageActionsPanelLabel}>
+            {isUser ? (
+              <>
+                {canEdit && onEdit ? <button type="button" onClick={onEdit} aria-label={editLabel} title={editLabel}>{editLabel}</button> : null}
+                {onToggleBookmark ? <button type="button" onClick={onToggleBookmark} aria-label={bookmarkLabel} title={bookmarkLabel}>{isBookmarked ? "★" : "☆"}</button> : null}
+                {canRemember && onToggleRemember ? <button type="button" onClick={onToggleRemember} aria-label={rememberLabel} title={rememberLabel}>{isRemembered ? "🧠✓" : "🧠"}</button> : null}
+                {canDelete && onDelete ? <button type="button" onClick={onDelete} aria-label={deleteLabel} title={deleteLabel}>{deleteLabel}</button> : null}
+                {canBranch && onBranch ? <button type="button" onClick={onBranch} aria-label={branchLabel} title={branchLabel}>{branchLabel}</button> : null}
+              </>
+            ) : (
+              <>
+                {text ? (
+                  <>
+                    <button type="button" onClick={toggleVoiceOutput} className="chat-voice-output-button" aria-label={speaking ? stopVoiceOutputLabel : voiceOutputLabel} title={speaking ? stopVoiceOutputLabel : voiceOutputLabel} aria-pressed={speaking}>{speaking ? "◼" : "🔊"}</button>
+                    <button type="button" onClick={copyMessage} aria-label={copyLabel} title={copyLabel}>{copyLabel}</button>
+                  </>
+                ) : null}
+                {onToggleBookmark ? <button type="button" onClick={onToggleBookmark} aria-label={bookmarkLabel} title={bookmarkLabel}>{isBookmarked ? "★" : "☆"}</button> : null}
+                {canFeedback && onFeedback ? (
+                  <>
+                    <button type="button" onClick={() => onFeedback(1)} aria-label={goodFeedbackLabel} title={goodFeedbackLabel}>👍</button>
+                    <button type="button" onClick={() => onFeedback(-1)} aria-label={badFeedbackLabel} title={badFeedbackLabel}>👎</button>
+                    {feedback !== null ? <span className="ms-1 text-xs text-slate-400">{t("feedback.saved")}</span> : null}
+                  </>
+                ) : null}
+                {canRegenerate && onRegenerate ? <button type="button" onClick={onRegenerate} aria-label={regenerateLabel} title={regenerateLabel}>{regenerateLabel}</button> : null}
+                {canDelete && onDelete ? <button type="button" onClick={onDelete} aria-label={deleteLabel} title={deleteLabel}>{deleteLabel}</button> : null}
+                {canBranch && onBranch ? <button type="button" onClick={onBranch} aria-label={branchLabel} title={branchLabel}>{branchLabel}</button> : null}
+              </>
+            )}
+          </MessageActionsMenu>
         </div>
 
         <ReactMarkdown
@@ -398,32 +309,6 @@ export default function ChatMessage({
         >
           {citationText}
         </ReactMarkdown>
-
-        {!isUser && canFeedback ? (
-          <div className="mt-3 flex items-center gap-1 border-t border-slate-200 pt-2 dark:border-slate-700">
-            <button
-              type="button"
-              onClick={() => onFeedback?.(1)}
-              className={`rounded-lg px-2 py-1 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 ${feedback === 1 ? "bg-slate-100 dark:bg-slate-800" : ""}`}
-              aria-label={goodFeedbackLabel}
-              title={goodFeedbackLabel}
-            >
-              👍
-            </button>
-            <button
-              type="button"
-              onClick={() => onFeedback?.(-1)}
-              className={`rounded-lg px-2 py-1 text-sm transition hover:bg-slate-100 dark:hover:bg-slate-800 ${feedback === -1 ? "bg-slate-100 dark:bg-slate-800" : ""}`}
-              aria-label={badFeedbackLabel}
-              title={badFeedbackLabel}
-            >
-              👎
-            </button>
-            {feedback !== null ? (
-              <span className="ms-1 text-xs text-slate-400">{t("feedback.saved")}</span>
-            ) : null}
-          </div>
-        ) : null}
 
         {!isUser && sources.length > 0 ? (
           <div className="mt-3 border-t border-slate-200 pt-2 dark:border-slate-700">
