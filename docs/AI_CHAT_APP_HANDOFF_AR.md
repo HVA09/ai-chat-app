@@ -700,3 +700,52 @@
 - PR #671 قبل هذا التحديث التوثيقي على HEAD `9703d32a7f311a91272c7aef7dc4ffcdea8d79e8`: CI [42515582435](https://github.com/HVA09/ai-chat-app/actions/runs/42515582435) وCodeQL [42515582508](https://github.com/HVA09/ai-chat-app/actions/runs/42515582508) اكتمل كل منهما بنجاح في الوظائف المطلوبة.
 - PR #673 على HEAD `128bbf0e65c4781880988fad1c259524b975456b`: CodeQL [42516488976](https://github.com/HVA09/ai-chat-app/actions/runs/42516488976) نجح؛ Backend CI [42516489089](https://github.com/HVA09/ai-chat-app/actions/runs/42516489089) بقي في `pytest -q` عند آخر استعلام. Frontend وSDK وPreview Builder وProduction Compose نجحت.
 - هذا التحديث ينشئ Commit جديدًا في PR #671؛ يجب اعتماد CI وCodeQL على رأس التوثيق الجديد نفسه، ولا تُستخدم نتائج `9703d32` بديلًا عنه.
+
+
+## 26. تحقق متابعة حيّ وتحديث الاستمرارية — 2026-11-09
+
+> هذه لقطة متابعة جديدة بعد إعادة قراءة GitHub Actions وطلبات الدمج. لا تستبدل بها نتائج الرؤوس اللاحقة، ولا تعتبر نجاح الفحوص موافقة دمج.
+
+### 26.1 حالة الفرع الرئيسي والحماية
+
+- المستودع: `HVA09/ai-chat-app`، عام، والفرع الافتراضي `main`.
+- رأس `main) عند الفحص: `b690c149610a704f78d7f4ee9e6f377be7466703`.
+- `main` محمي؛ الدمج يتطلب Pull Request ونجاح سبعة فحوص إلزامية: `backend`, `frontend`, `sdk`, `preview-builder`, `production-compose`, `Analyze (python)`, `Analyze (javascript-typescript)`.
+- لا يوجد تغيير على `main` ضمن هذه المتابعة.
+
+### 26.2 حالة طلبات الدمج والفحوص المرتبطة بالرؤوس الدقيقة
+
+| PR | HEAD الذي تم فحصه | CI | CodeQL | الحالة والقاعدة |
+|---|---|---|---|---|
+| #664 — QueuePool/SSE | `97933094ab3573b24070234cad7aa148ce82af94` | [42504844968](https://github.com/HVA09/ai-chat-app/actions/runs/42504844968) نجح؛ Backend **525 passed, 4 warnings, 0 failures**، وبقية وظائف CI الأربع نجحت | [42504844942](https://github.com/HVA09/ai-chat-app/actions/runs/42504844942) نجح | Open / Draft / غير مدمج؛ base=`main` |
+| #671 — سجل الاستقرار | `3300ddd27f10bc2177ab616e2728a1aadfe3aa0f` | [42516941980](https://github.com/HVA09/ai-chat-app/actions/runs/42516941980) نجح؛ Backend **520 passed, 4 warnings, 0 failures**، والواجهة **486 tests** عبر 73 ملفًا والبناء نجح | [42516941981](https://github.com/HVA09/ai-chat-app/actions/runs/42516941981) نجح في التحليلين | Open / Draft / غير مدمج؛ base=`main` |
+| #672 — FilesPanel | `0731d6e5e895a080cc3ac66c31a69401d9946db6` | [42498986649](https://github.com/HVA09/ai-chat-app/actions/runs/42498986649) نجح؛ Backend **520 passed, 4 warnings, 0 failures**، والواجهة **489 tests** عبر 73 ملفًا والبناء نجح | [42498986713](https://github.com/HVA09/ai-chat-app/actions/runs/42498986713) نجح | Open / Draft / غير مدمج؛ base=`main` |
+| #673 — staging restore guard | `42ab14d53907ef5e90ab3425178392184d108a59` | [42520994813](https://github.com/HVA09/ai-chat-app/actions/runs/42520994813) نجح؛ Backend **548 passed, 4 warnings, 0 failures**، والواجهة **486 tests** عبر 73 ملفًا والبناء نجح | [42520994848](https://github.com/HVA09/ai-chat-app/actions/runs/42520994848) نجح في التحليلين | Open / Draft / غير مدمج؛ base=`main` |
+| #676 — تحرير DB قبل الانتظار الخارجي | `3c3af317ccf4d355eef0568639e4c459f9aa7178` | [42515943139](https://github.com/HVA09/ai-chat-app/actions/runs/42515943139) نجح؛ Backend **529 passed, 4 warnings, 0 failures**، والواجهة **486 tests** عبر 73 ملفًا والبناء نجح | [42515943145](https://github.com/HVA09/ai-chat-app/actions/runs/42515943145) نجح في التحليلين | Open / Draft / غير مدمج؛ base هو فرع #664 وليس `main` |
+
+- الطلب #675 مغلق دون دمج لأنه مكرر ومغطى في #673.
+- لم تظهر مراجعات بشرية مسجلة أو review threads على #664 و#671 و#672 و#673 و#676 وقت الفحص.
+- تحذيرات Backend الأربعة مذكورة في سجلات الاختبار، وتشمل تحذيرات deprecation وتحذير SQLAlchemy في fixture؛ لا تُصنف كفشل اختبار.
+
+### 26.3 ترتيب الدمج الذي يجب الحفاظ عليه
+
+1. لا يُدمج أي طلب لمجرد أن CI وCodeQL أخضران؛ تبقى موافقة الدمج مستقلة.
+2. #676 متراكم فوق #664؛ المقارنة بين قاعدة #664 ورأس #676 أعطت 32 commits ahead و0 behind. بعد قرار صريح بدمج #664 فقط، يُعاد توجيه #676 إلى `main` وتُعاد فحوصه على الرأس والقاعدة الجديدين.
+3. #672 يحتاج قبولًا يدويًا على Android لرفع ملفات متعددة وإغلاق لوحة الملفات والتنقل بين المحادثات ثم التأكد من دورة الملفات.
+4. #673 يبقى غير قابل للتشغيل إلى حين إعداد GitHub Environment `supabase-staging` مع required reviewers، وإضافة قيم staging المخصصة فقط، ومراجعة نسخة منقحة فعليًا تحت `database/staging-sanitized/`. اسم المسار وحده لا يثبت خلو البيانات من أسرار أو سجلات إنتاجية.
+5. #671 توثيق فقط؛ لا يغير كود التطبيق أو إعدادات الخدمات.
+
+### 26.4 بوابات الاستقرار التي لا تزال مفتوحة
+
+- اختبار ضغط QueuePool/SSE على بيئة staging معزولة وقياس checkout duration وqueue wait وtimeout count واكتمال SSE تحت التزامن. نجاح اختبارات CI لا يثبت زوال QueuePool exhaustion في Render تحت الحمل الحقيقي.
+- قبول Android الفعلي ودورة الملف كاملة بعد #672.
+- تجهيز واستعادة نسخة staging منقحة فقط بعد تكوين بيئة محمية ومراجعة بشرية؛ لم يُشغّل workflow.
+- مراجعة اختلاف Render الموثق بين `autoDeployTrigger=checksPass` في Backend/Frontend ووجود Preview Builder خارج `render.yaml`. لا تنفذ أي إعداد أو نشر ضمن هذا السجل.
+- بقاء AI_PROVIDER الفعلي في الإنتاج غير مؤكد؛ لم تُقرأ Environment Variables.
+- تبقى الميزات الجديدة مجمدة حتى إغلاق بوابات H/I ذات الأولوية.
+
+### 26.5 حدود ما تم فعله في هذه المتابعة
+
+- تمت قراءة حالة المستودع والفرع والحماية وبيانات الطلبات والرؤوس الدقيقة وسجلات CI وCodeQL وملفات التغييرات.
+- لم يتم دمج أو نشر أو Restart أو Blueprint sync أو تشغيل restore أو قراءة الأسرار أو تعديل متغيرات البيئة أو قواعد البيانات أو خدمات Render/Supabase.
+- هذا القسم تحديث توثيقي فقط. إنشاء commit جديد في PR #671 يغيّر HEAD؛ لذلك يجب تشغيل CI وCodeQL على commit الناتج نفسه، ولا يجوز اعتبار نتائج HEAD `3300ddd27f10bc2177ab616e2728a1aadfe3aa0f` دليلًا على نجاح commit التوثيق الجديد.
