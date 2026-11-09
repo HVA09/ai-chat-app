@@ -61,7 +61,10 @@ export default function MessageActionsMenu({ hasActions, label, panelLabel, chil
           className="chat-message-actions chat-message-actions-panel flex min-w-0 max-w-full flex-wrap items-center gap-1"
           role="group"
           aria-label={panelLabel}
-          onClickCapture={() => closeMenu(true)}
+          onClickCapture={(event) => {
+            if (event.target.closest?.("[data-keep-actions-open='true']")) return;
+            closeMenu(true);
+          }}
         >
           {children}
         </div>
