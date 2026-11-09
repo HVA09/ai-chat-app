@@ -323,6 +323,32 @@ describe("SidebarModern conversation pagination", () => {
     fireEvent.scroll(list);
     expect(onLoadMore).not.toHaveBeenCalled();
   });
+
+  it("allows another page after the previous load completes", () => {
+    const onLoadMore = vi.fn();
+    const props = {
+      conversations: [pagingConversation],
+      hasMore: true,
+      onLoadMore,
+    };
+    const { container, rerender } = render(<SidebarModern {...props} />);
+    const list = container.querySelector(".modern-conversation-scroll");
+
+    Object.defineProperties(list, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 400 },
+      scrollTop: { configurable: true, writable: true, value: 700 },
+    });
+
+    fireEvent.scroll(list);
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+
+    rerender(<SidebarModern {...props} loadingMore />);
+    rerender(<SidebarModern {...props} loadingMore={false} />);
+
+    fireEvent.scroll(list);
+    expect(onLoadMore).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("SidebarModern mobile navigation", () => {
