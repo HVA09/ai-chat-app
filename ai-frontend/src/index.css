@@ -1981,6 +1981,8 @@ html.dark .app-startup-screen .app-startup-hint {
 }
 @media (max-width: 767px) {
   .modern-sidebar {
+    width: min(88vw, 320px);
+    min-width: min(88vw, 320px);
     flex: 0 0 min(88vw, 320px);
   }
   .modern-conversation-panel {
