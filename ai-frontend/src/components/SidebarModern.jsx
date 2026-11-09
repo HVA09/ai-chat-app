@@ -111,6 +111,12 @@ export default function SidebarModern({
   const contextTriggerRef = useRef(null);
   const importRef = useRef(null);
   const projectImportRef = useRef(null);
+  const conversationScrollRef = useRef(null);
+  const loadMoreRequestedRef = useRef(false);
+
+  useEffect(() => {
+    if (!loadingMore) loadMoreRequestedRef.current = false;
+  }, [loadingMore]);
 
   useEffect(() => {
     if (contextOpenId === null) return undefined;
@@ -232,6 +238,25 @@ export default function SidebarModern({
 
   const toggleSection = (name) => setOpenSection((current) => (current === name ? null : name));
 
+  const handleConversationScroll = () => {
+    const element = conversationScrollRef.current;
+    if (
+      !element ||
+      !hasMore ||
+      loading ||
+      loadingMore ||
+      loadMoreRequestedRef.current
+    ) {
+      return;
+    }
+
+    const remaining = element.scrollHeight - element.scrollTop - element.clientHeight;
+    if (remaining > 180) return;
+
+    loadMoreRequestedRef.current = true;
+    void onLoadMore();
+  };
+
   const sidebarTitle = showTrash
     ? t("sidebar.trashTitle")
     : showArchived
@@ -327,7 +352,13 @@ export default function SidebarModern({
               <button type="button" onClick={onNewChat}>{t("newChat")}</button>
             </div>
           ) : (
-            <div className="modern-conversation-scroll">
+            <div
+              ref={conversationScrollRef}
+              onScroll={handleConversationScroll}
+              className="modern-conversation-scroll"
+              role="region"
+              aria-label={document.documentElement.lang === "ar" ? "قائمة المحادثات" : "Conversation list"}
+            >
               {recent.map((item) => {
                 const active = Number(item.id) === Number(selectedConversationId);
                 return (
