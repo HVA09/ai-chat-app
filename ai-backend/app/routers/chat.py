@@ -1942,7 +1942,7 @@ async def regenerate_chat_stream(
 
     messages = (
         db.query(Message)
-        .filter(Message.conversation_id == conversation.id)
+        .filter(Message.conversation_id == conversation_id)
         .order_by(Message.created_at.asc(), Message.id.asc())
         .all()
     )
@@ -1960,11 +1960,21 @@ async def regenerate_chat_stream(
     history = [{"role": m.role.value, "content": m.content} for m in history_messages[-MAX_HISTORY_MESSAGES:]]
     ai_message, sources = await _augment_message(user_message.content, conversation, db)
 
+    conversation_id = conversation_id
+    user_id = current_user.id
+    workspace_id = conversation.workspace_id
+    ai_model = conversation.ai_model
+    previous_assistant_id = previous_assistant.id if previous_assistant is not None else None
+
+    # Release the read-only transaction before waiting on the external AI stream.
+    # The captured scalar values are used below; rows are reloaded when saving.
+    db.rollback()
+
     async def event_generator():
-        yield f"event: conversation\ndata: {conversation.id}\n\n"
+        yield f"event: conversation\ndata: {conversation_id}\n\n"
         yield f"event: sources\ndata: {json.dumps(sources, ensure_ascii=False)}\n\n"
         full_reply = ""
-        stream_iterator = stream_ai_reply(ai_message, history, conversation.ai_model).__aiter__()
+        stream_iterator = stream_ai_reply(ai_message, history, ai_model).__aiter__()
         try:
             while True:
                 try:
@@ -1977,21 +1987,21 @@ async def regenerate_chat_stream(
                 except TimeoutError:
                     logger.warning(
                         "انتهت مهلة خمول إعادة التوليد لمحادثة %s بعد %.1f ثانية",
-                        conversation.id,
+                        conversation_id,
                         settings.AI_STREAM_IDLE_TIMEOUT_SECONDS,
                     )
                     yield "event: error\ndata: انتهت مهلة بث الرد بسبب عدم وصول بيانات جديدة\n\n"
                     return
 
                 if await request.is_disconnected():
-                    logger.info("العميل أغلق إعادة توليد المحادثة %s أثناء التوليد", conversation.id)
+                    logger.info("العميل أغلق إعادة توليد المحادثة %s أثناء التوليد", conversation_id)
                     return
 
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
         except Exception as exc:
-            logger.exception("خطأ أثناء إعادة توليد الرد لمحادثة %s", conversation.id)
+            logger.exception("خطأ أثناء إعادة توليد الرد لمحادثة %s", conversation_id)
             message = _chat_stream_error_message(
                 exc,
                 "حدث خطأ أثناء إعادة توليد الرد",
@@ -2006,27 +2016,35 @@ async def regenerate_chat_stream(
                 try:
                     await close_iterator()
                 except Exception:
-                    logger.debug("تعذر إغلاق مولد إعادة التوليد لمحادثة %s", conversation.id, exc_info=True)
+                    logger.debug("تعذر إغلاق مولد إعادة التوليد لمحادثة %s", conversation_id, exc_info=True)
 
         if await request.is_disconnected():
-            logger.info("العميل أغلق إعادة توليد المحادثة %s قبل حفظ الرد", conversation.id)
+            logger.info("العميل أغلق إعادة توليد المحادثة %s قبل حفظ الرد", conversation_id)
             return
 
         try:
-            if previous_assistant is not None:
-                db.delete(previous_assistant)
+            if previous_assistant_id is not None:
+                previous_row = db.get(Message, previous_assistant_id)
+                if previous_row is not None:
+                    db.delete(previous_row)
             db.add(
                 Message(
-                    conversation_id=conversation.id,
+                    conversation_id=conversation_id,
                     role=MessageRole.assistant,
                     content=full_reply,
                     sources=sources or None,
                 )
             )
-            db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/regenerate/stream"))
+            db.add(
+                UsageLog(
+                    user_id=user_id,
+                    workspace_id=workspace_id,
+                    endpoint="/chat/regenerate/stream",
+                )
+            )
             db.commit()
         except Exception:
-            logger.exception("فشل حفظ الرد المعاد توليده لمحادثة %s", conversation.id)
+            logger.exception("فشل حفظ الرد المعاد توليده لمحادثة %s", conversation_id)
             db.rollback()
             yield "event: error\ndata: تعذر حفظ الرد الجديد\n\n"
             return
@@ -2060,7 +2078,7 @@ async def edit_chat_stream(
 
     messages = (
         db.query(Message)
-        .filter(Message.conversation_id == conversation.id)
+        .filter(Message.conversation_id == conversation_id)
         .order_by(Message.created_at.asc(), Message.id.asc())
         .all()
     )
@@ -2074,11 +2092,21 @@ async def edit_chat_stream(
     history = [{"role": m.role.value, "content": m.content} for m in history_messages[-MAX_HISTORY_MESSAGES:]]
     ai_message, sources = await _augment_message(payload.message, conversation, db)
 
+    user_id = current_user.id
+    workspace_id = conversation.workspace_id
+    ai_model = conversation.ai_model
+    target_message_id = target_message.id
+    message_ids_to_delete = [message.id for message in messages[target_position + 1 :]]
+
+    # Return the checked-out connection while the provider generates the response.
+    # Reload the affected rows only when the final streamed reply is ready to save.
+    db.rollback()
+
     async def event_generator():
-        yield f"event: conversation\ndata: {conversation.id}\n\n"
+        yield f"event: conversation\ndata: {conversation_id}\n\n"
         yield f"event: sources\ndata: {json.dumps(sources, ensure_ascii=False)}\n\n"
         full_reply = ""
-        stream_iterator = stream_ai_reply(ai_message, history, conversation.ai_model).__aiter__()
+        stream_iterator = stream_ai_reply(ai_message, history, ai_model).__aiter__()
         try:
             while True:
                 try:
@@ -2091,21 +2119,21 @@ async def edit_chat_stream(
                 except TimeoutError:
                     logger.warning(
                         "انتهت مهلة خمول تعديل الرسالة لمحادثة %s بعد %.1f ثانية",
-                        conversation.id,
+                        conversation_id,
                         settings.AI_STREAM_IDLE_TIMEOUT_SECONDS,
                     )
                     yield "event: error\ndata: انتهت مهلة بث الرد بسبب عدم وصول بيانات جديدة\n\n"
                     return
 
                 if await request.is_disconnected():
-                    logger.info("العميل أغلق تعديل المحادثة %s أثناء التوليد", conversation.id)
+                    logger.info("العميل أغلق تعديل المحادثة %s أثناء التوليد", conversation_id)
                     return
 
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
         except Exception as exc:
-            logger.exception("خطأ أثناء تعديل رسالة لمحادثة %s", conversation.id)
+            logger.exception("خطأ أثناء تعديل رسالة لمحادثة %s", conversation_id)
             message = _chat_stream_error_message(
                 exc,
                 "حدث خطأ أثناء تعديل الرسالة",
@@ -2120,32 +2148,48 @@ async def edit_chat_stream(
                 try:
                     await close_iterator()
                 except Exception:
-                    logger.debug("تعذر إغلاق مولد تعديل الرسالة لمحادثة %s", conversation.id, exc_info=True)
+                    logger.debug("تعذر إغلاق مولد تعديل الرسالة لمحادثة %s", conversation_id, exc_info=True)
 
         if await request.is_disconnected():
-            logger.info("العميل أغلق تعديل المحادثة %s قبل حفظ الرد", conversation.id)
+            logger.info("العميل أغلق تعديل المحادثة %s قبل حفظ الرد", conversation_id)
             return
 
         try:
-            for message in messages[target_position + 1:]:
-                db.delete(message)
+            target_row = db.get(Message, target_message_id)
+            if target_row is None:
+                raise RuntimeError("The message being edited no longer exists.")
 
-            target_message.content = payload.message
+            for message_id in message_ids_to_delete:
+                message_to_delete = db.get(Message, message_id)
+                if message_to_delete is not None:
+                    db.delete(message_to_delete)
+
+            target_row.content = payload.message
             if payload.message_index == 1:
-                conversation.title = payload.message[:50]
+                conversation_row = db.get(Conversation, conversation_id)
+                if conversation_row is None:
+                    raise RuntimeError("The conversation no longer exists.")
+                conversation_row.title = payload.message[:50]
 
             db.add(
                 Message(
-                    conversation_id=conversation.id,
+                    conversation_id=conversation_id,
                     role=MessageRole.assistant,
                     content=full_reply,
                     sources=sources or None,
                 )
             )
-            db.add(UsageLog(user_id=current_user.id, workspace_id=conversation.workspace_id, endpoint="/chat/edit/stream", model=conversation.ai_model))
+            db.add(
+                UsageLog(
+                    user_id=user_id,
+                    workspace_id=workspace_id,
+                    endpoint="/chat/edit/stream",
+                    model=ai_model,
+                )
+            )
             db.commit()
         except Exception:
-            logger.exception("فشل حفظ الرسالة المعدلة لمحادثة %s", conversation.id)
+            logger.exception("فشل حفظ الرسالة المعدلة لمحادثة %s", conversation_id)
             db.rollback()
             yield "event: error\ndata: تعذر حفظ التعديل\n\n"
             return
