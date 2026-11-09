@@ -63,10 +63,12 @@ describe("ChatMessage voice output", () => {
     expect(speak.mock.calls[0][0].lang).toBe("en-US");
     const stopButton = screen.getByRole("button", { name: "Stop reading" });
     expect(stopButton).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Actions for this message" })).toBeInTheDocument();
 
     await user.click(stopButton);
     expect(cancel).toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Read aloud" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Actions for this message" })).toBeInTheDocument();
   });
 });
 
@@ -382,5 +384,36 @@ describe("ChatMessage contextual actions", () => {
   it("does not render a trigger when no actions are available", () => {
     render(<ChatMessage role="user" text="A plain question" time="10:00" />);
     expect(screen.queryByRole("button", { name: "Message actions" })).not.toBeInTheDocument();
+  });
+});
+
+describe("ChatMessage contextual actions dismissal and keyboard", () => {
+  it("closes when the user clicks outside the message actions panel", async () => {
+    const user = userEvent.setup();
+    render(<ChatMessage role="assistant" text="Answer" time="10:00" />);
+    const trigger = screen.getByRole("button", { name: "Message actions" });
+
+    await user.click(trigger);
+    expect(screen.getByRole("group", { name: "Actions for this message" })).toBeInTheDocument();
+
+    await user.click(document.body);
+    expect(screen.queryByRole("group", { name: "Actions for this message" })).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("opens with Enter and Space from the trigger keyboard focus", async () => {
+    const user = userEvent.setup();
+    render(<ChatMessage role="assistant" text="Answer" time="10:00" />);
+    const trigger = screen.getByRole("button", { name: "Message actions" });
+
+    trigger.focus();
+    expect(trigger).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("group", { name: "Actions for this message" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(trigger).toHaveFocus();
+    await user.keyboard(" ");
+    expect(screen.getByRole("group", { name: "Actions for this message" })).toBeInTheDocument();
   });
 });
