@@ -268,7 +268,7 @@ export default function ChatMessage({
               <>
                 {text ? (
                   <>
-                    <button type="button" onClick={toggleVoiceOutput} className="chat-voice-output-button" aria-label={speaking ? stopVoiceOutputLabel : voiceOutputLabel} title={speaking ? stopVoiceOutputLabel : voiceOutputLabel} aria-pressed={speaking}>{speaking ? "◼" : "🔊"}</button>
+                    <button type="button" onClick={toggleVoiceOutput} data-keep-actions-open="true" className="chat-voice-output-button" aria-label={speaking ? stopVoiceOutputLabel : voiceOutputLabel} title={speaking ? stopVoiceOutputLabel : voiceOutputLabel} aria-pressed={speaking}>{speaking ? "◼" : "🔊"}</button>
                     <button type="button" onClick={copyMessage} aria-label={copyLabel} title={copyLabel}>{copyLabel}</button>
                   </>
                 ) : null}
