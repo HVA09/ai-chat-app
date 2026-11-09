@@ -40,8 +40,8 @@ class ConversationFolder(Base):
         String(20), nullable=False, default="slate", server_default="slate"
     )
     sort_order: Mapped[int] = mapped_column(default=0, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=True
     )
 
     owner = relationship("User", back_populates="conversation_folders")
