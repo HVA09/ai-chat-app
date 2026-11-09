@@ -1,7 +1,7 @@
 """نموذج المشاريع داخل مساحة العمل لتنظيم المحادثات."""
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -12,6 +12,12 @@ class WorkspaceProject(Base):
     __tablename__ = "workspace_projects"
     __table_args__ = (
         UniqueConstraint("workspace_id", "name", name="uq_workspace_projects_workspace_name"),
+        Index(
+            "uq_workspace_projects_workspace_lower_name",
+            "workspace_id",
+            text("lower(name)"),
+            unique=True,
+        ),
         Index("ix_workspace_projects_workspace_id_created_at", "workspace_id", "created_at"),
         Index("ix_workspace_projects_owner_id", "owner_id"),
     )

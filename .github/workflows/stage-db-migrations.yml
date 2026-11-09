@@ -1,0 +1,237 @@
+name: Stage database migrations
+
+on:
+  push:
+    branches:
+      - 'stage/isolated-db-migrations'
+    paths:
+      - '.github/workflows/stage-db-migrations.yml'
+      - 'ai-backend/migrations/**'
+      - 'ai-backend/app/models/**'
+      - 'ai-backend/app/config.py'
+      - 'ai-backend/scripts/**'
+      - 'ai-backend/requirements.txt'
+  workflow_dispatch:
+    inputs:
+      confirm_stage_only:
+        description: Confirm this run targets ai-chat-stage-db only
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-chat-stage-db-migrations
+  cancel-in-progress: false
+
+jobs:
+  migrate-stage:
+    if: ${{ github.repository == 'HVA09/ai-chat-app' && github.ref == 'refs/heads/stage/isolated-db-migrations' && (github.event_name == 'push' || inputs.confirm_stage_only == true) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: ai-backend
+    env:
+      DATABASE_URL: ${{ secrets.STAGE_DATABASE_URL }}
+      ENVIRONMENT: development
+      JWT_SECRET_KEY: stage-migration-only-placeholder
+      AI_API_KEY: stage-migration-only-placeholder
+
+    steps:
+      - name: Checkout the migration branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: ai-backend/requirements.txt
+
+      - name: Validate the Stage-only database URL
+        run: python scripts/validate_stage_database_url.py
+
+      - name: Install backend dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Verify the Alembic graph has one expected head
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import subprocess
+
+          result = subprocess.run(
+              ["python", "-m", "alembic", "heads"],
+              check=True,
+              capture_output=True,
+              text=True,
+          )
+          lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+          expected = "0081_harden_all_public_tables"
+          if len(lines) != 1 or not lines[0].startswith(expected + " "):
+              raise SystemExit(
+                  "Expected exactly one Alembic head named "
+                  f"{expected}; found: {lines!r}"
+              )
+          print(f"Alembic graph validated: {lines[0]}")
+          PY
+
+      - name: Confirm Stage identity and safe starting state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+
+          engine = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+          with engine.connect() as connection:
+              identity = connection.execute(text("""
+                  SELECT current_database() AS db_name,
+                         current_user AS db_user,
+                         current_setting('server_version_num')::integer AS version_num
+              """)).mappings().one()
+              if identity["db_name"] != "postgres":
+                  raise SystemExit("Refusing to migrate a database other than postgres.")
+
+              role = connection.execute(text("""
+                  SELECT rolsuper OR rolbypassrls AS can_bypass_rls
+                  FROM pg_roles WHERE rolname = current_user
+              """)).scalar_one_or_none()
+              if not role:
+                  raise SystemExit(
+                      "The Stage migration connection must use a privileged "
+                      "backend role with BYPASSRLS, matching the production access model."
+                  )
+
+              has_version_table = connection.execute(text(
+                  "SELECT to_regclass('public.alembic_version') IS NOT NULL"
+              )).scalar_one()
+
+              if has_version_table:
+                  revisions = list(connection.execute(text(
+                      "SELECT version_num FROM public.alembic_version ORDER BY version_num"
+                  )).scalars())
+                  if revisions != ["0081_harden_all_public_tables"]:
+                      raise SystemExit(
+                          "Stage contains an unexpected Alembic state; refusing to "
+                          f"continue automatically: {revisions!r}"
+                      )
+                  skip = "true"
+                  print("Stage is already at the expected Alembic head; migration is idempotently skipped.")
+              else:
+                  existing = list(connection.execute(text("""
+                      SELECT tablename FROM pg_tables
+                      WHERE schemaname = 'public'
+                      ORDER BY tablename
+                  """)).scalars())
+                  if existing:
+                      raise SystemExit(
+                          "Fresh Stage preflight expected an empty public schema; "
+                          f"found existing tables: {existing!r}"
+                      )
+                  skip = "false"
+                  print("Fresh Stage database confirmed; no existing public tables.")
+
+              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+                  env_file.write(f"SKIP_STAGE_MIGRATION={skip}\n")
+
+          print(
+              "Stage identity validated: database=postgres, "
+              f"PostgreSQL major={identity['version_num'] // 10000}; "
+              "database URL was not printed."
+          )
+          PY
+
+      - name: Apply Alembic migrations to Stage only
+        if: env.SKIP_STAGE_MIGRATION != 'true'
+        run: python -m alembic upgrade head
+
+      - name: Verify schema, vector, and RLS baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+
+          expected_head = "0081_harden_all_public_tables"
+          required_tables = {
+              "users", "conversations", "messages", "file_attachments",
+              "file_chunks", "workspaces", "agent_jobs", "oauth_connections",
+              "project_files", "project_preview_artifacts",
+          }
+          engine = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+          with engine.connect() as connection:
+              versions = list(connection.execute(text(
+                  "SELECT version_num FROM public.alembic_version"
+              )).scalars())
+              if versions != [expected_head]:
+                  raise SystemExit(f"Expected Alembic head {expected_head}; found {versions!r}")
+
+              tables = connection.execute(text("""
+                  SELECT c.relname AS table_name, c.relrowsecurity AS rls_enabled
+                  FROM pg_class AS c
+                  JOIN pg_namespace AS n ON n.oid = c.relnamespace
+                  WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+                  ORDER BY c.relname
+              """)).mappings().all()
+              table_names = {row["table_name"] for row in tables}
+              missing = sorted(required_tables - table_names)
+              if missing:
+                  raise SystemExit(f"Required application tables are missing: {missing!r}")
+
+              rls_off = sorted(row["table_name"] for row in tables if not row["rls_enabled"])
+              if rls_off:
+                  raise SystemExit(
+                      "Stage does not match the production RLS baseline; "
+                      f"RLS is disabled on: {rls_off!r}"
+                  )
+
+              vector = connection.execute(text("""
+                  SELECT EXISTS (
+                      SELECT 1 FROM pg_extension WHERE extname = 'vector'
+                  )
+              """)).scalar_one()
+              if not vector:
+                  raise SystemExit("The pgvector extension was not installed by the migrations.")
+
+              policy_count = connection.execute(text(
+                  "SELECT count(*) FROM pg_policies WHERE schemaname = 'public'"
+              )).scalar_one()
+
+          print(f"Stage migration verified: {len(table_names)} public tables, RLS enabled on all.")
+          print(f"pgvector installed: yes; public RLS policy count: {policy_count}.")
+          print("No application data was copied from production.")
+          PY
+
+      - name: Verify ORM metadata matches the Stage schema
+        run: python -m alembic check
+
+      - name: Run read-only FastAPI database smoke against Stage
+        run: |
+          python - <<'PY'
+          from fastapi.testclient import TestClient
+          from app.main import app
+
+          with TestClient(app) as client:
+              response = client.get("/health")
+
+          if response.status_code != 200:
+              raise SystemExit(
+                  f"Stage FastAPI health endpoint returned HTTP {response.status_code}."
+              )
+
+          payload = response.json()
+          if payload.get("status") != "ok" or payload.get("database") != "ok":
+              raise SystemExit(
+                  "Stage FastAPI health check did not confirm database connectivity."
+              )
+
+          print("FastAPI /health passed using the Stage DATABASE_URL.")
+          print("The endpoint executed a read-only SELECT 1; no application rows were written.")
+          PY

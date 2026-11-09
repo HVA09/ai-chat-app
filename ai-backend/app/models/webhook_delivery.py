@@ -17,6 +17,7 @@ class WebhookDelivery(Base):
             "event_id",
             name="uq_webhook_deliveries_endpoint_event",
         ),
+        Index("ix_webhook_deliveries_endpoint_id", "webhook_endpoint_id"),
         Index("ix_webhook_deliveries_endpoint_created_at", "webhook_endpoint_id", "created_at"),
         Index("ix_webhook_deliveries_status_next_attempt_at", "status", "next_attempt_at"),
     )
@@ -25,7 +26,6 @@ class WebhookDelivery(Base):
     webhook_endpoint_id: Mapped[int] = mapped_column(
         ForeignKey("webhook_endpoints.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )
     event_id: Mapped[str] = mapped_column(String(64), nullable=False)
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)

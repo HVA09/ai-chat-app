@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -13,11 +13,10 @@ class WorkspaceRBACRole(Base):
     __tablename__ = "workspace_rbac_roles"
     __table_args__ = (
         Index("ix_workspace_rbac_roles_workspace_id", "workspace_id"),
-        Index(
-            "ix_workspace_rbac_roles_workspace_name",
+        UniqueConstraint(
             "workspace_id",
             "name",
-            unique=True,
+            name="uq_workspace_rbac_roles_workspace_name",
         ),
     )
 
