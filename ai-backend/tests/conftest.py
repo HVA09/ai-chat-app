@@ -125,7 +125,17 @@ def reset_test_security_state(monkeypatch):
 @pytest.fixture()
 def client(db_session):
     def override_get_db():
-        yield db_session
+        # Mirror production's request-scoped Session while keeping each test
+        # inside its outer transaction. Each request gets its own SAVEPOINT so
+        # route-level rollback() cannot erase the test's setup data.
+        request_session = TestingSessionLocal(
+            bind=db_session.connection(),
+            join_transaction_mode="create_savepoint",
+        )
+        try:
+            yield request_session
+        finally:
+            request_session.close()
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:
