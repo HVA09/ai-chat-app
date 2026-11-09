@@ -92,7 +92,7 @@ def test_edit_releases_read_transaction_before_ai_stream(
     headers, conversation_id = _register_and_create_conversation(
         client, "stream-edit-release@example.com"
     )
-    rollback_calls = _track_session_rollback(db_session, monkeypatch)
+    rollback_calls = _track_session_rollback(monkeypatch)
 
     async def fake_stream(*_args, **_kwargs):
         assert rollback_calls, "DB transaction must be released before AI streaming starts"
