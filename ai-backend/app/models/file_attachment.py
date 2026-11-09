@@ -12,7 +12,10 @@ from app.database import Base
 
 class FileAttachment(Base):
     __tablename__ = "file_attachments"
-    __table_args__ = (Index("ix_file_attachments_user_id_created_at", "user_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_file_attachments_user_id_created_at", "user_id", "created_at"),
+        Index("ix_file_attachments_stored_filename", "stored_filename", unique=True),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(
@@ -25,7 +28,7 @@ class FileAttachment(Base):
         ForeignKey("workspace_projects.id", ondelete="SET NULL"), nullable=True, index=True
     )
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    stored_filename: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    stored_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     object_key: Mapped[str | None] = mapped_column(String(512), unique=True, nullable=True, index=True)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
