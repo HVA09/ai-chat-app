@@ -37,5 +37,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    for table in reversed(_TABLES):
-        op.execute(f'ALTER TABLE "{table}" DISABLE ROW LEVEL SECURITY')
+    # RLS is a security boundary, not reversible application state.
+    # Keep it enabled even when the schema revision is downgraded.
+    # This mirrors migration 0081's monotonic security behavior.
+    pass
