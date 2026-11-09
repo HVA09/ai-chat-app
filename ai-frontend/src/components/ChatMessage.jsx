@@ -115,7 +115,7 @@ export default function ChatMessage({
   onToggleRemember,
 }) {
   const isUser = role === "user";
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [expandedSourceIds, setExpandedSourceIds] = useState(() => new Set());
@@ -152,11 +152,13 @@ export default function ChatMessage({
     }
   };
 
-  const editLabel = document.documentElement.lang === "ar" ? "تعديل" : "Edit";
+  const actionLanguage = i18n.resolvedLanguage || i18n.language || "ar";
+  const isArabic = actionLanguage.toLowerCase().startsWith("ar");
+  const editLabel = isArabic ? "تعديل" : "Edit";
   const voiceOutputLabel = t("tools.voiceOutput");
   const stopVoiceOutputLabel = t("tools.stopVoiceOutput");
-  const deleteLabel = document.documentElement.lang === "ar" ? "حذف" : "Delete";
-  const copyLabel = document.documentElement.lang === "ar"
+  const deleteLabel = isArabic ? "حذف" : "Delete";
+  const copyLabel = isArabic
     ? copied
       ? "تم النسخ"
       : "نسخ"
@@ -164,7 +166,7 @@ export default function ChatMessage({
       ? "Copied"
       : "Copy";
 
-  const regenerateLabel = document.documentElement.lang === "ar"
+  const regenerateLabel = isArabic
     ? "إعادة التوليد"
     : "Regenerate";
   const branchLabel = t("tools.branchConversation");
@@ -177,8 +179,8 @@ export default function ChatMessage({
     ? t("memory.remove")
     : t("memory.save");
 
-  const messageActionsLabel = document.documentElement.lang === "ar" ? "إجراءات الرسالة" : "Message actions";
-  const messageActionsPanelLabel = document.documentElement.lang === "ar" ? "أوامر هذه الرسالة" : "Actions for this message";
+  const messageActionsLabel = isArabic ? "إجراءات الرسالة" : "Message actions";
+  const messageActionsPanelLabel = isArabic ? "أوامر هذه الرسالة" : "Actions for this message";
   const hasMessageActions = isUser
     ? Boolean((canEdit && onEdit) || onToggleBookmark || (canRemember && onToggleRemember) || (canDelete && onDelete) || (canBranch && onBranch))
     : Boolean(text || onToggleBookmark || (canFeedback && onFeedback) || (canRegenerate && onRegenerate) || (canDelete && onDelete) || (canBranch && onBranch));

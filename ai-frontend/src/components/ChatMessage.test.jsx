@@ -3,6 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import ChatMessage from "./ChatMessage";
 
+const { mockI18n } = vi.hoisted(() => ({
+  mockI18n: { language: "en" },
+}));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key) =>
@@ -26,6 +29,7 @@ vi.mock("react-i18next", () => ({
         "app.voiceOutputNotSupported": "Voice output is not supported in this browser",
         "app.voiceOutputError": "Couldn't read the message aloud",
       })[key] ?? key,
+    i18n: mockI18n,
   }),
 }));
 
@@ -415,5 +419,38 @@ describe("ChatMessage contextual actions dismissal and keyboard", () => {
     expect(trigger).toHaveFocus();
     await user.keyboard(" ");
     expect(screen.getByRole("group", { name: "Actions for this message" })).toBeInTheDocument();
+  });
+});
+
+describe("ChatMessage action labels follow the active i18n language", () => {
+  it("updates action labels when i18n changes before the document language attribute", async () => {
+    const user = userEvent.setup();
+    mockI18n.language = "en";
+    document.documentElement.lang = "en";
+
+    const props = {
+      role: "user",
+      text: "A sample question",
+      time: "10:00",
+      canEdit: true,
+      onEdit: vi.fn(),
+      canDelete: true,
+      onDelete: vi.fn(),
+    };
+    const { rerender } = render(<ChatMessage {...props} />);
+
+    await openMessageActions(user);
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+
+    mockI18n.language = "ar";
+    rerender(<ChatMessage {...props} />);
+
+    // i18n has changed, while useDirection's document attribute has not yet updated.
+    expect(document.documentElement.lang).toBe("en");
+    expect(screen.getByRole("button", { name: "إجراءات الرسالة" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("group", { name: "أوامر هذه الرسالة" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "تعديل" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "حذف" })).toBeInTheDocument();
   });
 });
