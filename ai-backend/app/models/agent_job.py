@@ -35,10 +35,10 @@ class AgentJob(Base):
         Boolean, nullable=False, default=False, server_default="false", index=True
     )
     pause_requested: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false", index=True
+        Boolean, nullable=False, default=False, server_default="false"
     )
     workflow_phase: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="queued", server_default="queued", index=True
+        String(20), nullable=False, default="queued", server_default="queued"
     )
     retry_count: Mapped[int] = mapped_column(
         nullable=False, default=0, server_default="0"
@@ -52,7 +52,7 @@ class AgentJob(Base):
         String(255), nullable=True, unique=True, index=True
     )
     agent_version: Mapped[str] = mapped_column(
-        String(64), nullable=False, default="agent-1", server_default="agent-1"
+        String(64), nullable=False, default="agent-1", server_default="agent-1", index=True
     )
     tool_policy_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
