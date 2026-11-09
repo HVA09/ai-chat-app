@@ -343,4 +343,113 @@ describe("FilesPanel project knowledge", () => {
     expect(listFiles).toHaveBeenCalledTimes(2);
   });
 
+
+  it("does not start remaining uploads after the panel unmounts during an upload", async () => {
+    listFiles.mockReset().mockResolvedValue([]);
+    uploadFile.mockReset();
+
+    let resolveFirstUpload;
+    uploadFile.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveFirstUpload = resolve;
+      })
+    );
+
+    const user = userEvent.setup();
+    const { container, unmount } = render(<FilesPanel onClose={vi.fn()} />);
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+
+    const input = container.querySelector('input[type="file"]');
+    const firstFile = new File(["first upload"], "first.txt", { type: "text/plain" });
+    const secondFile = new File(["second upload"], "second.txt", { type: "text/plain" });
+    await user.upload(input, [firstFile, secondFile]);
+    await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
+
+    unmount();
+    await act(async () => {
+      resolveFirstUpload({});
+      await Promise.resolve();
+    });
+
+    expect(uploadFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the upload progress timeout when the panel unmounts", async () => {
+    listFiles.mockReset().mockResolvedValue([]);
+    uploadFile.mockReset().mockResolvedValue({});
+
+    const timeoutId = 123456;
+    const originalSetTimeout = window.setTimeout.bind(window);
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout").mockImplementation(
+      (callback, delay, ...args) => {
+        if (delay === 250) return timeoutId;
+        return originalSetTimeout(callback, delay, ...args);
+      }
+    );
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
+
+    try {
+      const user = userEvent.setup();
+      const { container, unmount } = render(<FilesPanel onClose={vi.fn()} />);
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+
+      const input = container.querySelector('input[type="file"]');
+      const file = new File(["upload data"], "upload.txt", { type: "text/plain" });
+      await user.upload(input, file);
+
+      await waitFor(() => {
+        expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 250);
+      });
+
+      unmount();
+      expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutId);
+    } finally {
+      setTimeoutSpy.mockRestore();
+      clearTimeoutSpy.mockRestore();
+    }
+  });
+
+  it("does not schedule an upload progress timeout when an upload finishes after unmount", async () => {
+    listFiles.mockReset().mockResolvedValue([]);
+    uploadFile.mockReset();
+
+    let resolveUpload;
+    uploadFile.mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveUpload = resolve;
+      })
+    );
+
+    const originalSetTimeout = window.setTimeout.bind(window);
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout").mockImplementation(
+      (callback, delay, ...args) => {
+        if (delay === 250) return 123456;
+        return originalSetTimeout(callback, delay, ...args);
+      }
+    );
+
+    try {
+      const user = userEvent.setup();
+      const { container, unmount } = render(<FilesPanel onClose={vi.fn()} />);
+      await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+
+      const input = container.querySelector('input[type="file"]');
+      const file = new File(["pending upload"], "pending.txt", { type: "text/plain" });
+      await user.upload(input, file);
+      await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
+
+      unmount();
+      await act(async () => {
+        resolveUpload({});
+        await Promise.resolve();
+      });
+
+      expect(
+        setTimeoutSpy.mock.calls.some(([, delay]) => delay === 250)
+      ).toBe(false);
+    } finally {
+      setTimeoutSpy.mockRestore();
+    }
+  });
+
 });

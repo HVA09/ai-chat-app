@@ -59,6 +59,21 @@ export default function FilesPanel({
   const [showProjectFiles, setShowProjectFiles] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const fileInputRef = useRef(null);
+  const uploadProgressTimeoutRef = useRef(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+
+      if (uploadProgressTimeoutRef.current !== null) {
+        window.clearTimeout(uploadProgressTimeoutRef.current);
+        uploadProgressTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (projectId !== null) {
@@ -147,11 +162,17 @@ export default function FilesPanel({
     let failed = 0;
 
     for (const file of selectedFiles) {
+      if (!isMountedRef.current) break;
+
       try {
-        setUploadProgress(Math.round((completed / selectedFiles.length) * 100));
+        if (isMountedRef.current) {
+          setUploadProgress(Math.round((completed / selectedFiles.length) * 100));
+        }
         await uploadFile(
           file,
           (progress) => {
+            if (!isMountedRef.current) return;
+
             const overall = ((completed + progress / 100) / selectedFiles.length) * 100;
             setUploadProgress(Math.round(overall));
           },
@@ -167,11 +188,24 @@ export default function FilesPanel({
       }
     }
 
+    if (!isMountedRef.current) return;
+
     setUploadProgress(100);
     try {
       await refresh();
     } finally {
-      window.setTimeout(() => setUploadProgress(null), 250);
+      if (isMountedRef.current) {
+        if (uploadProgressTimeoutRef.current !== null) {
+          window.clearTimeout(uploadProgressTimeoutRef.current);
+        }
+
+        uploadProgressTimeoutRef.current = window.setTimeout(() => {
+          uploadProgressTimeoutRef.current = null;
+          if (isMountedRef.current) {
+            setUploadProgress(null);
+          }
+        }, 250);
+      }
     }
 
   };
