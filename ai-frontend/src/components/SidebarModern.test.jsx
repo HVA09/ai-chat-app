@@ -324,6 +324,36 @@ describe("SidebarModern conversation pagination", () => {
     expect(onLoadMore).not.toHaveBeenCalled();
   });
 
+  it("does not request another page when no more conversations remain or the initial list is loading", () => {
+    const onLoadMore = vi.fn();
+    const { container, rerender } = renderSidebar({
+      conversations: [pagingConversation],
+      hasMore: false,
+      onLoadMore,
+    });
+    const list = container.querySelector(".modern-conversation-scroll");
+
+    Object.defineProperties(list, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 400 },
+      scrollTop: { configurable: true, writable: true, value: 700 },
+    });
+
+    fireEvent.scroll(list);
+    expect(onLoadMore).not.toHaveBeenCalled();
+
+    rerender(
+      <SidebarModern
+        conversations={[pagingConversation]}
+        hasMore
+        loading
+        onLoadMore={onLoadMore}
+      />
+    );
+    fireEvent.scroll(list);
+    expect(onLoadMore).not.toHaveBeenCalled();
+  });
+
   it("allows another page after the previous load completes", () => {
     const onLoadMore = vi.fn();
     const props = {
