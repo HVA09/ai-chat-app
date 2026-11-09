@@ -38,8 +38,8 @@ class ConversationTag(Base):
     )
     name: Mapped[str] = mapped_column(String(50), nullable=False)
     color: Mapped[str] = mapped_column(String(7), default="#64748B", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=True
     )
 
     owner = relationship("User", back_populates="conversation_tags")
