@@ -1,0 +1,31 @@
+/* Contextual message actions: keep the message body clear until requested. */
+.chat-message-actions-menu { display: contents; }
+.chat-message-actions-trigger {
+  display:inline-flex;width:30px;min-width:30px;height:30px;min-height:30px;flex:0 0 auto;
+  align-items:center;justify-content:center;margin-inline-start:auto;padding:0;
+  border:1px solid currentColor;border-radius:999px;background:transparent;color:inherit;
+  cursor:pointer;opacity:.78;transition:background-color 140ms ease,opacity 140ms ease;
+}
+.chat-message-actions-trigger span {display:block;font-size:21px;line-height:1;transform:translateY(-3px)}
+.chat-message-actions-trigger:hover,
+.chat-message-actions-trigger[aria-expanded="true"] {background:var(--ui-accent-soft,rgba(100,116,139,.14));opacity:1}
+.chat-message-actions-trigger:focus-visible,
+.chat-message-actions-panel button:focus-visible {outline:2px solid var(--ui-accent,#64748b);outline-offset:2px}
+.chat-message-actions-panel {
+  display:flex;width:100%;flex:1 0 100%;flex-wrap:wrap;align-items:center;gap:6px;margin-top:4px;
+  padding:8px;border:1px solid var(--ui-border,rgba(148,163,184,.32));border-radius:12px;
+  background:var(--ui-surface-muted,rgba(248,250,252,.9));color:inherit;
+}
+.chat-message-actions-panel button {
+  display:inline-flex;min-width:32px;min-height:32px;max-width:100%;align-items:center;justify-content:center;
+  padding:5px 9px;border:1px solid rgba(148,163,184,.28);border-radius:8px;background:transparent;
+  color:inherit;font-size:12px;line-height:1.35;white-space:normal;overflow-wrap:anywhere;
+  transition:background-color 140ms ease,border-color 140ms ease;
+}
+.chat-message-actions-panel button:hover {background:var(--ui-accent-soft,rgba(100,116,139,.12))}
+.chat-message-user .chat-message-actions-panel {border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.08)}
+.chat-message-user .chat-message-actions-panel button {border-color:rgba(255,255,255,.2)}
+.chat-message-user .chat-message-actions-panel button:hover {background:rgba(255,255,255,.16)}
+html.dark .chat-message-actions-panel {border-color:var(--ui-border,rgba(148,163,184,.24));background:rgba(15,23,42,.72)}
+html.dark .chat-message-actions-panel button {border-color:rgba(148,163,184,.24)}
+@media(prefers-reduced-motion:reduce){.chat-message-actions-trigger,.chat-message-actions-panel button{transition:none}}
