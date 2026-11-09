@@ -22,8 +22,8 @@ class ConversationFileLink(Base):
         ForeignKey("file_attachments.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=True
     )
 
     conversation = relationship("Conversation", back_populates="file_links")
