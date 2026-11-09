@@ -258,3 +258,30 @@ jobs:
           print(f"pgvector installed: yes; public RLS policy count: {policy_count}.")
           print("No application data was copied from production.")
           PY
+
+      - name: Verify ORM metadata has no pending Alembic migration (read-only)
+        run: python -m alembic check
+
+      - name: Run read-only FastAPI database smoke against Stage
+        run: |
+          python - <<'PY'
+          from fastapi.testclient import TestClient
+          from app.main import app
+
+          with TestClient(app) as client:
+              response = client.get("/health")
+
+          if response.status_code != 200:
+              raise SystemExit(
+                  f"Stage FastAPI health endpoint returned HTTP {response.status_code}."
+              )
+
+          payload = response.json()
+          if payload.get("status") != "ok" or payload.get("database") != "ok":
+              raise SystemExit(
+                  "Stage FastAPI health check did not confirm database connectivity."
+              )
+
+          print("FastAPI /health passed using the Stage DATABASE_URL.")
+          print("The endpoint executed a read-only SELECT 1; no application rows were written.")
+          PY
