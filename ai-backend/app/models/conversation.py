@@ -4,7 +4,7 @@
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, JSON, String, Text, event, update
+from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, JSON, SmallInteger, String, Text, event, update
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -22,6 +22,8 @@ class Conversation(Base):
     __table_args__ = (
         # يخدم GET /conversations: فلترة حسب user_id + ترتيب حسب created_at في استعلام واحد
         Index("ix_conversations_user_id_created_at", "user_id", "created_at"),
+        Index("ix_conversations_user_id_deleted_at", "user_id", "deleted_at"),
+        Index("ix_conversations_user_id_updated_at", "user_id", "updated_at"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -46,7 +48,7 @@ class Conversation(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     parent_conversation_id: Mapped[int | None] = mapped_column(
@@ -98,7 +100,7 @@ class Message(Base):
     role: Mapped[MessageRole] = mapped_column(Enum(MessageRole), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     sources: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)
-    feedback: Mapped[int | None] = mapped_column(nullable=True)
+    feedback: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     is_bookmarked: Mapped[bool] = mapped_column(default=False, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
