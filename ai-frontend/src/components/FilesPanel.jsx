@@ -60,6 +60,7 @@ export default function FilesPanel({
   const [searchQuery, setSearchQuery] = useState("");
   const fileInputRef = useRef(null);
   const uploadProgressTimeoutRef = useRef(null);
+  // Async upload callbacks may settle after this panel has unmounted.
   const isMountedRef = useRef(true);
 
   useEffect(() => {
