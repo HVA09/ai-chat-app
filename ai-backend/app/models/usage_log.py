@@ -34,8 +34,8 @@ class UsageLog(Base):
         ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True, index=True
     )
     endpoint: Mapped[str] = mapped_column(String(100), nullable=False)
-    model: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
-    provider: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
