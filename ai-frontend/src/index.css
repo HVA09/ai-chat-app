@@ -1920,3 +1920,78 @@ html.dark .app-startup-screen .app-startup-hint {
   .modern-conversation-item:hover { transform: none; }
   .app-startup-spinner { animation: none; }
 }
+
+
+/* UI stabilization PR-1: prioritize the conversation list over library panels. */
+.modern-sidebar {
+  min-height: 0;
+  overflow: hidden;
+}
+.modern-conversation-panel {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.modern-conversation-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, .28) transparent;
+}
+.modern-conversation-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+.modern-conversation-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(100, 116, 139, .28);
+}
+.modern-conversation-item,
+.modern-conversation-item:hover,
+.modern-conversation-item.active {
+  border: 0 !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+.modern-conversation-item {
+  margin-block: 1px;
+  background: transparent;
+  transition: background-color .16s ease;
+}
+.modern-conversation-item:hover {
+  background: var(--sidebar-hover) !important;
+}
+.modern-conversation-item.active {
+  background: var(--sidebar-active) !important;
+}
+.modern-conversation-main {
+  padding-block: 8px;
+}
+.modern-library {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.modern-library-scroll {
+  max-height: min(24dvh, 230px);
+  overflow-y: auto;
+}
+@media (max-width: 767px) {
+  .modern-sidebar {
+    width: min(88vw, 320px);
+    min-width: min(88vw, 320px);
+    flex: 0 0 min(88vw, 320px);
+  }
+  .modern-conversation-panel {
+    flex-basis: 0;
+  }
+  .modern-conversation-scroll {
+    padding-inline: 7px;
+  }
+  .modern-library-scroll {
+    max-height: min(20dvh, 160px);
+  }
+}

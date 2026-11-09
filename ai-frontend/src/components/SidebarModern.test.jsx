@@ -269,6 +269,118 @@ describe("SidebarModern conversation actions", () => {
   });
 });
 
+describe("SidebarModern conversation pagination", () => {
+  const pagingConversation = {
+    id: 202,
+    title: "Paging conversation",
+    folder_id: null,
+    project_id: null,
+    tags: [],
+    is_pinned: false,
+  };
+
+  it("loads the next page when the conversation list approaches its end", () => {
+    const onLoadMore = vi.fn();
+    const { container } = renderSidebar({
+      conversations: [pagingConversation],
+      hasMore: true,
+      onLoadMore,
+    });
+    const list = container.querySelector(".modern-conversation-scroll");
+
+    Object.defineProperties(list, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 400 },
+      scrollTop: { configurable: true, writable: true, value: 300 },
+    });
+
+    fireEvent.scroll(list);
+    expect(onLoadMore).not.toHaveBeenCalled();
+
+    list.scrollTop = 500;
+    fireEvent.scroll(list);
+    fireEvent.scroll(list);
+
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not request another page while one is already loading", () => {
+    const onLoadMore = vi.fn();
+    const { container } = renderSidebar({
+      conversations: [pagingConversation],
+      hasMore: true,
+      loadingMore: true,
+      onLoadMore,
+    });
+    const list = container.querySelector(".modern-conversation-scroll");
+
+    Object.defineProperties(list, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 400 },
+      scrollTop: { configurable: true, writable: true, value: 700 },
+    });
+
+    fireEvent.scroll(list);
+    expect(onLoadMore).not.toHaveBeenCalled();
+  });
+
+  it("does not request another page when no more conversations remain or the initial list is loading", () => {
+    const onLoadMore = vi.fn();
+    const { container, rerender } = renderSidebar({
+      conversations: [pagingConversation],
+      hasMore: false,
+      onLoadMore,
+    });
+    const list = container.querySelector(".modern-conversation-scroll");
+
+    Object.defineProperties(list, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 400 },
+      scrollTop: { configurable: true, writable: true, value: 700 },
+    });
+
+    fireEvent.scroll(list);
+    expect(onLoadMore).not.toHaveBeenCalled();
+
+    rerender(
+      <SidebarModern
+        conversations={[pagingConversation]}
+        hasMore
+        loading
+        onLoadMore={onLoadMore}
+      />
+    );
+    fireEvent.scroll(list);
+    expect(onLoadMore).not.toHaveBeenCalled();
+  });
+
+  it("allows another page after the previous load completes", () => {
+    const onLoadMore = vi.fn();
+    const props = {
+      conversations: [pagingConversation],
+      hasMore: true,
+      onLoadMore,
+    };
+    const { container, rerender } = render(<SidebarModern {...props} />);
+    const list = container.querySelector(".modern-conversation-scroll");
+
+    Object.defineProperties(list, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 400 },
+      scrollTop: { configurable: true, writable: true, value: 700 },
+    });
+
+    fireEvent.scroll(list);
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+
+    rerender(<SidebarModern {...props} loadingMore />);
+    rerender(<SidebarModern {...props} loadingMore={false} />);
+
+    fireEvent.scroll(list);
+    expect(onLoadMore).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("SidebarModern mobile navigation", () => {
   it("opens and closes in response to the global navigation events", () => {
     const { container } = renderSidebar();
