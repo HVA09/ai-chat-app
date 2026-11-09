@@ -18,3 +18,10 @@ export async function updateMemory(id, content) {
 export async function deleteMemory(id) {
   await api.delete(`/memories/${id}`);
 }
+
+export async function suggestMemories(conversationId) {
+  const { data } = await api.post("/memories/suggest", {
+    conversation_id: conversationId,
+  });
+  return data;
+}

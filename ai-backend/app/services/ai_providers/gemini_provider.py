@@ -9,6 +9,7 @@ import httpx
 
 from app.config import settings
 from app.services.ai_providers.base import AIProvider, AIReply
+from app.services.ai_providers.instructions import SYSTEM_PROMPT
 
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
@@ -23,15 +24,34 @@ class GeminiProvider(AIProvider):
     ) -> list[dict[str, object]]:
         contents = []
         for m in history or []:
+            if m.get("role") == "system":
+                continue
             role = "model" if m["role"] == "assistant" else "user"
             contents.append({"role": role, "parts": [{"text": m["content"]}]})
         contents.append({"role": "user", "parts": [{"text": message}]})
         return contents
 
+    def _system_instruction(
+        self, history: list[dict[str, str]] | None
+    ) -> dict[str, list[dict[str, str]]]:
+        existing = [
+            str(item.get("content") or "")
+            for item in (history or [])
+            if item.get("role") == "system" and str(item.get("content") or "").strip()
+        ]
+        text = "\n\n".join([SYSTEM_PROMPT, *existing])
+        return {"parts": [{"text": text}]}
+
     async def get_reply(self, message: str, history: list[dict[str, str]] | None = None) -> AIReply:
         url = f"{GEMINI_BASE_URL}/models/{self.model}:generateContent?key={self.api_key}"
         async with httpx.AsyncClient(timeout=settings.AI_REQUEST_TIMEOUT_SECONDS) as client:
-            response = await client.post(url, json={"contents": self._contents(message, history)})
+            response = await client.post(
+                url,
+                json={
+                    "systemInstruction": self._system_instruction(history),
+                    "contents": self._contents(message, history),
+                },
+            )
             response.raise_for_status()
         data = response.json()
         usage = data.get("usageMetadata") or {}
@@ -50,7 +70,12 @@ class GeminiProvider(AIProvider):
         )
         async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream(
-                "POST", url, json={"contents": self._contents(message, history)}
+                "POST",
+                url,
+                json={
+                    "systemInstruction": self._system_instruction(history),
+                    "contents": self._contents(message, history),
+                },
             ) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():

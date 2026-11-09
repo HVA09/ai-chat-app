@@ -11,6 +11,7 @@ from urllib.parse import quote_plus
 import httpx
 
 from app.config import settings
+from app.services.prompt_context import safe_context_text
 
 
 SEARCH_URL = "https://api.duckduckgo.com/"
@@ -136,10 +137,13 @@ async def search_web(
 
 def format_web_search_response(query: str, results: list[WebSearchResult]) -> tuple[str, list[dict]]:
     """يبني رسالة عرض + مصادر بنفس بنية مصادر RAG."""
+    # The query is user-controlled too. Escape app control markers in the rendered
+    # response, while preserving the original query when building the search URL.
+    safe_query = safe_context_text(query)
     if not results:
         search_url = f"https://duckduckgo.com/?q={quote_plus(query)}"
         return (
-            f"لم أجد نتائج فورية كافية لهذا البحث: **{query}**.\n\n"
+            f"لم أجد نتائج فورية كافية لهذا البحث: **{safe_query}**.\n\n"
             "يمكنك فتح صفحة البحث الكاملة من المصدر أدناه.",
             [
                 {
@@ -153,7 +157,7 @@ def format_web_search_response(query: str, results: list[WebSearchResult]) -> tu
         )
 
     sources: list[dict] = []
-    parts = [f"نتائج البحث عن: **{query}**"]
+    parts = [f"نتائج البحث عن: **{safe_query}**"]
     for index, result in enumerate(results, start=1):
         source_id = f"W{index}"
         sources.append(
@@ -166,10 +170,14 @@ def format_web_search_response(query: str, results: list[WebSearchResult]) -> tu
                 "kind": "web",
             }
         )
-        if result.snippet:
-            parts.append(f"\n[{source_id}] **{result.title}**\n{result.snippet}")
+        # Search results are untrusted external text. Sanitize only the prompt/rendered
+        # copy; preserve the raw title and snippet in source metadata for traceability.
+        safe_title = safe_context_text(result.title)
+        safe_snippet = safe_context_text(result.snippet)
+        if safe_snippet:
+            parts.append(f"\n[{source_id}] **{safe_title}**\n{safe_snippet}")
         else:
-            parts.append(f"\n[{source_id}] **{result.title}**")
+            parts.append(f"\n[{source_id}] **{safe_title}**")
 
     return "\n".join(parts), sources
 
