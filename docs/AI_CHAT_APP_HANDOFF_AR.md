@@ -709,7 +709,7 @@
 ### 26.1 حالة الفرع الرئيسي والحماية
 
 - المستودع: `HVA09/ai-chat-app`، عام، والفرع الافتراضي `main`.
-- رأس `main) عند الفحص: `b690c149610a704f78d7f4ee9e6f377be7466703`.
+- رأس `main` عند الفحص: `b690c149610a704f78d7f4ee9e6f377be7466703`.
 - `main` محمي؛ الدمج يتطلب Pull Request ونجاح سبعة فحوص إلزامية: `backend`, `frontend`, `sdk`, `preview-builder`, `production-compose`, `Analyze (python)`, `Analyze (javascript-typescript)`.
 - لا يوجد تغيير على `main` ضمن هذه المتابعة.
 
