@@ -2,6 +2,8 @@
 
 from unittest.mock import AsyncMock
 
+from sqlalchemy.orm import Session
+
 from app.models.conversation import Message
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
@@ -29,15 +31,15 @@ def _register_and_create_conversation(client, email):
     return headers, first.json()["conversation_id"]
 
 
-def _track_session_rollback(db_session, monkeypatch):
-    rollback = db_session.rollback
+def _track_session_rollback(monkeypatch):
+    rollback = Session.rollback
     calls = []
 
-    def tracked_rollback():
-        calls.append(True)
-        return rollback()
+    def tracked_rollback(session, *args, **kwargs):
+        calls.append(session)
+        return rollback(session, *args, **kwargs)
 
-    monkeypatch.setattr(db_session, "rollback", tracked_rollback)
+    monkeypatch.setattr(Session, "rollback", tracked_rollback)
     return calls
 
 
@@ -52,7 +54,7 @@ def test_regenerate_releases_read_transaction_before_ai_stream(
     headers, conversation_id = _register_and_create_conversation(
         client, "stream-regenerate-release@example.com"
     )
-    rollback_calls = _track_session_rollback(db_session, monkeypatch)
+    rollback_calls = _track_session_rollback(monkeypatch)
 
     async def fake_stream(*_args, **_kwargs):
         assert rollback_calls, "DB transaction must be released before AI streaming starts"
