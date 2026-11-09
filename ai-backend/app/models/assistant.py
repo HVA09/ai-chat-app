@@ -22,8 +22,8 @@ class Assistant(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(String(300), nullable=True)
     instructions: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+    created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=True
     )
     is_public: Mapped[bool] = mapped_column(default=False, nullable=False)
     public_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
