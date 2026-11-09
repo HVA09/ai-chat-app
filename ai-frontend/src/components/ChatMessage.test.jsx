@@ -37,10 +37,11 @@ describe("ChatMessage voice output", () => {
   it("speaks assistant text when read aloud is pressed", async () => {
     const user = userEvent.setup();
     const speak = vi.fn((utterance) => utterance.onstart?.());
+    const cancel = vi.fn();
 
     Object.defineProperty(window, "speechSynthesis", {
       configurable: true,
-      value: { speak, cancel: vi.fn() },
+      value: { speak, cancel },
     });
     window.SpeechSynthesisUtterance = class {
       constructor(text) {
@@ -60,7 +61,12 @@ describe("ChatMessage voice output", () => {
     expect(speak).toHaveBeenCalledTimes(1);
     expect(speak.mock.calls[0][0].text).toBe("Hello from AI");
     expect(speak.mock.calls[0][0].lang).toBe("en-US");
-    expect(screen.getByRole("button", { name: "Stop reading" })).toBeInTheDocument();
+    const stopButton = screen.getByRole("button", { name: "Stop reading" });
+    expect(stopButton).toBeInTheDocument();
+
+    await user.click(stopButton);
+    expect(cancel).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Read aloud" })).toBeInTheDocument();
   });
 });
 
