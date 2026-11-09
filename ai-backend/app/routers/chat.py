@@ -1937,6 +1937,7 @@ async def regenerate_chat_stream(
     )
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
+    conversation_log_id = conversation.id
     if conversation.workspace_id is not None:
         enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
 
@@ -1986,21 +1987,21 @@ async def regenerate_chat_stream(
                 except TimeoutError:
                     logger.warning(
                         "انتهت مهلة خمول إعادة التوليد لمحادثة %s بعد %.1f ثانية",
-                        conversation_id,
+                        conversation_log_id,
                         settings.AI_STREAM_IDLE_TIMEOUT_SECONDS,
                     )
                     yield "event: error\ndata: انتهت مهلة بث الرد بسبب عدم وصول بيانات جديدة\n\n"
                     return
 
                 if await request.is_disconnected():
-                    logger.info("العميل أغلق إعادة توليد المحادثة %s أثناء التوليد", conversation_id)
+                    logger.info("العميل أغلق إعادة توليد المحادثة %s أثناء التوليد", conversation_log_id)
                     return
 
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
         except Exception as exc:
-            logger.exception("خطأ أثناء إعادة توليد الرد لمحادثة %s", conversation_id)
+            logger.exception("خطأ أثناء إعادة توليد الرد لمحادثة %s", conversation_log_id)
             message = _chat_stream_error_message(
                 exc,
                 "حدث خطأ أثناء إعادة توليد الرد",
@@ -2015,10 +2016,10 @@ async def regenerate_chat_stream(
                 try:
                     await close_iterator()
                 except Exception:
-                    logger.debug("تعذر إغلاق مولد إعادة التوليد لمحادثة %s", conversation_id, exc_info=True)
+                    logger.debug("تعذر إغلاق مولد إعادة التوليد لمحادثة %s", conversation_log_id, exc_info=True)
 
         if await request.is_disconnected():
-            logger.info("العميل أغلق إعادة توليد المحادثة %s قبل حفظ الرد", conversation_id)
+            logger.info("العميل أغلق إعادة توليد المحادثة %s قبل حفظ الرد", conversation_log_id)
             return
 
         try:
@@ -2043,7 +2044,7 @@ async def regenerate_chat_stream(
             )
             db.commit()
         except Exception:
-            logger.exception("فشل حفظ الرد المعاد توليده لمحادثة %s", conversation_id)
+            logger.exception("فشل حفظ الرد المعاد توليده لمحادثة %s", conversation_log_id)
             db.rollback()
             yield "event: error\ndata: تعذر حفظ الرد الجديد\n\n"
             return
@@ -2072,6 +2073,7 @@ async def edit_chat_stream(
     )
     if not conversation:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة")
+    conversation_log_id = conversation.id
     if conversation.workspace_id is not None:
         enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
 
@@ -2118,21 +2120,21 @@ async def edit_chat_stream(
                 except TimeoutError:
                     logger.warning(
                         "انتهت مهلة خمول تعديل الرسالة لمحادثة %s بعد %.1f ثانية",
-                        conversation_id,
+                        conversation_log_id,
                         settings.AI_STREAM_IDLE_TIMEOUT_SECONDS,
                     )
                     yield "event: error\ndata: انتهت مهلة بث الرد بسبب عدم وصول بيانات جديدة\n\n"
                     return
 
                 if await request.is_disconnected():
-                    logger.info("العميل أغلق تعديل المحادثة %s أثناء التوليد", conversation_id)
+                    logger.info("العميل أغلق تعديل المحادثة %s أثناء التوليد", conversation_log_id)
                     return
 
                 full_reply += chunk
                 safe_chunk = chunk.replace("\n", "\\n")
                 yield f"event: chunk\ndata: {safe_chunk}\n\n"
         except Exception as exc:
-            logger.exception("خطأ أثناء تعديل رسالة لمحادثة %s", conversation_id)
+            logger.exception("خطأ أثناء تعديل رسالة لمحادثة %s", conversation_log_id)
             message = _chat_stream_error_message(
                 exc,
                 "حدث خطأ أثناء تعديل الرسالة",
@@ -2147,10 +2149,10 @@ async def edit_chat_stream(
                 try:
                     await close_iterator()
                 except Exception:
-                    logger.debug("تعذر إغلاق مولد تعديل الرسالة لمحادثة %s", conversation_id, exc_info=True)
+                    logger.debug("تعذر إغلاق مولد تعديل الرسالة لمحادثة %s", conversation_log_id, exc_info=True)
 
         if await request.is_disconnected():
-            logger.info("العميل أغلق تعديل المحادثة %s قبل حفظ الرد", conversation_id)
+            logger.info("العميل أغلق تعديل المحادثة %s قبل حفظ الرد", conversation_log_id)
             return
 
         try:
@@ -2188,7 +2190,7 @@ async def edit_chat_stream(
             )
             db.commit()
         except Exception:
-            logger.exception("فشل حفظ الرسالة المعدلة لمحادثة %s", conversation_id)
+            logger.exception("فشل حفظ الرسالة المعدلة لمحادثة %s", conversation_log_id)
             db.rollback()
             yield "event: error\ndata: تعذر حفظ التعديل\n\n"
             return
