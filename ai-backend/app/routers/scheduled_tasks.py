@@ -24,6 +24,9 @@ from app.schemas.scheduled_tasks import (
 
 router = APIRouter(prefix="/scheduled-tasks", tags=["Scheduled Tasks"])
 
+# Starlette 1.x renamed this status constant; keep compatibility with older versions.
+HTTP_422_STATUS = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422)
+
 
 def _get_membership(workspace_id: int, current_user: User, db: Session) -> WorkspaceMember:
     membership = (
@@ -67,12 +70,12 @@ def _validate_schedule(
     normalized = next_run_at.astimezone(timezone.utc)
     if normalized <= datetime.now(timezone.utc):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail="وقت التنفيذ يجب أن يكون في المستقبل",
         )
     if schedule_type == ScheduledTaskType.weekly.value and weekday is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_STATUS,
             detail="يجب تحديد يوم الأسبوع للمهمة الأسبوعية",
         )
 
