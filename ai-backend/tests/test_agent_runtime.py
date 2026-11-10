@@ -294,3 +294,69 @@ def test_agent_configuration_version_tracks_tool_policy(monkeypatch):
     second = get_agent_configuration_version()
     assert second.startswith("agent-1-")
     assert second != first
+
+
+class TextOnlyProvider:
+    def __init__(self, text):
+        self.text = text
+
+    async def get_reply_with_tools(self, messages, tools, tool_choice="auto"):
+        del messages, tools, tool_choice
+        return AIToolReply(text=self.text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '// tool_call: {"name": "demo", "arguments": {"value": "changed"}}',
+        '// demo({"value": "changed"})',
+        '// {"tool": "demo", "arguments": {"value": "changed"}}',
+    ],
+)
+def test_runtime_does_not_report_unstructured_tool_text_as_execution(text):
+    events = []
+
+    async def emit(event):
+        events.append(event)
+
+    result = asyncio.run(
+        AgentRuntime(
+            provider=TextOnlyProvider(text),
+            registry_factory=lambda: _registry(_demo_tool),
+            mcp_discoverer=_empty_discovery,
+            event_sink=emit,
+        ).run(
+            task="run the demo tool",
+            history=[],
+            conversation=object(),
+            current_user=object(),
+            db=object(),
+        )
+    )
+
+    assert result.status == "stopped"
+    assert result.tool_calls == 0
+    assert "//" not in result.text
+    assert "لم يتم تنفيذ أي أداة" in result.text
+    assert events[-1]["type"] == "runtime_complete"
+    assert events[-1]["status"] == "stopped"
+
+
+def test_runtime_keeps_an_ordinary_code_comment_as_a_normal_response():
+    text = "// calculator is mentioned here, but no tool is being called."
+    result = asyncio.run(
+        AgentRuntime(
+            provider=TextOnlyProvider(text),
+            registry_factory=lambda: _registry(_demo_tool),
+            mcp_discoverer=_empty_discovery,
+        ).run(
+            task="explain this comment",
+            history=[],
+            conversation=object(),
+            current_user=object(),
+            db=object(),
+        )
+    )
+
+    assert result.status == "completed"
+    assert result.text == text
