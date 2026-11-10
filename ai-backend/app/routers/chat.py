@@ -1408,8 +1408,12 @@ async def chat_stream(
             queue: asyncio.Queue[dict] = asyncio.Queue()
             agent_result = None
             agent_error = None
+            tool_execution_started = False
 
             async def on_tool_event(event: dict) -> None:
+                nonlocal tool_execution_started
+                if event.get("type") == "start":
+                    tool_execution_started = True
                 await queue.put({"type": "tool", "payload": event})
 
             async def run_agent_task() -> None:
@@ -1434,7 +1438,7 @@ async def chat_stream(
                     await queue.put({"type": "finished"})
 
             task = asyncio.create_task(run_agent_task())
-            yield f"event: conversation\\ndata: {conversation.id}\\n\\n"
+            yield f"event: conversation\ndata: {conversation.id}\n\n"
 
             try:
                 while True:
@@ -1442,23 +1446,34 @@ async def chat_stream(
 
                     if event["type"] == "tool":
                         payload_json = json.dumps(event["payload"], ensure_ascii=False)
-                        yield f"event: tool\\ndata: {payload_json}\\n\\n"
+                        yield f"event: tool\ndata: {payload_json}\n\n"
                         continue
 
                     if event["type"] != "finished":
                         continue
 
-                    if agent_error is not None:
-                        # Agent failures occur before the user message is committed.
-                        # Tell the frontend to resend the original request, not regenerate
-                        # the previous turn in this conversation.
-                        yield "event: retry_mode\\ndata: send\\n\\n"
-                        yield f"event: error\\ndata: {agent_error}\\n\\n"
-                        return
-
-                    if agent_result is None:
-                        yield "event: retry_mode\\ndata: send\\n\\n"
-                        yield "event: error\\ndata: تعذر تشغيل وضع الوكيل\\n\\n"
+                    if agent_error is not None or agent_result is None:
+                        if tool_execution_started:
+                            # A tool may already have changed local, database, or remote state.
+                            # Do not blindly repeat the user's full Agent request.
+                            yield "event: retry_mode\ndata: blocked\n\n"
+                            if request.headers.get("accept-language", "ar").lower().startswith("en"):
+                                failure_message = (
+                                    "The Agent task failed after a tool started. Some changes may "
+                                    "already have been applied. Automatic retry is disabled to "
+                                    "avoid repeating side effects; review the result before continuing."
+                                )
+                            else:
+                                failure_message = (
+                                    "تعذرت المهمة بعد بدء تنفيذ أداة. ربما نُفذت تغييرات بالفعل. "
+                                    "أوقفنا إعادة المحاولة التلقائية لتجنب تكرار العمليات؛ "
+                                    "راجع حالة المشروع أو نتيجة الأداة قبل المتابعة."
+                                )
+                        else:
+                            # No tool started, so the original request is safe to send again.
+                            yield "event: retry_mode\ndata: send\n\n"
+                            failure_message = agent_error or "تعذر تشغيل وضع الوكيل"
+                        yield f"event: error\ndata: {failure_message}\n\n"
                         return
 
                     agent_reply, sources, input_tokens, output_tokens = agent_result
@@ -1489,11 +1504,11 @@ async def chat_stream(
                     )
                     db.commit()
 
-                    safe_reply = agent_reply.replace("\\n", "\\\\n")
+                    safe_reply = agent_reply.replace("\n", "\\\n")
                     safe_sources = json.dumps(sources, ensure_ascii=False)
-                    yield f"event: sources\\ndata: {safe_sources}\\n\\n"
-                    yield f"event: chunk\\ndata: {safe_reply}\\n\\n"
-                    yield "event: done\\ndata: {}\\n\\n"
+                    yield f"event: sources\ndata: {safe_sources}\n\n"
+                    yield f"event: chunk\ndata: {safe_reply}\n\n"
+                    yield "event: done\ndata: {}\n\n"
                     return
             finally:
                 if not task.done():
