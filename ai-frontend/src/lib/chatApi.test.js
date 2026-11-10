@@ -162,3 +162,38 @@ describe("chatApi file attachments", () => {
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe("chatApi Agent retry safety", () => {
+  it("preserves a blocked retry mode when a tool started before the Agent failure", async () => {
+    const onError = vi.fn();
+    const encoder = new TextEncoder();
+    const chunks = [
+      "event: retry_mode\ndata: blocked\n\n",
+      "event: error\ndata: The Agent task failed after a tool started.\n\n",
+    ];
+    let index = 0;
+    const reader = {
+      read: vi.fn(async () => {
+        if (index >= chunks.length) return { done: true, value: undefined };
+        return { done: false, value: encoder.encode(chunks[index++]) };
+      }),
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    });
+
+    await streamChatMessage("update a project file", 7, null, { onError });
+
+    expect(onError).toHaveBeenCalledWith(
+      "The Agent task failed after a tool started.",
+      {
+        kind: "stream",
+        messagePersisted: false,
+        retryMode: "blocked",
+      }
+    );
+  });
+});
