@@ -1,11 +1,15 @@
+"""اختبارات مسار المحادثة — يتم عمل mock لاستدعاء محرك AI بدل الاتصال الحقيقي بالإنترنت."""
+
 import asyncio
+import os
 from datetime import datetime, timezone
-"""
-اختبارات مسار المحادثة — يتم عمل mock لاستدعاء محرك AI بدل الاتصال الحقيقي بالإنترنت
-"""
 from unittest.mock import AsyncMock
 
 import httpx
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import QueuePool
 
 from app.config import settings as app_settings
 from app.models.conversation import Message, MessageRole
@@ -1424,3 +1428,237 @@ def test_chat_stream_sends_localized_provider_rate_limit_message(client, monkeyp
     assert "check the provider's quota" in response.text
     assert "too many requests" not in response.text
 
+
+def test_non_agent_chat_stream_releases_db_connection_before_streaming_response(
+    monkeypatch,
+):
+    """Every non-Agent SSE branch must release its checkout before response streaming."""
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+
+    original_release = chat_router_module._release_db_connection_before_streaming
+    conversation = SimpleNamespace(id=701, workspace_id=None, ai_model="test-model")
+    current_user = SimpleNamespace(id=702, email="stream-pool@example.com")
+
+    class FakeSession:
+        def __init__(self):
+            self.expire_on_commit = True
+            self.commit_count = 0
+
+        def add(self, _item):
+            return None
+
+        def commit(self):
+            self.commit_count += 1
+
+        def rollback(self):
+            return None
+
+    for branch in ("calculator", "python", "data_analysis", "web_search", "normal"):
+        db = FakeSession()
+        released = []
+
+        monkeypatch.setattr(
+            chat_router_module,
+            "_get_or_create_conversation",
+            lambda *_args, **_kwargs: conversation,
+        )
+        monkeypatch.setattr(
+            chat_router_module,
+            "_attach_requested_files",
+            lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(
+            chat_router_module,
+            "extract_agent_request",
+            lambda _message: None,
+        )
+        monkeypatch.setattr(
+            chat_router_module,
+            "extract_calculator_expression",
+            lambda _message, selected=branch: "1 + 1"
+            if selected == "calculator"
+            else None,
+        )
+        monkeypatch.setattr(
+            chat_router_module,
+            "extract_code_request",
+            lambda _message, selected=branch: "print('ok')"
+            if selected == "python"
+            else None,
+        )
+        monkeypatch.setattr(
+            chat_router_module,
+            "extract_data_analysis_request",
+            lambda _message, selected=branch: "notes.csv"
+            if selected == "data_analysis"
+            else None,
+        )
+        monkeypatch.setattr(
+            chat_router_module,
+            "extract_web_search_query",
+            lambda _message, selected=branch: "Linux networking"
+            if selected == "web_search"
+            else None,
+        )
+        monkeypatch.setattr(
+            chat_router_module,
+            "_release_db_connection_before_streaming",
+            lambda session: (
+                original_release(session),
+                released.append(True),
+            ),
+        )
+
+        if branch == "calculator":
+            monkeypatch.setattr(
+                chat_router_module, "calculate_expression", lambda _expression: "2"
+            )
+        elif branch == "python":
+            monkeypatch.setattr(
+                chat_router_module, "execute_python_code", lambda _code: "ok"
+            )
+        elif branch == "data_analysis":
+            attachment = SimpleNamespace(
+                object_key="fake-key",
+                stored_filename="notes.csv",
+                original_filename="notes.csv",
+                content_type="text/csv",
+            )
+            monkeypatch.setattr(
+                chat_router_module,
+                "_get_attached_data_attachment",
+                lambda *_args, **_kwargs: attachment,
+            )
+            monkeypatch.setattr(
+                chat_router_module,
+                "materialize_file",
+                lambda *_args, **_kwargs: nullcontext("/tmp/fake-notes.csv"),
+            )
+            monkeypatch.setattr(
+                chat_router_module,
+                "analyze_file",
+                lambda _data_file: "analysis output",
+            )
+        elif branch == "web_search":
+            monkeypatch.setattr(
+                chat_router_module,
+                "search_web",
+                AsyncMock(return_value=[]),
+            )
+            monkeypatch.setattr(
+                chat_router_module,
+                "format_web_search_response",
+                lambda _query, _results: ("search output", []),
+            )
+        else:
+            monkeypatch.setattr(
+                chat_router_module,
+                "_build_history",
+                Mock(return_value=[]),
+            )
+            monkeypatch.setattr(
+                chat_router_module,
+                "_augment_message",
+                AsyncMock(return_value=("hello", [])),
+            )
+
+        class CapturedStreamingResponse:
+            def __init__(self, content, **kwargs):
+                assert released == [True], (
+                    f"{branch} branch started StreamingResponse before releasing DB"
+                )
+                self.content = content
+                self.kwargs = kwargs
+
+        monkeypatch.setattr(
+            chat_router_module, "StreamingResponse", CapturedStreamingResponse
+        )
+
+        response = asyncio.run(
+            chat_router_module.chat_stream(
+                payload=SimpleNamespace(
+                    message="hello",
+                    file_ids=[],
+                    conversation_id=None,
+                ),
+                request=None,
+                current_user=current_user,
+                db=db,
+            )
+        )
+
+        assert isinstance(response, CapturedStreamingResponse)
+        assert released == [True]
+        assert db.expire_on_commit is False
+
+
+def test_stream_connection_release_returns_postgres_pool_slot():
+    """A released PostgreSQL checkout must be available to another request session."""
+    from sqlalchemy import text
+
+    from sqlalchemy.engine import make_url
+
+    test_database_url = os.getenv(
+        "TEST_DATABASE_URL",
+        "postgresql://postgres:postgres@localhost:5432/ai_backend_test",
+    )
+    parsed_test_url = make_url(test_database_url)
+    if (
+        parsed_test_url.drivername.split("+", 1)[0] != "postgresql"
+        or parsed_test_url.host not in {"localhost", "127.0.0.1"}
+        or parsed_test_url.port != 5432
+        or parsed_test_url.database != "ai_backend_test"
+        or bool(parsed_test_url.query)
+    ):
+        pytest.skip(
+            "This integration check only uses the local PostgreSQL test service; "
+            "it must never connect to a remote or production database"
+        )
+
+    pool_engine = create_engine(
+        test_database_url,
+        poolclass=QueuePool,
+        pool_size=1,
+        max_overflow=0,
+        pool_timeout=1,
+        pool_pre_ping=True,
+    )
+    PoolSession = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=pool_engine,
+        expire_on_commit=False,
+    )
+    first_request_session = PoolSession()
+    second_request_session = None
+
+    try:
+        assert first_request_session.execute(text("SELECT 1")).scalar_one() == 1
+        assert pool_engine.pool.checkedout() == 1
+
+        chat_router_module._release_db_connection_before_streaming(
+            first_request_session
+        )
+
+        # The SSE request may still own a Session object, but it no longer owns
+        # the only physical PostgreSQL connection while the response waits.
+        assert pool_engine.pool.checkedout() == 0
+
+        second_request_session = PoolSession()
+        assert second_request_session.execute(text("SELECT 2")).scalar_one() == 2
+        assert pool_engine.pool.checkedout() == 1
+
+        second_request_session.close()
+        second_request_session = None
+        assert pool_engine.pool.checkedout() == 0
+
+        # The original request session can lazily acquire a connection only
+        # when persistence is needed after the streaming work completes.
+        assert first_request_session.execute(text("SELECT 3")).scalar_one() == 3
+    finally:
+        if second_request_session is not None:
+            second_request_session.close()
+        first_request_session.close()
+        pool_engine.dispose()
