@@ -1504,7 +1504,7 @@ async def chat_stream(
                     )
                     db.commit()
 
-                    safe_reply = agent_reply.replace("\n", "\\\n")
+                    safe_reply = agent_reply.replace("\n", "\\n")
                     safe_sources = json.dumps(sources, ensure_ascii=False)
                     yield f"event: sources\ndata: {safe_sources}\n\n"
                     yield f"event: chunk\ndata: {safe_reply}\n\n"
