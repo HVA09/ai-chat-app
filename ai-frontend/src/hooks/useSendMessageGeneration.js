@@ -143,6 +143,13 @@ export default function useSendMessageGeneration({
           return prev;
         });
 
+        // The backend blocks blind retries if an Agent tool already started;
+        // its side effects may have completed even when the Agent turn later failed.
+        if (failure.retryMode === "blocked") {
+          setRetryableUserMessage(null);
+          return;
+        }
+
         // Preserve the exact request so a pre-stream HTTP/network failure can
         // retry the original send instead of regenerating an older response.
         const failedConversationId = createdConversationId || conversationId;
