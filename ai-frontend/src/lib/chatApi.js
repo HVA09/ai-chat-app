@@ -46,7 +46,22 @@ export async function streamChatMessage(
   } = {}
 ) {
   const baseURL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+  const isAgentRequest =
+    typeof message === "string" && /^(?:\/agent|\/run)(?:\s|$)/.test(message.trim());
+  const agentInterruptedMessage = i18n.language?.toLowerCase().startsWith("en")
+    ? "The Agent connection ended before completion. A tool may have run or the request may still be processing. Automatic retry is disabled to avoid repeating side effects; check the result before continuing."
+    : "انقطع الاتصال قبل اكتمال مهمة الوكيل. ربما بدأت أداة التنفيذ أو ما زال الطلب قيد المعالجة. أوقفنا إعادة المحاولة التلقائية لتجنب تكرار العمليات؛ تحقق من الحالة قبل المتابعة.";
+  const reportInterruptedAgent = () =>
+    onError?.(agentInterruptedMessage, {
+      kind: "transport",
+      messagePersisted: false,
+      retryMode: "blocked",
+    });
 
+  let toolExecutionStarted = false;
+  let terminalEventReceived = false;
+  let messagePersisted = true;
+  let retryMode = null;
   let response;
   try {
     response = await fetch(`${baseURL}/chat/stream`, {
@@ -69,10 +84,12 @@ export async function streamChatMessage(
     });
   } catch (err) {
     if (err?.name === "AbortError") {
-      onDone?.();
+      if (isAgentRequest) reportInterruptedAgent();
+      else onDone?.();
       return;
     }
-    onError?.(i18n.t("app.connectionError"), { kind: "transport", messagePersisted: false });
+    if (isAgentRequest) reportInterruptedAgent();
+    else onError?.(i18n.t("app.connectionError"), { kind: "transport", messagePersisted: false });
     return;
   }
 
@@ -93,7 +110,6 @@ export async function streamChatMessage(
   // The normal chat route persists the user message before streaming. The agent
   // branch is different: it persists only after the agent succeeds, so the server
   // can explicitly mark an error as safe to resend.
-  let messagePersisted = true;
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -118,13 +134,40 @@ export async function streamChatMessage(
 
         if (eventType === "conversation") onConversationId?.(Number(data));
         else if (eventType === "sources") onSources?.(JSON.parse(data));
-        else if (eventType === "tool") onToolEvent?.(JSON.parse(data));
-        else if (eventType === "retry_mode") messagePersisted = data !== "send";
+        else if (eventType === "tool") {
+          const toolEvent = JSON.parse(data);
+          if (isAgentRequest && toolEvent?.type === "start") toolExecutionStarted = true;
+          onToolEvent?.(toolEvent);
+        }
+        else if (eventType === "retry_mode") {
+          retryMode = isAgentRequest && toolExecutionStarted && data === "send"
+            ? "blocked"
+            : data;
+          messagePersisted = retryMode !== "send" && retryMode !== "blocked";
+        }
         else if (eventType === "chunk") onChunk?.(data.replace(/\\n/g, "\n"));
-        else if (eventType === "error") onError?.(data, { kind: "stream", messagePersisted });
-        else if (eventType === "done") onDone?.();
+        else if (eventType === "error") {
+          terminalEventReceived = true;
+          const effectiveRetryMode = isAgentRequest
+            ? (toolExecutionStarted || retryMode !== "send" ? "blocked" : "send")
+            : retryMode;
+          if (effectiveRetryMode) {
+            retryMode = effectiveRetryMode;
+            messagePersisted = effectiveRetryMode !== "send" && effectiveRetryMode !== "blocked";
+          }
+          onError?.(data, {
+            kind: "stream",
+            messagePersisted,
+            ...(retryMode ? { retryMode } : {}),
+          });
+        }
+        else if (eventType === "done") {
+          terminalEventReceived = true;
+          onDone?.();
+        }
       }
     }
+    if (isAgentRequest && !terminalEventReceived) reportInterruptedAgent();
   } catch (err) {
     if (err?.name === "AbortError") {
       try {
@@ -132,10 +175,12 @@ export async function streamChatMessage(
       } catch {
         /* ignore */
       }
-      onDone?.();
+      if (isAgentRequest) reportInterruptedAgent();
+      else onDone?.();
       return;
     }
-    onError?.(i18n.t("app.connectionError"), { kind: "transport", messagePersisted: true });
+    if (isAgentRequest) reportInterruptedAgent();
+    else onError?.(i18n.t("app.connectionError"), { kind: "transport", messagePersisted: true });
   }
 }
 

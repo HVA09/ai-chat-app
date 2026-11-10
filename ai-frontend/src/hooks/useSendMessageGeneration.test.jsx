@@ -256,6 +256,29 @@ describe("useSendMessageGeneration", () => {
     });
   });
 
+  it("does not offer an automatic retry after an Agent tool has started", async () => {
+    const { props, getMessages } = makeProps({ conversationId: "conversation-1" });
+    streamChatMessage.mockImplementationOnce(async (_text, _id, _assistantId, options) => {
+      options.onError("Some changes may already have been applied.", {
+        kind: "stream",
+        messagePersisted: false,
+        retryMode: "blocked",
+      });
+    });
+
+    const { result } = renderHook(() => useSendMessageGeneration(props));
+    await act(async () => {
+      await result.current.sendMessage();
+    });
+
+    expect(props.setError).toHaveBeenCalledWith("Some changes may already have been applied.");
+    expect(props.setRetryableUserMessage).toHaveBeenLastCalledWith(null);
+    expect(props.setLoading).toHaveBeenLastCalledWith(false);
+    expect(getMessages()).toEqual([
+      { role: "user", text: "Check this file", time: expect.any(String) },
+    ]);
+  });
+
   it("moves a new conversation into the selected folder and reports a move failure", async () => {
     const { props } = makeProps({ selectedFolderId: "folder-5" });
     moveConversationToFolder.mockRejectedValueOnce(new Error("move failed"));

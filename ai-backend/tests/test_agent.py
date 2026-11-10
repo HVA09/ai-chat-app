@@ -72,7 +72,8 @@ def test_agent_mode_streams_final_answer(client, monkeypatch):
     )
 
     assert response.status_code == 200
-    assert "event: conversation" in response.text
+    assert "event: conversation\n" in response.text
+    assert "\n\n" in response.text
     assert "event: chunk" in response.text
     assert "حسبت العملية: الناتج 60." in response.text
     assert "event: done" in response.text
@@ -150,3 +151,28 @@ def test_agent_mode_uses_safe_python_tool(client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["reply"] == "الناتج من بايثون هو 42."
+
+
+def test_agent_stream_failure_after_tool_start_blocks_automatic_retry(client, monkeypatch):
+    async def fail_after_tool(*args, **kwargs):
+        await kwargs["on_tool_event"](
+            {"type": "start", "name": "edit_project_file", "run_id": "test-run"}
+        )
+        raise RuntimeError("provider failed after tool execution started")
+
+    monkeypatch.setattr(chat_router_module, "run_agent", fail_after_tool)
+    token = _register_and_login(client, "agent-after-tool-failure@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/chat/stream",
+        json={"message": "/agent update the current project file"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert "event: retry_mode" in response.text
+    assert "data: blocked" in response.text
+    assert "data: send" not in response.text
+    assert "أوقفنا إعادة المحاولة التلقائية" in response.text
+    assert "event: done" not in response.text

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -27,6 +28,35 @@ MCPDiscoverer = Callable[[], Awaitable[list[Any]]]
 
 
 AGENT_RUNTIME_VERSION = "1"
+
+
+def _looks_like_unstructured_tool_call(text: str, tool_names: set[str]) -> bool:
+    """Detect explicit tool-call syntax that arrived as plain text, not protocol data."""
+    first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    if not first_line.startswith("//"):
+        return False
+
+    candidate = first_line[2:].strip()
+    if not candidate:
+        return False
+    if re.match(r"^(?:tool(?:_call)?|call_tool|invoke_tool)\b", candidate, re.IGNORECASE):
+        return True
+
+    if candidate.startswith("{"):
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            names = [payload.get(key) for key in ("name", "tool", "tool_name")]
+            function = payload.get("function")
+            if isinstance(function, dict):
+                names.append(function.get("name"))
+            if any(isinstance(name, str) and name in tool_names for name in names):
+                return True
+
+    direct_call = re.match(r"^([A-Za-z_][A-Za-z0-9_.-]*)\s*(?:\(|\{)", candidate)
+    return bool(direct_call and direct_call.group(1) in tool_names)
 
 
 def get_agent_tool_policy_snapshot() -> dict[str, Any]:
@@ -305,18 +335,28 @@ class AgentRuntime:
 
             if not reply.tool_calls:
                 final_text = reply.text or "اكتملت المهمة بدون رد نصي."
+                if _looks_like_unstructured_tool_call(final_text, set(registry.names())):
+                    # Never present model-authored pseudo syntax as an executed tool.
+                    final_text = (
+                        "لم يتم تنفيذ أي أداة لأن الرد لم يتضمن استدعاءً منظمًا. "
+                        "أعد صياغة الطلب أو حاول مرة أخرى."
+                    )
+                    completion_status = "stopped"
+                else:
+                    completion_status = "completed"
+
                 await self._emit(
                     {
                         "type": "runtime_complete",
                         "run_id": run_id,
-                        "status": "completed",
+                        "status": completion_status,
                         "round": round_number,
                         "tool_calls": total_tool_calls,
                     }
                 )
                 return AgentRuntimeResult(
                     run_id=run_id,
-                    status="completed",
+                    status=completion_status,
                     text=final_text,
                     sources=sources,
                     input_tokens=total_input_tokens or None,
