@@ -75,7 +75,8 @@ def db_session():
 
     event.remove(session, "after_transaction_end", _restart_savepoint)
     session.close()
-    outer_transaction.rollback()
+    if outer_transaction.is_active:
+        outer_transaction.rollback()
     connection.close()
 
 
