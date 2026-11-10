@@ -8,6 +8,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import commit_and_release_connection
 from app.models.conversation import Conversation
 from app.models.file_attachment import FileAttachment
 from app.services.ai_providers.base import AIReply
@@ -60,7 +61,9 @@ async def index_image_file(
         raise ValueError("لم يرجع نموذج الرؤية وصفًا للصورة")
 
     file.extracted_text = f"[IMAGE DESCRIPTION] {description}"
-    db.flush()
+    # Persist the extracted description and release before the synchronous
+    # embeddings request performed by index_file_chunks.
+    commit_and_release_connection(db)
 
     try:
         indexed_chunks = index_file_chunks(db, file)

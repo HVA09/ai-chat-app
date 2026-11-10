@@ -47,6 +47,19 @@ def test_analyze_attached_image(client, monkeypatch):
     assert uploaded.status_code == 201
     file_id = uploaded.json()["id"]
 
+    events = []
+    monkeypatch.setattr(
+        chat_router_module,
+        "commit_and_release_connection",
+        lambda _db: events.append("release"),
+    )
+    vision_reply = AsyncMock(
+        side_effect=lambda *_args, **_kwargs: (
+            events.append("vision") or AIReply(text="الصورة تحتوي على عنصر تجريبي.")
+        )
+    )
+    monkeypatch.setattr(chat_router_module, "get_ai_vision_reply", vision_reply)
+
     response = client.post(
         "/chat/vision",
         json={
@@ -58,6 +71,7 @@ def test_analyze_attached_image(client, monkeypatch):
     )
     assert response.status_code == 200
     assert response.json()["reply"] == "الصورة تحتوي على عنصر تجريبي."
+    assert events == ["release", "vision"]
 
     vision_call = chat_router_module.get_ai_vision_reply.await_args
     assert vision_call.args[0] == "ماذا ترى في الصورة؟"

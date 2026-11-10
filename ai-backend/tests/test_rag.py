@@ -212,9 +212,17 @@ def test_workspace_knowledge_chunks_are_retrievable_without_conversation_link(
     db_session.add(chunk)
     db_session.commit()
 
+    events = []
+
+    def fake_release_connection(session):
+        assert session is db_session
+        events.append("release")
+
     async def fake_embed_query(_query):
+        events.append("embedding")
         return [0.1] * 768
 
+    monkeypatch.setattr(rag, "commit_and_release_connection", fake_release_connection)
     monkeypatch.setattr(rag, "embed_query", fake_embed_query)
     rows = asyncio.run(
         rag.retrieve_relevant_chunks(
@@ -229,6 +237,7 @@ def test_workspace_knowledge_chunks_are_retrievable_without_conversation_link(
     assert len(rows) == 1
     assert rows[0][0].content == "shared workspace evidence"
     assert rows[0][1].id == file.id
+    assert events == ["release", "embedding"]
 
 
 def test_workspace_knowledge_does_not_cross_workspace_scope(db_session, monkeypatch):

@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import get_db
+from app.database import commit_and_release_connection, get_db
 from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_allowed_ai_models, get_current_user
 from app.logging_config import get_logger
 from app.models.assistant import Assistant
@@ -70,12 +70,11 @@ logger = get_logger("chat")
 def _release_db_connection_before_streaming(db: Session) -> None:
     """Return a checked-out connection before a non-Agent SSE stream waits externally.
 
-    The endpoint disables ORM expiration before its setup commits so loaded scalar
-    values remain available after the connection is returned to the pool.
-    Later database writes acquire a connection only when persistence is needed.
+    The shared release helper temporarily preserves loaded ORM scalar values while
+    committing the current unit of work, then restores the Session's configured expiry
+    behavior. Later database writes acquire a connection only when persistence is needed.
     """
-    db.commit()
-
+    commit_and_release_connection(db)
 
 MAX_HISTORY_MESSAGES = 20  # يحدّ من نمو الاستعلام وتكلفة/زمن استدعاء AI بمحادثة طويلة جدًا
 MAX_SUMMARY_CONTEXT_CHARS = 8_000
@@ -1036,6 +1035,9 @@ async def analyze_attached_image(
     if context_parts:
         prompt = "\n\n".join(context_parts) + f"\n\nUSER REQUEST:\n{payload.message}"
 
+    # The conversation, history, file metadata and prompt are in memory.
+    # Release the DB checkout before object storage and the remote vision provider.
+    commit_and_release_connection(db)
     try:
         with materialize_file(attachment.object_key, image_path) as materialized_path:
             raw = materialized_path.read_bytes()
@@ -1294,6 +1296,9 @@ async def chat(
                 / str(current_user.id)
                 / attachment.stored_filename
             )
+            # File materialization may use remote object storage; do not hold
+            # a PostgreSQL checkout while it waits.
+            commit_and_release_connection(db)
             with materialize_file(attachment.object_key, fallback_path) as path:
                 data_file = DataFile(
                     path=path,
@@ -1342,6 +1347,9 @@ async def chat(
 
     search_query = extract_web_search_query(payload.message)
     if search_query is not None:
+        # Commit only the conversation/file-link setup already performed by
+        # this request, then return the connection before external web search.
+        commit_and_release_connection(db)
         try:
             results = await search_web(search_query)
             search_reply, sources = format_web_search_response(search_query, results)
@@ -1373,6 +1381,10 @@ async def chat(
     history = _build_history(conversation, db)
     ai_message, sources = await _augment_message(payload.message, conversation, db)
 
+    # Do not keep a PostgreSQL checkout while waiting for the AI provider.
+    # The user message is deliberately added after this boundary so provider
+    # failures retain the existing behavior (no persisted user turn).
+    commit_and_release_connection(db)
     db.add(
         Message(conversation_id=conversation.id, role=MessageRole.user, content=payload.message)
     )
@@ -1646,6 +1658,9 @@ async def chat_stream(
                 / str(current_user.id)
                 / attachment.stored_filename
             )
+            # Streaming data analysis also materializes remote files before
+            # creating its SSE response; return the DB connection first.
+            commit_and_release_connection(db)
             with materialize_file(attachment.object_key, fallback_path) as path:
                 data_file = DataFile(
                     path=path,
@@ -1707,6 +1722,9 @@ async def chat_stream(
 
     search_query = extract_web_search_query(payload.message)
     if search_query is not None:
+        # Return the connection before the external search call; the user
+        # message is intentionally not persisted until the search succeeds.
+        commit_and_release_connection(db)
         try:
             results = await search_web(search_query)
             search_reply, sources = format_web_search_response(search_query, results)
@@ -1962,6 +1980,7 @@ async def regenerate_chat_stream(
     db: Session = Depends(get_db),
 ):
     """إعادة توليد آخر رد مساعد بدون إضافة رسالة مستخدم مكررة."""
+    db.expire_on_commit = False
     conversation = (
         db.query(Conversation)
         .filter(
@@ -2086,6 +2105,7 @@ async def regenerate_chat_stream(
 
         yield "event: done\ndata: {}\n\n"
 
+    _release_db_connection_before_streaming(db)
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
@@ -2098,6 +2118,7 @@ async def edit_chat_stream(
     db: Session = Depends(get_db),
 ):
     """تعديل رسالة مستخدم سابقة ثم إعادة توليد بقية المحادثة من موقع التعديل."""
+    db.expire_on_commit = False
     conversation = (
         db.query(Conversation)
         .filter(
@@ -2232,4 +2253,5 @@ async def edit_chat_stream(
 
         yield "event: done\ndata: {}\n\n"
 
+    _release_db_connection_before_streaming(db)
     return StreamingResponse(event_generator(), media_type="text/event-stream")

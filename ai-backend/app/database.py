@@ -2,7 +2,7 @@
 اتصال قاعدة البيانات عبر SQLAlchemy
 """
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import Session, sessionmaker, declarative_base
 
 from app.config import settings
 
@@ -20,6 +20,22 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
+
+def commit_and_release_connection(db: Session) -> None:
+    """Commit the current unit of work and return its connection to the pool.
+
+    Call only at an intentional transaction boundary before external I/O.
+    Pending writes are committed. Temporarily disabling expiration preserves
+    already-loaded ORM scalar values while allowing the caller's configured
+    expire_on_commit behavior to be restored immediately afterward.
+    """
+    expire_on_commit = db.expire_on_commit
+    db.expire_on_commit = False
+    try:
+        db.commit()
+    finally:
+        db.expire_on_commit = expire_on_commit
 
 
 def get_db():

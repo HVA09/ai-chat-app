@@ -30,6 +30,22 @@ def test_generate_conversation_title(client, monkeypatch):
     )
     conversation_id = chat_response.json()["conversation_id"]
 
+    events = []
+    monkeypatch.setattr(
+        conversations_router_module,
+        "commit_and_release_connection",
+        lambda _db: events.append("release"),
+    )
+
+    async def fake_title_reply(*_args, **_kwargs):
+        events.append("provider")
+        return AIReply(text='  Title: "Python Basics"  ')
+
+    monkeypatch.setattr(
+        conversations_router_module,
+        "get_ai_reply",
+        AsyncMock(side_effect=fake_title_reply),
+    )
     response = client.post(
         f"/conversations/{conversation_id}/generate-title",
         headers=headers,
@@ -37,6 +53,7 @@ def test_generate_conversation_title(client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["title"] == "Python Basics"
+    assert events == ["release", "provider"]
 
 
 def test_list_conversations_empty(client):
@@ -711,16 +728,20 @@ def test_create_conversation_summary(client, monkeypatch):
         "get_ai_reply",
         AsyncMock(return_value=AIReply(text="رد تجريبي")),
     )
+    events = []
+
+    async def fake_summary_reply(*_args, **_kwargs):
+        events.append("provider")
+        return AIReply(
+            text="- Topic: مناقشة مشروع\n- Key points: تم الاتفاق على الخطوات التالية",
+            input_tokens=32,
+            output_tokens=18,
+        )
+
     monkeypatch.setattr(
         conversations_router_module,
         "get_ai_reply",
-        AsyncMock(
-            return_value=AIReply(
-                text="- Topic: مناقشة مشروع\n- Key points: تم الاتفاق على الخطوات التالية",
-                input_tokens=32,
-                output_tokens=18,
-            )
-        ),
+        AsyncMock(side_effect=fake_summary_reply),
     )
     token = _register_and_login(client, "summary@example.com")
     headers = {"Authorization": f"Bearer {token}"}
@@ -731,11 +752,17 @@ def test_create_conversation_summary(client, monkeypatch):
         headers=headers,
     ).json()["conversation_id"]
 
+    monkeypatch.setattr(
+        conversations_router_module,
+        "commit_and_release_connection",
+        lambda _db: events.append("release"),
+    )
     response = client.post(
         f"/conversations/{conversation_id}/summary",
         headers=headers,
     )
     assert response.status_code == 200
+    assert events == ["release", "provider"]
     payload = response.json()
     assert payload["conversation_id"] == conversation_id
     assert "Topic" in payload["summary"]

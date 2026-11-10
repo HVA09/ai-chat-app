@@ -1458,6 +1458,7 @@ def test_non_agent_chat_stream_releases_db_connection_before_streaming_response(
     for branch in ("calculator", "python", "data_analysis", "web_search", "normal"):
         db = FakeSession()
         released = []
+        events = []
 
         monkeypatch.setattr(
             chat_router_module,
@@ -1533,8 +1534,21 @@ def test_non_agent_chat_stream_releases_db_connection_before_streaming_response(
             )
             monkeypatch.setattr(
                 chat_router_module,
+                "commit_and_release_connection",
+                lambda _session: events.append("release"),
+            )
+
+            def fake_materialize_file(*_args, **_kwargs):
+                assert events == ["release"], (
+                    "streaming data analysis must release DB before file materialization"
+                )
+                events.append("materialize")
+                return nullcontext("/tmp/fake-notes.csv")
+
+            monkeypatch.setattr(
+                chat_router_module,
                 "materialize_file",
-                lambda *_args, **_kwargs: nullcontext("/tmp/fake-notes.csv"),
+                fake_materialize_file,
             )
             monkeypatch.setattr(
                 chat_router_module,
@@ -1591,9 +1605,9 @@ def test_non_agent_chat_stream_releases_db_connection_before_streaming_response(
 
         assert isinstance(response, CapturedStreamingResponse)
         assert released == [True]
+        if branch == "data_analysis":
+            assert events == ["release", "materialize", "release"]
         assert db.expire_on_commit is False
-
-
 def test_stream_connection_release_returns_postgres_pool_slot():
     """A released PostgreSQL checkout must be available to another request session."""
     from sqlalchemy import text
@@ -1662,3 +1676,207 @@ def test_stream_connection_release_returns_postgres_pool_slot():
             second_request_session.close()
         first_request_session.close()
         pool_engine.dispose()
+
+def test_stream_connection_is_released_before_streaming():
+    """A long SSE response should not reserve a connection during external work."""
+    from sqlalchemy import Column, Integer, String
+    from sqlalchemy.orm import declarative_base
+
+    engine = create_engine("sqlite://", poolclass=QueuePool)
+    base = declarative_base()
+
+    class StreamProbe(base):
+        __tablename__ = "stream_pool_probe"
+        id = Column(Integer, primary_key=True)
+        value = Column(String, nullable=False)
+
+    base.metadata.create_all(engine)
+    db = sessionmaker(bind=engine)()
+
+    try:
+        # The request disables expiration before its first transaction.
+        db.expire_on_commit = False
+        db.add(StreamProbe(value="loaded before streaming"))
+        db.commit()
+        probe = db.query(StreamProbe).one()
+        assert engine.pool.checkedout() == 1
+
+        chat_router_module._release_db_connection_before_streaming(db)
+
+        assert engine.pool.checkedout() == 0
+        assert probe.value == "loaded before streaming"
+        assert engine.pool.checkedout() == 0
+    finally:
+        db.close()
+        engine.dispose()
+
+def test_chat_releases_db_connection_before_web_search(client, monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        chat_router_module,
+        "extract_web_search_query",
+        lambda _message: "PostgreSQL connection pooling",
+    )
+
+    def track_release(db):
+        events.append("release")
+        # The actual helper performs the commit in this route-level test.
+        original_release(db)
+
+    original_release = chat_router_module.commit_and_release_connection
+    monkeypatch.setattr(chat_router_module, "commit_and_release_connection", track_release)
+
+    async def fake_search(_query):
+        events.append("search")
+        return [{"title": "result"}]
+
+    monkeypatch.setattr(chat_router_module, "search_web", AsyncMock(side_effect=fake_search))
+    monkeypatch.setattr(
+        chat_router_module,
+        "format_web_search_response",
+        lambda _query, _results: ("search response", []),
+    )
+
+    token = _register_and_login(client, "chat-search-release@example.com")
+    response = client.post(
+        "/chat",
+        json={"message": "search this"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["reply"] == "search response"
+    assert events == ["release", "search"]
+
+def test_chat_stream_releases_db_connection_before_web_search(client, monkeypatch):
+    events = []
+    original_release = chat_router_module.commit_and_release_connection
+
+    def track_release(db):
+        events.append("release")
+        original_release(db)
+
+    monkeypatch.setattr(chat_router_module, "commit_and_release_connection", track_release)
+    monkeypatch.setattr(
+        chat_router_module,
+        "extract_web_search_query",
+        lambda _message: "PostgreSQL streaming connections",
+    )
+
+    async def fake_search(_query):
+        events.append("search")
+        return [{"title": "stream result"}]
+
+    monkeypatch.setattr(chat_router_module, "search_web", AsyncMock(side_effect=fake_search))
+    monkeypatch.setattr(
+        chat_router_module,
+        "format_web_search_response",
+        lambda _query, _results: ("stream search response", []),
+    )
+
+    token = _register_and_login(client, "chat-stream-search-release@example.com")
+    response = client.post(
+        "/chat/stream",
+        json={"message": "search this"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200
+    assert "stream search response" in response.text
+    assert events[:2] == ["release", "search"]
+
+def _assert_message_stream_route_releases_db_before_response(
+    client, monkeypatch, db_session, *, route_kind, email
+):
+    """Exercise regenerate/edit setup and assert release precedes StreamingResponse."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="initial answer")),
+    )
+    token = _register_and_login(client, email)
+    headers = {"Authorization": f"Bearer {token}"}
+    created = client.post(
+        "/chat",
+        json={"message": "initial question"},
+        headers=headers,
+    )
+    assert created.status_code == 200
+    conversation_id = created.json()["conversation_id"]
+    current_user = db_session.query(User).filter(User.email == email).one()
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "_augment_message",
+        AsyncMock(return_value=("edited prompt", [])),
+    )
+    original_release = chat_router_module._release_db_connection_before_streaming
+    released = []
+
+    def tracking_release(session):
+        original_release(session)
+        released.append(True)
+
+    class CapturedStreamingResponse:
+        def __init__(self, content, **kwargs):
+            assert released == [True], (
+                f"{route_kind} route constructed StreamingResponse before DB release"
+            )
+            self.content = content
+            self.kwargs = kwargs
+
+    monkeypatch.setattr(
+        chat_router_module, "_release_db_connection_before_streaming", tracking_release
+    )
+    monkeypatch.setattr(
+        chat_router_module, "StreamingResponse", CapturedStreamingResponse
+    )
+
+    request = SimpleNamespace(headers={"accept-language": "ar"})
+    if route_kind == "regenerate":
+        response = asyncio.run(
+            chat_router_module.regenerate_chat_stream(
+                conversation_id=conversation_id,
+                request=request,
+                current_user=current_user,
+                db=db_session,
+            )
+        )
+    else:
+        response = asyncio.run(
+            chat_router_module.edit_chat_stream(
+                conversation_id=conversation_id,
+                payload=SimpleNamespace(message_index=1, message="edited question"),
+                request=request,
+                current_user=current_user,
+                db=db_session,
+            )
+        )
+
+    assert isinstance(response, CapturedStreamingResponse)
+    assert released == [True]
+    assert db_session.expire_on_commit is False
+
+def test_regenerate_route_releases_db_connection_before_streaming_response(
+    client, monkeypatch, db_session
+):
+    _assert_message_stream_route_releases_db_before_response(
+        client,
+        monkeypatch,
+        db_session,
+        route_kind="regenerate",
+        email="db-pool-regenerate-route@example.com",
+    )
+
+def test_edit_route_releases_db_connection_before_streaming_response(
+    client, monkeypatch, db_session
+):
+    _assert_message_stream_route_releases_db_before_response(
+        client,
+        monkeypatch,
+        db_session,
+        route_kind="edit",
+        email="db-pool-edit-route@example.com",
+    )

@@ -11,7 +11,7 @@ from sqlalchemy import func, or_, over
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import set_committed_value
 
-from app.database import get_db
+from app.database import commit_and_release_connection, get_db
 from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_current_user
 from app.models.assistant import Assistant
 from app.models.conversation import Conversation, Message, MessageRole
@@ -554,6 +554,7 @@ async def generate_conversation_title(
         )
 
     prompt = _build_title_prompt(conversation)
+    commit_and_release_connection(db)
     reply = await get_ai_reply(
         prompt,
         history=[],
@@ -623,6 +624,7 @@ async def summarize_conversation(
             detail="لا توجد رسائل كافية لتلخيص المحادثة",
         )
 
+    commit_and_release_connection(db)
     reply = await get_ai_reply(
         prompt,
         history=[],

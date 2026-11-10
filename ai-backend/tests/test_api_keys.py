@@ -57,6 +57,22 @@ def test_api_key_auth_and_chat(client, monkeypatch):
     )
     secret = created.json()["secret"]
 
+    events = []
+    monkeypatch.setattr(
+        api_keys_router_module,
+        "commit_and_release_connection",
+        lambda _db: events.append("release"),
+    )
+
+    async def fake_reply(*_args, **_kwargs):
+        events.append("provider")
+        return AIReply(text="رد API", input_tokens=2, output_tokens=3)
+
+    monkeypatch.setattr(
+        api_keys_router_module,
+        "get_ai_reply",
+        AsyncMock(side_effect=fake_reply),
+    )
     response = client.post(
         "/v1/chat",
         json={"message": "مرحبا من API"},
@@ -66,6 +82,7 @@ def test_api_key_auth_and_chat(client, monkeypatch):
     body = response.json()
     assert body["reply"] == "رد API"
     assert body["model"]
+    assert events == ["release", "provider"]
 
 
 def test_api_key_rate_limit_headers_report_remaining_and_reset(client, monkeypatch):

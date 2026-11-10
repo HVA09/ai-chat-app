@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import get_db
+from app.database import commit_and_release_connection, get_db
 from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_allowed_ai_models, get_current_user
 from app.audit import log_event
 from app.models.conversation import Conversation
@@ -256,6 +256,10 @@ async def upload_file(
     stored_filename = f"{uuid.uuid4().hex}{extension}"
     object_key = f"users/{current_user.id}/{stored_filename}"
     destination = _user_upload_dir(current_user.id) / stored_filename
+
+    # Quotas, ownership and workspace access have been checked. Do not hold a
+    # DB checkout while awaiting upload bytes or writing the object to storage.
+    commit_and_release_connection(db)
     temp_path = None
     total = 0
     header = bytearray()
@@ -324,6 +328,9 @@ async def upload_file(
     db.flush()
 
     if extracted_text:
+        # The file row needs an ID before chunk persistence, but the embedding
+        # request is external I/O. Commit the attachment before that wait.
+        commit_and_release_connection(db)
         try:
             indexed_chunks = index_file_chunks(db, attachment)
             if indexed_chunks:
@@ -542,6 +549,9 @@ def download_file(
 ):
     attachment = _get_accessible_file(file_id, current_user, db)
     path = _user_upload_dir(attachment.user_id) / attachment.stored_filename
+    # The response streams bytes from object storage; return the DB checkout
+    # before opening the remote object and before the response body is consumed.
+    commit_and_release_connection(db)
     try:
         body = open_file(attachment.object_key or f"users/{attachment.user_id}/{attachment.stored_filename}", path)
     except (FileNotFoundError, StorageError) as exc:
@@ -579,6 +589,9 @@ async def index_image_for_rag(
     allowed_models = get_allowed_ai_models(current_user, db)
     model = allowed_models[0] if allowed_models else settings.AI_MODEL
 
+    # Authorization, quota and file metadata are loaded; release the request
+    # connection before remote object storage and the vision provider.
+    commit_and_release_connection(db)
     try:
         reply, indexed_chunks = await index_image_file(attachment, db, model)
     except (FileNotFoundError, ValueError) as exc:
@@ -625,6 +638,9 @@ def delete_file(
             detail="ليس لديك صلاحية حذف هذا الملف",
         )
     path = _user_upload_dir(attachment.user_id) / attachment.stored_filename
+    # Object-storage deletion can block on external I/O. Authorization and
+    # metadata are already loaded, so return the database checkout first.
+    commit_and_release_connection(db)
     try:
         delete_stored_file(
             attachment.object_key or f"users/{attachment.user_id}/{attachment.stored_filename}",
