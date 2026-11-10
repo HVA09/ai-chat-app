@@ -196,4 +196,157 @@ describe("chatApi Agent retry safety", () => {
       }
     );
   });
+
+  it("blocks an Agent retry when request transport fails before a response arrives", async () => {
+    const onError = vi.fn();
+    const onDone = vi.fn();
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error("network dropped"));
+
+    await streamChatMessage("/agent update the project file", 7, null, {
+      onError,
+      onDone,
+    });
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringContaining("انقطع الاتصال"),
+      expect.objectContaining({
+        kind: "transport",
+        messagePersisted: false,
+        retryMode: "blocked",
+      })
+    );
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("blocks an Agent retry when the stream drops after a tool-start event", async () => {
+    const onError = vi.fn();
+    const onToolEvent = vi.fn();
+    const encoder = new TextEncoder();
+    const reader = {
+      read: vi.fn()
+        .mockResolvedValueOnce({
+          done: false,
+          value: encoder.encode('event: tool\ndata: {"type":"start","name":"edit_project_file"}\n\n'),
+        })
+        .mockRejectedValueOnce(new Error("network dropped")),
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    });
+
+    await streamChatMessage("/agent update the project file", 7, null, {
+      onError,
+      onToolEvent,
+    });
+
+    expect(onToolEvent).toHaveBeenCalledWith({
+      type: "start",
+      name: "edit_project_file",
+    });
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringContaining("انقطع الاتصال"),
+      expect.objectContaining({
+        kind: "transport",
+        messagePersisted: false,
+        retryMode: "blocked",
+      })
+    );
+  });
+
+  it("blocks an Agent retry when the stream ends without a terminal event", async () => {
+    const onError = vi.fn();
+    const encoder = new TextEncoder();
+    let index = 0;
+    const chunks = ["event: conversation\ndata: 7\n\n"];
+    const reader = {
+      read: vi.fn(async () => {
+        if (index >= chunks.length) return { done: true, value: undefined };
+        return { done: false, value: encoder.encode(chunks[index++]) };
+      }),
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    });
+
+    await streamChatMessage("/agent update the project file", 7, null, { onError });
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.stringContaining("انقطع الاتصال"),
+      expect.objectContaining({
+        kind: "transport",
+        messagePersisted: false,
+        retryMode: "blocked",
+      })
+    );
+  });
+
+  it("does not trust a safe-send marker after a tool-start event", async () => {
+    const onError = vi.fn();
+    const encoder = new TextEncoder();
+    const chunks = [
+      'event: tool\ndata: {"type":"start","name":"edit_project_file"}\n\n',
+      "event: retry_mode\ndata: send\n\n",
+      "event: error\ndata: retry marker mismatch\n\n",
+    ];
+    let index = 0;
+    const reader = {
+      read: vi.fn(async () => {
+        if (index >= chunks.length) return { done: true, value: undefined };
+        return { done: false, value: encoder.encode(chunks[index++]) };
+      }),
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    });
+
+    await streamChatMessage("/agent update the project file", 7, null, { onError });
+
+    expect(onError).toHaveBeenCalledWith(
+      "retry marker mismatch",
+      expect.objectContaining({
+        kind: "stream",
+        messagePersisted: false,
+        retryMode: "blocked",
+      })
+    );
+  });
+
+  it("keeps explicit safe-send mode for an Agent failure before any tool starts", async () => {
+    const onError = vi.fn();
+    const encoder = new TextEncoder();
+    const chunks = [
+      "event: retry_mode\ndata: send\n\n",
+      "event: error\ndata: provider failed before tool execution\n\n",
+    ];
+    let index = 0;
+    const reader = {
+      read: vi.fn(async () => {
+        if (index >= chunks.length) return { done: true, value: undefined };
+        return { done: false, value: encoder.encode(chunks[index++]) };
+      }),
+    };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      body: { getReader: () => reader },
+    });
+
+    await streamChatMessage("/agent update the project file", 7, null, { onError });
+
+    expect(onError).toHaveBeenCalledWith(
+      "provider failed before tool execution",
+      {
+        kind: "stream",
+        messagePersisted: false,
+        retryMode: "send",
+      }
+    );
+  });
 });
+
