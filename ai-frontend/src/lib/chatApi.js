@@ -94,6 +94,7 @@ export async function streamChatMessage(
   // branch is different: it persists only after the agent succeeds, so the server
   // can explicitly mark an error as safe to resend.
   let messagePersisted = true;
+  let retryMode = null;
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -119,9 +120,18 @@ export async function streamChatMessage(
         if (eventType === "conversation") onConversationId?.(Number(data));
         else if (eventType === "sources") onSources?.(JSON.parse(data));
         else if (eventType === "tool") onToolEvent?.(JSON.parse(data));
-        else if (eventType === "retry_mode") messagePersisted = data !== "send";
+        else if (eventType === "retry_mode") {
+          retryMode = data;
+          messagePersisted = data !== "send" && data !== "blocked";
+        }
         else if (eventType === "chunk") onChunk?.(data.replace(/\\n/g, "\n"));
-        else if (eventType === "error") onError?.(data, { kind: "stream", messagePersisted });
+        else if (eventType === "error") {
+          onError?.(data, {
+            kind: "stream",
+            messagePersisted,
+            ...(retryMode ? { retryMode } : {}),
+          });
+        }
         else if (eventType === "done") onDone?.();
       }
     }
