@@ -217,6 +217,9 @@ async def compare_ai_models(
         if workspace_id is not None:
             enforce_workspace_daily_ai_limit(workspace_id, current_user, db)
 
+        # Quota and context reads are complete; release the PostgreSQL checkout
+        # before waiting for this model's external provider response.
+        commit_and_release_connection(db)
         reply = await get_ai_reply(prompt, history, model=model)
         db.add(
             UsageLog(
