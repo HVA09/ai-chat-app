@@ -2,6 +2,7 @@
 مهام خلفية (Celery) — البريد الإلكتروني + تنفيذ مهام AI المجدولة.
 """
 import asyncio
+import ssl
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -999,6 +1000,12 @@ try:
         "ai_backend",
         broker=settings.CELERY_BROKER_URL,
         backend=settings.CELERY_RESULT_BACKEND,
+    )
+    # Require TLS certificate verification for both the Redis broker and result backend.
+    # Upstash uses rediss://; Celery 5.7 requires these SSL settings explicitly.
+    celery_app.conf.update(
+        broker_use_ssl={"ssl_cert_reqs": ssl.CERT_REQUIRED},
+        redis_backend_use_ssl={"ssl_cert_reqs": ssl.CERT_REQUIRED},
     )
     celery_app.conf.timezone = "UTC"
     celery_app.conf.beat_schedule = {
