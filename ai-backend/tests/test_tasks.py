@@ -15,10 +15,14 @@ def test_celery_app_has_production_scheduled_task():
     assert entry["schedule"] == 60.0
 
 
-def test_celery_redis_connections_require_verified_tls():
+def test_celery_redis_tls_is_required_only_for_rediss_urls():
     assert celery_app is not None
-    assert celery_app.conf.broker_use_ssl == {"ssl_cert_reqs": ssl.CERT_REQUIRED}
-    assert celery_app.conf.redis_backend_use_ssl == {"ssl_cert_reqs": ssl.CERT_REQUIRED}
+
+    verified_tls = {"ssl_cert_reqs": ssl.CERT_REQUIRED}
+    assert tasks_module._redis_ssl_options("rediss://cache.example.com:6379/1") == verified_tls
+    assert tasks_module._redis_ssl_options("rediss://cache.example.com/0") == verified_tls
+    assert tasks_module._redis_ssl_options("redis://localhost:6379/1") is None
+    assert tasks_module._redis_ssl_options("redis://127.0.0.1:6379/0") is None
 
 def test_scheduled_task_releases_db_before_provider_wait(monkeypatch):
     events = []
