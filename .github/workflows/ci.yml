@@ -75,7 +75,7 @@ jobs:
           CELERY_BROKER_URL: "redis://localhost:6379/1"
           CELERY_RESULT_BACKEND: "redis://localhost:6379/1"
       - name: Run backend tests with hang diagnostics
-        run: pytest -vv -o faulthandler_timeout=90 --durations=20 -ra
+        run: pytest -vv --timeout=180 --timeout-method=signal -o faulthandler_timeout=90 --durations=20 -ra
         env:
           ENVIRONMENT: test
           DEBUG: "false"
