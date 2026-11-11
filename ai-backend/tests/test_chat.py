@@ -1880,3 +1880,61 @@ def test_edit_route_releases_db_connection_before_streaming_response(
         route_kind="edit",
         email="db-pool-edit-route@example.com",
     )
+
+def test_chat_compare_releases_db_before_each_provider_wait(client, monkeypatch):
+    events = []
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_allowed_ai_models",
+        lambda _user, _db: ["model-a", "model-b"],
+    )
+    monkeypatch.setattr(
+        chat_router_module,
+        "enforce_daily_ai_limit",
+        lambda user, _db: user,
+    )
+    monkeypatch.setattr(
+        chat_router_module,
+        "commit_and_release_connection",
+        lambda _db: events.append("release"),
+    )
+
+    async def fake_reply(_prompt, _history, model=None):
+        events.append(f"provider:{model}")
+        return AIReply(
+            text=f"reply from {model}",
+            provider="test",
+            input_tokens=1,
+            output_tokens=1,
+        )
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(side_effect=fake_reply),
+    )
+
+    token = _register_and_login(client, "compare-pool-release@example.com")
+    response = client.post(
+        "/chat/compare",
+        json={
+            "message": "Compare these models",
+            "model_a": "model-a",
+            "model_b": "model-b",
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert [item["model"] for item in response.json()["results"]] == [
+        "model-a",
+        "model-b",
+    ]
+    assert events == [
+        "release",
+        "provider:model-a",
+        "release",
+        "provider:model-b",
+    ]
+
