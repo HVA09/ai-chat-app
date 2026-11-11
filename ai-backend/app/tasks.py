@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import IntegrityError
 
-from app.database import SessionLocal
+from app.database import SessionLocal, commit_and_release_connection
 from app.logging_config import get_logger
 from app.models.agent_job import AgentJob
 from app.models.agent_workflow_step import AgentWorkflowStep
@@ -693,6 +693,12 @@ def _ensure_ai_quota(user: User, workspace: Workspace, db) -> None:
             )
 
 
+def _scheduled_task_ai_reply(db, prompt: str, model: str):
+    """Release read-only quota/session work before waiting for the AI provider."""
+    commit_and_release_connection(db)
+    return asyncio.run(get_ai_reply(prompt, [], model))
+
+
 def _execute_scheduled_task(
     task_id: int,
     run_id: int | None = None,
@@ -830,7 +836,7 @@ def _execute_scheduled_task(
                     db.commit()
             return
 
-        reply = asyncio.run(get_ai_reply(task.prompt, [], ai_model))
+        reply = _scheduled_task_ai_reply(db, task.prompt, ai_model)
 
         title_prefix = "Scheduled" if not task.prompt.startswith("م") else "مهمة مجدولة"
         title = f"{title_prefix}: {task.prompt[:70]}".strip()
