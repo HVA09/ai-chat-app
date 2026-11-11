@@ -4,6 +4,7 @@
 import asyncio
 import ssl
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import IntegrityError
@@ -997,6 +998,13 @@ def _run_due_scheduled_tasks() -> None:
         _execute_scheduled_task(task_id, run_id)
 
 
+def _redis_ssl_options(redis_url: str) -> dict | None:
+    """Require verified TLS only for Redis URLs that explicitly use rediss://."""
+    if urlsplit(redis_url).scheme.lower() != "rediss":
+        return None
+    return {"ssl_cert_reqs": ssl.CERT_REQUIRED}
+
+
 try:
     from celery import Celery
 
@@ -1007,12 +1015,17 @@ try:
         broker=settings.CELERY_BROKER_URL,
         backend=settings.CELERY_RESULT_BACKEND,
     )
-    # Require TLS certificate verification for both the Redis broker and result backend.
-    # Upstash uses rediss://; Celery 5.7 requires these SSL settings explicitly.
-    celery_app.conf.update(
-        broker_use_ssl={"ssl_cert_reqs": ssl.CERT_REQUIRED},
-        redis_backend_use_ssl={"ssl_cert_reqs": ssl.CERT_REQUIRED},
-    )
+    # Upstash/managed TLS endpoints use rediss:// and must verify certificates.
+    # Local Redis/Valkey test services use redis:// and must remain plain TCP.
+    celery_ssl_options = {}
+    broker_ssl_options = _redis_ssl_options(settings.CELERY_BROKER_URL)
+    result_backend_ssl_options = _redis_ssl_options(settings.CELERY_RESULT_BACKEND)
+    if broker_ssl_options is not None:
+        celery_ssl_options["broker_use_ssl"] = broker_ssl_options
+    if result_backend_ssl_options is not None:
+        celery_ssl_options["redis_backend_use_ssl"] = result_backend_ssl_options
+    if celery_ssl_options:
+        celery_app.conf.update(**celery_ssl_options)
     celery_app.conf.timezone = "UTC"
     celery_app.conf.beat_schedule = {
         "run-due-scheduled-tasks": {
