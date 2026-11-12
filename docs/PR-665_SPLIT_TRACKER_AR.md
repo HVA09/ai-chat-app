@@ -414,3 +414,9 @@
 - Publish backend image push run [43153718274](https://github.com/HVA09/ai-chat-app/actions/runs/43153718274): نجاح.
 - عند آخر تحقق لم تبدأ أحداث Render على SHA `f3ba9...` بعد، وآخر deployment Live كان على `c8264a...`. إعداد Render ما زال `autoDeploy=yes` و`autoDeployTrigger=checksPass`؛ ننتظر اكتمال CI على main ثم نعيد فحص deployment وhealth/ready.
 - لم تُنفذ migration أو backfill أو إعادة فهرسة يدويًا، ولم تُعدّل أسرار أو إعدادات الإنتاج. لا تعتبر migration 0082 مطبقة حتى يؤكد Render deployment الجديد أو تحقق قاعدة البيانات المصرّح به.
+### إعادة فحص الخدمة أثناء انتظار CI الخاص بـ main
+- عند إعادة الفحص، بقي Backend job في CI push run [43153718406](https://github.com/HVA09/ai-chat-app/actions/runs/43153718406) داخل خطوة Backend pytest؛ بقية وظائف CI الأربع انتهت بنجاح، وCodeQL push run [43153718347](https://github.com/HVA09/ai-chat-app/actions/runs/43153718347) انتهى بنجاح.
+- فحص Production smoke [43153718382](https://github.com/HVA09/ai-chat-app/actions/runs/43153718382) انتهى بنجاح.
+- Render لا يزال يعرض deployment السابق `dep-dbqjkd59el5s73f04dg0` على SHA `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13` بحالة `live`؛ لم تظهر أحداث build/deploy جديدة بعد دمج #695.
+- نقاط الخدمة على النسخة التي لا تزال Live: `/health = {status:ok,database:ok}` و`/ready = {status:ready,database:ok,redis:ok}`. هذه النتائج تثبت سلامة النسخة السابقة فقط، ولا تثبت أن migration 0082 طُبقت.
+- القرار: لا نعلن نشر #695 حتى يظهر Render deploy على SHA `f3ba9d4...` بحالة `live`، ثم نعيد فحص `/health` و`/ready` ونراجع سجل بدء الحاوية لإثبات ترقية Alembic.
