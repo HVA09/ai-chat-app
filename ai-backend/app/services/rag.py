@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TypedDict
 
@@ -33,6 +34,18 @@ TOP_K = 6
 MAX_RETRIEVAL_CONTEXT_CHARS = 18_000
 
 
+@dataclass(frozen=True)
+class PreparedFileIndex:
+    """Embeddings generated outside a DB transaction, ready for atomic persistence."""
+
+    text_fingerprint: str | None
+    chunks: tuple[str, ...]
+    embeddings: tuple[tuple[float, ...], ...]
+    provider: str | None
+    model: str | None
+    embedding_fingerprint: str | None
+
+
 class SourceCitation(TypedDict):
     id: str
     filename: str
@@ -61,11 +74,57 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
     return chunks
 
 
-def index_file_chunks(db: Session, file: FileAttachment) -> int:
-    text = (file.extracted_text or "").strip()
-    text_fingerprint = extracted_text_fingerprint(text)
+def prepare_file_index(text: str | None) -> PreparedFileIndex:
+    """Generate a complete replacement index without touching persisted chunks.
+
+    Callers may run this before acquiring a row lock or opening a write
+    transaction. A provider failure therefore cannot delete or partially
+    replace the existing index.
+    """
+    normalized_text = (text or "").strip()
+    text_fingerprint = extracted_text_fingerprint(normalized_text)
     if not text_fingerprint:
-        # Remove stale chunks when the extracted source is empty.
+        return PreparedFileIndex(
+            text_fingerprint=None,
+            chunks=(),
+            embeddings=(),
+            provider=None,
+            model=None,
+            embedding_fingerprint=None,
+        )
+
+    chunks = tuple(chunk_text(normalized_text))
+    provider, model, embedding_fingerprint = get_embedding_index_identity()
+    embeddings = embed_documents_sync(chunks)
+    if len(embeddings) != len(chunks):
+        raise EmbeddingServiceError("عدد embeddings لا يطابق عدد المقاطع")
+
+    return PreparedFileIndex(
+        text_fingerprint=text_fingerprint,
+        chunks=chunks,
+        embeddings=tuple(
+            tuple(float(value) for value in embedding)
+            for embedding in embeddings
+        ),
+        provider=provider,
+        model=model,
+        embedding_fingerprint=embedding_fingerprint,
+    )
+
+
+def persist_file_index(
+    db: Session,
+    file: FileAttachment,
+    prepared: PreparedFileIndex,
+) -> int:
+    """Atomically replace one file's chunks after its source is revalidated."""
+    current_fingerprint = extracted_text_fingerprint(file.extracted_text)
+    if current_fingerprint != prepared.text_fingerprint:
+        raise EmbeddingServiceError(
+            "تغيّر نص الملف أثناء تجهيز الفهرس؛ أعد المحاولة"
+        )
+
+    if prepared.text_fingerprint is None:
         db.execute(delete(FileChunk).where(FileChunk.file_id == file.id))
         file.extracted_text_sha256 = None
         file.indexed_text_sha256 = None
@@ -76,13 +135,12 @@ def index_file_chunks(db: Session, file: FileAttachment) -> int:
         db.flush()
         return 0
 
-    chunks = chunk_text(text)
-    provider, model, embedding_fingerprint = get_embedding_index_identity()
-    # Generate and validate all replacement vectors before deleting the old
-    # rows, so an embedding-provider failure preserves the previous index.
-    embeddings = embed_documents_sync(chunks)
-    if len(embeddings) != len(chunks):
-        raise EmbeddingServiceError("عدد embeddings لا يطابق عدد المقاطع")
+    if (
+        not prepared.chunks
+        or len(prepared.embeddings) != len(prepared.chunks)
+        or any(not embedding for embedding in prepared.embeddings)
+    ):
+        raise EmbeddingServiceError("بيانات الفهرس البديل غير مكتملة")
 
     db.execute(delete(FileChunk).where(FileChunk.file_id == file.id))
     db.add_all(
@@ -91,19 +149,27 @@ def index_file_chunks(db: Session, file: FileAttachment) -> int:
                 file_id=file.id,
                 chunk_index=index,
                 content=content,
-                embedding=embedding,
+                embedding=list(embedding),
             )
-            for index, (content, embedding) in enumerate(zip(chunks, embeddings, strict=True))
+            for index, (content, embedding) in enumerate(
+                zip(prepared.chunks, prepared.embeddings, strict=True)
+            )
         ]
     )
-    file.extracted_text_sha256 = text_fingerprint
-    file.indexed_text_sha256 = text_fingerprint
-    file.indexed_embedding_fingerprint = embedding_fingerprint
-    file.indexed_embedding_provider = provider
-    file.indexed_embedding_model = model
+    file.extracted_text_sha256 = prepared.text_fingerprint
+    file.indexed_text_sha256 = prepared.text_fingerprint
+    file.indexed_embedding_fingerprint = prepared.embedding_fingerprint
+    file.indexed_embedding_provider = prepared.provider
+    file.indexed_embedding_model = prepared.model
     file.indexed_at = datetime.now(timezone.utc)
     db.flush()
-    return len(chunks)
+    return len(prepared.chunks)
+
+
+def index_file_chunks(db: Session, file: FileAttachment) -> int:
+    """Generate and atomically persist the current file's RAG index."""
+    prepared = prepare_file_index(file.extracted_text)
+    return persist_file_index(db, file, prepared)
 
 
 def _get_rag_authorized_conversation(
