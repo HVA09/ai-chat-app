@@ -301,3 +301,20 @@
   4. `ai-backend/tests/test_rag.py`
   5. `ai-backend/tests/test_vision.py`
 - هذا تحديث تصحيحي لعبارة "أربعة ملفات" في القسم 17؛ النطاق الوظيفي لا يزال هو نفسه.
+
+## 18. التحضير المبدئي لمرحلة بصمات فهرسة الملفات — لا تغيير كود بعد
+
+- لا يبدأ طلب بصمات الفهرسة إلا بعد دمج #694 والتحقق من `main` ونشره وصحة الخدمة.
+- ملفات المصدر المحتملة في #665:
+  - `ai-backend/app/models/file_attachment.py`: حقول مصدر النص/بصمة نموذج embeddings/وقت الفهرسة، ودالة normalized-text fingerprint.
+  - `ai-backend/migrations/versions/0081_file_index_fingerprints.py`: migration لإضافة أعمدة nullable فقط، مع مراجعة downgrade/ترتيب revision chain.
+  - `ai-backend/app/services/rag.py`: تحديث `index_file_chunks` لحفظ هوية المصدر والنموذج، واستبعاد المقاطع التي لا تتوافق بصماتها مع المصدر/النموذج الحالي.
+  - `ai-backend/tests/test_rag_index_fingerprints.py`: اختبارات رفض الفهرس القديم عندما يتغير النص أو نموذج embeddings.
+  - أجزاء محددة فقط من `ai-backend/app/routers/files.py` و`tests/test_files.py` لحالة الفهرسة وإعادة الفهرسة، بعد فصل الـ ACL وملفات ZIP الموجودة في نفس الملف.
+- عناصر يجب استبعادها من PR الفهرسة:
+  - صلاحيات workspace/project والتحميل/الإرفاق/الحذف — نُقلت وظيفيًا إلى #694 أو يجب فصلها في نطاق مستقل.
+  - حماية ZIP/Office extraction وتطبيع أسماء الملفات.
+  - تحسين ترتيب ملفات fallback وتنظيف prompt delimiters.
+  - تغيير `ai-backend/app/tasks.py` الذي يمرر دور المستخدم إلى agent configuration version؛ لا يعتمد عليه fingerprint PR ويجب نقله إلى نطاق Agent/MCP لاحق.
+- خطر تشغيلي يجب فحصه قبل أي دمج: migration `0081` يجب أن تكون إضافة أعمدة nullable فقط بلا backfill أو إعادة فهرسة تلقائية أو قفل طويل للجدول. تحديث الفهارس القديمة يكون عملية منفصلة قابلة للتدرج، ولا يُجرى على الإنتاج ضمن migration.
+- لا ينفذ أي migration على Render/Supabase يدويًا خلال التحضير. الاختبار يكون على قاعدة CI أولًا، ثم مراجعة خطة النشر/backfill قبل الدمج.
