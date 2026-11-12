@@ -999,3 +999,46 @@
 - لا bulk RAG reindex/backfill ولا strict retrieval fingerprint filtering قبل provenance موثوق ودليل restore ناجح إلى staging معزول.
 - لا تعديل Render/Supabase production أو أسرار، ولا إجراءات بيانات إنتاجية بهذا القسم.
 
+## 41. متابعة QueuePool وPR #699 لتحرير اتصال Agent قبل انتظار المزود — 2026-11-12
+
+### تحديث تصحيحي لما بعد PR #698
+- CI بعد الدمج على main df92952686f2a1f21339ab1ae55acb3f6d866164 اكتمل بنجاح:
+  - run https://github.com/HVA09/ai-chat-app/actions/runs/43280882496
+  - Backend: 650 passed, 2 warnings in 274.15s.
+  - Frontend, SDK, Preview Builder, Production Compose: Success.
+  - CodeQL Python وJavaScript/TypeScript: Success.
+  - Production smoke https://github.com/HVA09/ai-chat-app/actions/runs/43280882516: Success.
+- Render deployment dep-dbr0f415efls73dsn45g على df929526 انتهى Live عند 2026-11-12T18:40:12Z.
+- بعد النشر، Render internal logs سجلت 104 استجابات GET /health 200 تقريبًا بين 18:40:11Z و18:47:31Z؛ أزمنة الاستجابة كانت غالبًا 10–15ms. لم تسجل app error logs في نافذة 18:40:10Z–18:50:00Z.
+- هذا دليل تعافٍ داخلي لفحص الصحة بعد النشر، وليس إثباتًا كاملًا لتجربة المستخدم أو محادثة RAG/Agent من طرف إلى طرف.
+- قبل النشر، حدثت أخطاء SQLAlchemy موثقة:
+  - 2026-11-12T17:53:19Z على instance srv-dakc4nbm8hqs73e2po9g-bwvm4.
+  - 2026-11-12T18:34:33Z–18:34:34Z على instance srv-dakc4nbm8hqs73e2po9g-9vpxx.
+  - النوع: QueuePool limit of size 2 overflow 1 reached, connection timed out, timeout 15.00.
+  - تأثرت طلبات مثل GET /saved-prompts وGET /users/me وGET /conversations/bookmarks وGET /folders، كما فشل DB health probe في نافذة الحادثة.
+- لا يوجد حتى الآن ما يثبت أن سبب الحادثة الوحيد هو مسار Agent؛ لذا يبقى السبب الجذري قيد التحقق بعد الإصلاح والمراقبة.
+
+### سبب برمجي قابل للإصلاح اكتشف في main
+- SQLAlchemy pool defaults: DATABASE_POOL_SIZE=2, DATABASE_MAX_OVERFLOW=1, DATABASE_POOL_TIMEOUT_SECONDS=15؛ أي حد أقصى 3 checkouts لكل process/engine.
+- start.sh يشغل API وembedded Celery worker وbeat كعمليات منفصلة، ولكل عملية engine/pool مستقل.
+- في ai-backend/app/tasks.py، دالة _agent_job_event_sink كانت تنفذ db.get(AgentJob, job_id) على Session العامل وتعيدها دون إغلاق transaction.
+- يستدعي AgentRuntime هذه الأحداث قبل provider calls: runtime_start وruntime_round_start، وكذلك حول الأدوات start وresult. قراءة ORM تُنشئ transaction، وكان بالإمكان الاحتفاظ بـcheckout أثناء انتظار AI provider أو tool I/O.
+- هذا مسار حقيقي عالي المخاطر لاستبقاء اتصال، لا مجرد تخمين من Render logs؛ لكنه ليس إثباتًا بأن جميع حالات QueuePool سببها هذا المسار.
+
+### PR #699
+- PR: https://github.com/HVA09/ai-chat-app/pull/699
+- Branch: fix/agent-event-db-pool-release-20261112.
+- Base: df92952686f2a1f21339ab1ae55acb3f6d866164.
+- Head الحالي عند فتح الطلب: e4b3bf75fdedc84b3ed8a0ebb5d57f18c8073337.
+- التغيير: بعد قراءة حالة AgentJob في event sink، استخدام commit_and_release_connection(db) لتحرير checkout قبل الرجوع إلى AgentRuntime. هذا الحدّ يعامل اكتمال event/tool unit-of-work كنقطة commit مقصودة.
+- أضيف اختبار قبول PostgreSQL test_agent_event_sink_releases_db_pool_before_provider_wait: يستخدم QueuePool من اتصال واحد، ويحاكي provider wait، ويشترط أن Session ثانية تستطيع تنفيذ SELECT 42 أثناء الانتظار.
+- الملفات: ai-backend/app/tasks.py وai-backend/tests/test_pool_release_acceptance.py.
+- PR يبقى Draft؛ لا دمج حتى نجاح Backend وFrontend وSDK وPreview Builder وProduction Compose وCodeQL ومراجعة أحدث head.
+- CI run https://github.com/HVA09/ai-chat-app/actions/runs/43285215042, CodeQL https://github.com/HVA09/ai-chat-app/actions/runs/43285215153. عند آخر قراءة: SDK Success، Backend/Frontend/Preview Builder/Production Compose وCodeQL ما زالت In Progress.
+
+### حدود التشغيل والقرار
+- لا رفع pool size أو overflow عشوائيًا؛ الحدّ الحالي مقصود لمراعاة session pooler ومحدودية الموارد.
+- لا تغييرات Render/Supabase أو secrets أو قاعدة الإنتاج أو البيانات؛ لا تغيير في deployment خلال PR #699.
+- لا restore أو backfill/reindex.
+- بعد دمج PR #699 (إذا اجتاز كل الفحوص): راقب QueuePool/health/app errors مجددًا، ثم اختبر طلبات مستخدم فعلية ومهمة Agent؛ لا تعتبر تعافي /health وحده إغلاقًا لحادثة الاستنفاد.
+- ملاحظة مستقلة ما زالت مرصودة في PostgreSQL CI: duplicate key على uq_scheduled_task_runs_task_scheduled_for مع نجاح مجموعة الاختبارات؛ تبقى للمراقبة والمعالجة المنفصلة.
