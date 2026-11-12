@@ -80,7 +80,7 @@
 | 2026-11-12 | التحقق من رأس main | `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee` | أساس التفكيك |
 | 2026-11-12 | التحقق من إصلاح Gemini المفرد | #690 merge `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee` | موجود في main؛ يستبعد |
 | 2026-11-12 | إنشاء سجل التفكيك | فرع `docs/pr-665-split-tracker-20261112` | قيد الفتح كمستند تتبع |
-| 2026-11-12 | إنشاء أول PR فرعي لإعداد Embeddings | #692، رأس الفرع `68d6cebdabe7f50bb64b826a6e287a3d320497d5` | Open / Draft؛ الفحوص قيد التنفيذ |
+| 2026-11-12 | إنشاء أول PR فرعي لإعداد Embeddings | #692، رأس مبدئي `68d6cebdabe7f50bb64b826a6e287a3d320497d5` ثم رأس مصحح `718683fe8089a93e7de1fa911f870f5b5089b28e` | Open / Draft؛ خطأ compileall في الرأس المبدئي ثم إصلاح؛ ننتظر فحوص الرأس المصحح |
 | — | أول نتائج CI/CodeQL | يضاف رابط التشغيل وSHA | لم يبدأ |
 
 ## 6. سجل PRs الفرعية
@@ -89,7 +89,7 @@
 
 | PR | العنوان | الفرع | Base SHA | Head SHA | النطاق | CI / CodeQL | القرار |
 |---|---|---|---|---|---|---|---|
-| #692 | فصل إعداد مزود Embeddings | `feat/embedding-provider-config-20261112` | `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee` | `68d6cebdabe7f50bb64b826a6e287a3d320497d5` | إعداد المزود/المفتاح/العنوان/النموذج + اختبارات mock + توثيق؛ دون بصمات DB أو RAG authorization | قيد التشغيل؛ لم تُعتمد النتائج | Draft؛ لا دمج حتى المراجعة والنجاح |
+| #692 | فصل إعداد مزود Embeddings | `feat/embedding-provider-config-20261112` | `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee` | `718683fe8089a93e7de1fa911f870f5b5089b28e` | إعداد المزود/المفتاح/العنوان/النموذج + اختبارات mock + توثيق؛ دون بصمات DB أو RAG authorization | أعيدت الفحوص بعد إصلاح خطأ تركيب كشفه compileall؛ النتائج الجديدة قيد الانتظار | Draft؛ لا دمج حتى المراجعة والنجاح |
 
 ## 7. سياسة التحديث ومنع الالتباس
 
@@ -116,3 +116,5 @@
 - سجل التفكيك: https://github.com/HVA09/ai-chat-app/pull/691
 - أول طلب فرعي لإعداد Embeddings: https://github.com/HVA09/ai-chat-app/pull/692
 - طلب المصدر الكبير الذي لا يزال Draft: https://github.com/HVA09/ai-chat-app/pull/665
+
+| 2026-11-12 | فشل أول compileall لـ #692 في `embeddings.py` بسبب قص غير صحيح لدالة بصمة الفهرسة أثناء الاستخراج | CI job `130927113038`، head `7da65b46b44e09a3e5a13c4bbb6ebbfee1f6dac2`; commit إصلاح `718683fe8089a93e7de1fa911f870f5b5089b28e` | لم يدخل `main`؛ أُصلح الملف وأعيد بناء الدالة من المصدر قبل طلب إعادة الفحوص |
