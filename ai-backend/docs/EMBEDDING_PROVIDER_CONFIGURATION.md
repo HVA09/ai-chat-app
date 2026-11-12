@@ -53,5 +53,7 @@ EMBEDDING_DIMENSIONS=768
 - An explicitly configured Gemini endpoint must be HTTPS and use the exact official hostname `generativelanguage.googleapis.com`, with no embedded credentials, nonstandard port, query string, or fragment.
 - OpenAI-compatible endpoints must be explicitly configured when they are independent of the chat provider.
 - Embedding dimensions are checked against the currently stored vector schema. Do not change the dimension in production without a separate schema migration, backup/rollback plan, and full reindexing plan.
+- Matching dimensions alone do not make embeddings compatible: changing the provider or embedding model changes the vector space. Existing file chunks must be fully re-embedded before queries use the new provider/model; otherwise retrieval quality can silently collapse even when every vector still has 768 values.
+- In backward-compatible mode, `EMBEDDING_PROVIDER` follows `AI_PROVIDER`. Changing the chat provider can therefore also change the implicit Embeddings provider. Before changing `AI_PROVIDER`, explicitly pin `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, and its credentials to preserve the existing embedding space, or complete a separately reviewed full-reindex plan first.
 - API keys are never written into source control. Put secrets only in the deployment's secret environment settings.
 - This change does not alter Render/Supabase settings, migrate the production database, reindex existing files, or run live provider evaluations.
