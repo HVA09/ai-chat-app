@@ -535,3 +535,12 @@ def test_explicit_gemini_embedding_base_url_rejects_untrusted_origins(
         match="المضيف الرسمي generativelanguage.googleapis.com",
     ):
         embeddings._resolve_embedding_config()
+
+
+def test_embedding_config_repr_does_not_disclose_api_key(monkeypatch):
+    _set_embedding_settings(monkeypatch)
+
+    config = embeddings._resolve_embedding_config()
+
+    assert "chat-secret" not in repr(config)
+    assert config.api_key == "chat-secret"
