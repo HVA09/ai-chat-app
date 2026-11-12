@@ -10,7 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import commit_and_release_connection, get_db
 from app.config import settings
 from app.models.assistant import Assistant
 from app.models.assistant_workspace_share import AssistantWorkspaceShare
@@ -845,6 +845,10 @@ async def build_project_preview(
         PreviewBuildFile(path=item.path, content=item.content)
         for item in files
     ]
+
+    # The isolated builder may run for up to two minutes. All required source
+    # content is now in memory, so return the PostgreSQL checkout before HTTP I/O.
+    commit_and_release_connection(db)
     try:
         build = await build_javascript_preview(project.id, payload_files)
         published = publish_preview_artifact(project.id, build)
