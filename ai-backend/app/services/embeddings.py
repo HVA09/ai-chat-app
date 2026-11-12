@@ -33,6 +33,13 @@ def _gemini_url(action: str) -> str:
 
 
 def _extract_embedding_vectors(data: dict) -> list[list[float]]:
+    # Gemini REST embedContent returns one ContentEmbedding object, not a list.
+    single_embedding = data.get("embedding")
+    if isinstance(single_embedding, dict) and isinstance(
+        single_embedding.get("values"), list
+    ):
+        return [_normalize(single_embedding["values"])]
+
     embeddings = data.get("embeddings")
     if isinstance(embeddings, list):
         vectors = []
