@@ -233,3 +233,63 @@ def test_stream_ai_reply_logs_failover_diagnostics(monkeypatch):
     assert "AI streaming primary provider failed" in rendered
     assert "AI streaming failover starting" in rendered
     assert "AI streaming fallback provider succeeded" in rendered
+
+
+def test_stream_ai_reply_times_out_primary_first_chunk_and_uses_fallback(monkeypatch):
+    primary = FakeProvider()
+    fallback = FakeProvider()
+
+    async def delayed_primary_stream(message, history=None):
+        await asyncio.sleep(0.25)
+        yield "primary"
+
+    async def delayed_fallback_stream(message, history=None):
+        await asyncio.sleep(0.05)
+        yield "fallback"
+
+    primary.stream_reply = delayed_primary_stream
+    fallback.stream_reply = delayed_fallback_stream
+
+    def fake_get_provider(model=None, provider_name=None, api_key=None, base_url=None, **kwargs):
+        return fallback if provider_name == "anthropic" else primary
+
+    monkeypatch.setattr(ai_service, "get_provider", fake_get_provider)
+    monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
+    monkeypatch.setattr(app_settings, "AI_API_KEY", "primary")
+    monkeypatch.setattr(app_settings, "AI_MODEL", "gemini-2.5-flash")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_PROVIDER", "anthropic")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_API_KEY", "fallback")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_MODEL", "claude-test")
+    monkeypatch.setattr(app_settings, "AI_ALLOWED_MODELS", ["gemini-2.5-flash"])
+    monkeypatch.setattr(app_settings, "AI_STREAM_IDLE_TIMEOUT_SECONDS", 0.4)
+
+    async def collect():
+        return [chunk async for chunk in ai_service.stream_ai_reply("hello")]
+
+    assert asyncio.run(collect()) == ["fallback"]
+
+
+def test_stream_ai_reply_bounds_primary_first_chunk_when_no_fallback(monkeypatch):
+    primary = FakeProvider()
+
+    async def delayed_primary_stream(message, history=None):
+        await asyncio.sleep(0.4)
+        yield "too late"
+
+    primary.stream_reply = delayed_primary_stream
+
+    monkeypatch.setattr(
+        ai_service,
+        "get_provider",
+        lambda model=None, **kwargs: primary,
+    )
+    monkeypatch.setattr(app_settings, "AI_PROVIDER", "gemini")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_PROVIDER", "")
+    monkeypatch.setattr(app_settings, "AI_FALLBACK_API_KEY", "")
+    monkeypatch.setattr(app_settings, "AI_STREAM_IDLE_TIMEOUT_SECONDS", 0.2)
+
+    async def collect():
+        return [chunk async for chunk in ai_service.stream_ai_reply("hello")]
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(collect())
