@@ -681,3 +681,42 @@
 - CI run [43262134820](https://github.com/HVA09/ai-chat-app/actions/runs/43262134820): الوظائف Frontend وSDK وPreview Builder وProduction Compose نجحت؛ Backend ما زال عند خطوة `Run backend tests with hang diagnostics` في آخر قراءة.
 - Render لم يبدأ deployment على commit الدمج بعد؛ آخر deployment Live ما زال على `f3ba9d4...`. الإعداد `checksPass` ما زال مفعّلًا ولا توجد عملية نشر يدوية.
 - لا يُغلق فحص النشر إلا بعد نجاح Backend CI ثم ظهور deployment جديد على `31503ae...` والتحقق من الصحة الداخلية/السجلات.
+
+
+
+## 33. اكتمال نشر PR #696 وتوثيق إشارات التشغيل بعد النشر — 2026-11-12
+
+### نجاح الدمج والفحوص والنشر
+- PR #696 مدمج؛ merge commit على `main`: `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db`.
+- Post-merge CI run [43262134820](https://github.com/HVA09/ai-chat-app/actions/runs/43262134820): `completed/success`، بما في ذلك Backend **613 passed, 2 warnings**، وFrontend، SDK، Preview Builder، Production Compose.
+- Production smoke [43262134748](https://github.com/HVA09/ai-chat-app/actions/runs/43262134748): Success.
+- CodeQL [43262134713](https://github.com/HVA09/ai-chat-app/actions/runs/43262134713): Success.
+- Publish backend image [43262134613](https://github.com/HVA09/ai-chat-app/actions/runs/43262134613): Success.
+- Render deployment [dep-dbqusce7bikc73971u30](https://dashboard.render.com/web/srv-dakc4nbm8hqs73e2po9g): commit `31503ae...`, build succeeded، وانتهى deployment `live` عند `2026-11-12T16:52:18Z`.
+- Render startup logs للـ instance الجديد `srv-dakc4nbm8hqs73e2po9g-f94zg` أكدت Object Storage connectivity OK، وبدء Celery worker/beat، و`Application startup complete`، وبدء Uvicorn.
+- Health-check logs على instance الجديد أظهرت `GET /health 200` بصورة متكررة (latency بعد أول فحص بين نحو 10 و14ms).
+- استعلام Render عن app errors من `16:52:18Z` إلى `16:57:00Z` أعاد قائمة فارغة. لم يُرصد server_failed أو server_restarted في أحداث الفترة؛ الحدث التشغيلي المسجل هو `deploy_ended: succeeded`.
+- لم تُشغّل يدويًا عملية Deploy، ولم تتغير إعدادات Render أو Supabase أو الأسرار. لا migration أو reindex أو backfill في PR #696.
+
+### ملاحظة QueuePool على الإصدار السابق — تتبع #674
+- في instance القديم `srv-dakc4nbm8hqs73e2po9g-52f48` وقبل بدء deployment الجديد، عند `2026-11-12T16:49:46Z`، ظهرت أخطاء SQLAlchemy:
+  `QueuePool limit of size 2 overflow 1 reached, connection timed out, timeout 15.00`.
+- ظهر `GET /chat/models` بنتيجة `500` بعد latency تقارب 15.2 ثانية.
+- يوضح traceback أن محاولة مصادقة WebSocket في `app/routers/notifications.py:89` فشلت عند `db.get(User, user_id)` لعدم توفر اتصال.
+- لا نستنتج أن WebSocket احتفظ باتصال طوال عمره؛ الشيفرة الحالية تستخدم `SessionLocal()` قصير العمر حول هذا الاستعلام. الدليل يثبت فقط أن خانات pool الثلاث (2 + overflow 1) كانت كلها مشغولة وقت المحاولة؛ ما زال يلزم ربط ذلك بالطلبات الأخرى التي كانت تحتفظ بالاتصالات.
+- الحادث وقع في `16:49:46Z`، قبل `deploy_started` للإصدار الجديد في `16:49:53Z`، لذلك لا يُنسب إلى PR #696.
+- أُضيفت الأدلة والتحفظات إلى Issue [#674](https://github.com/HVA09/ai-chat-app/issues/674) (comment ID `6830129617`). تبقى القضية مفتوحة لاستكمال تحليل مدة checkout ومسارات الانتظار الخارجية؛ لا ترفع pool size أو تغير Render/DB استنادًا إلى عينة واحدة.
+
+### ملاحظة Gemini 503 — تتبع #683
+- في instance القديم نفسه عند `2026-11-12T16:49:51.53Z`، فشل بث محادثة برقم request ID `e66d3c9aeb8241c3` برسالة upstream `503 Service Unavailable` من Gemini OpenAI-compatible `/chat/completions`.
+- التطبيق سجل `retryable=True` و`emitted=False` ثم `AI streaming failover unavailable primary_provider=gemini`.
+- وقع الحدث قبل بدء deployment الجديد بنحو ثانيتين؛ لا يوجد دليل لربطه بـ PR #696.
+- يثبت السجل عدم توفر fallback صالح لهذا الطلب، لكنه لا يميز هل السبب غياب الإعداد، نقصه، أو تطابقه مع المزود الأساسي. لم نفحص أو نغير أسرار/إعدادات مزود الإنتاج ولم ننفذ اختبار AI حيًا بعد النشر.
+- أُضيفت الأدلة إلى Issue [#683](https://github.com/HVA09/ai-chat-app/issues/683) (comment ID `6830132102`). تبقى القضية مفتوحة لفحص سبب عدم توفر fallback والتعامل الآمن مع أخطاء المزود العابرة.
+
+### حالة الاستقرار والحدود المتبقية
+- النسخة المدمجة والمنشورة حاليًا: `31503ae...`، وRender status `Live`.
+- الاختبارات وفحص الصحة الداخلي ناجحان. فحص HTTP خارجي مستقل لم ينجح عبر أداة الويب؛ تعذر الوصول إلى `/health` و`/ready` منها، فلا نسجل نجاح اختبار خارجي.
+- لا نعلن أن تجربة محادثة حقيقية مع Gemini نجحت بعد النشر؛ لا توجد مكالمة إنتاجية اختبارية موثقة بعد تلك الواقعة.
+- بوابة backup/restore الإنتاجية لا تزال مفتوحة كما في الأقسام السابقة؛ يمنع backfill أو bulk reindex أو strict retrieval fingerprint filtering حتى تتوفر أدلة نسخة احتياطية واختبار استعادة.
+- لا توجد ميزات جديدة في هذا المسار؛ العمل التالي ضمن الاستقرار: تحليل pool exhaustion في #674، وإغلاق تشخيص provider/fallback في #683 بأدلة واختبارات قبل أي إعداد إنتاجي.
