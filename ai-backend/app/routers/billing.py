@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.audit import log_event
 from app.cache import cache_get, cache_set
 from app.config import settings as app_settings
-from app.database import get_db
+from app.database import commit_and_release_connection, get_db
 from app.dependencies import get_current_user, get_daily_ai_limit
 from app.logging_config import get_logger
 from app.models.plan import Plan
@@ -148,21 +148,47 @@ async def cancel_subscription(
     if not subscription:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="لا يوجد اشتراك")
 
+    subscription_id = subscription.id
+    provider_subscription_id = subscription.provider_subscription_id
+    user_id = current_user.id
+    user_email = current_user.email
+
+    # Do not pin a PostgreSQL connection while waiting for the payment provider.
+    commit_and_release_connection(db)
     provider = get_payment_provider()
     try:
-        await provider.cancel_subscription(subscription.provider_subscription_id)
+        await provider.cancel_subscription(provider_subscription_id)
     except Exception as exc:
-        logger.exception("فشل إلغاء اشتراك %s", subscription.id)
+        logger.exception("فشل إلغاء اشتراك %s", subscription_id)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="تعذر إلغاء الاشتراك عند المزوّد"
         ) from exc
 
+    # Reload under a row lock. Another request may have replaced or deleted the
+    # subscription while the remote cancellation was in flight.
+    subscription = (
+        db.query(Subscription)
+        .filter(
+            Subscription.id == subscription_id,
+            Subscription.user_id == user_id,
+            Subscription.provider_subscription_id == provider_subscription_id,
+        )
+        .with_for_update()
+        .populate_existing()
+        .first()
+    )
+    if subscription is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="تغير الاشتراك أثناء تنفيذ طلب الإلغاء؛ تحقق من حالة اشتراكك.",
+        )
+
     subscription.status = SubscriptionStatus.canceled
     db.commit()
-    log_event(db, "subscription_canceled", f"إلغاء اشتراك: {current_user.email}", current_user.id)
-    send_subscription_canceled_email(current_user.email)
+    log_event(db, "subscription_canceled", f"إلغاء اشتراك: {user_email}", user_id)
+    send_subscription_canceled_email(user_email)
     await notify_realtime(
-        db, current_user.id, "تم إلغاء اشتراكك", "رجعت لحدود الخطة المجانية.", "billing"
+        db, user_id, "تم إلغاء اشتراكك", "رجعت لحدود الخطة المجانية.", "billing"
     )
     return {"detail": "تم إلغاء الاشتراك"}
 
