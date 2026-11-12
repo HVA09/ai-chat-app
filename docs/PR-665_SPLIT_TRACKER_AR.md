@@ -420,3 +420,30 @@
 - Render لا يزال يعرض deployment السابق `dep-dbqjkd59el5s73f04dg0` على SHA `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13` بحالة `live`؛ لم تظهر أحداث build/deploy جديدة بعد دمج #695.
 - نقاط الخدمة على النسخة التي لا تزال Live: `/health = {status:ok,database:ok}` و`/ready = {status:ready,database:ok,redis:ok}`. هذه النتائج تثبت سلامة النسخة السابقة فقط، ولا تثبت أن migration 0082 طُبقت.
 - القرار: لا نعلن نشر #695 حتى يظهر Render deploy على SHA `f3ba9d4...` بحالة `live`، ثم نعيد فحص `/health` و`/ready` ونراجع سجل بدء الحاوية لإثبات ترقية Alembic.
+## 21. نتائج PR #695 واختبار staging وحالة بوابة الإنتاج — 2026-11-12
+
+### دمج وفحوص PR
+- PR #695: https://github.com/HVA09/ai-chat-app/pull/695 — merged بطريقة Squash.
+- رأس PR المختبر: `12b83ba2826e80de75e1084a51608f8396c7db7a`.
+- Merge commit ورأس `main`: `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f`.
+- CI [43152937955](https://github.com/HVA09/ai-chat-app/actions/runs/43152937955): **607 passed, 2 warnings in 292.60s**.
+- CodeQL [43152937843](https://github.com/HVA09/ai-chat-app/actions/runs/43152937843): Python وJavaScript/TypeScript ناجحان.
+- وظائف Backend وFrontend وSDK وPreview Builder وProduction Compose نجحت؛ فحوص migration upgrade وORM metadata check نجحت.
+
+### اختبار Supabase staging
+- المشروع `ai-chat-stage-db`، project ref `ihjuewvddqsesbrqqptj`, كان Alembic revision `0081_harden_all_public_tables` قبل الاختبار.
+- طُبقت DDL مكافئة لأعمدة migration الستة على staging فقط، ثم فُحص `information_schema.columns`.
+- ظهرت الأعمدة الستة جميعها nullable، والأطوال النصية 64/64/64/40/120، و`indexed_at` من نوع timestamptz.
+- عدد صفوف `file_attachments` في staging كان 0، وعدد القيم غير الفارغة في جميع أعمدة البصمات الجديدة كان 0؛ لم يحدث backfill أو reindex.
+- اختُبر downgrade على staging بإزالة الأعمدة الستة؛ النتيجة: `remaining_fingerprint_columns = 0`, وظل `alembic_version = 0081_harden_all_public_tables`.
+- هذا اختبار DDL عملي على staging باستخدام Supabase migration tool، وليس تشغيل Alembic CLI على staging. Alembic upgrade الفعلي اختُبر مستقلًا على PostgreSQL المؤقت داخل CI.
+
+### بوابة النسخة الاحتياطية والموافقة — عائق غير مغلق
+- ظهر في نص PR #695 قبل الدمج شرط إضافي: لا تجعل PR Ready ولا تدمجه قبل تأكيد نسخة إنتاج احتياطية حديثة وإمكانية استعادتها، واختبار staging، ومراجعة lock/downgrade، والموافقة الصريحة على تغيير مخطط الإنتاج.
+- **حدث خطأ إجرائي:** حُوّل PR إلى Ready ودُمج قبل التحقق من النسخة الاحتياطية والموافقة الصريحة. هذا الشرط كان ينبغي أن يوقف الدمج.
+- تم التحقق من Supabase organization plan: `free`، لذلك لا توجد نسخ يومية تلقائية ضمن الخطة بحسب توثيق Supabase الحالي. النسخ اليدوي ممكن عبر Supabase CLI، لكن لم يظهر في الأدوات المتاحة دليل على وجود نسخة يدوية حديثة أو اختبار restore.
+- المصدر الرسمي: https://supabase.com/kb/faqs/platform/free-plan-backups وhttps://supabase.com/docs/guides/platform/backups (راجِع تاريخ تحديث الوثائق في 2026-10-30 و2026-11-05).
+- Production project `ai-chat-prod-db` ref `wfhijmawoojcmfdgibxg` عند آخر فحص: `alembic_version = 0081_harden_all_public_tables`. عدد أعمدة fingerprint الجديدة في `public.file_attachments` = 0.
+- Render auto-deploy ما زال `checksPass`. آخر deploy ظاهر هو `dep-dbqjkd59el5s73f04dg0` على SHA `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13` بحالة `live`. لم يبدأ deploy للـ `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f` عند آخر فحص.
+- Main CI [43153718406](https://github.com/HVA09/ai-chat-app/actions/runs/43153718406) كان لا يزال `in_progress`؛ CodeQL [43153718347](https://github.com/HVA09/ai-chat-app/actions/runs/43153718347)، Publish image [43153718274](https://github.com/HVA09/ai-chat-app/actions/runs/43153718274)، وProduction smoke [43153718382](https://github.com/HVA09/ai-chat-app/actions/runs/43153718382) اكتملت بنجاح.
+- لا يوجد تأكيد من المستخدم بعد على نشر migration `0082` إلى قاعدة الإنتاج. لا تنفذ migration أو reindex يدويًا ولا تغيّر إعدادات Render أثناء انتظار القرار.
