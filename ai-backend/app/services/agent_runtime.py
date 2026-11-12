@@ -14,6 +14,7 @@ from typing import Any, Awaitable, Callable
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import commit_and_release_connection
 from app.models.conversation import Conversation
 from app.models.user import User
 from app.services.tool_security import wrap_untrusted_tool_output
@@ -325,6 +326,10 @@ class AgentRuntime:
             )
 
             available_tools = [] if tool_followups_blocked else tools
+            # Agent turns can originate from both HTTP requests and Celery jobs.
+            # Release any checkout used by event sinks or completed tools before
+            # awaiting the remote provider, regardless of the transport.
+            commit_and_release_connection(db)
             reply = await self.provider.get_reply_with_tools(
                 messages,
                 available_tools,
