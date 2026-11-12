@@ -20,6 +20,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import commit_and_release_connection
 from app.models.conversation import Conversation
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
@@ -274,6 +275,9 @@ async def _analyze_data(arguments: dict[str, Any], context: ToolContext) -> Tool
             / str(context.current_user.id)
             / attachment.stored_filename
         )
+        # Attachment metadata is loaded; release its read transaction before
+        # opening the remote object-storage stream.
+        commit_and_release_connection(context.db)
         try:
             with materialize_file(attachment.object_key, fallback_path) as path:
                 data_file = DataFile(
@@ -380,6 +384,9 @@ async def _create_project_archive(arguments: dict[str, Any], context: ToolContex
             destination.unlink(missing_ok=True)
             return ToolResult(content="مساحة التخزين في الحساب لا تكفي لحفظ حزمة المشروع.", sources=[], succeeded=False)
 
+        # Quota reads are complete. Do not hold a PostgreSQL checkout while
+        # uploading the archive to remote object storage.
+        commit_and_release_connection(context.db)
         try:
             put_file(destination, object_key, "application/zip")
         except Exception:
