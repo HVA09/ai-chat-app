@@ -294,3 +294,59 @@ def test_oauth_providers_endpoint_lists_only_configured(client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == [{"provider": "google"}]
+
+
+def test_refresh_oauth_connection_does_not_overwrite_a_concurrent_token_rotation(
+    db_session, monkeypatch
+):
+    _configure_google(monkeypatch)
+    owner = User(email="oauth-refresh-race@example.com", hashed_password="x")
+    db_session.add(owner)
+    db_session.commit()
+    db_session.refresh(owner)
+
+    connection = OAuthConnection(
+        user_id=owner.id,
+        provider="google",
+        subject="google-user-race",
+        email="race@example.com",
+        access_token_encrypted=encrypt_oauth_secret("initial-access"),
+        refresh_token_encrypted=encrypt_oauth_secret("initial-refresh"),
+        token_type="Bearer",
+        scopes=["openid"],
+    )
+    db_session.add(connection)
+    db_session.commit()
+    db_session.refresh(connection)
+
+    class ConcurrentRotationClient(FakeAsyncClient):
+        async def post(self, url, data=None, headers=None):
+            # Simulate another request rotating this row while the HTTP call is
+            # in flight. The in-flight response must not overwrite that newer state.
+            current = (
+                db_session.query(OAuthConnection)
+                .filter(OAuthConnection.id == connection.id)
+                .first()
+            )
+            current.access_token_encrypted = encrypt_oauth_secret("concurrent-access")
+            current.refresh_token_encrypted = encrypt_oauth_secret("concurrent-refresh")
+            db_session.commit()
+            return FakeResponse(
+                {
+                    "access_token": "stale-access",
+                    "refresh_token": "stale-refresh",
+                    "expires_in": 1800,
+                    "scope": "openid email",
+                }
+            )
+
+    monkeypatch.setattr(oauth_service.httpx, "AsyncClient", ConcurrentRotationClient)
+
+    with pytest.raises(OAuthConnectorError, match="تغير اتصال OAuth"):
+        asyncio.run(refresh_oauth_connection(connection, db_session))
+
+    db_session.expire_all()
+    latest = db_session.get(OAuthConnection, connection.id)
+    assert decrypt_oauth_secret(latest.access_token_encrypted) == "concurrent-access"
+    assert decrypt_oauth_secret(latest.refresh_token_encrypted) == "concurrent-refresh"
+
