@@ -1042,3 +1042,41 @@
 - لا restore أو backfill/reindex.
 - بعد دمج PR #699 (إذا اجتاز كل الفحوص): راقب QueuePool/health/app errors مجددًا، ثم اختبر طلبات مستخدم فعلية ومهمة Agent؛ لا تعتبر تعافي /health وحده إغلاقًا لحادثة الاستنفاد.
 - ملاحظة مستقلة ما زالت مرصودة في PostgreSQL CI: duplicate key على uq_scheduled_task_runs_task_scheduled_for مع نجاح مجموعة الاختبارات؛ تبقى للمراقبة والمعالجة المنفصلة.
+
+
+## 41. حادثة QueuePool في Render ومراجعة احتجاز الاتصالات في Agent — 2026-11-12
+
+### مرجع الإنتاج بعد PR #698
+- main: `df92952686f2a1f21339ab1ae55acb3f6d866164`.
+- PR #698 merged؛ post-merge CI [43280882496](https://github.com/HVA09/ai-chat-app/actions/runs/43280882496) انتهى بنجاح؛ Backend `650 passed, 2 warnings in 274.15s`، وFrontend/SDK/Preview Builder/Production Compose Success.
+- Production smoke [43280882516](https://github.com/HVA09/ai-chat-app/actions/runs/43280882516) Success.
+- Render نشر main commit إلى Live عبر `dep-dbr0f415efls73dsn45g` عند `2026-11-12T18:40:12Z`.
+
+### دليل حادثة الاتصالات
+- سجلات Render لخدمة `srv-dakc4nbm8hqs73e2po9g` رصدت SQLAlchemy:
+  `QueuePool limit of size 2 overflow 1 reached, connection timed out, timeout 15.00`.
+- المجموعة الأولى عند `17:53:19Z` وأثرت على `GET /saved-prompts`.
+- مجموعة ثانية عند `18:34:33Z–18:34:34Z`؛ فحص `/health` نفسه سجل `فحص الصحة: قاعدة البيانات غير متاحة`، كما ظهرت استثناءات لـ`GET /users/me` و`GET /conversations/bookmarks` و`GET /folders`.
+- هذا دليل على أن الاتصالات الثلاثة المحلية المتاحة للعملية (pool_size=2 + max_overflow=1) كانت محجوزة أو غير متاحة خلال تلك اللحظات. لا يثبت وحده السبب الأعلى أو يحدد أي طلب احتفظ بكل اتصال.
+- بعد نشر `df929526...` ظهرت قراءات داخلية متتالية لـ`GET /health 200` على instance الجديد `srv-dakc4nbm8hqs73e2po9g-w7clc`، غالبها `10–15ms`، وأحيانًا قراءة أبطأ `289ms`. استعلام أخطاء التطبيق للفترة `18:40:10Z–18:50:00Z` أعاد صفرًا.
+- آخر سجل صحة مؤكد في القراءة التفصيلية: `18:47:31.875Z`. لا نعتبر هذه النافذة القصيرة إثبات استقرار دائم.
+- الفحص الخارجي المباشر لـ`/health` و`/ready` لم يمكن التحقق منه عبر أداة الويب في هذه الجولة؛ لذا يبقى التحقق العام end-to-end غير مؤكد.
+
+### المراجعة التقنية والإصلاح المقترح
+- `/chat` في وضع `/agent` يمرر جلسة SQLAlchemy إلى `AgentRuntime`. قبل هذا الإصلاح، كان `AgentRuntime` ينتظر اكتشاف MCP ومزوّد النموذج وتنفيذ بعض الأدوات دون حدود تحرير اتصال مماثلة لمسار chat العادي.
+- مراجعة الكود تحدد ذلك كمسار احتجاز اتصال محتمل وواضح، لكنه لا يثبت أنه سبب كل حوادث Render التي ظهرت.
+- PR #700: https://github.com/HVA09/ai-chat-app/pull/700
+  - branch: `fix/agent-db-pool-release-20261112`.
+  - base main: `df92952686f2a1f21339ab1ae55acb3f6d866164`.
+  - head الحالي: `dbca8adc9269fff5734a29f0a133258904fb6401`.
+  - يحرر الاتصال قبل MCP discovery، وبعد event callback وقبل dispatch للأداة، وقبل كل جولة لمزوّد النموذج.
+  - أدوات `analyze_data` و`create_project_archive` تحرر الاتصال بعد قراءة metadata/quota وقبل عمليات Object Storage.
+  - اختبار SQLite QueuePool من اتصال واحد يحاكي event sink يستخدم DB، أداة تقرأ DB، ثم جولة نموذج لاحقة؛ ويثبت توفر الاتصال للمنافسة. أضيفت اختبارات لأدوات التخزين.
+- CI [43286194209](https://github.com/HVA09/ai-chat-app/actions/runs/43286194209) وCodeQL [43286193933](https://github.com/HVA09/ai-chat-app/actions/runs/43286193933) قيد التشغيل عند آخر قراءة؛ SDK Success وباقي الوظائف كانت In Progress.
+- PR #700 يبقى Draft؛ لا merge حتى تنجح كل الفحوص على آخر SHA وتكتمل المراجعة. لم يتغير main نتيجة هذا الإصلاح حتى الآن.
+
+### الضوابط
+- لم نغيّر DATABASE_POOL_SIZE أو DATABASE_MAX_OVERFLOW أو DATABASE_URL أو أي secret في Render/Supabase؛ لا نزيد حجم pool كحل سريع قبل إثبات حدود الاتصالات لدى Session Pooler.
+- لا تغييرات schema/migrations، ولا استعادة، ولا reindex/backfill أو بيانات إنتاجية.
+- بعد دمج #700 يلزم مراقبة Render logs مجددًا ومقارنة QueuePool timeouts وطلبات /health و5xx قبل اعتبار الحادثة محلولة.
+
