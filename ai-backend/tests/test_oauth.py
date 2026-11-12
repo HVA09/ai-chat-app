@@ -220,7 +220,20 @@ def test_refresh_oauth_connection_rotates_tokens(db_session, monkeypatch):
             "scope": "openid email",
         }
     ]
-    monkeypatch.setattr(oauth_service.httpx, "AsyncClient", FakeAsyncClient)
+    released = []
+
+    def release_database(db):
+        assert db is db_session
+        db.commit()
+        released.append(True)
+
+    class ReleaseCheckingClient(FakeAsyncClient):
+        async def post(self, url, data=None, headers=None):
+            assert released == [True]
+            return await super().post(url, data=data, headers=headers)
+
+    monkeypatch.setattr(oauth_service, "commit_and_release_connection", release_database)
+    monkeypatch.setattr(oauth_service.httpx, "AsyncClient", ReleaseCheckingClient)
 
     refreshed = asyncio.run(
         refresh_oauth_connection(connection, db_session)
