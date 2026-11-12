@@ -49,7 +49,7 @@ jobs:
       SUPABASE_STAGING_PROJECT_REF: ${{ vars.SUPABASE_STAGING_PROJECT_REF }}
       SUPABASE_PRODUCTION_PROJECT_REF: wfhijmawoojcmfdgibxg
       STAGING_BACKUP_PREFIX: database/staging-sanitized/
-      STAGING_BACKUP_FILENAME: \${{ inputs.backup_filename }}
+      STAGING_BACKUP_FILENAME: ${{ inputs.backup_filename }}
 
     steps:
       - name: Checkout repository
@@ -111,7 +111,7 @@ jobs:
 
           # Safe filename characters are checked before persisting the key.
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
-              env_file.write(f"STAGING_BACKUP_KEY={key}\\n")
+              env_file.write(f"STAGING_BACKUP_KEY={key}\n")
           print(f"Validated selected sanitized staging backup filename: {filename}")
           PY
 
