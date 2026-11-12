@@ -254,3 +254,21 @@
 - اختبارات القبول المستهدفة: منع مالك محادثة مختلف من استدعاء RAG؛ منع الاسترجاع بعد سحب عضوية workspace أو project؛ منع استعمال ملفات المساعد بعد إلغاء مشاركته؛ منع تحميل fallback/ذاكرة المشروع/الصورة بعد سحب الإذن؛ وعدم تحويل HTTP 404 الخاص بالصلاحيات إلى RAG fallback صامت.
 - لا migration ولا تعديل production settings ولا استدعاءات AI حية في هذا PR.
 - لا يُنشأ أو يدمج PR الصلاحيات قبل مراجعة فروق الملفات، وتشغيل CI وCodeQL كاملين على رأسه.
+## 17. فتح PR #694 لصلاحيات RAG — 2026-11-12
+
+- قبل بدء العمل، تم إثبات استقرار الإنتاج بعد #692: Render deployment `dep-dbqikcvf3r2c73f7ioq0` على SHA `b80f6d658d4848f78c726f0a03b21ae50359fada` بحالة `live`.
+- نتائج `/health`: `status=ok`, `database=ok`؛ `/ready`: `status=ready`, `database=ok`, `redis=ok`.
+- تصحيح للسجل الزمني: فقرة "آخر فحص Render" القديمة في القسم 14 كانت صحيحة وقت كتابتها قبل اكتمال النشر. القسم 15 هو الحالة النهائية بعد النشر ويحل محل الحالة المؤقتة السابقة.
+- PR #694: https://github.com/HVA09/ai-chat-app/pull/694.
+- العنوان: `fix(rag): enforce live conversation access for retrieval context`.
+- الفرع: `fix/rag-conversation-access-20261112`.
+- Base SHA: `b80f6d658d4848f78c726f0a03b21ae50359fada`.
+- الرأس الحالي: `d386360ea9d9ad540060920a13a3921e13f87620`.
+- التغيير محصور في أربعة ملفات: `ai-backend/app/services/rag.py`, `ai-backend/app/routers/chat.py`, `ai-backend/tests/test_rag.py`, `ai-backend/tests/test_chat.py`.
+- أضيف تحقق service-level من ملكية المحادثة، وحالة الحذف، وعضوية workspace، وصلاحية المشروع، وملكية/مشاركة المساعد؛ وتُعاد مراجعة الصلاحيات بعد انتظار embedding قبل إرجاع المقاطع.
+- أضيف تحقق route-level قبل بناء السياق، وبعد انتظار RAG وقبل fallback النصي، وفي `/chat/compare` و`/chat/vision`؛ وتُمنع أخطاء HTTP 404 للصلاحيات من التحول إلى fallback صامت.
+- حُميت project memories من التحميل عند فقد صلاحية المشروع.
+- الاختبارات الجديدة تغطي محادثة مستخدم آخر، وسحب عضوية workspace، وغياب project role، وإلغاء assistant share، وسحب الإذن أثناء انتظار embedding، ومنع سياق الذاكرة والوكيل والمقارنة والصورة بعد سحب الصلاحية.
+- لا بصمات فهرسة ولا migration `0081` ولا إعادة فهرسة؛ لا تعديل إعدادات Render/Supabase أو الأسرار؛ لا استدعاءات AI حية.
+- CI run [43145917571](https://github.com/HVA09/ai-chat-app/actions/runs/43145917571) وCodeQL run [43145917584](https://github.com/HVA09/ai-chat-app/actions/runs/43145917584) بدآ على الرأس `d386360...`; آخر فحص وقت تحديث هذا السجل: الفحوص ما زالت قيد التنفيذ. SDK وProduction Compose مكتملان بنجاح، وبقية الوظائف قيد التنفيذ.
+- PR #694 يبقى Open / Draft حتى اكتمال الفحوص والمراجعة على رأسه النهائي.
