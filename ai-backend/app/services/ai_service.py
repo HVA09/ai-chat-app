@@ -181,9 +181,9 @@ def _stream_provider_timeouts(has_fallback: bool) -> tuple[float, float]:
     Reserve a small scheduling margin. When failover is available, split the
     remaining first-chunk budget between primary and fallback attempts.
     """
-    idle_timeout = max(0.01, float(settings.AI_STREAM_IDLE_TIMEOUT_SECONDS))
+    idle_timeout = float(settings.AI_STREAM_IDLE_TIMEOUT_SECONDS)
     safety_margin = min(5.0, idle_timeout * 0.1)
-    provider_idle_timeout = max(0.001, idle_timeout - safety_margin)
+    provider_idle_timeout = idle_timeout - safety_margin
     first_chunk_timeout = provider_idle_timeout / (2 if has_fallback else 1)
     return first_chunk_timeout, provider_idle_timeout
 
