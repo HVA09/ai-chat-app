@@ -814,3 +814,36 @@
 - لا تغيير على مخطط قاعدة البيانات `vector(768)`، ولا migration، ولا تغيير secrets أو environment variables، ولا إعادة فهرسة أو backfill.
 - Render ما زال عليه deployment سابق SHA `31503ae...` وقت آخر فحص؛ يجب انتظار GitHub checksPass ثم إعادة التحقق من deployment الجديد. لا manual deploy.
 - لا إجراء بيانات إنتاجية. تبقى بوابة backup/restore مفتوحة قبل أي bulk reindex/backfill أو strict retrieval fingerprint filtering.
+
+
+
+## 36. نجاح CI ونشر PR #697 على Render — 2026-11-12
+
+### نتائج ما بعد الدمج
+- main والـ merge commit: `48c451545c0ab2b05e08c94b4afc72b2215a4910`.
+- CI push run [43267652121](https://github.com/HVA09/ai-chat-app/actions/runs/43267652121): `completed/success`.
+  - Backend، Frontend، SDK، Preview Builder، Production Compose: جميعها Success.
+- CodeQL [43267652046](https://github.com/HVA09/ai-chat-app/actions/runs/43267652046): Success.
+- Publish backend image [43267652172](https://github.com/HVA09/ai-chat-app/actions/runs/43267652172): Success.
+- Production smoke [43267652368](https://github.com/HVA09/ai-chat-app/actions/runs/43267652368): Success.
+- PR #697 مدمج: https://github.com/HVA09/ai-chat-app/pull/697.
+
+### Render deployment
+- Deployment [dep-dbqvb6mq1p3s73dn2m3g](https://dashboard.render.com/web/srv-dakc4nbm8hqs73e2po9g/deploys/dep-dbqvb6mq1p3s73dn2m3g) على SHA `48c451545c0ab2b05e08c94b4afc72b2215a4910` وصل `live`.
+- بدأ: `2026-11-12T17:21:30.987833Z`; انتهى: `2026-11-12T17:23:36.372365Z`.
+- event `deploy_ended/succeeded` عند `17:23:36.461029Z`.
+- Instance الجديد: `srv-dakc4nbm8hqs73e2po9g-gm6g7`.
+- Startup logs: Alembic بدأ في سياق PostgreSQL؛ Object Storage connectivity OK؛ Celery worker وbeat بدءا؛ `Application startup complete` عند `17:23:25.932317Z`.
+- Render internal `GET /health 200` على instance الجديد تكرر كل ~5 ثوانٍ، latency في العادة 9–14ms من `17:23:35Z` إلى `17:24:55Z` على الأقل.
+- سجلات app `error` على instance الجديد في الفترة `17:23:36Z–17:28:00Z`: فارغة.
+- طلبات HTTP ذات status 500/502/503/504 على instance الجديد في الفترة نفسها: لا نتائج.
+- ظهرت طلبات `HEAD / 404` و`GET / 404` في probes الافتراضية عند بدء التشغيل؛ ليست endpoint صحة الخدمة ولا تُسجل كفشل API.
+- لا تغيير يدوي في Render ولا Secrets ولا إعدادات الخدمة؛ النشر حدث تلقائيًا عبر `autoDeployTrigger=checksPass`.
+
+### حدود التحقق المتبقية
+- تم التأكد من نشر الكود ونجاح الصحة الداخلية، لكن سجلات الفترة بعد الإصدار الجديد لم تعرض طلب محادثة authenticated يستدعي RAG؛ لذلك لا نعلن end-to-end Gemini/RAG chat success من health checks فقط.
+- اختبار MRL الجديد اجتاز المحاكاة على CI (query + document)، ويُتوقع أن يعالج اختلاف 3072/768 دون تغيير المخطط، لكن أول استخدام فعلي بعد النشر ما زال دليله مطلوبًا.
+- حادثة Gemini chat 503 السابقة تخص instance القديم قبل نشر الإصدار السابق؛ لا دليل أنها تكررت بعد النشر الأخير، لكن لا تغيير على إعدادات fallback أو المفاتيح.
+- حادثة QueuePool المؤقتة كانت على instance القديم قبل نشر PR #696، ولم تظهر على instance الجديد في نافذة المراقبة. لا تغييرات pool settings.
+- لا reindex إنتاجي، ولا bulk/backfill، ولا strict fingerprint filtering؛ بوابة backup/restore الإنتاجية ما زالت مفتوحة.
+- في سجلات PostgreSQL الخاصة ببيئة CI ظهر duplicate key واحد على قيد `uq_scheduled_task_runs_task_scheduled_for` أثناء تشغيل الاختبارات، مع أن pytest انتهت `616 passed, 2 warnings`؛ لا يمثل فشل CI، لكنه يستحق مراجعة منفصلة إن تكرر أو ظهر على الإنتاج.
