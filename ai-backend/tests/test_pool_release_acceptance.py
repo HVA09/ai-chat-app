@@ -14,6 +14,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
 
+from app.models.agent_job import AgentJob
 from app.models.conversation import Conversation, Message
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment
@@ -22,6 +23,7 @@ from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.routers import chat as chat_router_module
+from app import tasks as tasks_module
 from app.services.ai_providers.base import AIReply
 from app.services import image_rag, rag
 
@@ -496,3 +498,89 @@ def test_second_session_can_use_pool_slot_during_blocked_image_embeddings(
             _delete_scenario(PoolSession, scenario)
         pool_engine.dispose()
 
+
+def test_agent_event_sink_releases_db_pool_before_provider_wait():
+    """A read-only Agent event must not hold a pool slot during provider I/O."""
+    database_url = _local_ci_database_url()
+    pool_engine = create_engine(
+        database_url,
+        poolclass=QueuePool,
+        pool_size=1,
+        max_overflow=0,
+        pool_timeout=1,
+        pool_pre_ping=True,
+    )
+    PoolSession = sessionmaker(
+        bind=pool_engine,
+        autocommit=False,
+        autoflush=False,
+        expire_on_commit=True,
+    )
+    scenario = None
+    job_id = None
+    db = None
+    allow_provider_to_finish = asyncio.Event()
+    provider_waiting = asyncio.Event()
+    try:
+        scenario = _create_scenario(PoolSession)
+        setup = PoolSession()
+        try:
+            job = AgentJob(
+                user_id=scenario["user_id"],
+                workspace_id=scenario["workspace_id"],
+                conversation_id=scenario["conversation_id"],
+                task="Test provider wait does not retain a database checkout.",
+                status="running",
+            )
+            setup.add(job)
+            setup.commit()
+            job_id = job.id
+        finally:
+            setup.close()
+
+        db = PoolSession()
+
+        async def blocked_provider():
+            await tasks_module._agent_job_event_sink(
+                db,
+                job_id,
+                {"type": "runtime_start"},
+            )
+            assert pool_engine.pool.checkedout() == 0
+            provider_waiting.set()
+            await asyncio.wait_for(allow_provider_to_finish.wait(), timeout=5)
+
+        async def exercise():
+            provider_task = asyncio.create_task(blocked_provider())
+            try:
+                await asyncio.wait_for(provider_waiting.wait(), timeout=5)
+                assert pool_engine.pool.checkedout() == 0
+
+                contender = PoolSession()
+                try:
+                    assert contender.execute(text("SELECT 42")).scalar_one() == 42
+                finally:
+                    contender.close()
+
+                assert pool_engine.pool.checkedout() == 0
+            finally:
+                allow_provider_to_finish.set()
+                await asyncio.wait_for(provider_task, timeout=5)
+
+        asyncio.run(exercise())
+    finally:
+        allow_provider_to_finish.set()
+        if db is not None:
+            db.close()
+        if job_id is not None:
+            cleanup = PoolSession()
+            try:
+                cleanup.query(AgentJob).filter(AgentJob.id == job_id).delete(
+                    synchronize_session=False
+                )
+                cleanup.commit()
+            finally:
+                cleanup.close()
+        if scenario is not None:
+            _delete_scenario(PoolSession, scenario)
+        pool_engine.dispose()
