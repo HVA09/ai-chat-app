@@ -11,9 +11,11 @@ from urllib.parse import urlencode
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import commit_and_release_connection
 from app.models.oauth_connection import OAuthConnection
 from app.models.oauth_state import OAuthState
 
@@ -367,17 +369,31 @@ async def refresh_oauth_connection(
     connection: OAuthConnection,
     db: Session,
 ) -> OAuthConnection:
-    config = provider_config(connection.provider)
-    if not connection.refresh_token_encrypted:
+    connection_id = connection.id
+    user_id = connection.user_id
+    provider_name = connection.provider
+    original_access_token = connection.access_token_encrypted
+    original_refresh_token = connection.refresh_token_encrypted
+    original_token_type = connection.token_type
+    original_scopes = list(connection.scopes or [])
+    original_expires_at = connection.expires_at
+
+    if not original_refresh_token:
         raise OAuthConnectorError("هذا الاتصال لا يملك refresh token.")
 
-    refresh_token = decrypt_oauth_secret(connection.refresh_token_encrypted)
+    config = provider_config(provider_name)
+    refresh_token = decrypt_oauth_secret(original_refresh_token)
     data = {
         "client_id": config.client_id,
         "client_secret": config.client_secret,
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
     }
+
+    # Do not occupy a pool connection during the external OAuth token request.
+    # The token snapshot is captured above; the conditional update below prevents
+    # a slower concurrent refresh from overwriting a newer token pair.
+    commit_and_release_connection(db)
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
         response = await client.post(
             config.token_url,
@@ -393,26 +409,71 @@ async def refresh_oauth_connection(
     if not access_token:
         raise OAuthConnectorError("موفّر OAuth لم يعد access token جديدًا.")
 
-    connection.access_token_encrypted = encrypt_oauth_secret(access_token)
+    values = {
+        "access_token_encrypted": encrypt_oauth_secret(access_token),
+        "token_type": str(payload.get("token_type") or original_token_type or "Bearer"),
+    }
     if payload.get("refresh_token"):
-        connection.refresh_token_encrypted = encrypt_oauth_secret(
+        values["refresh_token_encrypted"] = encrypt_oauth_secret(
             str(payload["refresh_token"])
         )
 
     expires_in = payload.get("expires_in")
     if expires_in is not None:
         try:
-            connection.expires_at = datetime.now(timezone.utc) + timedelta(
+            values["expires_at"] = datetime.now(timezone.utc) + timedelta(
                 seconds=max(int(expires_in), 0)
             )
         except (TypeError, ValueError):
-            pass
+            values["expires_at"] = original_expires_at
 
     if payload.get("scope"):
-        connection.scopes = [
+        values["scopes"] = [
             scope for scope in str(payload["scope"]).split() if scope
         ]
+    else:
+        values["scopes"] = original_scopes
 
-    db.commit()
-    db.refresh(connection)
-    return connection
+    result = db.execute(
+        update(OAuthConnection)
+        .where(
+            OAuthConnection.id == connection_id,
+            OAuthConnection.user_id == user_id,
+            OAuthConnection.provider == provider_name,
+            OAuthConnection.access_token_encrypted == original_access_token,
+            OAuthConnection.refresh_token_encrypted == original_refresh_token,
+        )
+        .values(**values)
+    )
+
+    if result.rowcount == 1:
+        db.commit()
+        db.expire_all()
+        refreshed = db.get(OAuthConnection, connection_id)
+        if refreshed is None:
+            raise OAuthConnectorError("تم حذف اتصال OAuth بعد تحديث الرمز.")
+        return refreshed
+
+    # A second refresh or an explicit connection update won the compare-and-swap.
+    # Return that newer row instead of persisting a stale provider response.
+    db.rollback()
+    latest = (
+        db.query(OAuthConnection)
+        .filter(
+            OAuthConnection.id == connection_id,
+            OAuthConnection.user_id == user_id,
+            OAuthConnection.provider == provider_name,
+        )
+        .populate_existing()
+        .first()
+    )
+    if latest is None:
+        raise OAuthConnectorError("لم يعد اتصال OAuth موجودًا.")
+
+    if (
+        latest.access_token_encrypted != original_access_token
+        or latest.refresh_token_encrypted != original_refresh_token
+    ):
+        return latest
+
+    raise OAuthConnectorError("تغير اتصال OAuth أثناء التحديث؛ أعد المحاولة.")

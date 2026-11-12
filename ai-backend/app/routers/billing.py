@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.audit import log_event
 from app.cache import cache_get, cache_set
 from app.config import settings as app_settings
-from app.database import get_db
+from app.database import commit_and_release_connection, get_db
 from app.dependencies import get_current_user, get_daily_ai_limit
 from app.logging_config import get_logger
 from app.models.plan import Plan
@@ -148,21 +148,48 @@ async def cancel_subscription(
     if not subscription:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="لا يوجد اشتراك")
 
+    subscription_id = subscription.id
+    provider_subscription_id = subscription.provider_subscription_id
+    user_id = current_user.id
+    user_email = current_user.email
+
+    # The provider call can take several seconds. Do not hold a pooled PostgreSQL
+    # connection while waiting; reload the subscription before applying the result
+    # so a concurrent subscription replacement cannot be cancelled locally by mistake.
+    commit_and_release_connection(db)
     provider = get_payment_provider()
     try:
-        await provider.cancel_subscription(subscription.provider_subscription_id)
+        await provider.cancel_subscription(provider_subscription_id)
     except Exception as exc:
-        logger.exception("فشل إلغاء اشتراك %s", subscription.id)
+        logger.exception("فشل إلغاء اشتراك %s", subscription_id)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="تعذر إلغاء الاشتراك عند المزوّد"
         ) from exc
 
+    db.expire_all()
+    subscription = (
+        db.query(Subscription)
+        .filter(
+            Subscription.id == subscription_id,
+            Subscription.user_id == user_id,
+            Subscription.provider_subscription_id == provider_subscription_id,
+        )
+        .with_for_update()
+        .populate_existing()
+        .first()
+    )
+    if subscription is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="تغير سجل الاشتراك أثناء الإلغاء؛ لم يتم تعديل الاشتراك الحالي.",
+        )
+
     subscription.status = SubscriptionStatus.canceled
     db.commit()
-    log_event(db, "subscription_canceled", f"إلغاء اشتراك: {current_user.email}", current_user.id)
-    send_subscription_canceled_email(current_user.email)
+    log_event(db, "subscription_canceled", f"إلغاء اشتراك: {user_email}", user_id)
+    send_subscription_canceled_email(user_email)
     await notify_realtime(
-        db, current_user.id, "تم إلغاء اشتراكك", "رجعت لحدود الخطة المجانية.", "billing"
+        db, user_id, "تم إلغاء اشتراكك", "رجعت لحدود الخطة المجانية.", "billing"
     )
     return {"detail": "تم إلغاء الاشتراك"}
 
@@ -196,9 +223,14 @@ async def _apply_webhook_event(event, provider_name: str, db: Session) -> None:
         plan = db.get(Plan, plan_id)
         user = db.get(User, user_id)
         if plan and user:
-            send_subscription_activated_email(user.email, plan.name)
+            user_email = user.email
+            plan_name = plan.name
+            # SMTP and WebSocket delivery are external waits; the notification
+            # helper commits its own row before broadcasting.
+            commit_and_release_connection(db)
+            send_subscription_activated_email(user_email, plan_name)
             await notify_realtime(
-                db, user_id, "تم تفعيل اشتراكك", f"خطتك الحالية الآن: {plan.name}", "billing"
+                db, user_id, "تم تفعيل اشتراكك", f"خطتك الحالية الآن: {plan_name}", "billing"
             )
 
     elif event.event_type in ("subscription_updated", "subscription_canceled"):
@@ -222,10 +254,14 @@ async def _apply_webhook_event(event, provider_name: str, db: Session) -> None:
             if subscription.status == SubscriptionStatus.canceled:
                 user = db.get(User, subscription.user_id)
                 if user:
-                    send_subscription_canceled_email(user.email)
+                    user_email = user.email
+                    user_id = subscription.user_id
+                    # Release after reading the recipient, before SMTP/WebSocket I/O.
+                    commit_and_release_connection(db)
+                    send_subscription_canceled_email(user_email)
                     await notify_realtime(
                         db,
-                        subscription.user_id,
+                        user_id,
                         "تم إلغاء اشتراكك",
                         "رجعت لحدود الخطة المجانية.",
                         "billing",
