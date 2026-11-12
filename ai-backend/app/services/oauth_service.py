@@ -14,6 +14,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import commit_and_release_connection
 from app.models.oauth_connection import OAuthConnection
 from app.models.oauth_state import OAuthState
 
@@ -371,13 +372,20 @@ async def refresh_oauth_connection(
     if not connection.refresh_token_encrypted:
         raise OAuthConnectorError("هذا الاتصال لا يملك refresh token.")
 
-    refresh_token = decrypt_oauth_secret(connection.refresh_token_encrypted)
+    # Snapshot the fields used for the remote refresh before releasing the
+    # request-scoped DB connection. A later locked reload prevents stale token
+    # responses from overwriting a concurrent refresh or connection update.
+    connection_id = connection.id
+    access_token_before = connection.access_token_encrypted
+    refresh_token_before = connection.refresh_token_encrypted
+    refresh_token = decrypt_oauth_secret(refresh_token_before)
     data = {
         "client_id": config.client_id,
         "client_secret": config.client_secret,
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
     }
+    commit_and_release_connection(db)
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
         response = await client.post(
             config.token_url,
@@ -393,26 +401,43 @@ async def refresh_oauth_connection(
     if not access_token:
         raise OAuthConnectorError("موفّر OAuth لم يعد access token جديدًا.")
 
-    connection.access_token_encrypted = encrypt_oauth_secret(access_token)
+    current = (
+        db.query(OAuthConnection)
+        .filter(OAuthConnection.id == connection_id)
+        .with_for_update()
+        .populate_existing()
+        .first()
+    )
+    if current is None:
+        raise OAuthConnectorError("تم حذف اتصال OAuth أثناء تحديث الرمز.")
+    if (
+        current.access_token_encrypted != access_token_before
+        or current.refresh_token_encrypted != refresh_token_before
+    ):
+        raise OAuthConnectorError(
+            "تغير اتصال OAuth أثناء تحديث الرمز؛ أعد المحاولة للحصول على أحدث حالة."
+        )
+
+    current.access_token_encrypted = encrypt_oauth_secret(access_token)
     if payload.get("refresh_token"):
-        connection.refresh_token_encrypted = encrypt_oauth_secret(
+        current.refresh_token_encrypted = encrypt_oauth_secret(
             str(payload["refresh_token"])
         )
 
     expires_in = payload.get("expires_in")
     if expires_in is not None:
         try:
-            connection.expires_at = datetime.now(timezone.utc) + timedelta(
+            current.expires_at = datetime.now(timezone.utc) + timedelta(
                 seconds=max(int(expires_in), 0)
             )
         except (TypeError, ValueError):
             pass
 
     if payload.get("scope"):
-        connection.scopes = [
+        current.scopes = [
             scope for scope in str(payload["scope"]).split() if scope
         ]
 
     db.commit()
-    db.refresh(connection)
-    return connection
+    db.refresh(current)
+    return current
