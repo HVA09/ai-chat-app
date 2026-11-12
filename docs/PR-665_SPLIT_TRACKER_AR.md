@@ -626,3 +626,36 @@
 - نجاح CI/CodeQL على `f559b0d...` لا يُعد دليلاً على نجاح الرأس الجديد `06e30ac...`؛ يجب انتظار النتائج النهائية الخاصة به.
 - لا توجد مراجعات أو review threads معلّقة عند آخر تحقق.
 - القرار: لا تحويل إلى Ready ولا دمج حتى نجاح كل checks على أحدث head ومراجعة نتيجة اختبار سحب صلاحية المشروع. لا إعادة فهرسة إنتاجية، ولا backfill، وتبقى بوابة backup/restore الإنتاجية مفتوحة كما سُجل سابقًا.
+
+
+
+## 30. دمج PR #696 وتأكيد نجاح ما قبل الدمج — 2026-11-12
+
+### قرار الدمج والدليل
+- اكتملت كل فحوص PR على الرأس `06e30ac92be8861199b47e847e034ff6c692d276` بنجاح:
+  - Backend، Frontend، SDK، Preview Builder، Production Compose.
+  - CodeQL Python وJavaScript/TypeScript.
+- Backend test job اكتمل Success عند `2026-11-12T16:31:29Z`؛ جميع check-runs الثمانية على الرأس نفسه أصبحت `completed/success`.
+- PR #696 لم يكن يحتوي review threads أو مراجعات معلقة، وكان GitHub يعرض `mergeable_state=clean`.
+- حُوّل PR من Draft إلى Ready بعد نجاح كل الفحوص، ثم دُمج بطريقة Squash بتفويض المستخدم السابق.
+- PR: https://github.com/HVA09/ai-chat-app/pull/696
+- Merge commit وmain الحالي وقت التسجيل: `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db`.
+- عنوان commit: `feat(rag): add safe per-file reindex endpoint`.
+- يحتوي commit على فصل prepare/persist، endpoint أحادي الملف، فحوص ACL حية بعد provider I/O مع `db.expire_all()`، واختبار تغيير دور المشروع أثناء embeddings.
+
+### فحوص ما بعد الدمج
+- بدأت GitHub workflows على merge commit:
+  - CI run [43262134820](https://github.com/HVA09/ai-chat-app/actions/runs/43262134820): `in_progress` في آخر فحص.
+  - Production smoke [43262134748](https://github.com/HVA09/ai-chat-app/actions/runs/43262134748): `in_progress`.
+  - CodeQL [43262134713](https://github.com/HVA09/ai-chat-app/actions/runs/43262134713): `in_progress`.
+  - Publish backend image [43262134613](https://github.com/HVA09/ai-chat-app/actions/runs/43262134613): `in_progress`.
+- هذه فحوص Push بعد الدمج؛ لا تخلط مع PR checks التي نجحت قبل الدمج. يجب تسجيل نتائجها عند اكتمالها.
+
+### Render بعد الدمج
+- الخدمة ما زالت إعداداتها كما هي: `autoDeploy=yes`, `autoDeployTrigger=checksPass`, branch `main`, plan `free`, health path `/health`، workspace `My Workspace`.
+- قراءة Render الأخيرة أظهرت أن أحدث deployment Live ما زال على SHA السابق `f3ba9d4...`; لم يظهر بعد deploy على `31503ae...` عند وقت الفحص.
+- لا manual deploy ولا أي تغيير في إعدادات Render. ينتظر Render تحقق شروط checksPass تلقائيًا.
+- عند الفحص الأخير، سجل Render deployment الحالي `dep-dbqju7e7bikc739n63i0` بقي Live على SHA السابق. يجب إعادة فحص deployments/events بعد انتهاء GitHub checks.
+- PR #696 كود فقط ولا يتضمن migration أو عملية reindex أو backfill؛ لا يتوقع أي تحديث لقاعدة الإنتاج من هذا الدمج.
+- بوابة backup/restore الإنتاجية لا تزال مفتوحة؛ يمنع أي bulk reindex/backfill أو strict retrieval fingerprint filtering قبل إغلاقها بأدلة.
+
