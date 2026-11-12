@@ -1,4 +1,7 @@
 import asyncio
+from contextlib import contextmanager
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -7,6 +10,7 @@ from app.services.tools.registry import (
     ToolRegistry,
     ToolResult,
     ToolSpec,
+    _analyze_data,
     _create_project_archive,
     tool_registry,
 )
@@ -220,3 +224,139 @@ def test_project_archive_rejects_more_than_50_files():
 
     assert result.succeeded is False
     assert "50" in result.content
+
+
+class _FakeQuery:
+    def __init__(self, rows=None):
+        self.rows = list(rows or [])
+
+    def join(self, *_args, **_kwargs):
+        return self
+
+    def filter(self, *_args, **_kwargs):
+        return self
+
+    def order_by(self, *_args, **_kwargs):
+        return self
+
+    def scalar(self):
+        return 0
+
+    def all(self):
+        return self.rows
+
+
+class _FakeSession:
+    def __init__(self, rows=None):
+        self.expire_on_commit = True
+        self.commits = 0
+        self.added = []
+        self.rows = list(rows or [])
+
+    def query(self, *_args, **_kwargs):
+        return _FakeQuery(self.rows)
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        return None
+
+    def add(self, value):
+        self.added.append(value)
+
+    def flush(self):
+        return None
+
+    def refresh(self, _value):
+        return None
+
+
+def test_analyze_data_releases_database_before_remote_file_materialization(
+    monkeypatch, tmp_path
+):
+    attachment = SimpleNamespace(
+        id=51,
+        original_filename="report.csv",
+        stored_filename="report.csv",
+        object_key="users/7/report.csv",
+        content_type="text/csv",
+    )
+    db = _FakeSession(rows=[attachment])
+    materialized_path = tmp_path / "report.csv"
+    materialized_path.write_text("value\n1\n", encoding="utf-8")
+
+    @contextmanager
+    def fake_materialize(object_key, fallback_path):
+        assert object_key == attachment.object_key
+        assert isinstance(fallback_path, Path)
+        assert db.commits == 1
+        assert db.expire_on_commit is True
+        yield materialized_path
+
+    monkeypatch.setattr(
+        "app.services.tools.registry.materialize_file", fake_materialize
+    )
+    monkeypatch.setattr(
+        "app.services.tools.registry.analyze_file",
+        lambda data_file: "analysis complete",
+    )
+
+    result = asyncio.run(
+        _analyze_data(
+            {"filename": "report.csv"},
+            ToolContext(
+                conversation=SimpleNamespace(id=99),
+                current_user=SimpleNamespace(id=7),
+                db=db,
+            ),
+        )
+    )
+
+    assert result.succeeded is True
+    assert result.content == "analysis complete"
+    assert db.expire_on_commit is True
+
+
+def test_project_archive_releases_database_before_remote_upload(
+    monkeypatch, tmp_path
+):
+    db = _FakeSession()
+    monkeypatch.setattr(
+        "app.services.tools.registry.settings.UPLOAD_DIR", str(tmp_path)
+    )
+    uploads = []
+
+    def fake_put_file(source, object_key, content_type):
+        assert source.exists()
+        assert object_key.startswith("users/7/")
+        assert content_type == "application/zip"
+        assert db.commits == 1
+        assert db.expire_on_commit is True
+        uploads.append(object_key)
+
+    monkeypatch.setattr("app.services.tools.registry.put_file", fake_put_file)
+
+    result = asyncio.run(
+        _create_project_archive(
+            {
+                "project_name": "pool-release",
+                "files": [{"path": "README.md", "content": "safe test archive"}],
+            },
+            ToolContext(
+                conversation=SimpleNamespace(
+                    id=99,
+                    workspace_id=None,
+                    project_id=None,
+                ),
+                current_user=SimpleNamespace(id=7),
+                db=db,
+            ),
+        )
+    )
+
+    assert result.succeeded is True
+    assert len(uploads) == 1
+    assert db.commits == 2
+    assert db.expire_on_commit is True
+
