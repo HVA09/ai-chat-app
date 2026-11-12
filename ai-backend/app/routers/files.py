@@ -717,7 +717,6 @@ async def index_image_for_rag(
 ):
     """يفهرس صورة صراحةً في RAG بدون استدعاء Vision مخفي أثناء كل رسالة."""
     attachment = _get_accessible_file(file_id, current_user, db)
-    _require_file_reindex_permission(attachment, current_user, db)
 
     if not attachment.content_type.startswith("image/"):
         raise HTTPException(
