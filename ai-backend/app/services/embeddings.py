@@ -209,7 +209,7 @@ def _resolve_embedding_config() -> EmbeddingConfig:
     )
 
 
-def get_embedding_index_idedef _embedding_headers(config: EmbeddingConfig) -> dict[str, str]:
+def _embedding_headers(config: EmbeddingConfig) -> dict[str, str]:
     headers = {"Content-Type": "application/json"}
     if config.provider == "gemini":
         headers["x-goog-api-key"] = config.api_key
