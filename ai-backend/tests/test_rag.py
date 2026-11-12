@@ -507,6 +507,8 @@ def test_gemini_embed_content_single_embedding_response_is_parsed(monkeypatch):
     monkeypatch.setattr(embeddings.settings, "AI_API_KEY", "test-only-key")
     monkeypatch.setattr(embeddings.settings, "EMBEDDING_MODEL", "gemini-embedding-001")
     monkeypatch.setattr(embeddings.settings, "EMBEDDING_DIMENSIONS", 3)
+    # The production schema remains vector(768); this unit test uses a 3D mock vector.
+    monkeypatch.setattr(embeddings, "STORED_EMBEDDING_DIMENSIONS", 3)
 
     captured = {}
 
@@ -544,7 +546,7 @@ def test_gemini_embed_content_single_embedding_response_is_parsed(monkeypatch):
         "/models/gemini-embedding-001:embedContent"
     )
     assert captured["headers"]["x-goog-api-key"] == "test-only-key"
-    assert captured["payload"]["taskType"] == "RETRIEVAL_QUERY"
+    assert captured["payload"]["embedContentConfig"]["taskType"] == "RETRIEVAL_QUERY"
 
 
 @pytest.mark.parametrize(
