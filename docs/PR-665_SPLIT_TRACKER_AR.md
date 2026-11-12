@@ -499,3 +499,42 @@
 - نتيجة قاعدة البيانات تثبت وصول Alembic إلى revision 0082، لكنها لا تكفي وحدها لتأكيد استقرار عملية Render أو اكتمال deployment.
 - مسألة backup/restore production لم تُغلق قبل تشغيل migration. لا دليل في الأدوات الحالية على نسخة إنتاج حديثة أو اختبار استعادة. يجب الاحتفاظ بهذه الملاحظة كحادث حوكمة/تشغيل، وعدم وصف الشرط بأنه تحقق.
 - لا تنفيذ لإعادة الفهرسة أو backfill أو تغييرات أخرى على مخطط الإنتاج. المرحلة التالية تبقى متوقفة حتى تثبت حالة Render `live` وتُستكمل مراجعة الخدمة.
+
+
+## 25. فحص سجلات Render بعد موافقة المستخدم على مساحة العمل — 2026-11-12
+
+### التفويض والفحص
+- وافق المستخدم صراحةً على استخدام مساحة Render `My Workspace`، وطلب اعتمادها للفحوص المستقبلية دون الرجوع إليه في كل مرة لتجنب تعطيل العمل.
+- استخدمت `workspaceId = tea-dagsi5ou01pc73f2g470` للقراءة فقط. لم يتم تغيير إعدادات الخدمة أو الأسرار أو أي مورد Render.
+- Render deployment `dep-dbqju7e7bikc739n63i0` على commit `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f` انتهى `live`:
+  - `startedAt = 2026-11-12T04:22:53Z`
+  - `finishedAt = 2026-11-12T04:24:47Z`
+  - event `deploy_ended` بنجاح عند `2026-11-12T04:24:48Z`.
+- Build `bld-dbqju7e7bikc739n63ig` انتهى بنجاح.
+
+### دليل سجلات بدء الحاوية
+- سجل Render للـ instance الجديد `srv-dakc4nbm8hqs73e2po9g-wj2mw` يحتوي على:
+  - `INFO [alembic.runtime.migration] Context impl PostgresqlImpl.`
+  - `Will assume transactional DDL.`
+  - `Running upgrade 0081_harden_all_public_tables -> 0082_file_index_fingerprints`
+  - `Object Storage connectivity: OK`
+  - `Embedded Celery enabled`
+  - بدء Celery worker وCelery beat.
+  - `Starting API on 0.0.0.0:10000`.
+- هذا دليل مباشر أن عملية بدء الحاوية نفذت migration 0082، وليس مجرد استنتاج من استعلام قاعدة البيانات.
+- سجلات Health Check الداخلية على الـ instance الجديد أظهرت `HTTP GET /health 200` بشكل دوري، على الأقل حتى `2026-11-12T04:27:57Z`، مع latency تقريبًا 9–15ms.
+- استعلام Render لأحداث `server_failed`, `server_restarted`, `server_available`, و`server_hardware_failure` بعد وقت النشر لم يُظهر أي حدث من هذه الأنواع؛ الحدث الظاهر كان `deploy_ended: succeeded`.
+- سجل مستويات `error` للـ instance الجديد لم يُظهر entries. ظهرت فقط تحذيرات 404 لـ `GET /` و`GET /favicon.ico` في بداية النشر؛ لا تُعد هذه أخطاء تشغيل API.
+
+### التحقق الخارجي المتعارض وحدوده
+- أداة جلب HTTP الخارجية أعادت `503` لـ `/health` و`/ready` في ثلاث محاولات بعد النشر، بينما Render health-check logs الداخلية استمرت في تسجيل `/health 200`.
+- استعلام Render request logs عن `/health`, `/ready` و5xx لم يُرجع سجلات؛ لا يوجد دليل كافٍ أن 503 صدر من التطبيق نفسه. لذلك تُسجل كاختلاف بين مسار الفحص الخارجي وفحص Render الداخلي، ولا نعلن أن اختبار HTTP الخارجي نجح.
+- محاولة فحص المتصفح المستقل عبر TinyFish لم تبدأ لأن رصيد TinyFish غير كافٍ؛ لم تتم أي عملية مدفوعة أو تعبئة رصيد.
+- واجهة فتح URL الخارجية لم تتمكن من الوصول إلى نطاق الخدمة؛ لا تُعتبر هذه النتيجة فشلًا للخدمة.
+- آخر دليل قوي للاستقرار التشغيلي: deploy Live، migration في startup log، Health Check الداخلي 200 بصورة دورية، ولا أحداث server failure ولا أخطاء application logs. يظل اختبار الصحة من مسار خارجي مستقل غير محسوم.
+
+### قرار المتابعة
+- لا reindex جماعي، ولا backfill، ولا strict fingerprint filtering حتى يتم تجهيز مسار إعادة فهرسة مضبوط لكل ملف ومراجعته واختباره.
+- تبقى ملاحظة backup/restore production المفتوحة كما في القسم 21؛ نجاة النشر لا تمحو عدم إثبات backup قبل migration.
+- لا تغيير في Render أو Supabase من هذا التحقق، وجميع استعلامات Supabase السابقة كانت SELECT فقط.
+- الخطوة الهندسية التالية بعد معالجة حاجز النسخة الاحتياطية وتوثيق استعادتها هي تصميم endpoint آمن لإعادة فهرسة ملف واحد في PR مستقل، مع ACLs واختبارات صلاحيات وفشل مزود embeddings والحفاظ على الفهرس القديم عند الفشل؛ لا يُفعّل strict retrieval filtering في ذلك PR.
