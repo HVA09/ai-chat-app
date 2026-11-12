@@ -470,3 +470,32 @@
 - أداة سجلات Render طلبت تحديد workspace. أظهر استعلام workspaces وجود مساحة واحدة باسم `My Workspace` ومعرف `tea-dagsi5ou01pc73f2g470`، لكن لم يتم اختيارها دون موافقة المستخدم.
 - بوابة النسخة الاحتياطية والموافقة الصريحة على تغيير مخطط الإنتاج ما زالت غير موثقة الإغلاق كما في القسم 21 (المضاف لاحقًا)؛ staging وCI ليسا بديلًا عن backup/restore production.
 - لا تُنفذ إعادة فهرسة، ولا backfill، ولا migration يدوية. لا تُجرى تغييرات لإعدادات Render أو قاعدة الإنتاج. يلزم أولًا حسم إذن استخدام مساحة Render المحددة لمراجعة logs/deploy، ثم التحقق من حالة النشر والصحة وrevision قبل أي مرحلة لاحقة.
+
+
+## 24. تحقق تطبيق migration 0082 على قاعدة الإنتاج — 2026-11-12
+
+### دليل قاعدة البيانات
+- تم التحقق للقراءة فقط من المشروع `ai-chat-prod-db`، ref `wfhijmawoojcmfdgibxg`، وحالة المشروع `ACTIVE_HEALTHY`.
+- نتيجة `alembic_version`: `0082_file_index_fingerprints`.
+- جميع الأعمدة الستة في `public.file_attachments` موجودة، وجميعها `nullable = YES`:
+  - `extracted_text_sha256`
+  - `indexed_text_sha256`
+  - `indexed_embedding_fingerprint`
+  - `indexed_embedding_provider`
+  - `indexed_embedding_model`
+  - `indexed_at`
+- عدد صفوف `file_attachments` في لحظة الفحص: 49.
+- عدد الصفوف التي تحتوي أي قيمة في أعمدة metadata الستة الجديدة: **0**. هذا يثبت عدم وجود backfill/reindex في وقت الفحص؛ لا توجد بيانات فهرسة جديدة مخزنة في هذه الحقول.
+- استعلاما التحقق كانا SELECT فقط؛ لم يُنفذ أي DDL أو DML يدوي على الإنتاج.
+
+### صحة الخدمة بعد ظهور revision 0082
+- `/health`: `{"status":"ok","database":"ok"}`.
+- `/ready`: `{"status":"ready","database":"ok","redis":"ok"}`.
+- لا أخطاء في طلبات فحص الصحة عند هذه المحاولة.
+
+### ما لم يُحسم بعد
+- Render deployment `dep-dbqju7e7bikc739n63i0` على SHA `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f` أظهر build ناجحًا وبدأ deploy، لكن Render API كان لا يزال يعرض `update_in_progress` في آخر قراءة؛ لذلك لا نسجل `live` حتى الآن.
+- لم تتم مراجعة application logs التي تثبت تسلسل بدء الحاوية؛ يتطلب Render تحديد workspace. توجد مساحة واحدة ظاهرة باسم `My Workspace` ومعرف `tea-dagsi5ou01pc73f2g470`، ولم تُستخدم دون تأكيد المستخدم.
+- نتيجة قاعدة البيانات تثبت وصول Alembic إلى revision 0082، لكنها لا تكفي وحدها لتأكيد استقرار عملية Render أو اكتمال deployment.
+- مسألة backup/restore production لم تُغلق قبل تشغيل migration. لا دليل في الأدوات الحالية على نسخة إنتاج حديثة أو اختبار استعادة. يجب الاحتفاظ بهذه الملاحظة كحادث حوكمة/تشغيل، وعدم وصف الشرط بأنه تحقق.
+- لا تنفيذ لإعادة الفهرسة أو backfill أو تغييرات أخرى على مخطط الإنتاج. المرحلة التالية تبقى متوقفة حتى تثبت حالة Render `live` وتُستكمل مراجعة الخدمة.
