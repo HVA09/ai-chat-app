@@ -851,6 +851,14 @@ async def build_project_preview(
     commit_and_release_connection(db)
     try:
         build = await build_javascript_preview(project.id, payload_files)
+
+        # Project membership can change while the isolated builder is running.
+        # Recheck live access before publishing a bearer-token preview artifact.
+        db.expire_all()
+        project = _get_project(project_id, current_user, db)
+        commit_and_release_connection(db)
+
+        # Publishing uploads artifact objects; keep the DB pool free during storage I/O too.
         published = publish_preview_artifact(project.id, build)
         register_preview_artifact(
             db,
