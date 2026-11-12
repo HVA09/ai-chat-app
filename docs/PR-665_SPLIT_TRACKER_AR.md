@@ -1112,3 +1112,41 @@
 - PR #699 Draft حتى اكتمال Backend/CodeQL ومراجعة latest head.
 - لا تشغيل restore أو reindex/backfill؛ بوابة backup/restore ما زالت مفتوحة.
 
+## 42. دمج PR #700 وتحديث حادثة استنفاد الاتصالات — 2026-11-12
+
+### PR #700
+- PR: https://github.com/HVA09/ai-chat-app/pull/700
+- تم الدمج بطريقة squash بعد نجاح 8/8 check-runs على head `dbca8adc9269fff5734a29f0a133258904fb6401`.
+- Merge/main SHA: `3d5910d68977f049d84ccf7537f2e18e2462aba3`.
+- Backend: `653 passed, 2 warnings in 314.23s`.
+- Frontend, SDK, Preview Builder, Production Compose: Success.
+- CodeQL Python وJavaScript/TypeScript: Success.
+- لا تغييرات schema/migration/config/secret.
+
+### ما بعد الدمج
+- main CI: [43287982770](https://github.com/HVA09/ai-chat-app/actions/runs/43287982770) بدأ على SHA `3d5910d...`; SDK Success، وباقي الوظائف كانت In Progress عند آخر قراءة.
+- Production smoke: [43287982446](https://github.com/HVA09/ai-chat-app/actions/runs/43287982446) In Progress عند آخر قراءة.
+- CodeQL: [43287982533](https://github.com/HVA09/ai-chat-app/actions/runs/43287982533) In Progress عند آخر قراءة.
+- Render لم يقدم بعد دليل نشر Live على SHA `3d5910d...` عند آخر poll؛ يلزم التحقق من deployment الجديد بعد نجاح checks.
+- لا نعلن حل QueuePool بالكامل من merge وحده.
+
+### مراجعة مسارات async DB إضافية — ليست ضمن PR #700
+- `billing.cancel_subscription`: provider cancellation awaited بعد تحميل subscription، قبل تحديث الحالة المحلية. يحتاج تحرير اتصال بعد قراءة provider_subscription_id ثم إعادة تحميل/التحقق قبل الحفظ.
+- `billing._apply_webhook_event`: بعد commit وكتابة log_event يحصل await لـ`notify_realtime`; يلزم فحص notify_realtime وهل يحتفظ أو يفتح DB checkout خلال بثه.
+- `billing.create_checkout`: يحتفظ بمعاملة `pg_advisory_xact_lock(user_id)` أثناء provider checkout call. لا تضف commit/release مباشرًا هنا، لأن ذلك يسقط قفل المعاملة ويُبطل منع checkout المتكرر. يتطلب تصميم idempotency/checkout-attempt persisted أو session-level advisory lock مستقلًا.
+- `oauth.refresh_connection` / `refresh_oauth_connection`: يقرأ refresh token من صف OAuth ثم ينتظر HTTP refresh قبل commit. مرشح لتحرير الاتصال بعد التقاط البيانات والتحقق، مع reload/locking مناسب قبل update كي لا يُكتب token قديم فوق token أحدث.
+- `projects.build_project_preview`: يقرأ ملفات المشروع ثم ينتظر preview builder خارجي حتى `PREVIEW_BUILD_TIMEOUT_SECONDS` (افتراضي 120s) مع session مفتوحة. مرشح لتحرير الاتصال بعد materializing payload_files وقبل await، ثم يسجل artifact بعد إعادة المعاملة.
+- مسارات chat الأخرى راجعت: compare/regular chat/web search/vision وregenerate/edit لديهم حدود commit/rollback قبل provider، وupload/index image يحرران checkout قبل التخزين/provider. لا دليل أن WebSocket أو Celery كان سبب burst 18:51؛ كلاهما ظهر ضمن الضحايا أو كمهام سريعة.
+- لا تعديل لهذه المسارات في PR #700؛ افصلها في PR مراجع لاحقًا ولا تُسقط advisory locks أو تغير سلوك الدفع/OAuth.
+
+### حادثة Render المسجلة
+- تكرر `QueuePool size=2 overflow=1 timeout=15s` بعد نشر #698 في `17:53:19Z`, `18:34:33Z`, و`18:51:58Z`.
+- Burst `18:51:58Z` أثر على عدة GET requests؛ سجل ASGI واحد أظهر فشل `notifications_websocket` أثناء `db.get(User, user_id)`، وهذا يحدد الضحية لا السبب الجذري.
+- Celery due-scheduled task قبل الـburst عند `18:51:51Z` نجحت في نحو 0.0196s.
+- بعد ذلك استمر internal `/health 200` بأزمنة غالبها 10–12ms، لكن هذا لا ينفي فشل الطلبات العادية تحت ضغط اتصالات DB.
+- المطلوب بعد نشر #700: رصد QueuePool errors وطلبات 5xx، وإثبات نجاح طلبات مستخدم عادية (auth/models/chat) وليس `/health` فقط. لا تغيير pool vars أو Render/Supabase limits دون قياس ومعرفة قيود pooler.
+
+### الحدود
+- لا تعديل إنتاجي لقاعدة البيانات أو Render/Supabase env/secrets.
+- لا تشغيل استعادة أو backfill/reindex، ولا تغيير pool size/overflow.
+- لا تشغيل webhook/payment/OAuth حقيقي بغرض الاختبار على production.
