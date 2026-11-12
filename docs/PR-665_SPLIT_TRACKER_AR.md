@@ -1080,3 +1080,35 @@
 - لا تغييرات schema/migrations، ولا استعادة، ولا reindex/backfill أو بيانات إنتاجية.
 - بعد دمج #700 يلزم مراقبة Render logs مجددًا ومقارنة QueuePool timeouts وطلبات /health و5xx قبل اعتبار الحادثة محلولة.
 
+## 42. توسيع إصلاح Pool من Celery إلى AgentRuntime لجميع وسائل النقل — 2026-11-12
+
+### تصحيح PR #699
+- عند مراجعة المسارات تبين أن HTTP POST /chat وSSE POST /chat/stream يستدعيان run_agent مباشرة، ولا يمران عبر _execute_agent_job في tasks.py.
+- لذلك فإن تحرير الاتصال في event sink الخاص بـCelery وحده لا يغطي مسارات Agent المباشرة والمتدفقة.
+- تم توسيع PR #699 إلى الرأس الحالي e9c20256f7ba0301f44104ed85dafe91e819fdb2:
+  - ai-backend/app/services/agent_runtime.py: يستدعي commit_and_release_connection(db) مباشرة قبل كل provider.get_reply_with_tools call، وبذلك يشمل HTTP وSSE وCelery.
+  - ai-backend/app/tasks.py: يبقى تحرير الاتصال بعد قراءة AgentJob داخل event sink قبل متابعة عملية الأداة/المزوّد.
+  - ai-backend/tests/test_pool_release_acceptance.py: اختبار PostgreSQL بــ QueuePool من اتصال واحد، يستخدم AgentRuntime الفعلي ومزوّدًا محاكى ينتظر؛ يتحقق أن Session ثانية تنفذ SELECT 42 خلال انتظار المزوّد.
+- PR #699 ما زال Draft ومفتوحًا وغير مدمج؛ base main df92952686f2a1f21339ab1ae55acb3f6d866164.
+- على أحدث head e9c20256:
+  - CodeQL Python وJavaScript/TypeScript: Success.
+  - Frontend وSDK وPreview Builder وProduction Compose: Success.
+  - Backend: لا يزال Run backend tests with hang diagnostics In Progress في آخر قراءة.
+  - CI run https://github.com/HVA09/ai-chat-app/actions/runs/43286930228
+  - CodeQL run https://github.com/HVA09/ai-chat-app/actions/runs/43286931731
+- لا merge حتى ينجح Backend على الرأس ذاته وتكتمل المراجعة النهائية.
+
+### توضيح حادثة QueuePool في Render
+- نافذة الحادثة الثانية بعد النشر: 2026-11-12T18:51:58Z–18:51:59Z على instance srv-dakc4nbm8hqs73e2po9g-w7clc.
+- ظهرت دفعة طلبات واجهة من العميل 10.27.232.133 و10.29.6.5 قبل الحادثة مباشرة: POST /auth/refresh 200، GET /notifications 200، GET /workspaces 200، GET /saved-prompts 200، GET /tags 200، GET /assistants 200.
+- ثم تعثرت طلبات أخرى بــQueuePool timeout 15s: /memories، /conversations/bookmarks، /chat/models، /users/me، /conversations. بعد استعادة الوصلات عادت بعض الطلبات إلى 200.
+- في التوقيت ذاته، مهمة Celery run_due_scheduled_tasks انتهت بنجاح خلال نحو 0.0196 ثانية، ولا تظهر سجلات Agent task بنفس نافذة الحادثة؛ لذلك لا توجد قرينة مباشرة على أن تلك المهمة سببت الحادثة.
+- /health ظل يعطي 200، لكن بعض probes ارتفع زمنها إلى 700–807ms وقت ضغط الاتصالات ثم عاد إلى 10–12ms.
+- الاستنتاج الحالي: السجلات تثبت استنفاد QueuePool متقطعًا تحت تزامن الطلبات، مع خطر برمجي ملموس في مسارات Agent التي تحتفظ باتصال قبل provider I/O؛ لكنها لا تثبت أن Agent هو السبب الوحيد أو أن الإصلاح وحده يغلق كل حالات الاستنفاد.
+- لا تزال الحاجة قائمة لمراقبة Render بعد دمج/نشر PR #699، وملاحظة أداء طلبات المستخدم، وتجربة Agent فعلية. لا تعتبر 200 health وحده إغلاقًا للحادثة.
+
+### الضوابط
+- لم تتغير إعدادات Render أو Supabase أو حجم pool؛ لا تغييرات Production ولا migrations ولا data writes.
+- PR #699 Draft حتى اكتمال Backend/CodeQL ومراجعة latest head.
+- لا تشغيل restore أو reindex/backfill؛ بوابة backup/restore ما زالت مفتوحة.
+
