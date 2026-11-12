@@ -610,3 +610,122 @@ def test_embedding_index_identity_tracks_vector_dimensions(monkeypatch):
     changed = embeddings.get_embedding_index_identity()[2]
 
     assert changed != initial
+
+
+
+def test_gemini_embedding_001_query_truncates_full_mrl_vector_to_schema_dimension(
+    monkeypatch,
+):
+    _set_embedding_settings(
+        monkeypatch,
+        AI_PROVIDER="openai",
+        AI_API_KEY="chat-secret",
+        AI_API_BASE_URL="https://api.openai.com/v1",
+        EMBEDDING_PROVIDER="gemini",
+        EMBEDDING_API_KEY="embedding-secret",
+        EMBEDDING_MODEL="gemini-embedding-001",
+        EMBEDDING_DIMENSIONS=768,
+    )
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"embedding": {"values": [1.0] * 3072}}
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def post(self, url, *, headers, json):
+            return FakeResponse()
+
+    monkeypatch.setattr(embeddings.httpx, "AsyncClient", FakeAsyncClient)
+
+    vector = asyncio.run(embeddings.embed_query("A Linux networking question"))
+
+    assert len(vector) == 768
+    assert sum(value * value for value in vector) == pytest.approx(1.0)
+    assert vector[0] == pytest.approx(1 / (768 ** 0.5))
+
+
+def test_gemini_embedding_001_documents_truncate_full_mrl_vectors_to_schema_dimension(
+    monkeypatch,
+):
+    _set_embedding_settings(
+        monkeypatch,
+        AI_PROVIDER="openai",
+        AI_API_KEY="chat-secret",
+        EMBEDDING_PROVIDER="gemini",
+        EMBEDDING_API_KEY="embedding-secret",
+        EMBEDDING_MODEL="gemini-embedding-001",
+        EMBEDDING_DIMENSIONS=768,
+    )
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "embeddings": [
+                    {"values": [1.0] * 3072},
+                    {"values": [2.0] * 3072},
+                ]
+            }
+
+    class FakeSyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def post(self, url, *, headers, json):
+            return FakeResponse()
+
+    monkeypatch.setattr(embeddings.httpx, "Client", FakeSyncClient)
+
+    vectors = embeddings.embed_documents_sync(["Linux", "TCP/IP"])
+
+    assert len(vectors) == 2
+    assert all(len(vector) == 768 for vector in vectors)
+    assert all(
+        sum(value * value for value in vector) == pytest.approx(1.0)
+        for vector in vectors
+    )
+    assert vectors[0][0] == pytest.approx(1 / (768 ** 0.5))
+
+
+def test_gemini_mrl_fallback_is_limited_to_gemini_embedding_001(monkeypatch):
+    _set_embedding_settings(monkeypatch, EMBEDDING_DIMENSIONS=768)
+    vectors = [[1.0] * 3072]
+    other_model = embeddings.EmbeddingConfig(
+        provider="gemini",
+        api_key="test-secret",
+        base_url=embeddings.GEMINI_BASE_URL,
+        model="another-gemini-model",
+    )
+    other_provider = embeddings.EmbeddingConfig(
+        provider="openai",
+        api_key="test-secret",
+        base_url=embeddings.OPENAI_BASE_URL,
+        model="text-embedding-3-small",
+    )
+
+    assert embeddings._apply_gemini_mrl_dimension_fallback(vectors, other_model) is vectors
+    assert embeddings._apply_gemini_mrl_dimension_fallback(vectors, other_provider) is vectors
