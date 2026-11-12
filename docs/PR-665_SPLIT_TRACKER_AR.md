@@ -763,3 +763,21 @@
 - backup/restore production ما زالت غير مثبتة؛ لا bulk reindex/backfill ولا strict retrieval fingerprint filtering.
 - لا دليل خارجي مستقل لفحص /health أو /ready بعد النشر.
 - لا نقوم باختبار محادثة إنتاجية مصطنع أو إعادة فهرسة حقيقية على بيانات المستخدم دون تفويض/خطة محددة؛ الفحص الحالي read-only.
+
+
+
+## 34. حالة CI الأولية لطلب إصلاح أبعاد Gemini #697 — 2026-11-12
+
+- PR #697 ما زال Open / Draft / غير مدمج.
+- أحدث رأس: `ed84bc40443c337729b993127fae10baff9c36e8`، والقاعدة `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db`.
+- CodeQL على الرأس الحالي: `completed/success` (Python وJavaScript/TypeScript).
+- CI run [43265924789](https://github.com/HVA09/ai-chat-app/actions/runs/43265924789):
+  - SDK: Success.
+  - Preview Builder: Success.
+  - Production Compose: Success.
+  - Frontend: Success.
+  - Backend: لا يزال عند `Run backend tests with hang diagnostics` في آخر قراءة.
+- لم تظهر مراجعات أو review threads معلّقة.
+- سجل job logs لم يكن قابلًا للتنزيل أثناء استمرار المهمة (GitHub/Azure BlobNotFound)؛ هذا ليس فشل اختبار.
+- لا تعتمد نجاحًا نهائيًا للطلب حتى تنتهي Backend pytest على نفس head SHA، ثم نفحص جميع check-runs ونجعل PR Ready/merge عند استيفاء الشروط.
+- لا production writes أو إعادة فهرسة؛ PR #697 تغييرات كود واختبارات فقط.
