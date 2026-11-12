@@ -292,3 +292,12 @@
 - CI run [43150034903](https://github.com/HVA09/ai-chat-app/actions/runs/43150034903) وCodeQL run [43150035008](https://github.com/HVA09/ai-chat-app/actions/runs/43150035008) يعملان على هذا الرأس.
 - آخر حالة: SDK نجح؛ Backend وFrontend وProduction Compose وPreview Builder وCodeQL ما زالت قيد التنفيذ. لا تُعتبر الفحوص ناجحة حتى تكتمل جميعها.
 - PR #694 يبقى Draft، لم يُدمج، ولم يتغير `main` أو Render بسبب هذا الفرع.
+
+
+- **تحديث نطاق الملفات بعد تصحيح اختبار Vision:** أصبح PR #694 يغيّر خمسة ملفات، بعد إضافة `ai-backend/tests/test_vision.py` لتوثيق تسلسل تحرير DB المزدوج:
+  1. `ai-backend/app/routers/chat.py`
+  2. `ai-backend/app/services/rag.py`
+  3. `ai-backend/tests/test_chat.py`
+  4. `ai-backend/tests/test_rag.py`
+  5. `ai-backend/tests/test_vision.py`
+- هذا تحديث تصحيحي لعبارة "أربعة ملفات" في القسم 17؛ النطاق الوظيفي لا يزال هو نفسه.
