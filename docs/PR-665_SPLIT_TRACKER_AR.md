@@ -972,3 +972,30 @@
 - PR يبقى Draft؛ لا Ready/merge حتى تنتهي كل الفحوص على هذا الرأس وبعدها مراجعة الحالة النهائية.
 - لا workflow execution، لا `pg_restore`، لا Supabase/Render writes، لا secrets أو environments، ولا تغيير إنتاجي.
 
+
+## 40. دمج PR #698 وتحقق ما بعد الدمج — 2026-11-12
+
+### نتيجة الدمج
+- PR #698 `security: restrict Supabase restore workflow to staging only` أصبح merged.
+- PR: https://github.com/HVA09/ai-chat-app/pull/698
+- Head الذي اجتاز الاختبارات: `f72f2601dbc329e0c69860a0ab192929b7503de1`.
+- Merge commit/main: `df92952686f2a1f21339ab1ae55acb3f6d866164`.
+- CI السابق للدمج: 8/8 Success؛ Backend `650 passed, 2 warnings in 237.92s`؛ Frontend/SDK/Preview Builder/Production Compose وCodeQL Python/JavaScript-TypeScript كلها Success.
+- لا review submissions أو inline review threads عند مراجعة ما قبل الدمج.
+- التغيير النهائي يتطلب `target=staging`, تأكيد يدوي، التشغيل من `main`, اسم ملف محدد، وSHA-256 expected digest؛ يتحقق من الملف المحدد ويعيد فحص مشروع Supabase وTLS قبل `pg_restore`. لا يختار newest archive تلقائيًا. IAM المطلوب object-read فقط تحت prefix المعزول، بلا ListBucket أو write.
+- لا workflow restore تم تشغيله؛ لا `pg_restore` ولا staging environment/secrets تم إنشاؤها أو تعديلها.
+
+### ما بعد الدمج
+- Production smoke [43280882516](https://github.com/HVA09/ai-chat-app/actions/runs/43280882516): completed/success.
+- CI push run [43280882496](https://github.com/HVA09/ai-chat-app/actions/runs/43280882496): كان in_progress عند آخر قراءة؛ Backend ما زال في `Run backend tests with hang diagnostics`; Frontend/SDK/Preview Builder/Production Compose Success. يجب تحديث السجل بعد انتهائه.
+- Render service `srv-dakc4nbm8hqs73e2po9g` ما زال configured على main و`autoDeployTrigger=checksPass`, Free Ohio, health path `/health`.
+- أحدث Render deployment وقت فحص ما بعد الدمج ظل `dep-dbqvb6mq1p3s73dn2m3g` على SHA `48c451545c0ab2b05e08c94b4afc72b2215a4910`، حالة `live`. لم يظهر deploy جديد على `df929526...` وقت الفحص؛ نعيد التحقق بعد انتهاء post-merge CI. لم يتم manual deploy.
+
+### ملاحظات وضوابط باقية
+- سجل Backend CI أظهر duplicate-key واحدًا على `uq_scheduled_task_runs_task_scheduled_for` رغم نجاح pytest؛ لا يزال بند مراقبة منفصلًا.
+- backup object الخارجي: وجوده وبنيته تم التحقق منهما عبر workflow السابق، لكن provenance من المصدر لم يثبت بالكامل. Restore capability لم تُثبت بعد.
+- إنشاء GitHub Environment `supabase-staging`، حماية required reviewers، secrets scoped، S3 read-only credentials، sanitized dump، exact filename وSHA-256 كلها متطلبات خارجية لم تُجهّز بعد.
+- لا تشغيل Workflow الاستعادة قبل مراجعة بيئة staging والـsecrets والـreviewers والملف/البصمة المحددة. لا استعادة production مطلقًا عبر workflow.
+- لا bulk RAG reindex/backfill ولا strict retrieval fingerprint filtering قبل provenance موثوق ودليل restore ناجح إلى staging معزول.
+- لا تعديل Render/Supabase production أو أسرار، ولا إجراءات بيانات إنتاجية بهذا القسم.
+
