@@ -120,3 +120,12 @@
 | 2026-11-12 | فشل أول compileall لـ #692 في `embeddings.py` بسبب قص غير صحيح لدالة بصمة الفهرسة أثناء الاستخراج | CI job `130927113038`، head `7da65b46b44e09a3e5a13c4bbb6ebbfee1f6dac2`; commit إصلاح `718683fe8089a93e7de1fa911f870f5b5089b28e` | لم يدخل `main`؛ أُصلح الملف وأعيد بناء الدالة من المصدر قبل طلب إعادة الفحوص |
 
 | 2026-11-12 | بدء إعادة فحوص رأس #692 المصحح | CI run `43140987241`؛ CodeQL run `43140987205`؛ head `718683fe8089a93e7de1fa911f870f5b5089b28e` | الفحوص قيد التنفيذ؛ لا نتيجة نهائية بعد |
+
+## 10. آخر حالة فحوص PR #692 — 2026-11-12
+
+- الرأس الجاري اختباره: `718683fe8089a93e7de1fa911f870f5b5089b28e`.
+- CI run: [43140987241](https://github.com/HVA09/ai-chat-app/actions/runs/43140987241) — ما زال قيد التنفيذ في Job الخلفية، وتحديدًا `Run backend tests with hang diagnostics`.
+- نجحت حتى آخر فحص: `frontend`، `sdk`، `preview-builder`، `production-compose`.
+- CodeQL run: [43140987205](https://github.com/HVA09/ai-chat-app/actions/runs/43140987205) — اكتمل بنجاح في Python وJavaScript/TypeScript.
+- حالة PR #692: Open / Draft / mergeable=true؛ لم يتم الدمج أو النشر.
+- لا تُعلن نتيجة CI الكاملة ناجحة حتى يكتمل Job الخلفية وتظهر النتيجة النهائية للـrun.
