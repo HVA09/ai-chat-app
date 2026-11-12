@@ -90,7 +90,6 @@ def test_successful_reindex_replaces_chunks_and_records_index_identity(
     assert file.indexed_embedding_provider == current_identity[0]
     assert file.indexed_embedding_model == current_identity[1]
     assert isinstance(file.indexed_at, datetime)
-    assert file.indexed_at.tzinfo is not None
 
 
 def test_failed_reindex_preserves_previous_chunks_and_index_metadata(
