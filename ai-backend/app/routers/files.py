@@ -19,7 +19,7 @@ from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_
 from app.audit import log_event
 from app.models.conversation import Conversation
 from app.models.conversation_file_link import ConversationFileLink
-from app.models.file_attachment import FileAttachment
+from app.models.file_attachment import FileAttachment, extracted_text_fingerprint
 from app.models.file_chunk import FileChunk
 from app.models.project import WorkspaceProject
 from app.models.usage_log import UsageLog
@@ -28,9 +28,15 @@ from app.models.workspace import WorkspaceMember, WorkspaceRole
 from app.schemas.file import FileOut
 from app.services.embeddings import EmbeddingServiceError
 from app.services.file_text_extractor import FileTextExtractionError, extract_text
-from app.services.rag import index_file_chunks
+from app.services.rag import (
+    index_file_chunks,
+    persist_file_index,
+    prepare_file_index,
+)
 from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
+from app.services.project_access import can_edit_project
+from app.services.workspace_rbac import has_workspace_permission
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
@@ -178,6 +184,56 @@ def _get_accessible_file(
 
     _get_workspace_membership(file.workspace_id, current_user, db)
     return file
+
+
+
+def _require_file_reindex_permission(
+    file: FileAttachment,
+    current_user: User,
+    db: Session,
+) -> None:
+    """Require write-level permission for reindexing a shared knowledge file."""
+    if file.workspace_id is None:
+        if file.user_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="الملف غير موجود",
+            )
+        return
+
+    if file.project_id is not None:
+        project = (
+            db.query(WorkspaceProject)
+            .populate_existing()
+            .filter(
+                WorkspaceProject.id == file.project_id,
+                WorkspaceProject.workspace_id == file.workspace_id,
+            )
+            .first()
+        )
+        if project is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المشروع غير موجود",
+            )
+        if not can_edit_project(project, current_user, db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="إعادة فهرسة ملفات المشروع تتطلب ملكية المشروع أو صلاحية محرر/مدير",
+            )
+        return
+
+    # A workspace file's uploader may maintain their own file. Other members
+    # need the explicit files.manage capability; basic membership is read-only.
+    if file.user_id == current_user.id:
+        return
+
+    membership = _get_workspace_membership(file.workspace_id, current_user, db)
+    if not has_workspace_permission(db, membership, "files.manage"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="إعادة فهرسة ملفات مساحة العمل تتطلب صلاحية files.manage",
+        )
 
 
 def _file_response(
@@ -563,6 +619,96 @@ def download_file(
     )
 
 
+@router.post("/{file_id}/reindex", response_model=FileOut)
+def reindex_file_for_rag(
+    file_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Safely rebuild the embeddings for one file with live ACL/source checks."""
+    attachment = _get_accessible_file(file_id, current_user, db)
+    _require_file_reindex_permission(attachment, current_user, db)
+
+    source_text = (attachment.extracted_text or "").strip()
+    if not source_text:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "لا يوجد نص مستخرج قابل للفهرسة. للصور التي لا تملك وصفًا، "
+                "استخدم فهرسة الصورة أولًا."
+            ),
+        )
+
+    enforce_daily_ai_limit(current_user, db)
+    if attachment.workspace_id is not None:
+        enforce_workspace_daily_ai_limit(attachment.workspace_id, current_user, db)
+
+    expected_source_fingerprint = extracted_text_fingerprint(source_text)
+
+    # No database checkout is held while the external embeddings provider runs.
+    commit_and_release_connection(db)
+    try:
+        prepared = prepare_file_index(source_text)
+    except EmbeddingServiceError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="تعذر إنشاء embeddings للملف؛ احتفظنا بالفهرس السابق دون تغيير.",
+        ) from exc
+
+    # Lock and refresh the row after provider I/O. Recheck both access and
+    # source text so a revoked editor or changed file cannot commit stale chunks.
+    latest = (
+        db.query(FileAttachment)
+        .populate_existing()
+        .with_for_update()
+        .filter(FileAttachment.id == file_id)
+        .first()
+    )
+    if latest is None:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الملف غير موجود",
+        )
+
+    try:
+        latest = _get_accessible_file(file_id, current_user, db)
+        _require_file_reindex_permission(latest, current_user, db)
+    except HTTPException:
+        db.rollback()
+        raise
+
+    if extracted_text_fingerprint(latest.extracted_text) != expected_source_fingerprint:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="تغيّر نص الملف أثناء إعادة الفهرسة؛ أعد المحاولة.",
+        )
+
+    try:
+        indexed_chunks = persist_file_index(db, latest, prepared)
+        db.commit()
+    except EmbeddingServiceError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="تغيّر مصدر الملف قبل حفظ الفهرس؛ لم نستبدل المقاطع السابقة.",
+        ) from exc
+    except Exception:
+        db.rollback()
+        raise
+
+    db.refresh(latest)
+    log_event(
+        db,
+        "file_rag_reindexed",
+        f"إعادة فهرسة الملف {latest.original_filename}: {indexed_chunks} مقطعًا",
+        current_user.id,
+    )
+    return _file_response(latest, current_user, db)
+
+
 @router.post("/{file_id}/index-image", response_model=FileOut)
 async def index_image_for_rag(
     file_id: int,
@@ -571,6 +717,7 @@ async def index_image_for_rag(
 ):
     """يفهرس صورة صراحةً في RAG بدون استدعاء Vision مخفي أثناء كل رسالة."""
     attachment = _get_accessible_file(file_id, current_user, db)
+    _require_file_reindex_permission(attachment, current_user, db)
 
     if not attachment.content_type.startswith("image/"):
         raise HTTPException(
