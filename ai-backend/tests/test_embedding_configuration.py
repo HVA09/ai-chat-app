@@ -544,3 +544,69 @@ def test_embedding_config_repr_does_not_disclose_api_key(monkeypatch):
 
     assert "chat-secret" not in repr(config)
     assert config.api_key == "chat-secret"
+
+
+
+def test_embedding_index_identity_excludes_credentials(monkeypatch):
+    _set_embedding_settings(
+        monkeypatch,
+        AI_PROVIDER="openai",
+        AI_API_KEY="chat-secret",
+        AI_API_BASE_URL="https://api.openai.com/v1",
+        EMBEDDING_PROVIDER="openai",
+        EMBEDDING_API_KEY="first-embedding-secret",
+        EMBEDDING_API_BASE_URL="https://embeddings.example/v1",
+        EMBEDDING_MODEL="text-embedding-3-small",
+        EMBEDDING_DIMENSIONS=3,
+    )
+
+    first = embeddings.get_embedding_index_identity()
+    monkeypatch.setattr(
+        embeddings.settings, "EMBEDDING_API_KEY", "rotated-embedding-secret"
+    )
+    second = embeddings.get_embedding_index_identity()
+
+    assert first == second
+    assert first[0:2] == ("openai", "text-embedding-3-small")
+    assert len(first[2]) == 64
+    assert "secret" not in first[2]
+
+
+def test_embedding_index_identity_changes_with_model_and_endpoint(monkeypatch):
+    _set_embedding_settings(
+        monkeypatch,
+        AI_PROVIDER="openai",
+        AI_API_KEY="chat-secret",
+        AI_API_BASE_URL="https://api.openai.com/v1",
+        EMBEDDING_PROVIDER="openai",
+        EMBEDDING_API_KEY="embedding-secret",
+        EMBEDDING_API_BASE_URL="https://embeddings.example/v1",
+        EMBEDDING_MODEL="text-embedding-3-small",
+        EMBEDDING_DIMENSIONS=3,
+    )
+    initial = embeddings.get_embedding_index_identity()[2]
+
+    monkeypatch.setattr(
+        embeddings.settings, "EMBEDDING_MODEL", "text-embedding-3-large"
+    )
+    changed_model = embeddings.get_embedding_index_identity()[2]
+    assert changed_model != initial
+
+    monkeypatch.setattr(
+        embeddings.settings,
+        "EMBEDDING_API_BASE_URL",
+        "https://other-embeddings.example/v1",
+    )
+    changed_endpoint = embeddings.get_embedding_index_identity()[2]
+    assert changed_endpoint != changed_model
+
+
+def test_embedding_index_identity_tracks_vector_dimensions(monkeypatch):
+    _set_embedding_settings(monkeypatch, EMBEDDING_DIMENSIONS=3)
+    initial = embeddings.get_embedding_index_identity()[2]
+
+    monkeypatch.setattr(embeddings.settings, "EMBEDDING_DIMENSIONS", 4)
+    monkeypatch.setattr(embeddings, "STORED_EMBEDDING_DIMENSIONS", 4)
+    changed = embeddings.get_embedding_index_identity()[2]
+
+    assert changed != initial

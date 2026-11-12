@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime, timezone
 from typing import TypedDict
 
 from sqlalchemy import and_, delete, exists, or_
@@ -13,12 +14,17 @@ from app.models.assistant import Assistant
 from app.models.assistant_file_link import AssistantFileLink
 from app.models.assistant_workspace_share import AssistantWorkspaceShare
 from app.models.conversation import Conversation
-from app.models.file_attachment import FileAttachment
+from app.models.file_attachment import FileAttachment, extracted_text_fingerprint
 from app.models.file_chunk import FileChunk
 from app.models.project import WorkspaceProject
 from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
-from app.services.embeddings import embed_documents_sync, embed_query
+from app.services.embeddings import (
+    EmbeddingServiceError,
+    embed_documents_sync,
+    embed_query,
+    get_embedding_index_identity,
+)
 from app.services.project_access import can_read_project
 
 CHUNK_SIZE = 1400
@@ -57,11 +63,26 @@ def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVE
 
 def index_file_chunks(db: Session, file: FileAttachment) -> int:
     text = (file.extracted_text or "").strip()
-    if not text:
+    text_fingerprint = extracted_text_fingerprint(text)
+    if not text_fingerprint:
+        # Remove stale chunks when the extracted source is empty.
+        db.execute(delete(FileChunk).where(FileChunk.file_id == file.id))
+        file.extracted_text_sha256 = None
+        file.indexed_text_sha256 = None
+        file.indexed_embedding_fingerprint = None
+        file.indexed_embedding_provider = None
+        file.indexed_embedding_model = None
+        file.indexed_at = None
+        db.flush()
         return 0
 
     chunks = chunk_text(text)
+    provider, model, embedding_fingerprint = get_embedding_index_identity()
+    # Generate and validate all replacement vectors before deleting the old
+    # rows, so an embedding-provider failure preserves the previous index.
     embeddings = embed_documents_sync(chunks)
+    if len(embeddings) != len(chunks):
+        raise EmbeddingServiceError("عدد embeddings لا يطابق عدد المقاطع")
 
     db.execute(delete(FileChunk).where(FileChunk.file_id == file.id))
     db.add_all(
@@ -75,6 +96,12 @@ def index_file_chunks(db: Session, file: FileAttachment) -> int:
             for index, (content, embedding) in enumerate(zip(chunks, embeddings, strict=True))
         ]
     )
+    file.extracted_text_sha256 = text_fingerprint
+    file.indexed_text_sha256 = text_fingerprint
+    file.indexed_embedding_fingerprint = embedding_fingerprint
+    file.indexed_embedding_provider = provider
+    file.indexed_embedding_model = model
+    file.indexed_at = datetime.now(timezone.utc)
     db.flush()
     return len(chunks)
 

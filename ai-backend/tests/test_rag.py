@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from app.models.file_attachment import FileAttachment
+from app.models.file_attachment import FileAttachment, extracted_text_fingerprint
 from app.models.file_chunk import FileChunk
 from app.models.user import User
 from app.models.workspace import Workspace
@@ -51,6 +51,11 @@ def test_index_file_chunks_persists_embeddings(db_session, monkeypatch):
         return [[0.1] * 768 for _ in texts]
 
     monkeypatch.setattr(rag, "embed_documents_sync", fake_embed)
+    monkeypatch.setattr(
+        rag,
+        "get_embedding_index_identity",
+        lambda: ("test-provider", "test-model", "test-embedding-fingerprint"),
+    )
 
     count = rag.index_file_chunks(db_session, file)
     db_session.commit()
@@ -64,6 +69,13 @@ def test_index_file_chunks_persists_embeddings(db_session, monkeypatch):
     assert count == len(chunks)
     assert count > 1
     assert len(chunks[0].embedding) == 768
+    expected_text_fingerprint = extracted_text_fingerprint(file.extracted_text)
+    assert file.extracted_text_sha256 == expected_text_fingerprint
+    assert file.indexed_text_sha256 == expected_text_fingerprint
+    assert file.indexed_embedding_fingerprint == "test-embedding-fingerprint"
+    assert file.indexed_embedding_provider == "test-provider"
+    assert file.indexed_embedding_model == "test-model"
+    assert file.indexed_at is not None
 
 
 def test_chat_uses_retrieved_rag_context(client, monkeypatch, db_session):
