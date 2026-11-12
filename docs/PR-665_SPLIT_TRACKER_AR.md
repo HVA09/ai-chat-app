@@ -383,3 +383,15 @@
 ### حالة الفحوص
 - بعد آخر commit `12b83ba2826e80de75e1084a51608f8396c7db7a`, GitHub أنشأ CI run `43152937955` وCodeQL run `43152937843`. حالتهما كانت pending عند تسجيل هذه الملاحظة؛ لا تُسجل أي نتيجة نجاح قبل اكتمالهما.
 - PR #695 Draft ولا يُدمج حتى تكتمل جميع الفحوص والمراجعة.
+
+## 21. بوابة migration الإنتاجية في PR #695 — 2026-11-12
+
+- تمت مراجعة `ai-backend/scripts/start.sh`: أمر بدء حاوية Backend ينفذ `alembic upgrade head` قبل تشغيل Uvicorn.
+- إعداد Render الفعلي للخدمة `srv-dakc4nbm8hqs73e2po9g` هو `autoDeploy=yes` و`autoDeployTrigger=checksPass`. لذلك دمج #695 سيؤدي إلى تطبيق migration `0082` تلقائيًا في نشر Render التالي؛ عدم تشغيل migration يدويًا لا يعني أن الدمج بلا أثر على قاعدة الإنتاج.
+- أُضيفت هذه الحقيقة إلى وصف PR #695. يبقى Open / Draft، ولا يُحوّل إلى Ready ولا يُدمج قبل:
+  1. إثبات وجود نسخة PostgreSQL احتياطية حديثة ومعرفة مسار الاستعادة.
+  2. اختبار الترقية على قاعدة مرحلية/مؤقتة عند schema مطابق لـ `main`، والتأكد من أن الأعمدة الستة nullable ولا يوجد backfill أو reindex.
+  3. مراجعة مدة/أقفال migration وأثر downgrade؛ downgrade يحذف الأعمدة الستة، ولذلك يختبر على قاعدة مؤقتة فقط.
+  4. قرار صريح بالموافقة على تغيير schema في الإنتاج.
+- هذا الشرط منفصل عن تفويض الدمج التلقائي للطلبات منخفضة المخاطر، ويتوافق مع بوابة التغييرات الإنتاجية في القسم 13.
+- حالة الفحوص عند التحديث: CodeQL Python وJavaScript/TypeScript ناجحان؛ Frontend وSDK وPreview Builder وProduction Compose ناجحة؛ Backend pytest ما زال قيد التنفيذ. لا تُسجل نتيجة Backend قبل نهاية job.
