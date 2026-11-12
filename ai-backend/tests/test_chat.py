@@ -1938,3 +1938,259 @@ def test_chat_compare_releases_db_before_each_provider_wait(client, monkeypatch)
         "provider:model-b",
     ]
 
+
+
+
+def test_project_memory_is_not_loaded_when_access_is_denied(
+    client, monkeypatch, db_session
+):
+    token = _register_and_login(client, "project-memory-acl-regression@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_response = client.post(
+        "/workspaces",
+        json={"name": "Project memory ACL regression"},
+        headers=headers,
+    )
+    assert workspace_response.status_code == 201
+    workspace_id = workspace_response.json()["id"]
+    project_response = client.post(
+        "/projects",
+        json={"workspace_id": workspace_id, "name": "Restricted memory project"},
+        headers=headers,
+    )
+    assert project_response.status_code == 201
+    project_id = project_response.json()["id"]
+    saved = client.post(
+        f"/projects/{project_id}/memories",
+        json={"content": "PROJECT-MEMORY-MUST-NOT-LEAK"},
+        headers=headers,
+    )
+    assert saved.status_code == 201
+
+    user = client.get("/users/me", headers=headers).json()
+    monkeypatch.setattr(
+        chat_router_module,
+        "can_read_project",
+        lambda *_args: False,
+    )
+    context = chat_router_module._build_memory_context(
+        user["id"], project_id, db_session
+    )
+    assert "[PROJECT MEMORY]" not in context
+    assert "PROJECT-MEMORY-MUST-NOT-LEAK" not in context
+
+
+def test_agent_chat_rejects_project_conversation_after_project_access_revocation(
+    client, db_session, monkeypatch
+):
+    from app.models.project_member import ProjectMember, ProjectMemberRole
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    initial_reply = AsyncMock(return_value=AIReply(text="Initial response"))
+    agent = AsyncMock(return_value=("Agent must not run", [], 0, 0))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", initial_reply)
+    monkeypatch.setattr(chat_router_module, "run_agent", agent)
+
+    owner_token = _register_and_login(
+        client, "project-agent-acl-owner-regression@example.com"
+    )
+    member_token = _register_and_login(
+        client, "project-agent-acl-member-regression@example.com"
+    )
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    member_headers = {"Authorization": f"Bearer {member_token}"}
+
+    workspace_response = client.post(
+        "/workspaces",
+        json={"name": "Agent project ACL regression"},
+        headers=owner_headers,
+    )
+    assert workspace_response.status_code == 201
+    workspace_id = workspace_response.json()["id"]
+    project_response = client.post(
+        "/projects",
+        json={"workspace_id": workspace_id, "name": "Restricted agent project"},
+        headers=owner_headers,
+    )
+    assert project_response.status_code == 201
+    project_id = project_response.json()["id"]
+
+    member = (
+        db_session.query(User)
+        .filter(User.email == "project-agent-acl-member-regression@example.com")
+        .one()
+    )
+    project_membership = ProjectMember(
+        project_id=project_id,
+        user_id=member.id,
+        role=ProjectMemberRole.viewer,
+    )
+    db_session.add_all([
+        WorkspaceMember(
+            workspace_id=workspace_id,
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        ),
+        project_membership,
+    ])
+    db_session.commit()
+
+    initial = client.post(
+        "/chat",
+        json={
+            "message": "Start a project conversation",
+            "workspace_id": workspace_id,
+            "project_id": project_id,
+        },
+        headers=member_headers,
+    )
+    assert initial.status_code == 200, initial.text
+    conversation_id = initial.json()["conversation_id"]
+    assert initial_reply.await_count == 1
+
+    db_session.delete(project_membership)
+    db_session.commit()
+    db_session.expire_all()
+
+    denied = client.post(
+        "/chat",
+        json={
+            "message": "/agent read project files",
+            "workspace_id": workspace_id,
+            "conversation_id": conversation_id,
+        },
+        headers=member_headers,
+    )
+    assert denied.status_code == 404
+    agent.assert_not_awaited()
+    assert initial_reply.await_count == 1
+
+
+def test_compare_rejects_revoked_workspace_membership_before_context_load(
+    client, db_session, monkeypatch
+):
+    from app.models.conversation import Conversation
+    from app.models.workspace import WorkspaceMember
+
+    provider = AsyncMock(return_value=AIReply(text="Comparison response"))
+    monkeypatch.setattr(chat_router_module, "get_ai_reply", provider)
+    token = _register_and_login(
+        client, "workspace-compare-acl-regression@example.com"
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+    created = client.post(
+        "/chat",
+        json={"message": "Create a conversation before membership removal"},
+        headers=headers,
+    )
+    assert created.status_code == 200
+    conversation_id = created.json()["conversation_id"]
+    conversation = db_session.get(Conversation, conversation_id)
+    assert conversation is not None
+    workspace_id = conversation.workspace_id
+    user = db_session.query(User).filter_by(
+        email="workspace-compare-acl-regression@example.com"
+    ).one()
+
+    deleted = (
+        db_session.query(WorkspaceMember)
+        .filter(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == user.id,
+        )
+        .delete(synchronize_session=False)
+    )
+    assert deleted == 1
+    db_session.commit()
+    db_session.expire_all()
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_allowed_ai_models",
+        lambda *_args: ["model-a", "model-b"],
+    )
+    file_context = AsyncMock(
+        return_value=("workspace private text", [])
+    )
+    monkeypatch.setattr(chat_router_module, "_build_file_context", file_context)
+    provider.reset_mock()
+
+    response = client.post(
+        "/chat/compare",
+        json={
+            "message": "Summarize workspace files",
+            "model_a": "model-a",
+            "model_b": "model-b",
+            "conversation_id": conversation_id,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 404
+    file_context.assert_not_awaited()
+    provider.assert_not_awaited()
+
+
+def test_vision_rejects_revoked_workspace_membership_before_image_lookup(
+    client, db_session, monkeypatch
+):
+    from unittest.mock import Mock
+    from app.models.conversation import Conversation
+    from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
+
+    owner_token = _register_and_login(
+        client, "vision-acl-owner-regression@example.com"
+    )
+    member_token = _register_and_login(
+        client, "vision-acl-member-regression@example.com"
+    )
+    owner = (
+        db_session.query(User)
+        .filter_by(email="vision-acl-owner-regression@example.com")
+        .one()
+    )
+    member = (
+        db_session.query(User)
+        .filter_by(email="vision-acl-member-regression@example.com")
+        .one()
+    )
+    workspace = Workspace(owner_id=owner.id, name="Vision ACL regression")
+    db_session.add(workspace)
+    db_session.flush()
+    membership = WorkspaceMember(
+        workspace_id=workspace.id,
+        user_id=member.id,
+        role=WorkspaceRole.member,
+    )
+    conversation = Conversation(
+        user_id=member.id,
+        workspace_id=workspace.id,
+        title="Vision conversation before membership removal",
+    )
+    db_session.add_all([membership, conversation])
+    db_session.commit()
+
+    db_session.delete(membership)
+    db_session.commit()
+    db_session.expire_all()
+
+    image_lookup = Mock(
+        side_effect=AssertionError("image must not be loaded after ACL revocation")
+    )
+    vision_reply = AsyncMock(
+        side_effect=AssertionError("vision provider must not run after ACL revocation")
+    )
+    monkeypatch.setattr(chat_router_module, "_get_attached_image", image_lookup)
+    monkeypatch.setattr(chat_router_module, "get_ai_vision_reply", vision_reply)
+
+    response = client.post(
+        "/chat/vision",
+        json={
+            "conversation_id": conversation.id,
+            "file_id": 123456789,
+            "message": "Describe this image",
+        },
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
+    assert response.status_code == 404
+    image_lookup.assert_not_called()
+    vision_reply.assert_not_awaited()
