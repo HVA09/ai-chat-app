@@ -102,7 +102,7 @@ app.add_middleware(
 @app.middleware("http")
 async def cookie_csrf_middleware(request: Request, call_next):
     """Protect cookie-authenticated state changes from cross-site requests."""
-    if settings.ENVIRONMENT == "production" and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+    if settings.ENVIRONMENT in {"staging", "production"} and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
         cookie_header = request.headers.get("cookie", "")
         has_auth_cookie = "access_token=" in cookie_header or "refresh_token=" in cookie_header
         if has_auth_cookie:
