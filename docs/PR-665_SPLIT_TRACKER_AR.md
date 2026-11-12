@@ -447,3 +447,26 @@
 - Render auto-deploy ما زال `checksPass`. آخر deploy ظاهر هو `dep-dbqjkd59el5s73f04dg0` على SHA `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13` بحالة `live`. لم يبدأ deploy للـ `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f` عند آخر فحص.
 - Main CI [43153718406](https://github.com/HVA09/ai-chat-app/actions/runs/43153718406) كان لا يزال `in_progress`؛ CodeQL [43153718347](https://github.com/HVA09/ai-chat-app/actions/runs/43153718347)، Publish image [43153718274](https://github.com/HVA09/ai-chat-app/actions/runs/43153718274)، وProduction smoke [43153718382](https://github.com/HVA09/ai-chat-app/actions/runs/43153718382) اكتملت بنجاح.
 - لا يوجد تأكيد من المستخدم بعد على نشر migration `0082` إلى قاعدة الإنتاج. لا تنفذ migration أو reindex يدويًا ولا تغيّر إعدادات Render أثناء انتظار القرار.
+
+
+## 23. اكتمال CI على main وبدء نشر Render — 2026-11-12
+
+### نتيجة CI بعد الدمج
+- GitHub CI push run [43153718406](https://github.com/HVA09/ai-chat-app/actions/runs/43153718406) اكتمل عند `2026-11-12T04:22:50Z` على SHA `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f` بنتيجة **success**.
+- جميع وظائف CI الخمس ناجحة: Backend وFrontend وSDK وPreview Builder وProduction Compose.
+- خطوات Backend التالية اكتملت بنجاح: `pip-audit`, `compileall`, `alembic upgrade head` على PostgreSQL المؤقت في CI، وفحص تطابق ORM metadata، ثم Backend pytest. لم يتوفر في مخرجات الوظائف رقم إجمالي pass count لهذا التشغيل؛ لذلك لا يُنسخ رقم 607 الخاص بتشغيل PR #695 على أنه عدد اختبارات تشغيل main.
+- CodeQL push [43153718347](https://github.com/HVA09/ai-chat-app/actions/runs/43153718347)، Production smoke [43153718382](https://github.com/HVA09/ai-chat-app/actions/runs/43153718382)، وPublish image [43153718274](https://github.com/HVA09/ai-chat-app/actions/runs/43153718274) ظلت ناجحة حسب آخر تحقق.
+
+### حالة Render بعد اكتمال CI
+- بعد اكتمال CI بدأ Render النشر التلقائي للـ SHA نفسه.
+- deployment الجديد: `dep-dbqju7e7bikc739n63i0`.
+- build: `bld-dbqju7e7bikc739n63ig`، وحدث `build_ended` بحالة `succeeded` عند `2026-11-12T04:23:05Z`.
+- حدث `deploy_started` عند `2026-11-12T04:22:53Z`، وكانت الحالة عند آخر فحص `update_in_progress`؛ لم يصل بعد إلى `live`.
+- تم تأكيد إعداد الخدمة: `autoDeploy=yes`, `autoDeployTrigger=checksPass`, الفرع `main`.
+- آخر فحصي `/health` و`/ready` أعادا OK قبل بدء deployment الجديد، ولذلك فهما يثبتان سلامة الإصدار السابق فقط، ولا يثبتان صحة الإصدار الجديد أو تطبيق migration.
+- لا يوجد حتى هذه اللحظة دليل مباشر على تنفيذ Alembic revision `0082_file_index_fingerprints` على الإنتاج.
+
+### حاجز فحص سجلات Render وسلامة قاعدة الإنتاج
+- أداة سجلات Render طلبت تحديد workspace. أظهر استعلام workspaces وجود مساحة واحدة باسم `My Workspace` ومعرف `tea-dagsi5ou01pc73f2g470`، لكن لم يتم اختيارها دون موافقة المستخدم.
+- بوابة النسخة الاحتياطية والموافقة الصريحة على تغيير مخطط الإنتاج ما زالت غير موثقة الإغلاق كما في القسم 21 (المضاف لاحقًا)؛ staging وCI ليسا بديلًا عن backup/restore production.
+- لا تُنفذ إعادة فهرسة، ولا backfill، ولا migration يدوية. لا تُجرى تغييرات لإعدادات Render أو قاعدة الإنتاج. يلزم أولًا حسم إذن استخدام مساحة Render المحددة لمراجعة logs/deploy، ثم التحقق من حالة النشر والصحة وrevision قبل أي مرحلة لاحقة.
