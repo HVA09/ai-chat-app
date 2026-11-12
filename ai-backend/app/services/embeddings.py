@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
 import httpx
@@ -30,7 +30,7 @@ class EmbeddingServiceError(RuntimeError):
 @dataclass(frozen=True)
 class EmbeddingConfig:
     provider: str
-    api_key: str
+    api_key: str = field(repr=False)
     base_url: str
     model: str
 
