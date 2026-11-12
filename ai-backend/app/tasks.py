@@ -2,12 +2,14 @@
 مهام خلفية (Celery) — البريد الإلكتروني + تنفيذ مهام AI المجدولة.
 """
 import asyncio
+import ssl
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import IntegrityError
 
-from app.database import SessionLocal
+from app.database import SessionLocal, commit_and_release_connection
 from app.logging_config import get_logger
 from app.models.agent_job import AgentJob
 from app.models.agent_workflow_step import AgentWorkflowStep
@@ -692,6 +694,12 @@ def _ensure_ai_quota(user: User, workspace: Workspace, db) -> None:
             )
 
 
+def _scheduled_task_ai_reply(db, prompt: str, model: str):
+    """Release read-only quota/session work before waiting for the AI provider."""
+    commit_and_release_connection(db)
+    return asyncio.run(get_ai_reply(prompt, [], model))
+
+
 def _execute_scheduled_task(
     task_id: int,
     run_id: int | None = None,
@@ -829,7 +837,7 @@ def _execute_scheduled_task(
                     db.commit()
             return
 
-        reply = asyncio.run(get_ai_reply(task.prompt, [], ai_model))
+        reply = _scheduled_task_ai_reply(db, task.prompt, ai_model)
 
         title_prefix = "Scheduled" if not task.prompt.startswith("م") else "مهمة مجدولة"
         title = f"{title_prefix}: {task.prompt[:70]}".strip()
@@ -990,6 +998,13 @@ def _run_due_scheduled_tasks() -> None:
         _execute_scheduled_task(task_id, run_id)
 
 
+def _redis_ssl_options(redis_url: str) -> dict | None:
+    """Require verified TLS only for Redis URLs that explicitly use rediss://."""
+    if urlsplit(redis_url).scheme.lower() != "rediss":
+        return None
+    return {"ssl_cert_reqs": ssl.CERT_REQUIRED}
+
+
 try:
     from celery import Celery
 
@@ -1000,6 +1015,17 @@ try:
         broker=settings.CELERY_BROKER_URL,
         backend=settings.CELERY_RESULT_BACKEND,
     )
+    # Upstash/managed TLS endpoints use rediss:// and must verify certificates.
+    # Local Redis/Valkey test services use redis:// and must remain plain TCP.
+    celery_ssl_options = {}
+    broker_ssl_options = _redis_ssl_options(settings.CELERY_BROKER_URL)
+    result_backend_ssl_options = _redis_ssl_options(settings.CELERY_RESULT_BACKEND)
+    if broker_ssl_options is not None:
+        celery_ssl_options["broker_use_ssl"] = broker_ssl_options
+    if result_backend_ssl_options is not None:
+        celery_ssl_options["redis_backend_use_ssl"] = result_backend_ssl_options
+    if celery_ssl_options:
+        celery_app.conf.update(**celery_ssl_options)
     celery_app.conf.timezone = "UTC"
     celery_app.conf.beat_schedule = {
         "run-due-scheduled-tasks": {

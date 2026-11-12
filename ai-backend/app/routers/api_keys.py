@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.cache import check_daily_rate_limit
 from app.config import settings
-from app.database import get_db
+from app.database import commit_and_release_connection, get_db
 from app.dependencies import (
     enforce_daily_ai_limit,
     enforce_workspace_daily_ai_limit,
@@ -378,6 +378,7 @@ async def developer_chat(
 
     history = _build_history(conversation, db)
     ai_message, _sources = await _augment_message(payload.message, conversation, db)
+    commit_and_release_connection(db)
     reply = await get_ai_reply(ai_message, history, conversation.ai_model)
 
     db.add(

@@ -7,6 +7,8 @@ from typing import TypedDict
 from sqlalchemy import and_, delete, exists, or_
 from sqlalchemy.orm import Session
 
+from app.database import commit_and_release_connection
+
 from app.models.assistant import Assistant
 from app.models.assistant_file_link import AssistantFileLink
 from app.models.file_attachment import FileAttachment
@@ -141,6 +143,9 @@ async def retrieve_relevant_chunks(
     if candidate is None:
         return []
 
+    # The candidate check is complete. Persist pending attachment links (if
+    # any) and release the connection before waiting on the embeddings API.
+    commit_and_release_connection(db)
     query_embedding = await embed_query(query)
 
     return (

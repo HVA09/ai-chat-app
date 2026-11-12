@@ -2,6 +2,7 @@
 اختبارات المرحلة السادسة: رفع الملفات وإدارتها
 """
 from app.config import settings as app_settings
+from app.routers import files as files_router
 
 
 def _register_and_login(client, email="files@example.com", password="StrongPass123"):
@@ -35,6 +36,37 @@ def test_upload_file_success(client, tmp_path, monkeypatch):
     assert body["size_bytes"] == len(b"\x89PNG\r\n\x1a\n" + b"fake")
 
 
+
+def test_upload_releases_db_before_storage_and_embedding_io(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    events = []
+    monkeypatch.setattr(
+        files_router,
+        "commit_and_release_connection",
+        lambda _db: events.append("release"),
+    )
+    monkeypatch.setattr(
+        files_router,
+        "put_file",
+        lambda *_args, **_kwargs: events.append("storage"),
+    )
+    monkeypatch.setattr(
+        files_router,
+        "index_file_chunks",
+        lambda _db, _file: (events.append("embedding") or 1),
+    )
+
+    token = _register_and_login(client, "upload-release@example.com")
+    response = client.post(
+        "/files/upload",
+        files={"file": ("report.csv", b"name,value\nalpha,1\nbeta,2\n", "text/csv")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 201
+    assert events == ["release", "storage", "release", "embedding"]
+
+
 def test_upload_rejects_unsupported_type(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client)
@@ -62,23 +94,65 @@ def test_list_files(client, tmp_path, monkeypatch):
 
 def test_download_file_returns_original_bytes(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    events = []
+    monkeypatch.setattr(
+        files_router,
+        "commit_and_release_connection",
+        lambda _db: events.append("release"),
+    )
+    original_open_file = files_router.open_file
+
+    def track_open_file(*args, **kwargs):
+        events.append("storage")
+        return original_open_file(*args, **kwargs)
+
+    monkeypatch.setattr(files_router, "open_file", track_open_file)
     token = _register_and_login(client)
     headers = {"Authorization": f"Bearer {token}"}
     upload_response = client.post("/files/upload", files={"file": ("note.csv", b"a,b,c\n1,2,3", "text/csv")}, headers=headers)
     file_id = upload_response.json()["id"]
+    events.clear()
     download_response = client.get(f"/files/{file_id}", headers=headers)
     assert download_response.status_code == 200
     assert download_response.content == b"a,b,c\n1,2,3"
+    assert events == ["release", "storage"]
 
 
-def test_delete_file(client, tmp_path, monkeypatch):
+def test_delete_file_releases_db_before_object_storage_delete(
+    client, tmp_path, monkeypatch
+):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    events = []
+    original_release = files_router.commit_and_release_connection
+    original_delete = files_router.delete_stored_file
+
+    def track_release(db):
+        events.append("release")
+        original_release(db)
+
+    def track_storage_delete(*args, **kwargs):
+        events.append("storage_delete")
+        return original_delete(*args, **kwargs)
+
+    monkeypatch.setattr(files_router, "commit_and_release_connection", track_release)
+    monkeypatch.setattr(files_router, "delete_stored_file", track_storage_delete)
+
     token = _register_and_login(client)
     headers = {"Authorization": f"Bearer {token}"}
-    upload_response = client.post("/files/upload", files={"file": ("a.png", b"\x89PNG\r\n\x1a\n" + b"bytes", "image/png")}, headers=headers)
+    upload_response = client.post(
+        "/files/upload",
+        files={"file": ("a.png", b"\x89PNG\r\n\x1a\n" + b"bytes", "image/png")},
+        headers=headers,
+    )
+    assert upload_response.status_code == 201, upload_response.text
     file_id = upload_response.json()["id"]
+
+    # Ignore upload's own release boundaries; assert the delete path order only.
+    events.clear()
     delete_response = client.delete(f"/files/{file_id}", headers=headers)
+
     assert delete_response.status_code == 204
+    assert events == ["release", "storage_delete"]
     assert client.get(f"/files/{file_id}", headers=headers).status_code == 404
 
 

@@ -16,7 +16,8 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Backend tests use real PostgreSQL/Redis integration services and need a larger CI budget.
+    timeout-minutes: 40
     services:
       postgres:
         # PostgreSQL 16 image with pgvector pre-installed; avoids the exhausted ECR Public data allowance.
@@ -73,7 +74,8 @@ jobs:
           REDIS_URL: "redis://localhost:6379/0"
           CELERY_BROKER_URL: "redis://localhost:6379/1"
           CELERY_RESULT_BACKEND: "redis://localhost:6379/1"
-      - run: pytest -q
+      - name: Run backend tests with hang diagnostics
+        run: pytest -vv --timeout=180 --timeout-method=signal -o faulthandler_timeout=90 --durations=20 -ra
         env:
           ENVIRONMENT: test
           DEBUG: "false"
