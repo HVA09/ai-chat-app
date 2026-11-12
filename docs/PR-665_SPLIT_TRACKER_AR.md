@@ -781,3 +781,36 @@
 - سجل job logs لم يكن قابلًا للتنزيل أثناء استمرار المهمة (GitHub/Azure BlobNotFound)؛ هذا ليس فشل اختبار.
 - لا تعتمد نجاحًا نهائيًا للطلب حتى تنتهي Backend pytest على نفس head SHA، ثم نفحص جميع check-runs ونجعل PR Ready/merge عند استيفاء الشروط.
 - لا production writes أو إعادة فهرسة؛ PR #697 تغييرات كود واختبارات فقط.
+
+
+
+## 35. دمج PR #697 لمعالجة أبعاد Gemini بعد نجاح الاختبارات — 2026-11-12
+
+### نتائج PR checks
+- PR #697 على head `ed84bc40443c337729b993127fae10baff9c36e8` اجتاز كل check-runs الثمانية بنجاح:
+  - Backend pytest: **616 passed, 2 warnings** في 302.73 ثانية.
+  - Frontend، SDK، Preview Builder، Production Compose: Success.
+  - CodeQL Python وJavaScript/TypeScript: Success.
+- سجل Backend يثبت نجاح الاختبارات الثلاثة الجديدة:
+  - `test_gemini_embedding_001_query_truncates_full_mrl_vector_to_schema_dimension`
+  - `test_gemini_embedding_001_documents_truncate_full_mrl_vectors_to_schema_dimension`
+  - `test_gemini_mrl_fallback_is_limited_to_gemini_embedding_001`
+- لا review threads أو reviews معلقة، GitHub `mergeable_state=clean`.
+- حُوّل PR من Draft إلى Ready ثم دُمج Squash بتفويض المستخدم السابق.
+- PR: https://github.com/HVA09/ai-chat-app/pull/697
+- Merge commit وmain: `48c451545c0ab2b05e08c94b4afc72b2215a4910`.
+- الأب المباشر للدمج: `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db`.
+
+### فحوص Push بعد الدمج
+- Production smoke run [43267652368](https://github.com/HVA09/ai-chat-app/actions/runs/43267652368): completed/success.
+- CI run [43267652121](https://github.com/HVA09/ai-chat-app/actions/runs/43267652121): in_progress عند آخر قراءة.
+- CodeQL run [43267652046](https://github.com/HVA09/ai-chat-app/actions/runs/43267652046): in_progress عند آخر قراءة.
+- Publish backend image run [43267652172](https://github.com/HVA09/ai-chat-app/actions/runs/43267652172): in_progress عند آخر قراءة.
+- هذه فحوص Push بعد الدمج وليست فحوص PR السابقة؛ لا تُسجل كاملة قبل انتهائها على SHA `48c4515...`.
+
+### نطاق الإصلاح وضوابط الإنتاج
+- المعالجة تتعامل مع Gemini `gemini-embedding-001` فقط: إذا أعاد كل متجه 3072 قيمة وكانت أبعاد التطبيق أصغر، تُستخدم بادئة MRL المطلوبة ثم يعاد تطبيعها.
+- يطبق السلوك على Query وDocument embeddings، ويحافظ على التحقق الصارم للمزودين والنماذج الأخرى.
+- لا تغيير على مخطط قاعدة البيانات `vector(768)`، ولا migration، ولا تغيير secrets أو environment variables، ولا إعادة فهرسة أو backfill.
+- Render ما زال عليه deployment سابق SHA `31503ae...` وقت آخر فحص؛ يجب انتظار GitHub checksPass ثم إعادة التحقق من deployment الجديد. لا manual deploy.
+- لا إجراء بيانات إنتاجية. تبقى بوابة backup/restore مفتوحة قبل أي bulk reindex/backfill أو strict retrieval fingerprint filtering.
