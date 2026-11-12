@@ -955,3 +955,20 @@
 - لا bulk reindex/backfill ولا strict retrieval fingerprint filtering قبل إثبات provenance وsuccessful restore إلى staging معزول.
 - سجل الاختبارات السابق سجل duplicate-key واحدًا على قيد `uq_scheduled_task_runs_task_scheduled_for` ضمن PostgreSQL CI مع نجاح pytest؛ يبقى ملاحظة مراقبة وليس فشلًا في PR #698.
 
+
+## 39. تثبيت اسم النسخة وSHA-256 في Workflow الاستعادة — 2026-11-12
+
+- أُضيف حقل `backup_sha256` مطلوب إلى `workflow_dispatch`؛ يجب أن يكون 64 قيمة hex وأن يطابق الملف الذي تمت مراجعته قبل التشغيل.
+- أضيفت الدالة `verify_sha256_file` باستخدام SHA-256 وconstant-time digest comparison؛ تعيد رفض أي digest ناقص/غير صالح أو لا يطابق محتوى الملف.
+- أضيفت اختبارات:
+  - يقبل SHA-256 المطابق للأرشيف.
+  - يرفض digest غير المطابق.
+  - يرفض digest بترميز/طول غير صحيح.
+- تحقق الملف الآن يتطلب ثلاثة مدخلات متوافقة: target=staging، اسم الملف exact تحت prefix ثابت، وSHA-256 المعتمد. لم يعد يسمح باختيار أحدث backup تلقائيًا أو صلاحية S3 ListBucket؛ التعليق والتوثيق يطلبان object-read فقط تحت prefix المحدد، بلا list/write.
+- PR body عُدّل ليشترط مراجعة نفس الملف المحدد ونفس digest، ويعرض المتطلبات التشغيلية قبل استخدام workflow.
+- PR #698 آخر head: `f72f2601dbc329e0c69860a0ab192929b7503de1`، base `48c451545c0ab2b05e08c94b4afc72b2215a4910`.
+- CI [43279524991](https://github.com/HVA09/ai-chat-app/actions/runs/43279524991) بدأ على الرأس الحالي؛ SDK Success، بينما Backend/Frontend/Preview Builder/Production Compose In Progress عند آخر قراءة.
+- CodeQL [43279525021](https://github.com/HVA09/ai-chat-app/actions/runs/43279525021) بدأ على الرأس الحالي؛ لم تكتمل النتيجة عند آخر قراءة. لم يعتمد حالة CodeQL المجمّعة `neutral` كنجاح؛ ننتظر نتيجة workflow الفعلية.
+- PR يبقى Draft؛ لا Ready/merge حتى تنتهي كل الفحوص على هذا الرأس وبعدها مراجعة الحالة النهائية.
+- لا workflow execution، لا `pg_restore`، لا Supabase/Render writes، لا secrets أو environments، ولا تغيير إنتاجي.
+
