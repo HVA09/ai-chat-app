@@ -44,13 +44,22 @@ def test_project_preview_build_delegates_to_isolated_builder(client, monkeypatch
         )
         assert response.status_code == 201
 
-    mocked = AsyncMock(
-        return_value=PreviewBuildResponse(
+    released = []
+    monkeypatch.setattr(
+        projects_router,
+        "commit_and_release_connection",
+        lambda db: released.append(db),
+    )
+
+    async def build_after_release(*args, **kwargs):
+        assert len(released) == 1
+        return PreviewBuildResponse(
             entrypoint="dist/index.html",
             artifact_base64="YQ==",
             artifact_size_bytes=1,
         )
-    )
+
+    mocked = AsyncMock(side_effect=build_after_release)
     monkeypatch.setattr(projects_router, "build_javascript_preview", mocked)
     monkeypatch.setattr(
         projects_router,
@@ -74,6 +83,7 @@ def test_project_preview_build_delegates_to_isolated_builder(client, monkeypatch
     assert response.json()["artifact_base64"] == "YQ=="
     assert "/projects/" + str(project["id"]) + "/preview-artifacts/artifact123/v1.token/dist/index.html" in response.json()["preview_url"]
     mocked.assert_awaited_once()
+    assert len(released) == 1
     args = mocked.await_args.args
     assert args[0] == project["id"]
     assert [item.path for item in args[1]] == ["package.json", "src/main.jsx"]
