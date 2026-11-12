@@ -173,10 +173,17 @@ def health_check(db: Session = Depends(get_db)):
         logger.exception("فحص الصحة: قاعدة البيانات غير متاحة")
         db_status = "error"
 
-    return {
-        "status": "ok" if db_status == "ok" else "degraded",
-        "database": db_status,
-    }
+    return JSONResponse(
+        status_code=(
+            status.HTTP_200_OK
+            if db_status == "ok"
+            else status.HTTP_503_SERVICE_UNAVAILABLE
+        ),
+        content={
+            "status": "ok" if db_status == "ok" else "degraded",
+            "database": db_status,
+        },
+    )
 
 
 app.include_router(auth_router)
