@@ -659,3 +659,15 @@
 - PR #696 كود فقط ولا يتضمن migration أو عملية reindex أو backfill؛ لا يتوقع أي تحديث لقاعدة الإنتاج من هذا الدمج.
 - بوابة backup/restore الإنتاجية لا تزال مفتوحة؛ يمنع أي bulk reindex/backfill أو strict retrieval fingerprint filtering قبل إغلاقها بأدلة.
 
+
+
+
+## 31. تحديث فحوص Push بعد دمج PR #696 — 2026-11-12
+
+- commit الدمج `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db` مؤكد على `main`.
+- CodeQL Push run [43262134713](https://github.com/HVA09/ai-chat-app/actions/runs/43262134713): `completed/success`.
+- Publish backend image run [43262134613](https://github.com/HVA09/ai-chat-app/actions/runs/43262134613): `completed/success`.
+- CI run [43262134820](https://github.com/HVA09/ai-chat-app/actions/runs/43262134820): ما زال `in_progress`؛ Backend tests وFrontend test كانت قيد التشغيل في آخر قراءة، بينما SDK وPreview Builder وProduction Compose نجحت.
+- Production smoke run [43262134748](https://github.com/HVA09/ai-chat-app/actions/runs/43262134748): ما زال `in_progress` في آخر قراءة.
+- Render service ما زال يعلن `autoDeploy=yes` و`autoDeployTrigger=checksPass` على main، ولم يظهر بعد deployment على SHA `31503ae...`. أحدث deployment المسجل ما زال SHA `f3ba9d4...`.
+- لا نُطلق manual deploy؛ نعيد فحص Render بعد اكتمال CI/smoke. لا تغييرات يدوية على الخدمة أو الإنتاج.
