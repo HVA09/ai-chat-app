@@ -1213,6 +1213,9 @@ async def analyze_attached_image(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="تغير نطاق المحادثة أثناء تجهيز الصورة",
             )
+        # The ACL recheck above uses the database again. Release that checkout
+        # before the external vision-provider request, just as before storage I/O.
+        commit_and_release_connection(db)
         reply = await get_ai_vision_reply(
             prompt,
             image_data_url,
