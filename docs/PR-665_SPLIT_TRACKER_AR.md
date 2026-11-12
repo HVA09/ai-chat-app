@@ -395,3 +395,22 @@
   4. قرار صريح بالموافقة على تغيير schema في الإنتاج.
 - هذا الشرط منفصل عن تفويض الدمج التلقائي للطلبات منخفضة المخاطر، ويتوافق مع بوابة التغييرات الإنتاجية في القسم 13.
 - حالة الفحوص عند التحديث: CodeQL Python وJavaScript/TypeScript ناجحان؛ Frontend وSDK وPreview Builder وProduction Compose ناجحة؛ Backend pytest ما زال قيد التنفيذ. لا تُسجل نتيجة Backend قبل نهاية job.
+
+## 22. دمج #695 ونتائج ما بعد الدمج — 2026-11-12
+
+### حالة PR والفحوص على رأسه
+- GitHub يؤكد أن PR #695 أُغلق بصفته مدمجًا في `2026-11-12T04:16:31Z`؛ merge commit: `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f`.
+- PR head: `12b83ba2826e80de75e1084a51608f8396c7db7a`; base قبل الدمج: `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13`.
+- CI PR run [43152937955](https://github.com/HVA09/ai-chat-app/actions/runs/43152937955): جميع الوظائف الخمس ناجحة.
+- Backend pytest: **607 passed, 2 warnings in 292.60s**.
+- CodeQL PR run [43152937843](https://github.com/HVA09/ai-chat-app/actions/runs/43152937843): Python وJavaScript/TypeScript ناجحان.
+- لا فحوص فاشلة على رأس PR.
+
+### فحوص push على main
+- `main` انتقل مباشرة من `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13` إلى `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f` (commit واحد، لا commits إضافية).
+- CI push run [43153718406](https://github.com/HVA09/ai-chat-app/actions/runs/43153718406): SDK وFrontend وPreview Builder وProduction Compose نجحت؛ Backend pytest كان لا يزال قيد التنفيذ عند آخر تحقق.
+- CodeQL push run [43153718347](https://github.com/HVA09/ai-chat-app/actions/runs/43153718347): نجاح.
+- Production smoke push run [43153718382](https://github.com/HVA09/ai-chat-app/actions/runs/43153718382): نجاح.
+- Publish backend image push run [43153718274](https://github.com/HVA09/ai-chat-app/actions/runs/43153718274): نجاح.
+- عند آخر تحقق لم تبدأ أحداث Render على SHA `f3ba9...` بعد، وآخر deployment Live كان على `c8264a...`. إعداد Render ما زال `autoDeploy=yes` و`autoDeployTrigger=checksPass`؛ ننتظر اكتمال CI على main ثم نعيد فحص deployment وhealth/ready.
+- لم تُنفذ migration أو backfill أو إعادة فهرسة يدويًا، ولم تُعدّل أسرار أو إعدادات الإنتاج. لا تعتبر migration 0082 مطبقة حتى يؤكد Render deployment الجديد أو تحقق قاعدة البيانات المصرّح به.
