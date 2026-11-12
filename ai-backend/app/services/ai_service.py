@@ -2,9 +2,9 @@
 طبقة الاتصال بمحرك الذكاء الاصطناعي — تفوّض لأي مزوّد مضبوط في AI_PROVIDER
 (openai, anthropic, gemini, deepseek). راجع app/services/ai_providers/
 """
-from collections.abc import AsyncIterator, Callable
 import asyncio
 import time
+from collections.abc import AsyncIterator, Callable
 
 import httpx
 from fastapi import HTTPException, status
