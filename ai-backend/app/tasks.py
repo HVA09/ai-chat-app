@@ -51,12 +51,16 @@ async def _agent_job_event_sink(db, job_id: int, event: dict) -> None:
         return
 
     job = db.get(AgentJob, job_id)
+    # AgentRuntime awaits providers/tools after these lifecycle events. Treat the
+    # completed event check as a transaction boundary so a read checkout is not
+    # retained while the next external operation is in flight.
+    commit_and_release_connection(db)
     if job is None:
         return
     if job.pause_requested or job.status == "paused":
         raise AgentJobPaused("تم إيقاف مهمة الوكيل مؤقتًا.")
     if job.cancel_requested or job.status == "cancelled":
-        raise AgentJobCancelled("تم إلغاء مهمة الوكيل.")
+        raise AgentJobCancelled("تم إلغاء المهمة المجدولة.")
 
 
 def _save_agent_job_checkpoint(
