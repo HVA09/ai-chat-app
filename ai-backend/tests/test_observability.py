@@ -140,3 +140,26 @@ def test_readiness_fails_when_redis_is_unavailable(monkeypatch, client):
         "database": "ok",
         "redis": "error",
     }
+
+def test_health_returns_service_unavailable_when_database_query_fails(client):
+    from app.database import get_db
+    from app.main import app
+
+    class UnavailableDatabase:
+        def execute(self, *_args, **_kwargs):
+            raise TimeoutError("test-only database pool timeout")
+
+    def override_database_dependency():
+        yield UnavailableDatabase()
+
+    app.dependency_overrides[get_db] = override_database_dependency
+    try:
+        response = client.get("/health")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "degraded",
+        "database": "error",
+    }
