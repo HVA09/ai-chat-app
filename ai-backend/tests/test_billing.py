@@ -133,9 +133,24 @@ def test_cancel_subscription(client, monkeypatch):
     mock_provider.verify_webhook = MagicMock(return_value=WebhookEvent(event_type="checkout_completed", provider_subscription_id="sub_789", provider_customer_id="cus_789", status="active", client_reference_id=str(me["id"]), plan_id=str(pro_plan["id"])))
     monkeypatch.setattr(billing_router_module, "get_payment_provider", lambda: mock_provider)
     client.post("/billing/webhook/stripe", json={"type": "fake"})
-    mock_provider.cancel_subscription = AsyncMock(return_value=None)
+    released = []
+    real_release = billing_router_module.commit_and_release_connection
+
+    def tracked_release(db):
+        real_release(db)
+        released.append(True)
+
+    async def cancel_at_provider(provider_subscription_id):
+        assert provider_subscription_id == "sub_789"
+        assert released == [True]
+
+    monkeypatch.setattr(
+        billing_router_module, "commit_and_release_connection", tracked_release
+    )
+    mock_provider.cancel_subscription = AsyncMock(side_effect=cancel_at_provider)
     response = client.post("/billing/cancel", headers=headers)
     assert response.status_code == 200
+    assert released == [True]
     assert client.get("/billing/subscription", headers=headers).json()["status"] == "canceled"
 
 
