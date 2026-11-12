@@ -887,3 +887,42 @@
 - حادثة QueuePool وGemini HTTP 503 وعدم تطابق 3072/768 سُجلت على الـinstance القديم قبل انتهاء تبديل Render؛ لم تتكرر على الـinstance الجديد في السجلات التي تمت مراجعتها.
 - لا تغيير لحدود اتصال قاعدة البيانات استنادًا إلى حادثة واحدة.
 - بوابة backup/restore الإنتاجية ما زالت مفتوحة؛ يُمنع bulk reindex/backfill وstrict retrieval fingerprint filtering قبل توفير backup حديث ودليل restore ناجح.
+
+
+
+## 37. إثبات نسخة احتياطية خارجية ناجحة وفتح إصلاح أمان الاستعادة على main الحالي — 2026-11-12
+
+### النسخة الاحتياطية الخارجية
+- عُثر على تشغيل Workflow المجدول [43199588287](https://github.com/HVA09/ai-chat-app/actions/runs/43199588287) بعنوان `Production database backup`.
+- التشغيل: `2026-11-12T10:21:07Z`، على commit `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f`، والحالة `completed/success`.
+- نجح job `backup` بجميع خطواته: `pg_dump --format=custom`، وفحص الأرشيف بـ`pg_restore --list`، ورفع S3-compatible، والتحقق البعيد بـ`head-object`، ثم حذف النسخة المحلية.
+- اسم الملف المعلن في سجل job: `ai-chat-postgres-20261112T102110Z.dump`.
+- حجم الكائن البعيد الذي أعاده `head-object`: `862003` bytes؛ وقد عاد ETag في السجل.
+- أكّد preflight أن `PRODUCTION_BACKUP_ENABLED=true` و`PRODUCTION_DB_CREDENTIAL_ROTATED=true` وأن حقول الإعداد الأساسية كانت موجودة؛ لم تُقرأ أي أسرار أو تُعرض قيمها.
+- هذا دليل على وجود أرشيف خارجي تم إنشاؤه والتحقق من هيكله ووجوده البعيد. لكنه ليس دليل استعادة.
+- قيد إثبات مهم: قيمة GitHub secret `PRODUCTION_DATABASE_URL` مخفية عن القراءة؛ لذلك لا يثبت سجل Actions وحده المضيف/المشروع المصدر الذي جرى تصديره. يجب عدم الادعاء أن نسخة الملف تطابق مشروع Supabase `ai-chat-prod-db` بشكل مؤكد حتى يتم إثبات provenance بطريقة آمنة لا تكشف الاعتماد السري.
+- لم يتوفر دليل أن هذا الأرشيف استُعيد بنجاح إلى قاعدة staging. تظل بوابة restore test مفتوحة.
+- Supabase organization على خطة `free`; وثائق Supabase الرسمية تقول إن النسخ التلقائية اليومية متاحة لخطط Pro/Team/Enterprise، وتوصي الخطة المجانية بتصدير `db dump` دوريًا خارج المنصة. تشغيل Workflow المجدول أعلاه هو مسار off-site مستقل، ولا يثبت تشغيل النسخ التلقائية على Supabase Free.
+- وثائق Supabase: https://supabase.com/docs/guides/platform/backups
+
+### حالة PR #673 وإصلاح الاستعادة
+- PR #673 القديم ما زال Draft وعلى branch متأخر 59 commit عن `main` عند SHA `48c4515...`; لم ندمجه.
+- ملف `.github/workflows/restore-to-supabase.yml` الموجود في `main` الحالي ما زال يستخدم أسرار S3 العامة و`SUPABASE_DB_URL` عامة، ويختار أحدث `.dump` من prefix عام `database/` ثم ينفذ `pg_restore --clean --if-exists --schema=public`. هذا مسار قابل لتحديد وجهة غير staging إذا شُغّل بإعدادات خاطئة؛ يجب استبداله قبل أي استخدام.
+- أُعيد تطبيق التغيير الأمني من PR #673 على branch جديد مبني مباشرة على main الحالي لتجنب فجوة الـ59 commit:
+  - PR #698: https://github.com/HVA09/ai-chat-app/pull/698
+  - Branch: `security/restore-supabase-staging-only-20261112`.
+  - Base: `main = 48c451545c0ab2b05e08c94b4afc72b2215a4910`.
+  - Head: `7086001c962711dd2fcd5bbfa28a848aa34d3a25`.
+  - التغييرات الثلاثة: استبدال workflow إلى staging-only، إضافة `restore_target_guard.py`، واختبارات guard.
+  - ضوابط التغيير: لا target إلا staging، تأكيد يدوي صريح، قفل على فرع main، GitHub Environment `supabase-staging` مع required reviewers prerequisite، secrets مخصصة، حظر production project ref، تحقق URL/port/database/TLS/root CA وإعادة التحقق قبل restore، وحصر اختيار dump تحت `database/staging-sanitized/`.
+- PR #698 ما زال Draft، غير مدمج؛ CI run [43275707523](https://github.com/HVA09/ai-chat-app/actions/runs/43275707523) وCodeQL [43275715170](https://github.com/HVA09/ai-chat-app/actions/runs/43275715170) كانا `in_progress` في آخر تسجيل.
+- لا توجد مراجعات أو review threads معلقة عند إنشاء PR #698.
+- لم نشغّل workflow الاستعادة، ولم ننشئ staging secrets أو GitHub Environment، ولم نغيّر قاعدة Supabase أو أي إعدادات Render/Supabase.
+- لا يُحوّل PR #698 إلى Ready ولا يُدمج حتى نجاح جميع الفحوص على أحدث head ومراجعة workflow والاختبارات. بعد دمجه، تظل تجربة restore إلى staging بحاجة إلى إعداد بيئة staging معزولة وموافقة reviewer ونسخة sanitized dump صالحة.
+
+### القرار التشغيلي
+- **Backup artifact وجوده مثبت** على مستوى workflow/object-store metadata.
+- **Source provenance غير مثبت بالكامل** لأن قيمة `PRODUCTION_DATABASE_URL` سرية ولا تظهر في السجل.
+- **Restore capability غير مثبتة** حتى الآن.
+- يُسمح بالاستمرار في مراجعة الكود والاختبارات، لكن لا bulk reindex/backfill ولا strict retrieval fingerprint filtering ولا تشغيل restore على Production. لا إعادة فهرسة إنتاجية لحد الآن.
+- أضيف تصحيحًا للحالة التاريخية: PR #697 مدمج ومنشور على main في SHA `48c451545c0ab2b05e08c94b4afc72b2215a4910`; الأقسام السابقة التي تسجل أنه Draft تعكس حالة سابقة فقط.
