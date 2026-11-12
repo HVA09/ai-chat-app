@@ -1239,3 +1239,38 @@
 - لا تغيير في DB_POOL_SIZE/OVERFLOW أو Render/Supabase limits أو env/secrets.
 - لا production restore، ولا reindex/backfill أو strict retrieval fingerprint filtering.
 \n
+
+
+## 46. تحقق ما بعد دمج #701 والنشر الحي — 2026-11-12
+
+### GitHub post-merge
+- main: `396cb54aea4b9e8656249434fc7ab09089c27f76`.
+- CI [43296415363](https://github.com/HVA09/ai-chat-app/actions/runs/43296415363): Success.
+- Backend: `658 passed, 2 warnings in 217.20s`.
+- Frontend, SDK, Preview Builder, Production Compose: Success.
+- CodeQL Python + JavaScript/TypeScript [43296415526](https://github.com/HVA09/ai-chat-app/actions/runs/43296415526): Success.
+- Publish backend image [43296415367](https://github.com/HVA09/ai-chat-app/actions/runs/43296415367): Success.
+- Production smoke [43296415426](https://github.com/HVA09/ai-chat-app/actions/runs/43296415426): Success.
+
+### Render production deployment
+- Deployment: `dep-dbr1p96tlv9c738bj0b0`، commit `396cb54...`.
+- Build succeeded at 20:08:17.661Z؛ deployment succeeded and reached `live` at 20:10:10.196Z؛ Render event `deploy_ended` at 20:10:10.336Z.
+- Render emitted `Your service is live`; app startup completed on new instance `srv-dakc4nbm8hqs73e2po9g-xmxr2`.
+- Startup verified Object Storage connectivity OK, embedded Celery worker and beat started, worker connected to Redis and reported ready, Uvicorn startup complete on port 10000.
+- Health window after deployment (20:10:10Z–20:13:00Z): 38 unique internal `GET /health 200` request IDs (76 paired app/access log lines), latency mostly 9–12ms.
+- Same window: 0 app-level error logs and 0 `QueuePool` timeout logs.
+- This evidence is from Render's internal health and application logs. The external HTTP probe tool could not independently fetch the public health URL in this session; do not overstate that as externally verified.
+
+### Duplicate-key PostgreSQL CI line — classified
+- PostgreSQL CI printed one `duplicate key value violates unique constraint uq_scheduled_task_runs_task_scheduled_for` despite pytest success.
+- Source reviewed: `ai-backend/tests/test_scheduled_tasks.py::test_scheduled_run_slot_is_unique` intentionally attempts to insert the same `(scheduled_task_id, scheduled_for)` twice inside `pytest.raises(IntegrityError)`, then rolls back.
+- This is the deliberate unique-constraint regression test, not evidence of a failing CI suite or a production duplicate task. Keep the database uniqueness constraint; no production change is warranted from this log line.
+- The scheduler code separately catches `IntegrityError` when another worker has already claimed a due slot, preventing double execution.
+
+### Remaining stability gate
+- PRs #696, #697, #698, #700, and #701 are merged and their respective deployments/checks are successful.
+- Initial post-#700 and post-#701 Render observation windows show no `QueuePool` timeout logs; #701 window had 38 successful internal health requests and no app errors.
+- This is a healthy deployment signal, not a concurrency/load test and not proof across every end-user route. Keep monitoring normal chat/RAG/Agent and file workflows before declaring the original pool incident fully closed.
+- Do not increase pool sizes, change Render plans, or edit database connection limits without measuring usage and provider limits.
+- Backup provenance/restore-to-staging remains unproven; the #698 staging-only workflow must not be run until environment reviewers, scoped secrets, sanitized archive, filename, and matching SHA-256 are independently ready. No restore, backfill, bulk reindex, or strict retrieval fingerprint filtering was run.
+\n
