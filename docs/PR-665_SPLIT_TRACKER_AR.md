@@ -359,3 +359,27 @@
 - أصبح شرط البدء في مرحلة بصمات فهرسة الملفات متحققًا: #694 مدمج، `main` أخضر، وRender `live` ونقاط الصحة سليمة.
 - المرحلة التالية المقترحة هي PR صغير مستقل فوق `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13`, لنطاق بصمات النص ومصدر embeddings فقط.
 - لا تبدأ migration `0081` أو أي reindex قبل قراءة سلسلة revisions كاملة، وفحص downgrade، وقياس أثر الأعمدة nullable، ونجاح CI على فرع المرحلة.
+## 20. بدء مرحلة بصمات فهرسة الملفات — PR #695 — 2026-11-12
+
+### PR الجديد وحدود التنفيذ
+- PR #695: https://github.com/HVA09/ai-chat-app/pull/695 — Open / Draft، غير مدمج.
+- Branch: `fix/rag-index-fingerprints-20261112`.
+- Base: `main` على `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13`.
+- Head بعد آخر تعديل: `12b83ba2826e80de75e1084a51608f8396c7db7a`.
+- سبعة ملفات: نموذج FileAttachment، Embedding identity، RAG index writer، migration، واختبارات الهوية والفهرسة.
+
+### قرار سلسلة migrations
+- المصدر القديم في #665 اقترح `0081_file_index_fingerprints` بعد `0080_harden_public_rls`.
+- لكن main يحتوي بالفعل `0081_harden_all_public_tables`، وهي child لنفس revision `0080_harden_public_rls`.
+- لذلك migration المرحلة الحالية مرقمة `0082_file_index_fingerprints` و`down_revision = 0081_harden_all_public_tables`. هذا يحافظ على خط واحد بعد head الحالي ولا ينشئ migration head موازية.
+
+### استراتيجية نشر مرحلية للحفاظ على توافق الملفات القديمة
+- #695 هو write-side foundation فقط: يضيف nullable metadata، ويحسب بصمة النص الحالي، وهوية embedding سرية المفتاح، ويسجل metadata بعد اكتمال توليد المتجهات.
+- لا يضيف #695 شرط stale-index إلى retrieval بعد. تبقى ملفات الإنتاج القديمة ذات metadata NULL قابلة للاسترجاع كما كانت قبل هذا التغيير، فلا يحدث تعطيل مفاجئ للمعرفة القديمة عند تطبيق migration.
+- لا يحتوي migration على backfill أو reindex، ولا تُجرى أي عملية reindex إنتاجية.
+- يجب أن تنفذ مرحلة منفصلة بعد #695 آلية reindex آمنة للملفات القديمة، وبعدها فقط تفعيل strict retrieval fingerprint filtering في PR منفصل مع اختبارات stale source/provider.
+- تم استبعاد تغييرات files router وZIP/Office paths وtasks/Agent من هذا PR.
+
+### حالة الفحوص
+- بعد آخر commit `12b83ba2826e80de75e1084a51608f8396c7db7a`, GitHub أنشأ CI run `43152937955` وCodeQL run `43152937843`. حالتهما كانت pending عند تسجيل هذه الملاحظة؛ لا تُسجل أي نتيجة نجاح قبل اكتمالهما.
+- PR #695 Draft ولا يُدمج حتى تكتمل جميع الفحوص والمراجعة.
