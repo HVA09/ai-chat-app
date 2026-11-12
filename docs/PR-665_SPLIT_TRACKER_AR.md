@@ -141,3 +141,38 @@
 - بعد نقل تحديث الاختبار إلى فرع #692، بدأ تشغيل جديد على الرأس `b1630280ce274e969cc25c9dd0a43ba5090aaf0b`: CI [43142197727](https://github.com/HVA09/ai-chat-app/actions/runs/43142197727) وCodeQL [43142197795](https://github.com/HVA09/ai-chat-app/actions/runs/43142197795). آخر تحقق: كلاهما قيد التنفيذ؛ SDK مكتمل بنجاح، وبقية الوظائف لم تكتمل بعد.
 
 - مراجعة مرجعية لصيغة Gemini REST: وثائق Google الحالية تدرج `embedContentConfig` ضمن `EmbedContentRequest` وتعرض `taskType` و`outputDimensionality` في `EmbedContentConfig`؛ لذلك لا نرجع إلى حقول المستوى الأعلى القديمة التي أصبحت deprecated. المرجع: https://ai.google.dev/api/batch-api?hl=en و https://ai.google.dev/api/embeddings.
+
+## 12. إغلاق مراجعة #692 ونتائج الفحوص — 2026-11-12
+
+### نتيجة CI على رأس الكود
+
+- رأس الكود الذي اجتاز المجموعة الكاملة: `b1630280ce274e969cc25c9dd0a43ba5090aaf0b`.
+- CI run: [43142197727](https://github.com/HVA09/ai-chat-app/actions/runs/43142197727) — اكتمل بنجاح.
+- Backend: **590 passed, 2 warnings in 260.05s**؛ لا توجد اختبارات فاشلة.
+- Frontend tests وProduction build: نجاح.
+- SDK: نجاح.
+- Preview Builder: نجاح.
+- Production Compose validation/build: نجاح.
+- CodeQL run: [43142197795](https://github.com/HVA09/ai-chat-app/actions/runs/43142197795) — نجاح في Python وJavaScript/TypeScript.
+- تنبيهات الاختبارين كانت تحذيرات إهمال من مكتبات (`crypt` وStarlette)، وليست حالات فشل.
+
+### نتيجة مراجعة التغيير
+
+- راجعت ملفات #692 الثمانية، بما فيها خدمة Embeddings والإعدادات واختبارات HTTP mock ودليل الإعداد.
+- تحققت من أن صيغة Gemini REST تستخدم `embedContentConfig`؛ وثائق Google الحالية تضع `taskType` و`outputDimensionality` داخل هذا الكائن، وتصف الحقول القديمة في المستوى الأعلى بأنها deprecated.
+- المراجع الرسمية: https://ai.google.dev/api/batch-api?hl=en و https://ai.google.dev/api/embeddings.
+- ملاحظة مراجعة مهمة: تطابق عدد الأبعاد وحده لا يعني أن المتجهات متوافقة. تغيير المزود أو النموذج يغير فضاء Embeddings، ويلزم إعادة توليد متجهات المقاطع قبل استخدام المزود/النموذج الجديد للاستعلام.
+- أضيف هذا التحذير إلى `ai-backend/docs/EMBEDDING_PROVIDER_CONFIGURATION.md` في commit توثيقي فقط: `26c2c30fe7ed67eba814f0ace81985074c5d9d8f`.
+- أضيف أيضًا تنبيه صريح إلى أن ترك `EMBEDDING_PROVIDER` فارغًا يعني اتباع `AI_PROVIDER`؛ تغيير مزود المحادثة قد يغيّر المزود الافتراضي للمتجهات. ينبغي تثبيت إعدادات Embeddings صراحة قبل تغيير مزود المحادثة، أو تنفيذ خطة إعادة فهرسة معتمدة.
+- لا migration، ولا إعادة فهرسة، ولا تغيير إنتاجي ضمن هذا التعديل التوثيقي.
+
+### الحالة الحالية بعد التعديل التوثيقي
+
+- رأس PR #692 الحالي: `26c2c30fe7ed67eba814f0ace81985074c5d9d8f`.
+- هذا الرأس يحتوي على توثيق إضافي فقط فوق رأس الكود `b1630280ce274e969cc25c9dd0a43ba5090aaf0b` الذي اجتاز كل CI وCodeQL أعلاه؛ لا يوجد تشغيل CI جديد مسجل للالتزام التوثيقي وحده.
+- PR #692: Open / Draft / mergeable=true / لم يدمج.
+- Base SHA ما زال `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee`.
+- PR #691: Open / Draft؛ سجل التتبع نفسه لم يدمج.
+- PR #665: يبقى Open / Draft كمصدر للتفكيك.
+- لم يتغير `main`، ولم يحدث نشر أو تعديل Render/Supabase.
+- القرار: #692 اجتاز الاختبارات والمراجعة الفنية، لكنه يبقى Draft حتى موافقة المستخدم على دمجه. لا نبدأ PR صلاحيات RAG التابع حتى يُحسم قرار دمج #692 وتثبيت SHA الجديد لـ `main`.
