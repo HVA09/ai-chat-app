@@ -332,10 +332,16 @@ def test_project_preview_releases_pool_before_external_builder_wait(
         )
         seed.commit()
 
+    access_checks = []
+
+    def get_accessible_project(*_args, **_kwargs):
+        access_checks.append(987)
+        return SimpleNamespace(id=987)
+
     monkeypatch.setattr(
         projects_router,
         "_get_project",
-        lambda *_args, **_kwargs: SimpleNamespace(id=987),
+        get_accessible_project,
     )
     monkeypatch.setattr(
         projects_router,
@@ -362,10 +368,14 @@ def test_project_preview_releases_pool_before_external_builder_wait(
         size_bytes=4,
     )
     monkeypatch.setattr(projects_router, "build_javascript_preview", fake_builder)
+    def publish_after_builder(*_args, **_kwargs):
+        _assert_pool_slot_available(engine, sessions)
+        return published
+
     monkeypatch.setattr(
         projects_router,
         "publish_preview_artifact",
-        lambda *_args, **_kwargs: published,
+        publish_after_builder,
     )
     monkeypatch.setattr(
         projects_router,
@@ -402,6 +412,7 @@ def test_project_preview_releases_pool_before_external_builder_wait(
             "https://example.test/projects/987/preview-artifacts/"
         )
         assert response.preview_expires_at == published.expires_at
+        assert access_checks == [987, 987]
     finally:
         db.close()
         engine.dispose()
