@@ -494,3 +494,67 @@ def test_embed_query_wraps_provider_timeout_as_service_error(monkeypatch):
 
     assert isinstance(error.value.__cause__, httpx.ReadTimeout)
 
+
+
+def test_gemini_embed_content_single_embedding_response_is_parsed(monkeypatch):
+    """Gemini embedContent uses {embedding: {values: [...]}} in its REST response."""
+    monkeypatch.setattr(embeddings.settings, "AI_PROVIDER", "gemini")
+    monkeypatch.setattr(
+        embeddings.settings,
+        "AI_API_BASE_URL",
+        "https://generativelanguage.googleapis.com/v1beta/openai/",
+    )
+    monkeypatch.setattr(embeddings.settings, "AI_API_KEY", "test-only-key")
+    monkeypatch.setattr(embeddings.settings, "EMBEDDING_MODEL", "gemini-embedding-001")
+    monkeypatch.setattr(embeddings.settings, "EMBEDDING_DIMENSIONS", 3)
+
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"embedding": {"values": [3.0, 4.0, 0.0]}}
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def post(self, url, headers, json):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["payload"] = json
+            return FakeResponse()
+
+    monkeypatch.setattr(embeddings.httpx, "AsyncClient", FakeAsyncClient)
+
+    vector = asyncio.run(embeddings.embed_query("test retrieval question"))
+
+    assert vector == pytest.approx([0.6, 0.8, 0.0])
+    assert captured["url"].endswith(
+        "/models/gemini-embedding-001:embedContent"
+    )
+    assert captured["headers"]["x-goog-api-key"] == "test-only-key"
+    assert captured["payload"]["taskType"] == "RETRIEVAL_QUERY"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"embeddings": [{"values": [3.0, 4.0, 0.0]}]},
+        {"data": [{"embedding": [3.0, 4.0, 0.0]}]},
+    ],
+)
+def test_embedding_parser_keeps_batch_and_openai_compatible_shapes(payload):
+    vectors = embeddings._extract_embedding_vectors(payload)
+
+    assert vectors == [pytest.approx([0.6, 0.8, 0.0])]
