@@ -233,3 +233,24 @@
 - Production smoke run [43143998272](https://github.com/HVA09/ai-chat-app/actions/runs/43143998272): اكتمل بنجاح.
 - آخر فحص Render: لا يزال آخر Deploy Live على commit `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee`؛ لم يظهر بعد Deploy جديد لـ `b80f6d...`. سياسة `checksPass` تمنع بدء النشر قبل نجاح جميع الفحوص المطلوبة.
 - لا يُعتبر نشر Render قد تم، ولا يُسجل التطبيق على أنه يعمل بالإصدار الجديد، حتى يظهر Deploy على SHA `b80f6d658d4848f78c726f0a03b21ae50359fada` بحالة `live` ثم تنجح فحوص الصحة.
+## 15. تأكيد استقرار الإصدار بعد دمج #692 — 2026-11-12
+
+- اكتملت جميع فحوص ما بعد الدمج على `main` عند `b80f6d658d4848f78c726f0a03b21ae50359fada`: backend، frontend، sdk، preview-builder، production-compose، CodeQL Python، CodeQL JavaScript/TypeScript.
+- CI run [43143998208](https://github.com/HVA09/ai-chat-app/actions/runs/43143998208) — نجاح.
+- CodeQL run [43143998283](https://github.com/HVA09/ai-chat-app/actions/runs/43143998283) — نجاح.
+- نشر صورة الخادم run [43143998298](https://github.com/HVA09/ai-chat-app/actions/runs/43143998298) — نجاح.
+- Production smoke run [43143998272](https://github.com/HVA09/ai-chat-app/actions/runs/43143998272) — نجاح.
+- Render deployment `dep-dbqikcvf3r2c73f7ioq0` على commit `b80f6d658d4848f78c726f0a03b21ae50359fada` — `live` منذ `2026-11-12T02:55:44Z`.
+- `/health`: `{"status":"ok","database":"ok"}`.
+- `/ready`: `{"status":"ready","database":"ok","redis":"ok"}`.
+- لم تُعدّل إعدادات Render/Supabase أو الأسرار. تحقق الصحة قراءة فقط.
+
+## 16. النطاق التالي: صلاحيات RAG وسياق المحادثة — بدء التحضير
+
+- خط أساس `main` بعد نجاح نشر #692: `b80f6d658d4848f78c726f0a03b21ae50359fada`.
+- المصدر المرجعي: PR #665، الفرع `ai/embedding-provider-separation-20261025`، لكنه ليس أساسًا للدمج؛ يُعاد بناء التغيير ملفيًا فوق `main` فقط.
+- النطاق المقصود: تحقق مالك المحادثة، وعضوية مساحة العمل، وصلاحية المشروع الحالية، واستمرار مشاركة المساعد، في خدمة RAG وبناء سياق الملفات/الذاكرة، مع إعادة تحقق بعد انتظار خدمة embeddings وقبل إرسال الصور إلى المزود.
+- تُستبعد من هذا PR: بصمات فهرسة الملفات وmigration `0081` وأي إعادة فهرسة؛ تحسين ترتيب fallback؛ تنظيف prompt delimiters/أسماء الملفات؛ تغييرات رفع/حذف/تنزيل الملفات وZIP safety؛ تغييرات حذف المشروع؛ MCP/ذاكرة API/الواجهة.
+- اختبارات القبول المستهدفة: منع مالك محادثة مختلف من استدعاء RAG؛ منع الاسترجاع بعد سحب عضوية workspace أو project؛ منع استعمال ملفات المساعد بعد إلغاء مشاركته؛ منع تحميل fallback/ذاكرة المشروع/الصورة بعد سحب الإذن؛ وعدم تحويل HTTP 404 الخاص بالصلاحيات إلى RAG fallback صامت.
+- لا migration ولا تعديل production settings ولا استدعاءات AI حية في هذا PR.
+- لا يُنشأ أو يدمج PR الصلاحيات قبل مراجعة فروق الملفات، وتشغيل CI وCodeQL كاملين على رأسه.
