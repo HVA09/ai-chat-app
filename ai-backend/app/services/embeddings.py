@@ -316,6 +316,31 @@ def _validate_embedding_vectors(
     return vectors
 
 
+def _apply_gemini_mrl_dimension_fallback(
+    vectors: list[list[float]],
+    config: EmbeddingConfig,
+) -> list[list[float]]:
+    """Use Gemini Embedding 001's MRL prefix if the API returns its full vector.
+
+    Gemini Embedding 001 defaults to 3072 values. Its Matryoshka-trained
+    representation supports shorter prefixes; normalize the selected prefix
+    again because the full vector was normalized before this fallback.
+    Keep this narrowly scoped: other models/providers and unexpected lengths
+    still fail the normal schema-dimension validation.
+    """
+    expected_dimensions = settings.EMBEDDING_DIMENSIONS
+    if (
+        config.provider != "gemini"
+        or config.model != "gemini-embedding-001"
+        or expected_dimensions >= 3072
+        or not vectors
+        or any(len(vector) != 3072 for vector in vectors)
+    ):
+        return vectors
+
+    return [_normalize(vector[:expected_dimensions]) for vector in vectors]
+
+
 def _gemini_embedding_config(task_type: str) -> dict[str, str | int]:
     return {
         "taskType": task_type,
@@ -373,6 +398,7 @@ def embed_documents_sync(texts: Sequence[str]) -> list[list[float]]:
                     ) from exc
 
                 vectors = _extract_embedding_vectors(_parse_embedding_response(response))
+                vectors = _apply_gemini_mrl_dimension_fallback(vectors, config)
                 all_vectors.extend(_validate_embedding_vectors(vectors, len(batch)))
     except httpx.RequestError as exc:
         raise EmbeddingServiceError("تعذر الاتصال بمزوّد embeddings") from exc
@@ -412,6 +438,7 @@ async def embed_query(text: str) -> list[float]:
                 ) from exc
 
             vectors = _extract_embedding_vectors(_parse_embedding_response(response))
+            vectors = _apply_gemini_mrl_dimension_fallback(vectors, config)
             validated = _validate_embedding_vectors(vectors, 1)
             return validated[0]
     except httpx.RequestError as exc:
