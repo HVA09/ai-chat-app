@@ -560,3 +560,340 @@ def test_embedding_parser_keeps_batch_and_openai_compatible_shapes(payload):
     vectors = embeddings._extract_embedding_vectors(payload)
 
     assert vectors == [pytest.approx([0.6, 0.8, 0.0])]
+
+
+
+def test_rag_rejects_conversation_owned_by_another_user(db_session, monkeypatch):
+    from app.models.conversation import Conversation
+
+    owner = User(email="rag-acl-owner@example.com", hashed_password="hashed")
+    other = User(email="rag-acl-other@example.com", hashed_password="hashed")
+    db_session.add_all([owner, other])
+    db_session.flush()
+    workspace = Workspace(owner_id=owner.id, name="RAG owner guard")
+    db_session.add(workspace)
+    db_session.flush()
+    conversation = Conversation(
+        user_id=owner.id,
+        workspace_id=workspace.id,
+        title="Owner conversation",
+    )
+    db_session.add(conversation)
+    db_session.commit()
+
+    embed_query = AsyncMock(
+        side_effect=AssertionError("embedding must not run for another user's conversation")
+    )
+    monkeypatch.setattr(rag, "embed_query", embed_query)
+
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            other.id,
+            conversation.id,
+            "private content",
+            workspace_id=workspace.id,
+        )
+    )
+
+    assert rows == []
+    embed_query.assert_not_awaited()
+
+
+def test_rag_rejects_workspace_retrieval_after_membership_revocation(
+    db_session, monkeypatch
+):
+    from app.models.conversation import Conversation
+    from app.models.conversation_file_link import ConversationFileLink
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    owner = User(email="rag-workspace-owner-acl@example.com", hashed_password="hashed")
+    member = User(email="rag-workspace-member-acl@example.com", hashed_password="hashed")
+    db_session.add_all([owner, member])
+    db_session.flush()
+    workspace = Workspace(owner_id=owner.id, name="RAG workspace revocation")
+    db_session.add(workspace)
+    db_session.flush()
+    membership = WorkspaceMember(
+        workspace_id=workspace.id,
+        user_id=member.id,
+        role=WorkspaceRole.member,
+    )
+    conversation = Conversation(
+        user_id=member.id,
+        workspace_id=workspace.id,
+        title="Conversation after membership removal",
+    )
+    db_session.add_all([membership, conversation])
+    db_session.flush()
+    file = FileAttachment(
+        user_id=owner.id,
+        workspace_id=workspace.id,
+        project_id=None,
+        original_filename="workspace-secret.txt",
+        stored_filename="workspace-secret.txt",
+        content_type="text/plain",
+        size_bytes=40,
+        extracted_text="Private workspace retrieval text.",
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(FileChunk(
+        file_id=file.id,
+        chunk_index=0,
+        content="Private workspace retrieval text.",
+        embedding=[0.1] * 768,
+    ))
+    db_session.add(
+        ConversationFileLink(conversation_id=conversation.id, file_id=file.id)
+    )
+    db_session.commit()
+
+    db_session.delete(membership)
+    db_session.commit()
+    embed_query = AsyncMock(
+        side_effect=AssertionError("embedding must not run after workspace access is revoked")
+    )
+    monkeypatch.setattr(rag, "embed_query", embed_query)
+
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            member.id,
+            conversation.id,
+            "private workspace text",
+            workspace_id=workspace.id,
+        )
+    )
+
+    assert rows == []
+    embed_query.assert_not_awaited()
+
+
+def test_rag_rejects_project_retrieval_without_project_access(
+    db_session, monkeypatch
+):
+    from app.models.conversation import Conversation
+    from app.models.project import WorkspaceProject
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    owner = User(email="rag-project-owner-acl@example.com", hashed_password="hashed")
+    member = User(email="rag-project-member-acl@example.com", hashed_password="hashed")
+    db_session.add_all([owner, member])
+    db_session.flush()
+    workspace = Workspace(owner_id=owner.id, name="RAG project ACL")
+    db_session.add(workspace)
+    db_session.flush()
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    project = WorkspaceProject(
+        workspace_id=workspace.id,
+        owner_id=owner.id,
+        name="Restricted project",
+    )
+    db_session.add(project)
+    db_session.flush()
+    conversation = Conversation(
+        user_id=member.id,
+        workspace_id=workspace.id,
+        project_id=project.id,
+        title="Conversation without project role",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+    file = FileAttachment(
+        user_id=owner.id,
+        workspace_id=workspace.id,
+        project_id=project.id,
+        original_filename="project-secret.txt",
+        stored_filename="project-secret.txt",
+        content_type="text/plain",
+        size_bytes=32,
+        extracted_text="Restricted project retrieval text.",
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(FileChunk(
+        file_id=file.id,
+        chunk_index=0,
+        content="Restricted project retrieval text.",
+        embedding=[0.1] * 768,
+    ))
+    db_session.commit()
+
+    embed_query = AsyncMock(
+        side_effect=AssertionError("embedding must not run without project permission")
+    )
+    monkeypatch.setattr(rag, "embed_query", embed_query)
+
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            member.id,
+            conversation.id,
+            "restricted project text",
+            workspace_id=workspace.id,
+            project_id=project.id,
+        )
+    )
+
+    assert rows == []
+    embed_query.assert_not_awaited()
+
+
+def test_assistant_knowledge_stops_retrieving_after_workspace_unshare(
+    db_session, monkeypatch
+):
+    from fastapi import HTTPException
+    from app.models.assistant import Assistant
+    from app.models.assistant_file_link import AssistantFileLink
+    from app.models.assistant_workspace_share import AssistantWorkspaceShare
+    from app.models.conversation import Conversation
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    owner = User(email="rag-assistant-owner-acl@example.com", hashed_password="hashed")
+    member = User(email="rag-assistant-member-acl@example.com", hashed_password="hashed")
+    db_session.add_all([owner, member])
+    db_session.flush()
+    workspace = Workspace(owner_id=owner.id, name="RAG assistant share ACL")
+    db_session.add(workspace)
+    db_session.flush()
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    assistant = Assistant(
+        user_id=owner.id,
+        name="Shared assistant",
+        instructions="Use shared knowledge.",
+    )
+    db_session.add(assistant)
+    db_session.flush()
+    share = AssistantWorkspaceShare(
+        assistant_id=assistant.id,
+        workspace_id=workspace.id,
+        shared_by_user_id=owner.id,
+    )
+    db_session.add(share)
+    conversation = Conversation(
+        user_id=member.id,
+        workspace_id=workspace.id,
+        assistant_id=assistant.id,
+        title="Conversation created while shared",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+    file = FileAttachment(
+        user_id=owner.id,
+        original_filename="assistant-private.txt",
+        stored_filename="assistant-private.txt",
+        content_type="text/plain",
+        size_bytes=50,
+        extracted_text="Assistant knowledge that must stay private.",
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(AssistantFileLink(assistant_id=assistant.id, file_id=file.id))
+    db_session.add(FileChunk(
+        file_id=file.id,
+        chunk_index=0,
+        content="Assistant knowledge evidence.",
+        embedding=[0.1] * 768,
+    ))
+    db_session.commit()
+
+    embed_query = AsyncMock(return_value=[0.1] * 768)
+    monkeypatch.setattr(rag, "embed_query", embed_query)
+    active_rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            member.id,
+            conversation.id,
+            "assistant knowledge",
+            workspace_id=workspace.id,
+            assistant_id=assistant.id,
+        )
+    )
+    assert len(active_rows) == 1
+    assert active_rows[0][1].id == file.id
+
+    db_session.delete(share)
+    db_session.commit()
+    embed_query.reset_mock(side_effect=True)
+    embed_query.side_effect = AssertionError(
+        "embedding provider must not run after assistant share revocation"
+    )
+
+    revoked_rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            member.id,
+            conversation.id,
+            "assistant knowledge",
+            workspace_id=workspace.id,
+            assistant_id=assistant.id,
+        )
+    )
+    assert revoked_rows == []
+    embed_query.assert_not_awaited()
+
+    with pytest.raises(HTTPException) as denied:
+        asyncio.run(
+            chat_router_module._build_file_context(
+                conversation, "assistant knowledge", db_session
+            )
+        )
+    assert denied.value.status_code == 404
+
+
+def test_file_context_rechecks_workspace_access_after_rag_wait(
+    db_session, monkeypatch
+):
+    from fastapi import HTTPException
+    from app.models.conversation import Conversation
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    owner = User(email="rag-context-owner-acl@example.com", hashed_password="hashed")
+    member = User(email="rag-context-member-acl@example.com", hashed_password="hashed")
+    db_session.add_all([owner, member])
+    db_session.flush()
+    workspace = Workspace(owner_id=owner.id, name="RAG context revocation")
+    db_session.add(workspace)
+    db_session.flush()
+    membership = WorkspaceMember(
+        workspace_id=workspace.id,
+        user_id=member.id,
+        role=WorkspaceRole.member,
+    )
+    conversation = Conversation(
+        user_id=member.id,
+        workspace_id=workspace.id,
+        title="Context retrieval while access changes",
+    )
+    db_session.add_all([membership, conversation])
+    db_session.commit()
+
+    async def revoke_during_retrieval(*_args, **_kwargs):
+        db_session.delete(membership)
+        db_session.commit()
+        return []
+
+    retrieval = AsyncMock(side_effect=revoke_during_retrieval)
+    monkeypatch.setattr(chat_router_module, "retrieve_relevant_chunks", retrieval)
+
+    with pytest.raises(HTTPException) as denied:
+        asyncio.run(
+            chat_router_module._build_file_context(
+                conversation, "private workspace context", db_session
+            )
+        )
+    assert denied.value.status_code == 404
+    retrieval.assert_awaited_once()
