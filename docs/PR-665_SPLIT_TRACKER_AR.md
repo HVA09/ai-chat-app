@@ -538,3 +538,43 @@
 - تبقى ملاحظة backup/restore production المفتوحة كما في القسم 21؛ نجاة النشر لا تمحو عدم إثبات backup قبل migration.
 - لا تغيير في Render أو Supabase من هذا التحقق، وجميع استعلامات Supabase السابقة كانت SELECT فقط.
 - الخطوة الهندسية التالية بعد معالجة حاجز النسخة الاحتياطية وتوثيق استعادتها هي تصميم endpoint آمن لإعادة فهرسة ملف واحد في PR مستقل، مع ACLs واختبارات صلاحيات وفشل مزود embeddings والحفاظ على الفهرس القديم عند الفشل؛ لا يُفعّل strict retrieval filtering في ذلك PR.
+
+
+## 26. فتح PR #696 لإعادة فهرسة ملف واحد بأمان — 2026-11-12
+
+### الهدف والنطاق
+- PR #696: https://github.com/HVA09/ai-chat-app/pull/696 — Open / Draft، لا دمج بعد.
+- العنوان: `feat(rag): add safe per-file reindex endpoint`.
+- Branch: `feat/rag-per-file-reindex-20261112`.
+- Base: `main` عند `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f`.
+- Head وقت فتح PR: `d8cfa9d36b044582362d9e3fcd8ccf87a86e5b9f`.
+- ثلاثة ملفات فقط:
+  1. `ai-backend/app/services/rag.py`
+  2. `ai-backend/app/routers/files.py`
+  3. `ai-backend/tests/test_file_reindex.py`
+
+### التصميم الأمني
+- فُصل تحضير الفهرس (التقطيع وتوليد embeddings) عن حفظه في DB.
+- Endpoint جديد صريح: `POST /files/{file_id}/reindex`، يعالج ملفًا واحدًا فقط بطلب authenticated.
+- يتم تحرير اتصال DB قبل انتظار مزود embeddings؛ بعد انتهاء المزود يُعاد تحميل صف الملف مع `FOR UPDATE`، وتُعاد مراجعة صلاحية المستخدم وبصمة النص قبل تبديل المقاطع في transaction واحدة.
+- فشل مزود embeddings أو تغير النص لا يحذف الفهرس السابق.
+- صلاحيات Personal files: مالك الملف فقط.
+- ملفات Project: مالك المشروع أو editor/manager وفق `can_edit_project`؛ عضوية Workspace الأساسية لا تمنح إذن كتابة المشروع.
+- ملفات Workspace غير المرتبطة بمشروع: صاحب الملف أو من لديه `files.manage`.
+- طُبق شرط صلاحية الكتابة أيضًا على مسار `index-image` الموجود، لأنه يغيّر بيانات معرفة الملف.
+- endpoint يستخدم حدود AI اليومية وحدود Workspace القائمة.
+
+### ما لم يدخل في PR
+- لا migration ولا أعمدة أو تغييرات schema.
+- لا backfill ولا bulk/scheduled reindex ولا أي استدعاء embeddings على بيانات الإنتاج.
+- لا strict fingerprint filtering في Retrieval؛ الملفات القديمة ذات metadata NULL تظل على سلوكها الحالي.
+- لا تغييرات Frontend/UI في هذا الطلب.
+- يظل حاجز backup/restore الإنتاجي المفتوح في القسم 21 قائمًا؛ هذا PR لا ينفذ عمليات بيانات تلقائية.
+
+### الاختبارات والفحوص
+- أُضيفت اختبارات للنجاح، والحفاظ على المقاطع/metadata القديمة عند فشل المزود، ومنع Project viewer والسماح للمحرر، ومنع Workspace member دون `files.manage` والسماح للـ admin، ورفض حفظ index مبني على source قديم.
+- Compare من main إلى head: ahead بثلاثة commits، behind صفر، وثلاثة ملفات متغيرة.
+- PR CI run [43158683373](https://github.com/HVA09/ai-chat-app/actions/runs/43158683373): Frontend وSDK وPreview Builder وProduction Compose ناجحة؛ Backend pytest كان قيد التنفيذ عند آخر تسجيل.
+- CodeQL run [43158683271](https://github.com/HVA09/ai-chat-app/actions/runs/43158683271): Python وJavaScript/TypeScript ناجحان.
+- لا review threads معلقة عند آخر تحقق.
+- يظل PR Draft حتى يكتمل Backend CI ويُراجع أي إخفاق أو تعليق. لا يدمج قبل اكتمال جميع الشروط المطلوبة على نفس head SHA.
