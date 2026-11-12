@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import os
 import re
 import sys
@@ -30,6 +32,24 @@ def is_safe_staging_backup_key(key: object, prefix: str) -> bool:
     return _STAGING_BACKUP_FILENAME.fullmatch(filename) is not None
 
 
+
+
+def verify_sha256_file(path: str | os.PathLike[str], expected_digest: str) -> bool:
+    """Verify a downloaded archive against a pre-reviewed SHA-256 digest."""
+    if not isinstance(expected_digest, str) or re.fullmatch(
+        r"[0-9a-fA-F]{64}", expected_digest
+    ) is None:
+        return False
+
+    digest = hashlib.sha256()
+    try:
+        with open(path, "rb") as archive:
+            for chunk in iter(lambda: archive.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return False
+
+    return hmac.compare_digest(digest.hexdigest(), expected_digest.lower())
 
 
 def validate_root_ca_certificate(certificate_pem: str) -> None:
