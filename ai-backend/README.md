@@ -186,3 +186,7 @@ alembic upgrade head
 ```bash
 ./scripts/smoke.sh https://api.your-domain.com
 ```
+
+## Embeddings provider configuration
+
+Embedding generation can use a provider independent of the chat model. Leave `EMBEDDING_PROVIDER`, `EMBEDDING_API_KEY`, `EMBEDDING_API_BASE_URL`, and `EMBEDDING_MODEL` blank to retain the compatible provider fallback from `AI_PROVIDER`; for a separate provider, set its provider, key, model, and endpoint explicitly. The stored PostgreSQL vector dimension is currently 768, so `EMBEDDING_DIMENSIONS` must remain 768 until a separately reviewed schema migration and reindex plan is applied. See `docs/EMBEDDING_PROVIDER_CONFIGURATION.md`.
