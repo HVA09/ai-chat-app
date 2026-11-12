@@ -1,111 +1,202 @@
-name: Restore production backup to Supabase
+name: Restore sanitized backup to Supabase staging
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: Destination is intentionally restricted to the isolated staging project.
+        required: true
+        type: choice
+        options:
+          - staging
+        default: staging
+      confirm_staging_restore:
+        description: Confirm that the configured staging database may be overwritten from a sanitized staging backup.
+        required: true
+        type: boolean
+        default: false
+      backup_filename:
+        description: Exact sanitized .dump filename under database/staging-sanitized/ that was reviewed before this run.
+        required: true
+        type: string
+      backup_sha256:
+        description: SHA-256 digest (64 hexadecimal characters) of that exact reviewed archive.
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+concurrency:
+  group: supabase-staging-restore
+  cancel-in-progress: false
+
 jobs:
   restore:
+    # This workflow has no production target and runs only from main after explicit confirmation.
+    if: github.ref == 'refs/heads/main' && inputs.target == 'staging' && inputs.confirm_staging_restore == true && inputs.backup_filename != '' && inputs.backup_sha256 != ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Configure this GitHub Environment with required reviewers before adding the staging secret.
+    environment: supabase-staging
     env:
-      BACKUP_BUCKET: ${{ secrets.S3_BUCKET }}
-      BACKUP_ENDPOINT: ${{ secrets.S3_ENDPOINT_URL }}
-      BACKUP_REGION: ${{ secrets.S3_REGION }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+      # Dedicated staging-only read credentials. Grant object-read access
+      # only for database/staging-sanitized/; do not grant listing or write access.
+      BACKUP_BUCKET: ${{ secrets.STAGING_BACKUP_BUCKET }}
+      BACKUP_ENDPOINT: ${{ secrets.STAGING_BACKUP_ENDPOINT_URL }}
+      BACKUP_REGION: ${{ secrets.STAGING_BACKUP_REGION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.STAGING_BACKUP_READ_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.STAGING_BACKUP_READ_SECRET_ACCESS_KEY }}
       AWS_EC2_METADATA_DISABLED: "true"
-      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_STAGING_DB_URL: ${{ secrets.SUPABASE_STAGING_DB_URL }}
+      SUPABASE_STAGING_ROOT_CA_CERT_PEM: ${{ secrets.SUPABASE_STAGING_ROOT_CA_CERT_PEM }}
+      SUPABASE_STAGING_PROJECT_REF: ${{ vars.SUPABASE_STAGING_PROJECT_REF }}
+      SUPABASE_PRODUCTION_PROJECT_REF: wfhijmawoojcmfdgibxg
+      STAGING_BACKUP_PREFIX: database/staging-sanitized/
+      STAGING_BACKUP_FILENAME: ${{ inputs.backup_filename }}
+      STAGING_BACKUP_SHA256: ${{ inputs.backup_sha256 }}
 
     steps:
-      - name: Verify required secrets are present
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify manual confirmation and validate staging destination
         shell: bash
         run: |
           set -euo pipefail
-          for name in BACKUP_BUCKET BACKUP_ENDPOINT BACKUP_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SUPABASE_DB_URL; do
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Restore can only run from main."
+            exit 1
+          fi
+          if [[ "${{ inputs.target }}" != "staging" || "${{ inputs.confirm_staging_restore }}" != "true" ]]; then
+            echo "Only an explicitly confirmed staging restore is supported."
+            exit 1
+          fi
+          for name in BACKUP_BUCKET BACKUP_ENDPOINT BACKUP_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SUPABASE_STAGING_DB_URL SUPABASE_STAGING_ROOT_CA_CERT_PEM SUPABASE_STAGING_PROJECT_REF; do
             if [[ -z "${!name:-}" ]]; then
-              echo "Missing required secret/config: $name"
+              echo "Missing required staging restore configuration: $name"
               exit 1
             fi
           done
+          mkdir -p "$RUNNER_TEMP/supabase-ca"
+          printf '%s\n' "$SUPABASE_STAGING_ROOT_CA_CERT_PEM" > "$RUNNER_TEMP/supabase-ca/supabase-root-ca.pem"
+          chmod 600 "$RUNNER_TEMP/supabase-ca/supabase-root-ca.pem"
+          python3 ai-backend/scripts/restore_target_guard.py
 
-      - name: Find newest existing production backup
+      - name: Validate selected sanitized staging backup
         shell: bash
         run: |
           set -euo pipefail
-
           python3 - <<'PY'
-          import json
           import os
           import subprocess
           import sys
+          sys.path.insert(0, os.path.join(os.getcwd(), "ai-backend", "scripts"))
+          from restore_target_guard import is_safe_staging_backup_key
 
-          cmd = [
-              "aws", "s3api", "list-objects-v2",
-              "--bucket", os.environ["BACKUP_BUCKET"],
-              "--prefix", "database/",
-              "--endpoint-url", os.environ["BACKUP_ENDPOINT"],
-              "--region", os.environ["BACKUP_REGION"],
-              "--output", "json",
-          ]
-          result = subprocess.run(cmd, check=True, text=True, capture_output=True)
-          payload = json.loads(result.stdout or "{}")
-          objects = [
-              item for item in payload.get("Contents", [])
-              if item.get("Key", "").endswith(".dump")
-          ]
-          objects.sort(key=lambda x: x.get("LastModified", ""), reverse=True)
+          prefix = os.environ["STAGING_BACKUP_PREFIX"]
+          filename = os.environ.get("STAGING_BACKUP_FILENAME", "")
+          key = f"{prefix}{filename}"
+          if not is_safe_staging_backup_key(key, prefix):
+              raise SystemExit("Refusing an invalid sanitized staging backup filename.")
 
-          for item in objects:
-              key = item["Key"]
-              check = subprocess.run(
-                  [
-                      "aws", "s3api", "head-object",
-                      "--bucket", os.environ["BACKUP_BUCKET"],
-                      "--key", key,
-                      "--endpoint-url", os.environ["BACKUP_ENDPOINT"],
-                      "--region", os.environ["BACKUP_REGION"],
-                  ],
-                  stdout=subprocess.DEVNULL,
-                  stderr=subprocess.DEVNULL,
-              )
-              if check.returncode == 0:
-                  with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
-                      f.write(f"BACKUP_KEY={key}\n")
-                  print(f"Selected newest existing backup: {key}")
-                  sys.exit(0)
+          check = subprocess.run(
+              [
+                  "aws", "s3api", "head-object",
+                  "--bucket", os.environ["BACKUP_BUCKET"],
+                  "--key", key,
+                  "--endpoint-url", os.environ["BACKUP_ENDPOINT"],
+                  "--region", os.environ["BACKUP_REGION"],
+              ],
+              stdout=subprocess.DEVNULL,
+              stderr=subprocess.DEVNULL,
+          )
+          if check.returncode != 0:
+              raise SystemExit("Selected sanitized staging backup is missing or unreadable.")
 
-          raise SystemExit("No existing .dump backup was found in object storage.")
+          # Safe filename characters are checked before persisting the key.
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"STAGING_BACKUP_KEY={key}\n")
+          print(f"Validated selected sanitized staging backup filename: {filename}")
           PY
 
-      - name: Download backup
+      - name: Download sanitized staging backup
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/db-backup"
-          aws s3 cp             "s3://$BACKUP_BUCKET/$BACKUP_KEY"             "$RUNNER_TEMP/db-backup/production.dump"             --endpoint-url "$BACKUP_ENDPOINT"             --region "$BACKUP_REGION"             --only-show-errors
-          test -s "$RUNNER_TEMP/db-backup/production.dump"
+          aws s3 cp \
+            "s3://$BACKUP_BUCKET/$STAGING_BACKUP_KEY" \
+            "$RUNNER_TEMP/db-backup/staging.dump" \
+            --endpoint-url "$BACKUP_ENDPOINT" \
+            --region "$BACKUP_REGION" \
+            --only-show-errors
+          test -s "$RUNNER_TEMP/db-backup/staging.dump"
+
+      - name: Verify reviewed archive SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import sys
+          sys.path.insert(0, os.path.join(os.getcwd(), "ai-backend", "scripts"))
+          from restore_target_guard import verify_sha256_file
+
+          archive = os.path.join(os.environ["RUNNER_TEMP"], "db-backup", "staging.dump")
+          expected = os.environ.get("STAGING_BACKUP_SHA256", "")
+          if not verify_sha256_file(archive, expected):
+              raise SystemExit("Selected staging backup SHA-256 does not match the reviewed digest.")
+          print("Reviewed staging backup SHA-256 verified.")
+          PY
 
       - name: Validate backup archive
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm             -v "$RUNNER_TEMP/db-backup:/backup"             postgres:18-alpine             sh -c 'pg_restore --list /backup/production.dump >/dev/null'
+          docker run --rm \
+            -v "$RUNNER_TEMP/db-backup:/backup" \
+            postgres:18-alpine \
+            sh -c 'pg_restore --list /backup/staging.dump >/dev/null'
 
-      - name: Restore public schema to Supabase
+      - name: Revalidate destination immediately before restore
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm             -e SUPABASE_DB_URL="$SUPABASE_DB_URL"             -v "$RUNNER_TEMP/db-backup:/backup"             postgres:18-alpine             sh -c '
-              pg_restore                 --exit-on-error                 --clean                 --if-exists                 --no-owner                 --no-privileges                 --schema=public                 --dbname="$SUPABASE_DB_URL"                 /backup/production.dump
-            '
+          python3 ai-backend/scripts/restore_target_guard.py
 
-      - name: Verify Supabase connectivity
+      - name: Restore public schema to isolated Supabase staging only
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm             -e SUPABASE_DB_URL="$SUPABASE_DB_URL"             postgres:18-alpine             sh -c '
-              psql                 "$SUPABASE_DB_URL"                 -Atc "select version()"
+          docker run --rm \
+            -e SUPABASE_STAGING_DB_URL="$SUPABASE_STAGING_DB_URL" \
+            -v "$RUNNER_TEMP/db-backup:/backup" \
+            -v "$RUNNER_TEMP/supabase-ca:/ca:ro" \
+            postgres:18-alpine \
+            sh -c '
+              pg_restore \
+                --exit-on-error \
+                --clean \
+                --if-exists \
+                --no-owner \
+                --no-privileges \
+                --schema=public \
+                --dbname="$SUPABASE_STAGING_DB_URL" \
+                /backup/staging.dump
             '
+
+      - name: Verify staging database connectivity
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -e SUPABASE_STAGING_DB_URL="$SUPABASE_STAGING_DB_URL" \
+            -v "$RUNNER_TEMP/supabase-ca:/ca:ro" \
+            postgres:18-alpine \
+            sh -c 'psql "$SUPABASE_STAGING_DB_URL" -Atc "select 1"'
+
+      - name: Remove local backup
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/db-backup" "$RUNNER_TEMP/supabase-ca"
