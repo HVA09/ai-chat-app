@@ -926,3 +926,32 @@
 - **Restore capability غير مثبتة** حتى الآن.
 - يُسمح بالاستمرار في مراجعة الكود والاختبارات، لكن لا bulk reindex/backfill ولا strict retrieval fingerprint filtering ولا تشغيل restore على Production. لا إعادة فهرسة إنتاجية لحد الآن.
 - أضيف تصحيحًا للحالة التاريخية: PR #697 مدمج ومنشور على main في SHA `48c451545c0ab2b05e08c94b4afc72b2215a4910`; الأقسام السابقة التي تسجل أنه Draft تعكس حالة سابقة فقط.
+
+
+## 38. تحسين قابلية تدقيق ملف الاستعادة المحدد في PR #698 — 2026-11-12
+
+### ما تم إنجازه
+- تأكد دمج PR #696 بعد نجاح جميع الفحوص؛ merge commit: `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db`.
+- تأكد دمج PR #697 لمعالجة Gemini Embedding 001، وأن main وصل إلى `48c451545c0ab2b05e08c94b4afc72b2215a4910`.
+- PR #697 post-merge CI وCodeQL وProduction smoke وPublish image كلها Success، ونشر Render `dep-dbqvb6mq1p3s73dn2m3g` على SHA `48c4515...` وصل Live.
+- PR #698 الحالي: https://github.com/HVA09/ai-chat-app/pull/698
+  - base `48c451545c0ab2b05e08c94b4afc72b2215a4910`.
+  - قبل التحسين، head `7086001c962711dd2fcd5bbfa28a848aa34d3a25` اجتاز جميع 8 check-runs؛ Backend `644 passed, 2 warnings` في `296.64s`، وCodeQL Python/JavaScript-TypeScript Success.
+  - لا reviews أو review threads على PR.
+- مراجعة Workflow وجدت أن اختيار أحدث ملف آليًا داخل `database/staging-sanitized/` لا يُظهر للمراجع قبل موافقته على GitHub Environment اسم الأرشيف الدقيق، ويضعف ربط الموافقة بالملف المقصود.
+- تم تعديل Workflow ليطلب `backup_filename` صراحة كـworkflow_dispatch input، ويكوّن المفتاح تحت prefix الثابت، ثم يطبق `is_safe_staging_backup_key` ويفحص `head-object` على الكائن نفسه قبل تنزيله. لم يعد هناك auto-select لأحدث dump.
+- تحديث PR body يوضح أن المشغل يختار الملف الذي تمت مراجعته مسبقًا؛ وتم تثبيت إبقاء PR Draft حتى اكتمال الفحوص على الرأس الجديد.
+
+### رأس PR #698 بعد التحسين
+- head: `fde39323282a5f87770709222a9cf6ff20ad5b55`.
+- Workflow commit: `ed21f1cdc6eabcd7c2d790398749356904fe05d4`، ثم تصحيح صيغة expression وGITHUB_ENV export ضمن commit `fde39323282a5f87770709222a9cf6ff20ad5b55`.
+- CI run [43278133710](https://github.com/HVA09/ai-chat-app/actions/runs/43278133710): بدأ؛ Backend وFrontend وPreview Builder وProduction Compose كانت In Progress في آخر قراءة؛ SDK Success.
+- CodeQL run [43278133548](https://github.com/HVA09/ai-chat-app/actions/runs/43278133548): Analyze Python وJavaScript/TypeScript In Progress.
+- لا merge قبل اكتمال الفحوص ومراجعة النسخة الأخيرة نفسها.
+
+### حدود التشغيل
+- لم نشغّل Workflow الاستعادة، ولم ننفذ `pg_restore`، ولم نُنشئ GitHub Environment أو secrets أو متغيرات staging، ولم نغيّر Supabase أو Render أو قاعدة الإنتاج أو ملفات النسخ الاحتياطية.
+- النسخة الخارجية الموجودة تثبت object existence/archive listing فقط؛ source provenance غير مثبت بالكامل، وsuccessful restore غير مثبت.
+- لا bulk reindex/backfill ولا strict retrieval fingerprint filtering قبل إثبات provenance وsuccessful restore إلى staging معزول.
+- سجل الاختبارات السابق سجل duplicate-key واحدًا على قيد `uq_scheduled_task_runs_task_scheduled_for` ضمن PostgreSQL CI مع نجاح pytest؛ يبقى ملاحظة مراقبة وليس فشلًا في PR #698.
+
