@@ -19,6 +19,10 @@ on:
         description: Exact sanitized .dump filename under database/staging-sanitized/ that was reviewed before this run.
         required: true
         type: string
+      backup_sha256:
+        description: SHA-256 digest (64 hexadecimal characters) of that exact reviewed archive.
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -30,14 +34,14 @@ concurrency:
 jobs:
   restore:
     # This workflow has no production target and runs only from main after explicit confirmation.
-    if: github.ref == 'refs/heads/main' && inputs.target == 'staging' && inputs.confirm_staging_restore == true && inputs.backup_filename != ''
+    if: github.ref == 'refs/heads/main' && inputs.target == 'staging' && inputs.confirm_staging_restore == true && inputs.backup_filename != '' && inputs.backup_sha256 != ''
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Configure this GitHub Environment with required reviewers before adding the staging secret.
     environment: supabase-staging
     env:
-      # Dedicated staging-only read credentials. IAM must allow ListBucket
-      # only for the sanitized prefix and GetObject/HeadObject only there.
+      # Dedicated staging-only read credentials. Grant object-read access
+      # only for database/staging-sanitized/; do not grant listing or write access.
       BACKUP_BUCKET: ${{ secrets.STAGING_BACKUP_BUCKET }}
       BACKUP_ENDPOINT: ${{ secrets.STAGING_BACKUP_ENDPOINT_URL }}
       BACKUP_REGION: ${{ secrets.STAGING_BACKUP_REGION }}
@@ -50,6 +54,7 @@ jobs:
       SUPABASE_PRODUCTION_PROJECT_REF: wfhijmawoojcmfdgibxg
       STAGING_BACKUP_PREFIX: database/staging-sanitized/
       STAGING_BACKUP_FILENAME: ${{ inputs.backup_filename }}
+      STAGING_BACKUP_SHA256: ${{ inputs.backup_sha256 }}
 
     steps:
       - name: Checkout repository
@@ -127,6 +132,23 @@ jobs:
             --region "$BACKUP_REGION" \
             --only-show-errors
           test -s "$RUNNER_TEMP/db-backup/staging.dump"
+
+      - name: Verify reviewed archive SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import sys
+          sys.path.insert(0, os.path.join(os.getcwd(), "ai-backend", "scripts"))
+          from restore_target_guard import verify_sha256_file
+
+          archive = os.path.join(os.environ["RUNNER_TEMP"], "db-backup", "staging.dump")
+          expected = os.environ.get("STAGING_BACKUP_SHA256", "")
+          if not verify_sha256_file(archive, expected):
+              raise SystemExit("Selected staging backup SHA-256 does not match the reviewed digest.")
+          print("Reviewed staging backup SHA-256 verified.")
+          PY
 
       - name: Validate backup archive
         shell: bash
