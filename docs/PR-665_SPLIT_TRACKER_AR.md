@@ -318,3 +318,44 @@
   - تغيير `ai-backend/app/tasks.py` الذي يمرر دور المستخدم إلى agent configuration version؛ لا يعتمد عليه fingerprint PR ويجب نقله إلى نطاق Agent/MCP لاحق.
 - خطر تشغيلي يجب فحصه قبل أي دمج: migration `0081` يجب أن تكون إضافة أعمدة nullable فقط بلا backfill أو إعادة فهرسة تلقائية أو قفل طويل للجدول. تحديث الفهارس القديمة يكون عملية منفصلة قابلة للتدرج، ولا يُجرى على الإنتاج ضمن migration.
 - لا ينفذ أي migration على Render/Supabase يدويًا خلال التحضير. الاختبار يكون على قاعدة CI أولًا، ثم مراجعة خطة النشر/backfill قبل الدمج.
+
+## 19. دمج #694 والتحقق من main وRender — 2026-11-12
+
+### الدمج ومراجعة النطاق
+- PR #694: https://github.com/HVA09/ai-chat-app/pull/694 — أُغلق بصفته مدمجًا في `main` بطريقة Squash.
+- PR head الذي اجتاز الفحوص: `b3592da30ef4ce862cdb7d9cb813b5e70c7f66c3`.
+- Base قبل الدمج: `b80f6d658d4848f78c726f0a03b21ae50359fada`.
+- Merge commit ورأس `main` الحالي: `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13`.
+- الملفات الخمسة النهائية:
+  1. `ai-backend/app/routers/chat.py`
+  2. `ai-backend/app/services/rag.py`
+  3. `ai-backend/tests/test_chat.py`
+  4. `ai-backend/tests/test_rag.py`
+  5. `ai-backend/tests/test_vision.py`
+- لم يتضمن PR migrations أو reindex أو تعديلات Render/Supabase أو الأسرار أو تغييرات إنتاجية يدوية.
+
+### نتائج الفحوص قبل الدمج
+- CI [43150034903](https://github.com/HVA09/ai-chat-app/actions/runs/43150034903): **600 passed, 2 warnings in 311.64s**.
+- CodeQL [43150035008](https://github.com/HVA09/ai-chat-app/actions/runs/43150035008): نجاح.
+- جميع الفحوص الثمانية الظاهرة على رأس PR انتهت بنجاح.
+- لم تظهر مراجعات أو threads معلقة في PR.
+
+### نتائج الفحوص بعد الدمج على main
+- CI [43151446387](https://github.com/HVA09/ai-chat-app/actions/runs/43151446387): **600 passed, 2 warnings in 291.74s**.
+- CodeQL [43151446356](https://github.com/HVA09/ai-chat-app/actions/runs/43151446356): نجاح، Python وJavaScript/TypeScript.
+- Production smoke [43151446481](https://github.com/HVA09/ai-chat-app/actions/runs/43151446481): نجاح.
+- Publish backend image [43151446459](https://github.com/HVA09/ai-chat-app/actions/runs/43151446459): نجاح.
+- جميع check runs التسعة على merge SHA اكتملت بنجاح، دون checks فاشلة أو معلقة.
+
+### Render بعد الدمج
+- الخدمة: `srv-dakc4nbm8hqs73e2po9g` (`ai-chat-backend`)، الخطة Free، الفرع `main`، والنشر التلقائي مضبوط على `checksPass`.
+- Render deployment: `dep-dbqjkd59el5s73f04dg0`، commit `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13`، الحالة النهائية `live`.
+- `/health`: `{"status":"ok","database":"ok"}`.
+- `/ready`: `{"status":"ready","database":"ok","redis":"ok"}`.
+- ظهرت استجابة `503` واحدة في أول محاولة تحقق أثناء متابعة التحديث؛ عادت نقاط الصحة بعد ذلك بنجاح في محاولات متكررة، بما فيها التحقق بعد أن أصبح Deploy الجديد `live`. لا يوجد تشخيص مؤكد لسبب الاستجابة المؤقتة، ولا تُسجل كفشل نشر.
+- لا يوجد أي تدخل يدوي في الإنتاج أو تغيير إعدادات/أسرار.
+
+### القرار التالي
+- أصبح شرط البدء في مرحلة بصمات فهرسة الملفات متحققًا: #694 مدمج، `main` أخضر، وRender `live` ونقاط الصحة سليمة.
+- المرحلة التالية المقترحة هي PR صغير مستقل فوق `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13`, لنطاق بصمات النص ومصدر embeddings فقط.
+- لا تبدأ migration `0081` أو أي reindex قبل قراءة سلسلة revisions كاملة، وفحص downgrade، وقياس أثر الأعمدة nullable، ونجاح CI على فرع المرحلة.
