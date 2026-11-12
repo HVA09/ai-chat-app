@@ -590,3 +590,13 @@
   - CodeQL run [43158964413](https://github.com/HVA09/ai-chat-app/actions/runs/43158964413): in_progress.
 - الفحوص التي بدأت قبل تعديل النطاق، مثل CI [43158683373](https://github.com/HVA09/ai-chat-app/actions/runs/43158683373)، ليست بديلًا عن إعادة فحص الرأس الجديد. لا تعتمد عليها لإعلان اكتمال CI.
 - PR #696 يظل Draft وغير مدمج. لا تُنفذ أي إعادة فهرسة على الإنتاج، وتظل بوابة backup/restore الإنتاجية مستقلة ومفتوحة كما في الأقسام السابقة.
+
+
+## 28. حالة فحوص PR #696 على الرأس الحالي — 2026-11-12
+
+- رأس الفرع الحالي: `f559b0d97aacf7e54aedec5239aff01e2fcea159`.
+- CI run [43158964480](https://github.com/HVA09/ai-chat-app/actions/runs/43158964480): `in_progress`؛ وظيفة SDK انتهت بنجاح، ووظائف Backend وFrontend وPreview Builder وProduction Compose كانت قيد التنفيذ.
+- CodeQL run [43158964413](https://github.com/HVA09/ai-chat-app/actions/runs/43158964413): Python وJavaScript/TypeScript كانتا قيد التحليل.
+- لم تظهر نتيجة فشل في آخر check-runs، لكن لا تُسجل هذه الوظائف نجاحًا قبل اكتمالها.
+- PR #696 ما زال Open / Draft / unmerged؛ لم يحدث deploy إلى Render أو أي تغيير إنتاجي بسبب هذا الفرع.
+- يبقى القرار: لا تدمج قبل اكتمال جميع checks على الرأس الحالي ومراجعة نتائج Backend tests؛ لا تُنفذ أي reindex إنتاجي.
