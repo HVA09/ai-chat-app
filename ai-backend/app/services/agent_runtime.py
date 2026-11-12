@@ -14,6 +14,7 @@ from typing import Any, Awaitable, Callable
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import commit_and_release_connection
 from app.models.conversation import Conversation
 from app.models.user import User
 from app.services.tool_security import wrap_untrusted_tool_output
@@ -221,6 +222,9 @@ class AgentRuntime:
             }
         )
 
+        # Event sinks can read job state from the database. Release any checkout
+        # they used before a tool performs network/storage I/O.
+        commit_and_release_connection(db)
         try:
             result = await asyncio.wait_for(
                 registry.execute(
@@ -293,6 +297,9 @@ class AgentRuntime:
         messages.append({"role": "user", "content": task})
 
         registry = self.registry_factory()
+        # MCP discovery may perform remote I/O. Commit the current unit of work
+        # and release the request's PostgreSQL checkout before waiting on it.
+        commit_and_release_connection(db)
         for spec in await self.mcp_discoverer():
             if registry.get(spec.name) is None and registry.allows(spec.name):
                 registry.register(spec)
@@ -325,6 +332,9 @@ class AgentRuntime:
             )
 
             available_tools = [] if tool_followups_blocked else tools
+            # Every model round is an external wait; any reads/writes from the
+            # preceding tool/event boundary must not pin a pool connection here.
+            commit_and_release_connection(db)
             reply = await self.provider.get_reply_with_tools(
                 messages,
                 available_tools,
