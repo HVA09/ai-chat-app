@@ -210,3 +210,18 @@
 - CI: [43143159845](https://github.com/HVA09/ai-chat-app/actions/runs/43143159845) — نجاح.
 - CodeQL: [43143159899](https://github.com/HVA09/ai-chat-app/actions/runs/43143159899) — نجاح.
 - تم تحويل #692 إلى Ready ودمجه باستخدام Squash بعد تحقق شروط التفويض؛ يضاف SHA الدمج والرأس الجديد لـ `main` بعد تأكيد GitHub.
+## 14. نتيجة دمج PR #692 — 2026-11-12
+
+- وافق المستخدم على قاعدة الدمج التلقائي عند تحقق شروط الملاءمة والأمان ونجاح الفحوص؛ المرجع الدائم هو القسم 13.
+- تم تحويل #692 من Draft إلى Ready ثم دمجه بـ Squash دون طلب موافقة منفصلة، وفق هذا التفويض.
+- PR #692: https://github.com/HVA09/ai-chat-app/pull/692 — Closed / Merged.
+- رأس الفرع قبل الدمج: `26c2c30fe7ed67eba814f0ace81985074c5d9d8f`.
+- Merge commit وSHA `main` الجديد: `b80f6d658d4848f78c726f0a03b21ae50359fada`.
+- CI على رأس PR الأخير: [43143159845](https://github.com/HVA09/ai-chat-app/actions/runs/43143159845) — نجاح بجميع الوظائف الخمس.
+- CodeQL على رأس PR الأخير: [43143159899](https://github.com/HVA09/ai-chat-app/actions/runs/43143159899) — نجاح في Python وJavaScript/TypeScript.
+- فحوص ما بعد الدمج على `main` بدأت: CI [43143998208](https://github.com/HVA09/ai-chat-app/actions/runs/43143998208)، CodeQL [43143998283](https://github.com/HVA09/ai-chat-app/actions/runs/43143998283)، نشر صورة الخادم [43143998298](https://github.com/HVA09/ai-chat-app/actions/runs/43143998298). آخر تحقق: هذه الوظائف قيد التنفيذ.
+- Production smoke run [43143998272](https://github.com/HVA09/ai-chat-app/actions/runs/43143998272) — نجاح.
+- Render service `ai-chat-backend` مضبوط على `main` مع `autoDeploy=yes` و`autoDeployTrigger=checksPass`. آخر قائمة Deploys لا تزال تعرض `e5d640c...` كآخر نشر Live؛ لا يوجد دليل بعد أن التزام الدمج الجديد أصبح Live.
+- لم نغير إعدادات Render أو Supabase أو الأسرار يدويًا. ننتظر إثبات نشر Render الفعلي ثم فحص `/health` و`/ready` قبل تسجيل الإنتاج مستقرًا.
+- الخطوة التالية بعد ثبات `main` والتحقق من الإنتاج: تجهيز نطاق PR #693؟ لا؛ الرقم #693 مستخدم ومغلق كتغيير اختبار مكرر، لذا يُستخدم رقم PR الجديد الذي يمنحه GitHub عند إنشاء PR مستقل لصلاحيات RAG. لا نعيد استخدام أرقام سابقة.
+- PR #691 ما زال Draft لتسجيل قرارات التفكيك، وPR #665 الأصلي ما زال Draft كمصدر. لا دمج للطلب الكبير.
