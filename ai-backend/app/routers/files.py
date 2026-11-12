@@ -656,6 +656,10 @@ def reindex_file_for_rag(
             detail="تعذر إنشاء embeddings للملف؛ احتفظنا بالفهرس السابق دون تغيير.",
         ) from exc
 
+    # Discard pre-provider identity-map snapshots. ACL rows and RBAC
+    # relationships may have changed while the external embeddings call ran.
+    db.expire_all()
+
     # Lock and refresh the row after provider I/O. Recheck both access and
     # source text so a revoked editor or changed file cannot commit stale chunks.
     latest = (
