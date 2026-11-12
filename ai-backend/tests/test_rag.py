@@ -897,3 +897,73 @@ def test_file_context_rechecks_workspace_access_after_rag_wait(
         )
     assert denied.value.status_code == 404
     retrieval.assert_awaited_once()
+
+
+
+def test_rag_rechecks_live_workspace_permission_after_embedding_request(
+    db_session, monkeypatch
+):
+    from app.models.conversation import Conversation
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    owner = User(email="rag-live-acl-owner@example.com", hashed_password="hashed")
+    member = User(email="rag-live-acl-member@example.com", hashed_password="hashed")
+    db_session.add_all([owner, member])
+    db_session.flush()
+    workspace = Workspace(owner_id=owner.id, name="RAG live ACL recheck")
+    db_session.add(workspace)
+    db_session.flush()
+    membership = WorkspaceMember(
+        workspace_id=workspace.id,
+        user_id=member.id,
+        role=WorkspaceRole.member,
+    )
+    conversation = Conversation(
+        user_id=member.id,
+        workspace_id=workspace.id,
+        title="Membership can be revoked during embedding",
+    )
+    db_session.add_all([membership, conversation])
+    db_session.flush()
+    file = FileAttachment(
+        user_id=owner.id,
+        workspace_id=workspace.id,
+        project_id=None,
+        original_filename="live-acl.txt",
+        stored_filename="live-acl.txt",
+        content_type="text/plain",
+        size_bytes=20,
+        extracted_text="Protected live workspace text.",
+    )
+    db_session.add(file)
+    db_session.flush()
+    db_session.add(FileChunk(
+        file_id=file.id,
+        chunk_index=0,
+        content="Protected live workspace text.",
+        embedding=[0.1] * 768,
+    ))
+    db_session.commit()
+
+    async def revoke_membership_during_embedding(_query):
+        db_session.delete(membership)
+        db_session.commit()
+        return [0.1] * 768
+
+    monkeypatch.setattr(
+        rag,
+        "embed_query",
+        AsyncMock(side_effect=revoke_membership_during_embedding),
+    )
+
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            member.id,
+            conversation.id,
+            "protected workspace text",
+            workspace_id=workspace.id,
+        )
+    )
+
+    assert rows == []
