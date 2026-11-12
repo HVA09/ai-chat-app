@@ -600,3 +600,29 @@
 - لم تظهر نتيجة فشل في آخر check-runs، لكن لا تُسجل هذه الوظائف نجاحًا قبل اكتمالها.
 - PR #696 ما زال Open / Draft / unmerged؛ لم يحدث deploy إلى Render أو أي تغيير إنتاجي بسبب هذا الفرع.
 - يبقى القرار: لا تدمج قبل اكتمال جميع checks على الرأس الحالي ومراجعة نتائج Backend tests؛ لا تُنفذ أي reindex إنتاجي.
+
+
+
+## 29. إصلاح إعادة تحميل ACL وإضافة اختبار سحب الصلاحية أثناء إعادة الفهرسة — 2026-11-12
+
+### نتيجة مراجعة PR #696
+- أُنجز CI وCodeQL بنجاح على الرأس السابق `f559b0d97aacf7e54aedec5239aff01e2fcea159`؛ Backend وFrontend وPreview Builder وProduction Compose وSDK وCodeQL كلها Success.
+- أثناء مراجعة أعمق، ظهرت ثغرة توقيت محتملة في إعادة التحقق: كائنات WorkspaceMember وProjectMember وعلاقات RBAC التي حُمّلت قبل استدعاء مزود embeddings قد تبقى في SQLAlchemy identity map، وبالتالي لا يكفي تكرار الاستعلام وحده لضمان قراءة أحدث صلاحيات بعد سحبها.
+- لم يُدمج الرأس السابق؛ أُوقف الدمج لإصلاح هذا السلوك.
+
+### الإصلاح
+- في `POST /files/{file_id}/reindex` أصبح `db.expire_all()` يُنفذ بعد عودة مزود embeddings وقبل إعادة قفل الملف وإعادة فحص الوصول والصلاحيات؛ هذا يبطل snapshots السابقة ويجبر الاستعلامات التالية على تحميل قيم ACL/RBAC الحالية من قاعدة البيانات.
+- أُضيف اختبار تكاملي يحوّل عضو المشروع من editor إلى viewer أثناء callback تجهيز embeddings، مع تعطيل مزامنة SQLAlchemy للـ identity map، ويتحقق من رفض العملية `403` وعدم استبدال المقاطع القديمة.
+- لا توجد تغييرات schema أو migration أو تعديل على Render/Supabase أو بيانات الإنتاج.
+
+### حالة الرأس والفحوص
+- PR #696: https://github.com/HVA09/ai-chat-app/pull/696 — Open / Draft / غير مدمج.
+- أحدث head بعد الإصلاح: `06e30ac92be8861199b47e847e034ff6c692d276`.
+- Base: `main = f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f`.
+- Compare: 6 commits ahead، 0 behind، 3 ملفات متغيرة.
+- فحوص الرأس الجديد:
+  - CI run [43258432310](https://github.com/HVA09/ai-chat-app/actions/runs/43258432310): `in_progress` عند تسجيل هذا القسم.
+  - CodeQL run [43258432091](https://github.com/HVA09/ai-chat-app/actions/runs/43258432091): `in_progress`.
+- نجاح CI/CodeQL على `f559b0d...` لا يُعد دليلاً على نجاح الرأس الجديد `06e30ac...`؛ يجب انتظار النتائج النهائية الخاصة به.
+- لا توجد مراجعات أو review threads معلّقة عند آخر تحقق.
+- القرار: لا تحويل إلى Ready ولا دمج حتى نجاح كل checks على أحدث head ومراجعة نتيجة اختبار سحب صلاحية المشروع. لا إعادة فهرسة إنتاجية، ولا backfill، وتبقى بوابة backup/restore الإنتاجية مفتوحة كما سُجل سابقًا.
