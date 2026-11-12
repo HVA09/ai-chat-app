@@ -181,6 +181,11 @@ async def compare_ai_models(
             )
 
     workspace_id = payload.workspace_id or (conversation.workspace_id if conversation else None)
+    if conversation is not None:
+        if workspace_id is not None:
+            _get_owned_workspace(workspace_id, current_user, db)
+        conversation = _get_authorized_file_context_conversation(conversation, db)
+
     history = _build_history(conversation, db) if conversation is not None else []
 
     context_parts: list[str] = []
@@ -202,6 +207,9 @@ async def compare_ai_models(
                 payload.message,
                 db,
             )
+        except HTTPException:
+            # Authorization denials must not be converted into an empty context.
+            raise
         except Exception:
             file_context = ""
         if file_context:
@@ -398,6 +406,10 @@ def _get_or_create_conversation(
                 status_code=status.HTTP_404_NOT_FOUND, detail="المحادثة غير موجودة"
             )
 
+        # A conversation can outlive project membership or an assistant share.
+        # Revalidate the persisted scope before chat tools or context are used.
+        conversation = _get_authorized_file_context_conversation(conversation, db)
+
         changed = False
         if selected_project is not None and conversation.project_id != selected_project.id:
             raise HTTPException(
@@ -503,10 +515,109 @@ def _build_history(conversation: Conversation, db: Session) -> list[dict[str, st
     recent_messages.reverse()  # نرجّعها لترتيبها الزمني الطبيعي (الأقدم أول)
     return [{"role": m.role.value, "content": m.content} for m in recent_messages]
 
+def _get_authorized_file_context_conversation(
+    conversation: Conversation, db: Session
+) -> Conversation:
+    """Reload a conversation and revalidate its live workspace/project/assistant ACL."""
+    from sqlalchemy import and_, or_
+
+    current = (
+        db.query(Conversation)
+        .populate_existing()
+        .filter(
+            Conversation.id == conversation.id,
+            Conversation.user_id == conversation.user_id,
+            Conversation.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if current is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المحادثة غير متاحة",
+        )
+
+    current_user = db.get(User, current.user_id)
+    if current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المحادثة غير متاحة",
+        )
+
+    if current.workspace_id is not None:
+        workspace = db.get(Workspace, current.workspace_id)
+        if workspace is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="مساحة العمل غير متاحة",
+            )
+        if workspace.owner_id != current_user.id:
+            membership = (
+                db.query(WorkspaceMember.id)
+                .filter(
+                    WorkspaceMember.workspace_id == current.workspace_id,
+                    WorkspaceMember.user_id == current_user.id,
+                )
+                .first()
+            )
+            if membership is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="مساحة العمل غير متاحة",
+                )
+
+        if current.project_id is not None:
+            project = db.get(WorkspaceProject, current.project_id)
+            if (
+                project is None
+                or project.workspace_id != current.workspace_id
+                or not can_read_project(project, current_user, db)
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="المشروع غير متاح لهذه المحادثة",
+                )
+
+    if current.assistant_id is not None:
+        assistant = (
+            db.query(Assistant)
+            .outerjoin(
+                AssistantWorkspaceShare,
+                and_(
+                    AssistantWorkspaceShare.assistant_id == Assistant.id,
+                    AssistantWorkspaceShare.workspace_id == current.workspace_id,
+                ),
+            )
+            .filter(
+                Assistant.id == current.assistant_id,
+                (
+                    (Assistant.user_id == current.user_id)
+                    | AssistantWorkspaceShare.id.is_not(None)
+                )
+                if current.workspace_id is not None
+                else Assistant.user_id == current.user_id,
+            )
+            .first()
+        )
+        if assistant is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المساعد غير متاح لهذه المحادثة",
+            )
+
+    return current
+
+
 async def _build_file_context(
     conversation: Conversation, message: str, db: Session
 ) -> tuple[str, list[dict]]:
-    """Build retrieval context while preserving explicit uploads even when RAG has no match."""
+    """Build retrieval context while rechecking authorization around asynchronous RAG."""
+    conversation = _get_authorized_file_context_conversation(conversation, db)
+    scope_before_retrieval = (
+        conversation.workspace_id,
+        conversation.project_id,
+        conversation.assistant_id,
+    )
     rows: list[tuple[object, FileAttachment]] = []
     context = ""
     sources: list[dict] = []
@@ -520,6 +631,18 @@ async def _build_file_context(
             project_id=conversation.project_id,
             assistant_id=conversation.assistant_id,
         )
+        # The embedding call may wait on a remote provider. Membership or shares
+        # can be revoked during that wait, so reload and recheck before reading text.
+        conversation = _get_authorized_file_context_conversation(conversation, db)
+        if scope_before_retrieval != (
+            conversation.workspace_id,
+            conversation.project_id,
+            conversation.assistant_id,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="تغير نطاق المحادثة أثناء استرجاع الملفات",
+            )
         context, sources = build_retrieval_context(rows)
     except EmbeddingServiceError as exc:
         logger.warning(
@@ -527,6 +650,8 @@ async def _build_file_context(
             conversation.id,
             exc,
         )
+        # Never fall back to full extracted text after access was revoked.
+        conversation = _get_authorized_file_context_conversation(conversation, db)
 
     from sqlalchemy import and_, or_
 
@@ -657,11 +782,20 @@ async def _build_file_context(
         if conversation.workspace_id is not None and conversation.project_id is not None
         else False
     )
+    assistant_access_scope = (
+        or_(
+            Assistant.user_id == conversation.user_id,
+            AssistantWorkspaceShare.id.is_not(None),
+        )
+        if conversation.workspace_id is not None
+        else Assistant.user_id == conversation.user_id
+    )
     assistant_scope = (
         (AssistantFileLink.assistant_id == conversation.assistant_id)
         & (FileAttachment.user_id == Assistant.user_id)
         & (FileAttachment.workspace_id.is_(None))
         & (FileAttachment.project_id.is_(None))
+        & assistant_access_scope
         if conversation.assistant_id is not None
         else False
     )
@@ -678,6 +812,13 @@ async def _build_file_context(
         .outerjoin(
             Assistant,
             Assistant.id == AssistantFileLink.assistant_id,
+        )
+        .outerjoin(
+            AssistantWorkspaceShare,
+            and_(
+                AssistantWorkspaceShare.assistant_id == Assistant.id,
+                AssistantWorkspaceShare.workspace_id == conversation.workspace_id,
+            ),
         )
         .filter(
             or_(
@@ -743,13 +884,20 @@ def _build_memory_context(
     )
     project_memories = []
     if project_id is not None:
-        project_memories = (
-            db.query(ProjectMemory)
-            .filter(ProjectMemory.project_id == project_id)
-            .order_by(ProjectMemory.updated_at.desc(), ProjectMemory.id.desc())
-            .limit(30)
-            .all()
-        )
+        project = db.get(WorkspaceProject, project_id)
+        current_user = db.get(User, current_user_id)
+        if (
+            project is not None
+            and current_user is not None
+            and can_read_project(project, current_user, db)
+        ):
+            project_memories = (
+                db.query(ProjectMemory)
+                .filter(ProjectMemory.project_id == project_id)
+                .order_by(ProjectMemory.updated_at.desc(), ProjectMemory.id.desc())
+                .limit(30)
+                .all()
+            )
 
     parts = []
     if user_memories:
@@ -937,6 +1085,7 @@ def _get_attached_data_attachment(
 async def _augment_message(
     message: str, conversation: Conversation, db: Session
 ) -> tuple[str, list[dict]]:
+    conversation = _get_authorized_file_context_conversation(conversation, db)
     summary_context = _build_summary_context(conversation)
     assistant_context = _build_assistant_context(conversation, db)
     project_context = _build_project_context(conversation, db)
@@ -1017,6 +1166,12 @@ async def analyze_attached_image(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="المحادثة غير موجودة",
         )
+    conversation = _get_authorized_file_context_conversation(conversation, db)
+    scope_before_vision = (
+        conversation.workspace_id,
+        conversation.project_id,
+        conversation.assistant_id,
+    )
     if conversation.workspace_id is not None:
         enforce_workspace_daily_ai_limit(conversation.workspace_id, current_user, db)
 
@@ -1048,6 +1203,16 @@ async def analyze_attached_image(
             f"data:{attachment.content_type};base64,"
             f"{base64.b64encode(raw).decode('ascii')}"
         )
+        conversation = _get_authorized_file_context_conversation(conversation, db)
+        if scope_before_vision != (
+            conversation.workspace_id,
+            conversation.project_id,
+            conversation.assistant_id,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="تغير نطاق المحادثة أثناء تجهيز الصورة",
+            )
         reply = await get_ai_vision_reply(
             prompt,
             image_data_url,
