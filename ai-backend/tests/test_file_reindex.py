@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 
 import pytest
+from sqlalchemy import update
 
 from app.models.file_attachment import FileAttachment, extracted_text_fingerprint
 from app.models.file_chunk import FileChunk
@@ -313,3 +314,89 @@ def test_persist_file_index_rejects_a_changed_source_before_deleting_chunks(
     )
     assert len(old_chunks) == 1
     assert old_chunks[0].content == "old indexed content"
+
+
+
+def test_reindex_denies_if_project_write_access_is_revoked_during_embedding(
+    client, db_session, monkeypatch
+):
+    owner_token = _register_and_login(client, "reindex-live-acl-owner@example.com")
+    owner = db_session.query(User).filter_by(
+        email="reindex-live-acl-owner@example.com"
+    ).one()
+    workspace = owner.owned_workspaces[0]
+    project_response = client.post(
+        "/projects",
+        json={"workspace_id": workspace.id, "name": "Live Reindex ACL Project"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert project_response.status_code == 201
+    project_id = project_response.json()["id"]
+
+    editor_token = _register_and_login(client, "reindex-live-acl-editor@example.com")
+    editor = db_session.query(User).filter_by(
+        email="reindex-live-acl-editor@example.com"
+    ).one()
+    db_session.add_all(
+        [
+            WorkspaceMember(
+                workspace_id=workspace.id,
+                user_id=editor.id,
+                role=WorkspaceRole.member,
+            ),
+            ProjectMember(
+                project_id=project_id,
+                user_id=editor.id,
+                role=ProjectMemberRole.editor,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    file = _add_file(
+        db_session,
+        user_id=owner.id,
+        workspace_id=workspace.id,
+        project_id=project_id,
+        text="Project knowledge whose ACL can be revoked mid-request.",
+    )
+    _disable_reindex_quotas(monkeypatch)
+
+    request_session = {}
+    original_release = files_router.commit_and_release_connection
+
+    def capture_release(db):
+        request_session["db"] = db
+        original_release(db)
+
+    def revoke_access_during_embedding(text):
+        # Bypass SQLAlchemy's identity-map synchronization to model an ACL
+        # change made by another request while the provider call is running.
+        request_session["db"].execute(
+            update(ProjectMember)
+            .where(
+                ProjectMember.project_id == project_id,
+                ProjectMember.user_id == editor.id,
+            )
+            .values(role=ProjectMemberRole.viewer)
+            .execution_options(synchronize_session=False)
+        )
+        return _prepared(text)
+
+    monkeypatch.setattr(
+        files_router, "commit_and_release_connection", capture_release
+    )
+    monkeypatch.setattr(
+        files_router, "prepare_file_index", revoke_access_during_embedding
+    )
+
+    response = client.post(
+        f"/files/{file.id}/reindex",
+        headers={"Authorization": f"Bearer {editor_token}"},
+    )
+
+    assert response.status_code == 403
+    db_session.expire_all()
+    chunks = db_session.query(FileChunk).filter(FileChunk.file_id == file.id).all()
+    assert len(chunks) == 1
+    assert chunks[0].content == "old indexed content"
