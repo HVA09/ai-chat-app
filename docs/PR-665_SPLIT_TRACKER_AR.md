@@ -1150,3 +1150,35 @@
 - لا تعديل إنتاجي لقاعدة البيانات أو Render/Supabase env/secrets.
 - لا تشغيل استعادة أو backfill/reindex، ولا تغيير pool size/overflow.
 - لا تشغيل webhook/payment/OAuth حقيقي بغرض الاختبار على production.
+
+## 43. PR #700 حلّ محل PR #699 وأصبح إصلاح Agent Pool على main — 2026-11-12
+
+### نتيجة PR #700
+- PR: https://github.com/HVA09/ai-chat-app/pull/700
+- العنوان: fix(db): release pool connections during Agent external waits.
+- PR #700 merged؛ merge commit/main: 3d5910d68977f049d84ccf7537f2e18e2462aba3.
+- Parent/base: df92952686f2a1f21339ab1ae55acb3f6d866164.
+- تغييرات runtime:
+  - release قبل MCP discovery (انتظار خارجي).
+  - release بعد callbacks لأحداث الأدوات وقبل تنفيذ tool handler.
+  - release قبل كل model/provider round.
+  - release داخل Agent tools قبل remote Object Storage: analyze_data materialization وcreate_project_archive upload.
+- regression tests أضافت SQLite QueuePool من اتصال واحد تغطي MCP/provider/tool wait، واختبارات registry تغطي تحرير الاتصال قبل materialization والرفع.
+- CI main run https://github.com/HVA09/ai-chat-app/actions/runs/43287982770: success.
+- Backend: 653 passed, 2 warnings in 225.87s.
+- Frontend، SDK، Preview Builder، Production Compose، CodeQL Python وJavaScript/TypeScript، Production smoke، Publish Backend image: كلها Success.
+- PostgreSQL CI سجّل duplicate key منفصلًا على uq_scheduled_task_runs_task_scheduled_for رغم نجاح المجموعة؛ ما زال بندًا تقنيًا مستقلاً للمراقبة.
+- Render بدأ auto deploy لـ3d5910d بتاريخ 2026-11-12T19:18:26Z، build succeeded عند 19:18:38Z، deployment كان update_in_progress عند آخر قراءة؛ لم نعتبره Live بعد حتى تأتي حالة صريحة.
+
+### إغلاق PR #699 المكرر
+- PR #699: https://github.com/HVA09/ai-chat-app/pull/699 أُغلق دون دمج بعد دمج PR #700.
+- سبب الإغلاق: PR #700 يغطي الخطر المركزي ويضيف نقاط release إضافية قبل MCP/tool/storage؛ PR #699 أصبح متأخرًا عن main ويتضمن إصلاحًا متداخلًا.
+- PR #699 head 8ee388dd83965cdaf3809f9a4e377d2518597e45 لم يدمج.
+- CI على PR #699 head e9c20256f7ba0301f44104ed85dafe91e819fdb2 كان فاشلاً: 8 اختبارات AgentRuntime القديمة مرتّرة بـdb=object() اصطدمت بقراءة expire_on_commit؛ بينما test_agent_runtime_releases_db_pool_before_provider_wait الجديد نجح. لم يُنقل هذا الإصلاح إلى main لأنه أصبح مغطّى بحل PR #700؛ PR #700 غيّر الاختبارات القديمة إلى _NoopSession وأثبت السلوك باختبار pool مخصص.
+- لا تغيير production/DB/Supabase/Render settings من فرع PR #699؛ فرع PR #699 لم يتم نشره.
+
+### بوابة التحقق بعد نشر PR #700
+- انتظر حالة Render deploy dep-dbr120e8bjmc739l0l00 لتكون Live.
+- بعد Live، راقب QueuePool timeout وDB health وسجلات التطبيق؛ لا اعتبار 200 health كافيًا وحده، وراقب طلبات المستخدم وأداء Agent/Storage.
+- آخر ملاحظة قبل deploy: incidents على QueuePool في 17:53 و18:34 و18:51؛ وبعد حادثة 18:51 لم تسجل أخطاء QueuePool جديدة حتى 19:13؛ ظهر فقط Gemini provider 503 مرتين عند 18:52:55Z.
+- لا استعادة أو backfill/reindex أو تغييرات بيانات إنتاجية. بوابة backup/restore لا تزال مفتوحة.
