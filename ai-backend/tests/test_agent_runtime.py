@@ -3,11 +3,23 @@
 import asyncio
 
 import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import QueuePool
 
 from app.config import settings
 from app.services.agent_runtime import AgentRuntime, AgentRuntimeLimits
 from app.services.ai_providers.base import AIToolCall, AIToolReply
 from app.services.tools.registry import ToolContext, ToolRegistry, ToolResult, ToolSpec
+
+
+class _NoopSession:
+    """Small Session double for runtime behavior tests that do not query the DB."""
+
+    expire_on_commit = True
+
+    def commit(self):
+        return None
 
 
 async def _demo_tool(arguments: dict, context: ToolContext) -> ToolResult:
@@ -88,7 +100,7 @@ def test_runtime_completes_with_tool_and_lifecycle_events():
             history=[{"role": "user", "content": str(i)} for i in range(25)],
             conversation=object(),
             current_user=object(),
-            db=object(),
+            db=_NoopSession(),
         )
     )
 
@@ -126,7 +138,7 @@ def test_runtime_times_out_tool_without_aborting_the_run():
             history=[],
             conversation=object(),
             current_user=object(),
-            db=object(),
+            db=_NoopSession(),
         )
     )
 
@@ -168,7 +180,7 @@ def test_runtime_exposes_only_globally_allowed_tools(monkeypatch):
             history=[],
             conversation=object(),
             current_user=object(),
-            db=object(),
+            db=_NoopSession(),
         )
     )
 
@@ -256,7 +268,7 @@ def test_runtime_wraps_untrusted_output_and_blocks_followup_tools():
             history=[],
             conversation=object(),
             current_user=object(),
-            db=object(),
+            db=_NoopSession(),
         )
     )
 
@@ -330,7 +342,7 @@ def test_runtime_does_not_report_unstructured_tool_text_as_execution(text):
             history=[],
             conversation=object(),
             current_user=object(),
-            db=object(),
+            db=_NoopSession(),
         )
     )
 
@@ -354,9 +366,100 @@ def test_runtime_keeps_an_ordinary_code_comment_as_a_normal_response():
             history=[],
             conversation=object(),
             current_user=object(),
-            db=object(),
+            db=_NoopSession(),
         )
     )
 
     assert result.status == "completed"
     assert result.text == text
+
+
+def test_runtime_releases_database_pool_during_mcp_provider_and_tool_waits():
+    engine = create_engine(
+        "sqlite://",
+        poolclass=QueuePool,
+        pool_size=1,
+        max_overflow=0,
+        pool_timeout=1,
+    )
+    TestSession = sessionmaker(bind=engine, expire_on_commit=True)
+    db = TestSession()
+    provider_calls = 0
+    discovered = []
+
+    async def database_then_release_tool(arguments, context):
+        del arguments
+        assert engine.pool.checkedout() == 0
+        assert context.db.execute(text("SELECT 99")).scalar_one() == 99
+        assert engine.pool.checkedout() == 1
+        return ToolResult(content="database read complete", sources=[], succeeded=True)
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            name="db_probe",
+            description="Read a test-only database value.",
+            parameters={"type": "object", "properties": {}},
+            handler=database_then_release_tool,
+        )
+    )
+
+    class PoolCheckingProvider:
+        async def get_reply_with_tools(self, messages, tools, tool_choice="auto"):
+            nonlocal provider_calls
+            del messages
+            provider_calls += 1
+            # The connection used by the previous tool must have been returned.
+            assert engine.pool.checkedout() == 0
+            assert tool_choice == "auto"
+            if provider_calls == 1:
+                assert tools[0]["function"]["name"] == "db_probe"
+                return AIToolReply(
+                    tool_calls=[
+                        AIToolCall(id="db-call", name="db_probe", arguments={})
+                    ]
+                )
+            return AIToolReply(text="done")
+
+    async def discover():
+        # MCP discovery is also external I/O and must start with no DB checkout.
+        assert engine.pool.checkedout() == 0
+        discovered.append(True)
+        return []
+
+    async def event_sink(event):
+        # The task event sink may query the database before dispatching a tool.
+        if event["type"] == "start":
+            assert db.execute(text("SELECT 7")).scalar_one() == 7
+            assert engine.pool.checkedout() == 1
+
+    try:
+        db.execute(text("SELECT 1"))
+        assert engine.pool.checkedout() == 1
+        assert db.expire_on_commit is True
+
+        result = asyncio.run(
+            AgentRuntime(
+                provider=PoolCheckingProvider(),
+                registry_factory=lambda: registry,
+                mcp_discoverer=discover,
+                event_sink=event_sink,
+            ).run(
+                task="check pool availability",
+                history=[],
+                conversation=object(),
+                current_user=object(),
+                db=db,
+            )
+        )
+
+        assert result.status == "completed"
+        assert result.text == "done"
+        assert provider_calls == 2
+        assert discovered == [True]
+        assert db.expire_on_commit is True
+        assert engine.pool.checkedout() == 0
+    finally:
+        db.close()
+        engine.dispose()
+
