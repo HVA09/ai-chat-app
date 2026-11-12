@@ -1193,3 +1193,49 @@
 - PR #699 تأكد إغلاقه دون merge (merged=false) لأنه أصبح مكررًا بعد PR #700؛ لم يحدث deploy من branch #699.
 - لا تغييرات على إعدادات Render أو حجم pool أو Supabase أو DB أو الأسرار. لا migrations، لا restore، لا backfill/reindex.
 - القرار: راقب QueuePool errors مجددًا مع طلبات فعلية وAgent runs وعمليات الملفات؛ لا تغلق حادثة استنفاد الوصلات نهائيًا اعتمادًا على /health وحده. خطأ Gemini 503 في 18:52:55Z كان منفصلًا عن QueuePool، وآخر نافذة بعد deploy لم تسجل أخطاء app.
+
+
+
+## 45. دمج PR #701 — تحرير اتصالات DB في Billing وOAuth وPreview — 2026-11-12
+
+### نتيجة PR
+- PR #701: https://github.com/HVA09/ai-chat-app/pull/701
+- العنوان: `fix(db): release pool connections during billing, OAuth, and preview waits`.
+- تم الدمج بطريقة Squash؛ merge commit وmain: `396cb54aea4b9e8656249434fc7ab09089c27f76`.
+- base السابق: `3d5910d68977f049d84ccf7537f2e18e2462aba3`.
+- head الذي اجتاز فحوص ما قبل الدمج: `c5a6880033be3893632a547c01d13c4b075ec9ed`.
+- Pre-merge CI: 8 check-runs Success؛ Backend `658 passed, 2 warnings in 350.39s`; Frontend وSDK وPreview Builder وProduction Compose وCodeQL Python/JavaScript-TypeScript كلها Success.
+- لا inline review threads أو review submissions عند المراجعة النهائية.
+- لا schema/migration changes.
+
+### الإصلاحات
+- Billing cancel: تحرير اتصال DB قبل await لمزود الدفع، ثم إعادة تحميل وقفل سجل الاشتراك نفسه باستخدام id/user/provider_subscription_id؛ إذا تغير السجل يُرجع 409 ولا يضع الاشتراك الجديد في canceled.
+- Billing webhooks: تحرير الاتصال قبل إرسال SMTP والبث realtime بعد تحميل بيانات المستلم والخطة.
+- OAuth refresh: تحرير الاتصال قبل token endpoint، واستخدام compare-and-swap على encrypted access/refresh token القديم لمنع استجابة بطيئة من الكتابة فوق تحديث أحدث.
+- Project preview: تحرير الاتصال قبل isolated builder، إعادة التحقق من صلاحية المشروع بعد اكتمال البناء، ثم تحرير الاتصال مرة ثانية قبل رفع artifact إلى Object Storage.
+- قفل `pg_advisory_xact_lock` في `billing.create_checkout` بقي كما هو عمدًا؛ تحريره خلال provider await دون بديل idempotency/lock يُعيد خطر إنشاء checkout مكرر.
+
+### Regression tests
+- ملف `ai-backend/tests/test_external_wait_pool_release.py` أضاف اختبارات QueuePool ذات اتصال واحد:
+  1. توفر pool slot خلال provider cancellation.
+  2. عدم إلغاء اشتراك بديل بسبب استجابة cancel قديمة.
+  3. توفر الاتصال أثناء إرسال Billing webhook email.
+  4. تحرير slot خلال OAuth refresh وعدم overwrite token pair أحدث.
+  5. توفر slot أثناء preview builder وأثناء نشر artifact.
+- لم تنفذ أي دفعة أو OAuth حقيقي أو SMTP حقيقي أو builder خارجي حي خلال الاختبارات.
+
+### ما بعد الدمج (آخر قراءة)
+- main commit: `396cb54...`.
+- CI run [43296415363](https://github.com/HVA09/ai-chat-app/actions/runs/43296415363): بدأ؛ SDK Success، Backend/Frontend/Preview Builder/Production Compose كانت In Progress في آخر قراءة.
+- CodeQL [43296415526](https://github.com/HVA09/ai-chat-app/actions/runs/43296415526): Analyze Python وJavaScript/TypeScript In Progress في آخر قراءة.
+- Production smoke [43296415426](https://github.com/HVA09/ai-chat-app/actions/runs/43296415426): In Progress في آخر قراءة.
+- Backend image publish [43296415367](https://github.com/HVA09/ai-chat-app/actions/runs/43296415367): In Progress في آخر قراءة.
+- Render service ما زال عند deploy live السابق `dep-dbr120e8bjmc739l0l00` على SHA `3d5910d...`; لم يبدأ deploy SHA `396cb54...` عند آخر poll.
+- Render configured على `autoDeployTrigger=checksPass`؛ انتظر checks/main publish وبعدها تحقق من Render Live تلقائيًا دون manual deploy.
+
+### بوابة مراقبة الاستقرار
+- بعد نشر #700 (SHA `3d5910d...`)، سجل Render من 19:20:31Z إلى 19:36:00Z لم يُظهر QueuePool أو app errors؛ health 200 مستمر لكن غير كافٍ وحده.
+- Duplicate-key CI على `uq_scheduled_task_runs_task_scheduled_for` ظهر مجددًا رغم نجاح pytest في #701؛ يبقى issue منفصلًا يحتاج تحليل idempotency/locking للـscheduler.
+- لا تغيير في DB_POOL_SIZE/OVERFLOW أو Render/Supabase limits أو env/secrets.
+- لا production restore، ولا reindex/backfill أو strict retrieval fingerprint filtering.
+\n
