@@ -11,9 +11,15 @@ from app.database import commit_and_release_connection
 
 from app.models.assistant import Assistant
 from app.models.assistant_file_link import AssistantFileLink
+from app.models.assistant_workspace_share import AssistantWorkspaceShare
+from app.models.conversation import Conversation
 from app.models.file_attachment import FileAttachment
 from app.models.file_chunk import FileChunk
+from app.models.project import WorkspaceProject
+from app.models.user import User
+from app.models.workspace import Workspace, WorkspaceMember
 from app.services.embeddings import embed_documents_sync, embed_query
+from app.services.project_access import can_read_project
 
 CHUNK_SIZE = 1400
 CHUNK_OVERLAP = 200
@@ -73,6 +79,93 @@ def index_file_chunks(db: Session, file: FileAttachment) -> int:
     return len(chunks)
 
 
+def _get_rag_authorized_conversation(
+    db: Session,
+    user_id: int,
+    conversation_id: int,
+    workspace_id: int | None,
+    project_id: int | None,
+    assistant_id: int | None,
+) -> Conversation | None:
+    """Return the conversation only while its persisted knowledge scope is authorized.
+
+    This service-level guard is intentionally independent of HTTP route checks:
+    internal callers must not be able to turn a stale conversation ID into access
+    to workspace, project, or assistant-owned knowledge.
+    """
+    conversation = (
+        db.query(Conversation)
+        .populate_existing()
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user_id,
+            Conversation.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if conversation is None:
+        return None
+
+    # Optional scope arguments may narrow a regular workspace conversation, but
+    # they must never contradict the persisted project/assistant selection.
+    if workspace_id is not None and conversation.workspace_id != workspace_id:
+        return None
+    if conversation.project_id != project_id:
+        return None
+    if conversation.assistant_id != assistant_id:
+        return None
+
+    workspace = db.get(Workspace, conversation.workspace_id)
+    if workspace is None:
+        return None
+    if workspace.owner_id != user_id:
+        membership = (
+            db.query(WorkspaceMember.id)
+            .filter(
+                WorkspaceMember.workspace_id == conversation.workspace_id,
+                WorkspaceMember.user_id == user_id,
+            )
+            .first()
+        )
+        if membership is None:
+            return None
+
+    if conversation.project_id is not None:
+        project = db.get(WorkspaceProject, conversation.project_id)
+        current_user = db.get(User, user_id)
+        if (
+            project is None
+            or current_user is None
+            or project.workspace_id != conversation.workspace_id
+            or not can_read_project(project, current_user, db)
+        ):
+            return None
+
+    if conversation.assistant_id is not None:
+        assistant_access = (
+            db.query(Assistant.id)
+            .outerjoin(
+                AssistantWorkspaceShare,
+                and_(
+                    AssistantWorkspaceShare.assistant_id == Assistant.id,
+                    AssistantWorkspaceShare.workspace_id == conversation.workspace_id,
+                ),
+            )
+            .filter(
+                Assistant.id == conversation.assistant_id,
+                or_(
+                    Assistant.user_id == user_id,
+                    AssistantWorkspaceShare.id.is_not(None),
+                ),
+            )
+            .first()
+        )
+        if assistant_access is None:
+            return None
+
+    return conversation
+
+
 async def retrieve_relevant_chunks(
     db: Session,
     user_id: int,
@@ -84,6 +177,17 @@ async def retrieve_relevant_chunks(
     assistant_id: int | None = None,
 ) -> list[tuple[FileChunk, FileAttachment]]:
     from app.models.conversation_file_link import ConversationFileLink
+
+    conversation = _get_rag_authorized_conversation(
+        db,
+        user_id,
+        conversation_id,
+        workspace_id,
+        project_id,
+        assistant_id,
+    )
+    if conversation is None:
+        return []
 
     linked_to_conversation = exists().where(
         ConversationFileLink.file_id == FileChunk.file_id,
@@ -112,12 +216,17 @@ async def retrieve_relevant_chunks(
         else False
     )
 
+    assistant_access_scope = or_(
+        Assistant.user_id == user_id,
+        AssistantWorkspaceShare.id.is_not(None),
+    )
     assistant_scope = (
         and_(
             AssistantFileLink.assistant_id == assistant_id,
             FileAttachment.user_id == Assistant.user_id,
             FileAttachment.workspace_id.is_(None),
             FileAttachment.project_id.is_(None),
+            assistant_access_scope,
         )
         if assistant_id is not None
         else False
@@ -129,30 +238,54 @@ async def retrieve_relevant_chunks(
         assistant_scope,
     )
 
-    # Most chat turns have no indexed file context. Check scope before making
-    # an external embedding request, both to save latency/cost and to keep
-    # ordinary chats independent of the embeddings provider's availability.
+    # Check the candidate scope before making an external embedding request.
     candidate = (
         db.query(FileChunk.id)
         .join(FileAttachment, FileAttachment.id == FileChunk.file_id)
         .outerjoin(AssistantFileLink, AssistantFileLink.file_id == FileAttachment.id)
         .outerjoin(Assistant, Assistant.id == AssistantFileLink.assistant_id)
+        .outerjoin(
+            AssistantWorkspaceShare,
+            and_(
+                AssistantWorkspaceShare.assistant_id == Assistant.id,
+                AssistantWorkspaceShare.workspace_id == conversation.workspace_id,
+            ),
+        )
         .filter(FileChunk.embedding.is_not(None), chunk_scope)
         .first()
     )
     if candidate is None:
         return []
 
-    # The candidate check is complete. Persist pending attachment links (if
-    # any) and release the connection before waiting on the embeddings API.
+    # Return the DB connection before waiting on the external embedding provider.
     commit_and_release_connection(db)
     query_embedding = await embed_query(query)
+
+    # Membership, project roles, and assistant shares can be revoked while the
+    # provider request is in flight. Recheck before returning any retrieved rows.
+    conversation = _get_rag_authorized_conversation(
+        db,
+        user_id,
+        conversation_id,
+        workspace_id,
+        project_id,
+        assistant_id,
+    )
+    if conversation is None:
+        return []
 
     return (
         db.query(FileChunk, FileAttachment)
         .join(FileAttachment, FileAttachment.id == FileChunk.file_id)
         .outerjoin(AssistantFileLink, AssistantFileLink.file_id == FileAttachment.id)
         .outerjoin(Assistant, Assistant.id == AssistantFileLink.assistant_id)
+        .outerjoin(
+            AssistantWorkspaceShare,
+            and_(
+                AssistantWorkspaceShare.assistant_id == Assistant.id,
+                AssistantWorkspaceShare.workspace_id == conversation.workspace_id,
+            ),
+        )
         .filter(
             FileChunk.embedding.is_not(None),
             chunk_scope,

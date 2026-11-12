@@ -71,7 +71,9 @@ def test_analyze_attached_image(client, monkeypatch):
     )
     assert response.status_code == 200
     assert response.json()["reply"] == "الصورة تحتوي على عنصر تجريبي."
-    assert events == ["release", "vision"]
+    # Release once before object storage, then again after the live ACL recheck
+    # and before waiting for the remote vision provider.
+    assert events == ["release", "release", "vision"]
 
     vision_call = chat_router_module.get_ai_vision_reply.await_args
     assert vision_call.args[0] == "ماذا ترى في الصورة؟"
