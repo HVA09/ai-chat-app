@@ -1182,3 +1182,14 @@
 - بعد Live، راقب QueuePool timeout وDB health وسجلات التطبيق؛ لا اعتبار 200 health كافيًا وحده، وراقب طلبات المستخدم وأداء Agent/Storage.
 - آخر ملاحظة قبل deploy: incidents على QueuePool في 17:53 و18:34 و18:51؛ وبعد حادثة 18:51 لم تسجل أخطاء QueuePool جديدة حتى 19:13؛ ظهر فقط Gemini provider 503 مرتين عند 18:52:55Z.
 - لا استعادة أو backfill/reindex أو تغييرات بيانات إنتاجية. بوابة backup/restore لا تزال مفتوحة.
+
+## 44. تأكيد نشر PR #700 ومراقبة Render الأولية — 2026-11-12
+
+- Render service srv-dakc4nbm8hqs73e2po9g نشر main commit 3d5910d68977f049d84ccf7537f2e18e2462aba3.
+- Deployment dep-dbr120e8bjmc739l0l00 بدأ 2026-11-12T19:18:25Z وانتهى Live بنجاح عند 19:20:31Z.
+- بعد Live، سجلات Render الداخلية أظهرت 26 استجابة GET /health 200 بين 19:20:35Z و19:22:00Z تقريبًا، بأزمنة 10–12ms.
+- نافذة سجلات app error من 19:20:31Z إلى 19:27:00Z: صفر app errors.
+- هذا تحقق تشغيل أولي داخلي للنشر، وليس اختبارًا كاملاً لكل مسارات المستخدم أو اختبار ضغط يثبت عدم عودة QueuePool تحت أحمال أعلى.
+- PR #699 تأكد إغلاقه دون merge (merged=false) لأنه أصبح مكررًا بعد PR #700؛ لم يحدث deploy من branch #699.
+- لا تغييرات على إعدادات Render أو حجم pool أو Supabase أو DB أو الأسرار. لا migrations، لا restore، لا backfill/reindex.
+- القرار: راقب QueuePool errors مجددًا مع طلبات فعلية وAgent runs وعمليات الملفات؛ لا تغلق حادثة استنفاد الوصلات نهائيًا اعتمادًا على /health وحده. خطأ Gemini 503 في 18:52:55Z كان منفصلًا عن QueuePool، وآخر نافذة بعد deploy لم تسجل أخطاء app.
