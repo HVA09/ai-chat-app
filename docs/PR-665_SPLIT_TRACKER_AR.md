@@ -847,3 +847,43 @@
 - حادثة QueuePool المؤقتة كانت على instance القديم قبل نشر PR #696، ولم تظهر على instance الجديد في نافذة المراقبة. لا تغييرات pool settings.
 - لا reindex إنتاجي، ولا bulk/backfill، ولا strict fingerprint filtering؛ بوابة backup/restore الإنتاجية ما زالت مفتوحة.
 - في سجلات PostgreSQL الخاصة ببيئة CI ظهر duplicate key واحد على قيد `uq_scheduled_task_runs_task_scheduled_for` أثناء تشغيل الاختبارات، مع أن pytest انتهت `616 passed, 2 warnings`؛ لا يمثل فشل CI، لكنه يستحق مراجعة منفصلة إن تكرر أو ظهر على الإنتاج.
+
+
+
+## 34. دمج إصلاح أبعاد Gemini والتحقق بعد النشر — 2026-11-12
+
+### PR #697 والدمج
+- PR #697 `fix(rag): handle full-dimensional Gemini 001 embeddings`: merged بواسطة مالك المستودع عند `2026-11-12T17:16:21Z`.
+- PR: https://github.com/HVA09/ai-chat-app/pull/697
+- Merge commit / main الحالي وقت الفحص: `48c451545c0ab2b05e08c94b4afc72b2215a4910`.
+- PR checks على head `ed84bc40443c337729b993127fae10baff9c36e8`: Backend، Frontend، SDK، Preview Builder، Production Compose، CodeQL Python وJavaScript/TypeScript كلها Success.
+- Backend pytest: `616 passed, 2 warnings in 237.79s`.
+- Post-merge runs كلها `completed/success`:
+  - CI [43267652121](https://github.com/HVA09/ai-chat-app/actions/runs/43267652121)
+  - Production smoke [43267652368](https://github.com/HVA09/ai-chat-app/actions/runs/43267652368)
+  - Publish backend image [43267652172](https://github.com/HVA09/ai-chat-app/actions/runs/43267652172)
+  - CodeQL [43267652046](https://github.com/HVA09/ai-chat-app/actions/runs/43267652046)
+
+### مراجعة الكود والقيود
+- تعديل MRL محصور في `gemini-embedding-001` عندما تكون كل المتجهات المستلمة 3072 بعدًا والأبعاد المخزنة المطلوبة أقل من 3072؛ يأخذ البادئة المطلوبة ويعيد L2 normalization.
+- يطبق المنطق على document batch وquery embeddings معًا؛ باقي المزودين والنماذج والأبعاد غير المطابقة تبقى تحت التحقق الصارم.
+- وثائق Google الرسمية توضح أن `gemini-embedding-001` يدعم أبعاد 768/1536/3072، وأن تقليل أبعاد هذا النموذج يتطلب إعادة normalization يدويًا: https://ai.google.dev/gemini-api/docs/embeddings
+- تعليق Codex الآلي على PR #697 سجّل أنه لم يتمكن من إكمال مراجعة الكود بسبب حد الاستخدام؛ هذا ليس دليلًا على مراجعة آلية نظيفة. CodeQL نجح، وأُجري فحص يدوي لنطاق التعديل قبل تسجيل هذه النتيجة، لكن لم تتوفر مراجعة Codex مستقلة كاملة.
+- لا migration ولا schema change ولا تعديل إعدادات Render/Supabase أو الأسرار، ولا reindex/backfill إنتاجي. `vector(768)` بقي كما هو.
+
+### Render بعد PR #697
+- Deployment [dep-dbqvb6mq1p3s73dn2m3g](https://dashboard.render.com/web/srv-dakc4nbm8hqs73e2po9g/deploys/dep-dbqvb6mq1p3s73dn2m3g) على SHA `48c451545c0ab2b05e08c94b4afc72b2215a4910` أصبح `live`، وانتهى عند `2026-11-12T17:23:36Z`.
+- Render events: build وdeploy succeeded؛ Render auto-deploy ظل `checksPass`، ولم يُطلق manual deploy.
+- بعد Live وحتى آخر نافذة سجلات تمت مراجعتها:
+  - لا app-level error logs.
+  - لا request 500/502/503/504.
+  - لا QueuePool exhaustion.
+  - لا تحذيرات mismatch لأبعاد embeddings.
+  - سجلات Render الداخلية أظهرت `GET /health 200` بصورة دورية بزمن غالبًا 9–16ms؛ آخر عينة مرئية في نتيجة الفحص كانت قبل `17:38:36Z`.
+- فحص HTTP خارجي مباشر لم يكتمل من بيئة العمل بسبب فشل DNS؛ لذلك لا نسجل external /health test ناجحًا. الدليل الإيجابي الحالي هو Render internal logs ونجاح Production smoke.
+- لا يوجد طلب Gemini chat/RAG إنتاجي فعلي موثق بعد التغيير في السجلات المعروضة؛ اختبارات CI تثبت السلوك بالكود والـmocks، لكنها لا تثبت توافر Gemini upstream وقت الاستخدام الفعلي.
+
+### بوابات مستمرة
+- حادثة QueuePool وGemini HTTP 503 وعدم تطابق 3072/768 سُجلت على الـinstance القديم قبل انتهاء تبديل Render؛ لم تتكرر على الـinstance الجديد في السجلات التي تمت مراجعتها.
+- لا تغيير لحدود اتصال قاعدة البيانات استنادًا إلى حادثة واحدة.
+- بوابة backup/restore الإنتاجية ما زالت مفتوحة؛ يُمنع bulk reindex/backfill وstrict retrieval fingerprint filtering قبل توفير backup حديث ودليل restore ناجح.
