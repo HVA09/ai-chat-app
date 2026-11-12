@@ -225,3 +225,11 @@
 - لم نغير إعدادات Render أو Supabase أو الأسرار يدويًا. ننتظر إثبات نشر Render الفعلي ثم فحص `/health` و`/ready` قبل تسجيل الإنتاج مستقرًا.
 - الخطوة التالية بعد ثبات `main` والتحقق من الإنتاج: تجهيز نطاق PR #693؟ لا؛ الرقم #693 مستخدم ومغلق كتغيير اختبار مكرر، لذا يُستخدم رقم PR الجديد الذي يمنحه GitHub عند إنشاء PR مستقل لصلاحيات RAG. لا نعيد استخدام أرقام سابقة.
 - PR #691 ما زال Draft لتسجيل قرارات التفكيك، وPR #665 الأصلي ما زال Draft كمصدر. لا دمج للطلب الكبير.
+### متابعة ما بعد الدمج — آخر فحص مسجل
+
+- CI run [43143998208](https://github.com/HVA09/ai-chat-app/actions/runs/43143998208): `sdk`, `frontend`, `preview-builder`, `production-compose` نجحت؛ بقي `backend` قيد التنفيذ.
+- CodeQL run [43143998283](https://github.com/HVA09/ai-chat-app/actions/runs/43143998283): اكتمل بنجاح في Python وJavaScript/TypeScript.
+- Publish backend image run [43143998298](https://github.com/HVA09/ai-chat-app/actions/runs/43143998298): اكتمل بنجاح.
+- Production smoke run [43143998272](https://github.com/HVA09/ai-chat-app/actions/runs/43143998272): اكتمل بنجاح.
+- آخر فحص Render: لا يزال آخر Deploy Live على commit `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee`؛ لم يظهر بعد Deploy جديد لـ `b80f6d...`. سياسة `checksPass` تمنع بدء النشر قبل نجاح جميع الفحوص المطلوبة.
+- لا يُعتبر نشر Render قد تم، ولا يُسجل التطبيق على أنه يعمل بالإصدار الجديد، حتى يظهر Deploy على SHA `b80f6d658d4848f78c726f0a03b21ae50359fada` بحالة `live` ثم تنجح فحوص الصحة.
