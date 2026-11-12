@@ -1,5 +1,6 @@
 """Tests for the fail-closed Supabase staging restore destination guard."""
 
+import hashlib
 import importlib.util
 from pathlib import Path
 
@@ -211,3 +212,30 @@ def test_rejects_missing_or_malformed_supabase_root_ca(certificate):
         restore_target_guard.validate_staging_target(
             database_url, STAGING_REF, PRODUCTION_REF, certificate
         )
+
+
+def test_verifies_archive_against_pre_reviewed_sha256(tmp_path):
+    archive = tmp_path / "staging.dump"
+    payload = b"reviewed staging archive payload"
+    archive.write_bytes(payload)
+    expected = hashlib.sha256(payload).hexdigest()
+
+    assert restore_target_guard.verify_sha256_file(archive, expected)
+    assert not restore_target_guard.verify_sha256_file(archive, "0" * 64)
+
+
+@pytest.mark.parametrize(
+    "digest",
+    [
+        "",
+        "0" * 63,
+        "g" * 64,
+        " " + "a" * 64,
+        "a" * 65,
+    ],
+)
+def test_rejects_invalid_reviewed_archive_sha256_input(tmp_path, digest):
+    archive = tmp_path / "staging.dump"
+    archive.write_bytes(b"reviewed staging archive payload")
+
+    assert not restore_target_guard.verify_sha256_file(archive, digest)
