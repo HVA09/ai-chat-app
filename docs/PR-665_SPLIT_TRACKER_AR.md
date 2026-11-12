@@ -720,3 +720,46 @@
 - لا نعلن أن تجربة محادثة حقيقية مع Gemini نجحت بعد النشر؛ لا توجد مكالمة إنتاجية اختبارية موثقة بعد تلك الواقعة.
 - بوابة backup/restore الإنتاجية لا تزال مفتوحة كما في الأقسام السابقة؛ يمنع backfill أو bulk reindex أو strict retrieval fingerprint filtering حتى تتوفر أدلة نسخة احتياطية واختبار استعادة.
 - لا توجد ميزات جديدة في هذا المسار؛ العمل التالي ضمن الاستقرار: تحليل pool exhaustion في #674، وإغلاق تشخيص provider/fallback في #683 بأدلة واختبارات قبل أي إعداد إنتاجي.
+
+
+
+## 33. تأكيد استقرار Render بعد PR #696 واكتشاف توافق أبعاد Gemini — 2026-11-12
+
+### Deployment الجديد
+- Render deployment [dep-dbqusce7bikc73971u30](https://dashboard.render.com/web/srv-dakc4nbm8hqs73e2po9g/deploys/dep-dbqusce7bikc73971u30) على SHA `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db` أصبح `live`.
+- وقت الانتهاء: `2026-11-12T16:52:18.876505Z`; event `deploy_ended/succeeded` عند `16:52:18.999789Z`.
+- Instance الجديد: `srv-dakc4nbm8hqs73e2po9g-f94zg`.
+- Startup logs أكدت بدء التطبيق production، اتصال Object Storage، تشغيل Celery worker/beat، وبدء Uvicorn.
+- Render internal health logs سجلت `GET /health 200` بصورة دورية، latency غالبًا 10–15ms، من `16:52:18Z` إلى آخر فحص `17:00:38Z`.
+- سجلات `error` بعد وقت Live (من `16:52:18Z` إلى `17:05:00Z`) كانت فارغة، ولا request logs برموز 500/502/503/504 على instance الجديد في الفترة نفسها.
+- حدث `GET /` واحد برمز 404 عند بدء التشغيل فقط؛ هذا ليس endpoint صحة الخدمة ولا يُسجل كفشل في التطبيق.
+- أدوات الويب المستقلة لم تستطع فتح /health أو /ready؛ لذلك لا نسجل فحص HTTP خارجي ناجح. دليل الصحة الحالي مبني على Render internal logs فقط.
+
+### فصل أخطاء النسخة القديمة عن الجديدة
+- قبل بدء deployment الجديد، على instance القديم `...-52f48`:
+  - `16:49:46Z`: SQLAlchemy QueuePool exhaustion (`pool_size=2`, `max_overflow=1`, timeout 15s)، وطلب `GET /chat/models` استغرق نحو 15.2 ثانية ثم فشل.
+  - `16:49:48Z`: RAG query فشل لأن مزود Gemini أعاد 3072 بعدًا بينما التطبيق يتطلب 768؛ انتقل ذلك الطلب إلى fallback للسياق الكامل.
+  - `16:49:51Z`: Gemini chat completions أعاد `503 Service Unavailable` في محادثة واحدة، وسُجل أن AI streaming failover غير متاح.
+  - بدأ Render deploy الجديد عند `16:49:53Z`، أي بعد هذه الأخطاء.
+- لم تتكرر أخطاء QueuePool أو 5xx أو Gemini logs على instance الجديد بعد وصوله إلى Live خلال نافذة الفحص؛ مع ذلك لم يُنفذ اختبار محادثة فعلي موثق على النسخة الجديدة، فلا نستنتج من غياب السجلات نجاح مزود Gemini عند الاستخدام الفعلي.
+- لا نغيّر DATABASE_POOL_SIZE أو إعدادات Gemini في الإنتاج بناءً على حادثة واحدة. تُتابع هذه النقاط كتحقيقين منفصلين.
+
+### PR #697 لمعالجة أبعاد Gemini
+- PR #697: https://github.com/HVA09/ai-chat-app/pull/697 — Draft / Open / غير مدمج.
+- Branch: `fix/gemini-mrl-embedding-dimensions-20261112`.
+- Base: `main = 31503ae13b7215a7dc6ca312ea0dfd8a6abff5db`.
+- Head: `ed84bc40443c337729b993127fae10baff9c36e8`.
+- التغيير محدود بملفين: `ai-backend/app/services/embeddings.py` و`ai-backend/tests/test_embedding_configuration.py`.
+- السبب: خدمة Gemini embedding model `gemini-embedding-001` تعيد 3072 بعدًا افتراضيًا؛ وثائق Google توضح دعم MRL لتقليل المتجه إلى 768/1536 وإعادة تطبيعه عند تقليل أبعاد `gemini-embedding-001`.
+- أضيف fallback دقيق عند تحقق الشروط كلها: provider=Gemini، model=`gemini-embedding-001`، الاستجابة كلها 3072، والأبعاد المطلوبة أقل من 3072. نأخذ البادئة المطلوبة ونعيد L2 normalization. ينطبق ذلك على query embeddings وdocument batch embeddings معًا.
+- النماذج الأخرى والمزودون الآخرون والمتجهات غير المطابقة تمامًا 3072 لا تُقتطع؛ يظل التحقق الصارم قائمًا.
+- لا migration، لا تغيير `vector(768)`، لا reindex/backfill إنتاجي، لا مفاتيح أو متغيرات بيئة أو Render/Supabase writes.
+- اختبارات CI وCodeQL على أحدث رأس لم تكتمل بعد عند تسجيل هذا القسم؛ PR يبقى Draft ولا يدمج قبل نجاحها.
+- الروابط الرسمية:
+  - https://ai.google.dev/gemini-api/docs/embeddings
+  - https://ai.google.dev/api/embeddings
+
+### بوابات لم تُغلق
+- backup/restore production ما زالت غير مثبتة؛ لا bulk reindex/backfill ولا strict retrieval fingerprint filtering.
+- لا دليل خارجي مستقل لفحص /health أو /ready بعد النشر.
+- لا نقوم باختبار محادثة إنتاجية مصطنع أو إعادة فهرسة حقيقية على بيانات المستخدم دون تفويض/خطة محددة؛ الفحص الحالي read-only.
