@@ -1335,3 +1335,49 @@
 - لا تزال الحاجة إلى pool owner diagnostics قائمة إذا تكررت الحادثة؛ current logs identify victims, not the three held checkouts.
 - لا production restore أو backfill/reindex أو تغيير pool settings. النسخة الإنتاجية لا تُعتبر staging sanitized backup.
 
+
+## 48. دمج PR #709 — تسلسل طلبات التهيئة بعد المصادقة — 2026-11-14
+
+### النتيجة
+- PR #709: https://github.com/HVA09/ai-chat-app/pull/709 — merged via Squash.
+- Base قبل الدمج: `18b8416cf9b2d13406a8c7d767341d42897496c0`.
+- Head الذي اجتاز الفحوص: `4ef03e143d92df1678c7f42a099c12db1dbcb20f`.
+- Merge commit / main: `18ff9bd0f047886c7e5b1121bba95a0b6e00371c`.
+- Pre-merge CI run [43561845096](https://github.com/HVA09/ai-chat-app/actions/runs/43561845096): Success.
+- Backend: `658 passed, 2 warnings in 270.42s`.
+- Frontend: `513 passed across 74 test files`; Vite build Success.
+- SDK، Preview Builder، Production Compose: Success.
+- CodeQL Python + JavaScript/TypeScript: Success.
+- لا inline review threads أو review submissions.
+- لا تغييرات Backend/DB/schema/migration/Render/Supabase/env/secrets/pool size/overflow.
+
+### التغيير
+- ترتيب أولية requests بعد authed: notifications list أولًا (مع بقاء WebSocket فوريًا)، ثم current user، model catalog، workspace hierarchy، tags، saved prompts، bookmarks، memories.
+- إزالة duplicate eager request للمساعدين؛ workspace hierarchy يحمل owned/shared assistants بالفعل.
+- تجاوز duplicate initial conversations request؛ بقي debounced refresh عند تغيير البحث.
+- عند فشل workspace discovery، fallback يقوم بتحميل assistants وconversations كما في السلوك السابق.
+- hooks bookmarks/memories/notifications تقبل `loadOnAuth` اختياريًا، default `true` للتوافق؛ App وحده يتحكم بتحميلها ضمن التسلسل.
+- التسلسل يتوقف عن بدء طلبات جديدة بعد logout/unmount.
+- أضيفت tests للتحقق من التتابع والإلغاء وdeferred hooks واستمرار WebSocket ونتيجة workspace refresh.
+- الهدف تخفيض burst على API Pool صغير عند session restore بعد Render Free hibernation؛ هذا تخفيف client-side محتمل وليس إثباتًا نهائيًا للسبب الجذري الذي احتجز الاتصالات الثلاثة.
+
+### ما بعد الدمج — آخر قراءة
+- main commit: `18ff9bd0f047886c7e5b1121bba95a0b6e00371c`.
+- CI [43562399685](https://github.com/HVA09/ai-chat-app/actions/runs/43562399685): In Progress عند آخر poll.
+- CodeQL [43562399775](https://github.com/HVA09/ai-chat-app/actions/runs/43562399775): In Progress.
+- Production smoke [43562399700](https://github.com/HVA09/ai-chat-app/actions/runs/43562399700): In Progress.
+- Publish backend image [43562399813](https://github.com/HVA09/ai-chat-app/actions/runs/43562399813): In Progress.
+- Render frontend service `srv-daklqph42hec73b1f61g` ما زال آخر deploy مسجلًا `dep-dbr7j4ivcj2c73ejojj0` على `18b8416...` Live؛ لم يظهر deploy جديد على merge commit `18ff9bd...` وقت الفحص، متوقع بسبب `autoDeployTrigger=checksPass`.
+- Backend service `srv-dakc4nbm8hqs73e2po9g` لا يحتاج نشرًا من #709 لأن التغيير Frontend-only؛ بقي على backend merge commit #701 `396cb54...`.
+
+### QueuePool follow-up
+- Render logs للـbackend من 2026-11-14T05:10Z إلى 05:45Z: 0 QueuePool error lines و0 app-level error lines في هذه النافذة.
+- هذه نافذة رصد إضافية، وليست concurrency test ولا دليل end-user load. حادثة 2026-11-13T03:47Z تبقى مفتوحة حتى التحقق من طلبات دخول فعلية بعد النشر وتكرر الاستيقاظ.
+- بعد Render Live للواجهة، راقب QueuePool وطلبات المستخدم العادية؛ health 200 وحده لا يكفي.
+- لا تعديل pool settings أو خطط Render/Supabase.
+
+### بوابة Backup/Restore
+- لا تغيير عن section 47: production backup object 2026-11-13 موجود وarchive list / remote size متحقق، لكن backup SHA-256 نفسه غير مسجل ولا يوجد restore test.
+- production dump خام وغير مؤهل لrestore workflow الذي يتطلب `database/staging-sanitized/`.
+- Restore-to-staging ما زال OPEN؛ لا تشغيل restore workflow ولا backfill/reindex.
+
