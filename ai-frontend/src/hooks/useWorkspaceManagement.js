@@ -40,14 +40,14 @@ export default function useWorkspaceManagement({
     let list;
     try {
       list = await listWorkspaces();
-      if (!isCurrentRequest()) return;
+      if (!isCurrentRequest()) return false;
     } catch (err) {
       if (!isCurrentRequest()) return;
       setToast({
         message: getErrorMessage(err, t("app.workspacesLoadError")),
         type: "error",
       });
-      return;
+      return false;
     }
 
     setWorkspaces(list);
@@ -72,6 +72,7 @@ export default function useWorkspaceManagement({
     await refreshAssistants(nextId);
     if (!isCurrentRequest()) return;
     await refreshConversations(showArchivedConversations, null, nextId, null);
+    return true;
   };
 
   const handleCreateWorkspace = async () => {
