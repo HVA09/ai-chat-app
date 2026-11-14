@@ -1274,3 +1274,64 @@
 - Do not increase pool sizes, change Render plans, or edit database connection limits without measuring usage and provider limits.
 - Backup provenance/restore-to-staging remains unproven; the #698 staging-only workflow must not be run until environment reviewers, scoped secrets, sanitized archive, filename, and matching SHA-256 are independently ready. No restore, backfill, bulk reindex, or strict retrieval fingerprint filtering was run.
 \n
+
+
+## 47. دمج #702، نسخة Production backup، وانتكاسة QueuePool وتحسين تهيئة الواجهة — 2026-11-14
+
+### main ونتيجة #702
+- main الحالي: `18b8416cf9b2d13406a8c7d767341d42897496c0`.
+- PR #702: https://github.com/HVA09/ai-chat-app/pull/702 — إصلاح دورة رفع الملفات بعد unmount؛ merged.
+- CI post-merge [43353534426](https://github.com/HVA09/ai-chat-app/actions/runs/43353534426): Success.
+- Backend: `658 passed, 2 warnings in 316.79s`.
+- Frontend، SDK، Preview Builder، Production Compose، CodeQL Python وJavaScript/TypeScript: Success.
+- Production smoke [43413334380](https://github.com/HVA09/ai-chat-app/actions/runs/43413334380): Success.
+- Object Storage smoke [43422588553](https://github.com/HVA09/ai-chat-app/actions/runs/43422588553): Success.
+- Frontend service `srv-daklqph42hec73b1f61g` deploy `dep-dbr7j4ivcj2c73ejojj0` على SHA `18b8416...` وصل Live بتاريخ 2026-11-13T02:45:05Z.
+- Backend service ما زال على PR #701 merge commit `396cb54aea4b9e8656249434fc7ab09089c27f76`، وهذا متوقع لأن #702 frontend-only. Deployment backend `dep-dbr1p96tlv9c738bj0b0` بقي Live.
+
+### نسخة احتياطية إنتاجية أحدث — ليست Restore proof
+- Workflow run [43405958682](https://github.com/HVA09/ai-chat-app/actions/runs/43405958682)، scheduled 2026-11-13T10:01:57Z، jobs preflight وbackup: Success.
+- الاسم: `ai-chat-postgres-20261113T100201Z.dump`.
+- المفتاح البعيد: `database/ai-chat-postgres-20261113T100201Z.dump`.
+- حجم object بحسب remote HEAD: `862936 bytes`.
+- `pg_dump --format=custom` و`pg_restore --list` وفحص remote HEAD والرفع: Success.
+- Object Storage smoke منفصل أثبت upload/read-back/compare/delete لملف اختباري.
+- **حدود الدليل:** لم يسجل backup workflow SHA-256 لملف dump نفسه؛ لا artifact مرفق بـworkflow run؛ لم يتم تنزيل النسخة للتحقق من hash؛ ولم يُجر restore فعلي.
+- backup أعلاه خام من Production، وليس sanitized staging archive. كما أنه يقع تحت `database/` وليس `database/staging-sanitized/` المطلوب في restore workflow. لذلك لا يجوز استخدامه في بوابة الاستعادة الحالية.
+- GitHub Environment `supabase-staging`، reviewers/secrets، sanitized export مع provenance، exact staging object filename + SHA-256، وrestore test ما زالت متطلبات غير مثبتة.
+- قرار البوابة: backup object حديث موجود ومتحقق من حجمه/وجوده وarchive list، لكن backup provenance/hash + restore-to-staging ما زالا OPEN. لا تشغيل restore workflow.
+
+### QueuePool incident — لا إغلاق للحادثة
+- فحص Render logs بعد نشر #701 كشف موجة حقيقية بتاريخ 2026-11-13 حول `03:47:27Z`.
+- نحو 53 رسالة QueuePool timeout ضمن نحو 86 app-error lines في تلك النافذة.
+- النص: `QueuePool limit of size 2 overflow 1 reached, connection timed out, timeout 15.00`.
+- فشلت طلبات عادية، منها `GET /users/me`, `/assistants`, `/saved-prompts`, `/chat/models`, `/conversations/bookmarks`, و`/memories`.
+- خطأ `notifications_websocket` ظهر أثناء `db.get(User,...)` في نفس الموجة؛ الكود الحالي يفتح Session قصيرة ويغلقها قبل قبول/الإبقاء على WebSocket، لذلك هذا endpoint ضحية محتملة وليس سببًا مثبتًا.
+- instance كان مستيقظًا من Render Free hibernation: API startup complete عند ~03:46:59Z؛ health checks أولية كانت بطيئة (212ms ثم 73ms)؛ refresh token POST استغرق ~3050ms عند 03:47:11Z؛ وتبع ذلك موجة timeout.
+- Celery `run_due_scheduled_tasks` بدأ بعد موجة الفشل، عند 03:47:48Z، وانتهى بسرعة؛ لا دليل يحمّل scheduler مسؤولية هذه الموجة.
+- لا QueuePool timeouts أخرى ظهرت في سجل النافذة المفحوصة بعد الموجة وحتى 2026-11-14T05:10Z؛ هذا لا يثبت عدم العودة تحت حمل آخر.
+- لم يتم رفع `DATABASE_POOL_SIZE` أو `DATABASE_MAX_OVERFLOW` أو تغيير Supabase pooler/Render Free tier. لا يجوز إعلان incident closed.
+
+### فحص مصادر الضغط عند تسجيل الدخول
+- `ai-frontend/src/App.jsx` كان يبدأ 6 initial reads مستقلة عند `authed=true`: Current user، AI models، workspaces، tags، assistants، saved prompts.
+- `refreshWorkspaces()` كان يقوم بالفعل بتحميل folders ثم projects ثم assistants ثم conversations بالتتابع، ما جعل التحميل المبكر المباشر للمساعدين مكررًا.
+- effect منفصل كان يطلب conversations بعد 300ms، مكررًا مع تحميل المحادثات داخل `refreshWorkspaces()`.
+- `useBookmarks` و`useMemories` و`useNotifications` كانت تجلب مجموعاتها تلقائيًا فور المصادقة؛ هذا يضيف دفعة موازية أخرى. WebSocket notifications لا يحتفظ بقاعدة البيانات بعد handshake في الكود الحالي.
+- هذه بنية تفسر burst منطقيًا وتبرر تخفيف client-side concurrency، لكنها ليست دليلًا نهائيًا على مالك الاتصالات الثلاثة وقت QueuePool timeout.
+
+### PR #709 — Draft لتسلسل initial hydration
+- PR: https://github.com/HVA09/ai-chat-app/pull/709
+- branch: `fix/frontend-stagger-auth-startup-requests-20261114`.
+- Base: `18b8416...`; head: `c3f736ce542ddd8d0c3350c611f0e90560ced45c`.
+- التغييرات: تسلسل initial data reads (current user، model catalog، workspace hierarchy، tags، saved prompts، bookmarks، memories، notification list)؛ إزالة initial assistant request المكرر؛ تخطي duplicate initial conversations query مع الحفاظ على debounced search refresh؛ fallback assistants/conversations عند فشل workspace discovery؛ إلغاء بقية التسلسل بعد logout/unmount.
+- Auto-load الجديد في hooks اختياري افتراضيًا `true` للحفاظ على التوافق؛ App فقط يضبط `loadOnAuth=false` ويستدعي refresh methods في التسلسل. Notification WebSocket يبقى متصلًا فور المصادقة، ويؤجل REST list فقط.
+- اختبارات جديدة تغطي sequential order/abort، deferred hooks، استمرار WebSocket، ونتيجة workspace fetch.
+- PR ما زال Draft؛ CI run [43561624398](https://github.com/HVA09/ai-chat-app/actions/runs/43561624398) وCodeQL [43561624345](https://github.com/HVA09/ai-chat-app/actions/runs/43561624345) كانا In Progress عند آخر poll. لا merge ولا deploy من هذا الفرع.
+- لا تغييرات backend/DB/schema/migration/Render/Supabase/env/secrets/pool limits.
+
+### المطلوب بعد PR #709
+- انتظر جميع checks على نفس head SHA، ثم راجع أي frontend test/build failures قبل mark-ready/merge.
+- بعد النشر، راقب QueuePool timeout وapp 5xx، وليس /health فقط. المطلوب end-user routes وطلبات أول login بعد hibernation.
+- لا تزال الحاجة إلى pool owner diagnostics قائمة إذا تكررت الحادثة؛ current logs identify victims, not the three held checkouts.
+- لا production restore أو backfill/reindex أو تغيير pool settings. النسخة الإنتاجية لا تُعتبر staging sanitized backup.
+
