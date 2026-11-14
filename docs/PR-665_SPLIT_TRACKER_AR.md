@@ -1,0 +1,1468 @@
+# سجل تفكيك PR #665 — مرجع التنفيذ
+
+**آخر تحديث:** 2026-11-12 (Africa/Tripoli)  
+**الحالة:** سجل عمل مفتوح — PR #665 ما زال Draft وغير قابل للدمج بصورته الحالية.  
+**المستودع:** `HVA09/ai-chat-app`  
+**الفرع الأساسي المعتمد عند بدء السجل:** `main` عند commit `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee`.
+
+> هذا الملف هو سجل القرار والتقدم. يجب تحديثه عند إنشاء أي PR فرعي أو تغيير ترتيبه أو ظهور اختبار/عائق جديد. لا تعتمد على الذاكرة أو أرقام PR وحدها؛ سجّل دائمًا الفرع والـ SHA والاختبارات.
+
+## 1. القرار الثابت
+
+- لا ندمج PR #665 دفعة واحدة.
+- نحتفظ به مفتوحًا بحالة Draft كحزمة مصدر للمراجعة، ولا نغلقه أو نحذف فرعه أثناء التفكيك.
+- كل تغيير يُعاد بناؤه كـ PR صغير مستقل من أحدث `main`، وليس بدمج فرع #665 القديم أو cherry-pick عشوائي لسلسلة التزاماته.
+- لا يُدمج أي PR فرعي قبل مراجعة الملفات المتغيرة، والتحقق من عدم تكرار التغييرات الموجودة في `main`، ونجاح فحوص CI وCodeQL المطلوبة على رأس الفرع نفسه.
+- لا تغييرات على إعدادات Render أو Supabase أو الأسرار أو قاعدة الإنتاج، ولا استدعاءات تقييم حية لمزود AI، ضمن هذا التفكيك دون قرار منفصل وصريح.
+- لا ميزات واجهة جديدة في مرحلة الاستقرار إلا بعد اعتماد أساس الخادم والفهرسة والصلاحيات.
+
+## 2. نقطة البداية المثبتة
+
+### PR #665
+
+- العنوان: `feat(ai): strengthen embeddings and conversation memory foundations`.
+- الفرع: `ai/embedding-provider-separation-20261025`.
+- رأس الفرع عند الفحص: `4792285440511833b66e1045bc235143a5a302a5`.
+- حالة GitHub عند الفحص: Open / Draft / mergeable=false.
+- حجم التغيير المعلن: 70 ملفًا، +15,331 إضافة، -388 حذفًا.
+- يحتوي على عدة نطاقات متداخلة: إعداد Embeddings، فهرسة وبصمات الملفات، RAG والصلاحيات، تقييم الاسترجاع والاستشهادات، تعليمات النظام، MCP وأمان الأدوات، اقتراح الذكريات والواجهة، والتوثيق.
+- مقارنة رأسه مع `main` الحالي أظهرت تفرعًا كبيرًا (الفرع القديم متباعد عن `main`)؛ لذلك لا يُعاد توجيهه أو دمجه ككتلة واحدة.
+
+### main
+
+- الرأس عند إنشاء هذا السجل: `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee`.
+- هذا هو خط الأساس الذي يجب استخدامه عند إنشاء أول PR فرعي. إذا تحرك `main` لاحقًا، يجب تسجيل SHA الجديد قبل المتابعة.
+
+### ما دخل بالفعل إلى main ولا يعاد إدخاله
+
+- إصلاح PR #690 الخاص بقراءة Gemini REST `embedContent` لاستجابة `embedding.values` المفردة موجود في `main`.
+- Merge commit: `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee`.
+- فُحص ملف `ai-backend/app/services/embeddings.py` على `main` وتأكد وجود مسار قراءة الاستجابة المفردة، إضافة إلى دعم `embeddings[]` وOpenAI-compatible `data[].embedding`.
+- لذلك يجب استبعاد هذا الإصلاح من أي PR مستخرج من #665، وعدم إعادة نسخه أو تقديمه كعمل جديد.
+
+## 3. ترتيب التفكيك المقترح
+
+الترتيب يراعي الاعتماديات ويمنع خلط تغييرات التطبيق بترحيلات البيانات:
+
+| الترتيب | النطاق | ما يدخل فيه | ما لا يدخل فيه | الحالة |
+|---|---|---|---|---|
+| 0 | سجل التتبع | هذا المستند، القرارات، الروابط، SHA، نتائج الفحوص | لا تغييرات تشغيلية | قيد التسجيل |
+| 1 | إعداد مزود Embeddings | إعدادات مستقلة للمزود والمفتاح والعنوان والنموذج، توافق رجعي، تحقق إعدادات ومزود، اختبارات HTTP mock | بصمات الملفات، ترحيل DB، إعادة الفهرسة، إصلاح Gemini المفرد الموجود في #690 | لم يبدأ |
+| 2 | حدود وصلاحيات RAG | ملكية المحادثة، عضوية مساحة العمل، صلاحيات المشروع والمساعد داخل خدمة الاسترجاع، اختبارات منع الوصول | بصمات الفهرسة أو تحسينات الترتيب غير الضرورية | لم يبدأ |
+| 3 | سلامة فهرسة الملفات | بصمات النص وفضاء Embeddings، ترحيل Alembic، حفظ الفهرس القديم عند فشل إعادة الفهرسة، خطة التعامل مع السجلات القديمة | تشغيل ترحيل على الإنتاج أو إعادة فهرسة جماعية | لم يبدأ |
+| 4 | إدخال الملفات واستخراج النص | حدود DOCX/PDF/TXT/CSV، رسائل الصيغ المدعومة، إعادة محاولة فهرسة وصف الصور، اختبارات الملفات | تغييرات UI غير لازمة | لم يبدأ |
+| 5 | تقييم RAG | مجموعة بيانات offline، Recall@k وPrecision@k وnDCG@k وMRR، تقارير مقارنة قابلة لإعادة الإنتاج | `--run-live` أو أي استهلاك لحصة API | لم يبدأ |
+| 6 | سياق المطالبات والاستشهادات | تعليمات النظام حسب المزود، تحييد علامات السياق، تقييم الاستشهادات، اختبارات prompt injection المحلية | ادعاء مناعة كاملة أو نتائج تقييم حي بلا دليل | لم يبدأ |
+| 7 | أمان MCP وأدوات الوكيل | حدود خوادم MCP، allowlists، تحقق صلاحيات القراءة/التعديل، معالجة المدخلات، اختبارات عدم التغيير | تفعيل خوادم أو أدوات إنتاجية دون إعداد مستقل | لم يبدأ |
+| 8 | الذاكرة واقتراحاتها | API اقتراح الذكريات، موافقة المستخدم قبل الحفظ، فصل الذاكرة الشخصية عن المشروع، الخصوصية والملكية | حفظ تلقائي أو استخراج في الخلفية | مؤجل حتى استقرار الأساس |
+| 9 | الواجهة والتوثيق النهائي | لوحة اقتراح الذكريات، رسائل الملفات، خارطة الطريق وتوثيق التشغيل | أي إطلاق واجهة قبل اكتمال اختبارات API والصلاحيات | مؤجل |
+
+قد يُعاد ترتيب PR فرعي فقط إذا أثبتت مراجعة الاعتماديات ذلك، ويُسجل السبب هنا قبل التنفيذ.
+
+## 4. شروط قبول كل PR فرعي
+
+1. يبدأ من SHA حديث موثق من `main`.
+2. يغيّر أقل عدد ممكن من الملفات ويقدم مسؤولية واحدة واضحة.
+3. يذكر صراحة ما إذا كان يعتمد على PR فرعي سابق.
+4. لا يكرر إصلاح #690 أو أي تغييرات سبق دمجها.
+5. يتضمن اختبارات نجاح وفشل وحدود، باستخدام mocks/fixtures دون اتصال خارجي متى أمكن.
+6. يمر بجميع فحوص الفرع الإلزامية: backend، frontend، SDK، preview-builder، production-compose، CodeQL Python، CodeQL JavaScript/TypeScript.
+7. تُراجع migrations والخصوصية والصلاحيات بشكل خاص؛ نجاح CI لا يغني عن مراجعة المخاطر.
+8. لا دمج تلقائي لمجرد إنشاء PR؛ يُسجل قرار الدمج وSHA الناتج بعد نجاح الفحوص والمراجعة.
+9. بعد الدمج، يُسجل SHA الجديد لـ `main` ويُتحقق من حالة النشر والصحة عند انطباق ذلك.
+10. لا نعلن أن ميزة نجحت في الإنتاج بناءً على اختبارات محلية أو mocks فقط.
+
+## 5. سجل التنفيذ
+
+| التاريخ | الحدث | الدليل / SHA | النتيجة |
+|---|---|---|---|
+| 2026-11-12 | فحص PR #665 وحالته وحجمه | رأس #665: `4792285440511833b66e1045bc235143a5a302a5` | بقي Draft؛ لا دمج |
+| 2026-11-12 | التحقق من رأس main | `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee` | أساس التفكيك |
+| 2026-11-12 | التحقق من إصلاح Gemini المفرد | #690 merge `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee` | موجود في main؛ يستبعد |
+| 2026-11-12 | إنشاء سجل التفكيك | فرع `docs/pr-665-split-tracker-20261112` | قيد الفتح كمستند تتبع |
+| 2026-11-12 | إنشاء أول PR فرعي لإعداد Embeddings | #692، رأس مبدئي `68d6cebdabe7f50bb64b826a6e287a3d320497d5` ثم رأس مصحح `718683fe8089a93e7de1fa911f870f5b5089b28e` | Open / Draft؛ خطأ compileall في الرأس المبدئي ثم إصلاح؛ ننتظر فحوص الرأس المصحح |
+| — | أول نتائج CI/CodeQL | يضاف رابط التشغيل وSHA | لم يبدأ |
+
+## 6. سجل PRs الفرعية
+
+يُضاف صف فور إنشاء أي PR:
+
+| PR | العنوان | الفرع | Base SHA | Head SHA | النطاق | CI / CodeQL | القرار |
+|---|---|---|---|---|---|---|---|
+| #692 | فصل إعداد مزود Embeddings | `feat/embedding-provider-config-20261112` | `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee` | `718683fe8089a93e7de1fa911f870f5b5089b28e` | إعداد المزود/المفتاح/العنوان/النموذج + اختبارات mock + توثيق؛ دون بصمات DB أو RAG authorization | أعيدت الفحوص بعد إصلاح خطأ تركيب كشفه compileall؛ النتائج الجديدة قيد الانتظار | Draft؛ لا دمج حتى المراجعة والنجاح |
+
+## 7. سياسة التحديث ومنع الالتباس
+
+- قبل كل جلسة عمل: افحص هذا الملف، حالة #665، ورأس `main` الحالي.
+- بعد كل خطوة: أضف ما تغير، الملفات، SHA، نتائج الاختبارات، والعوائق.
+- إذا فشل اختبار: سجّل اسم الاختبار والسبب المعروف أو اكتب "السبب غير محسوم"؛ لا تخمّن.
+- إذا تغيرت الخطة: أضف قرارًا مؤرخًا وسببًا بدل حذف القرار السابق.
+- لا تستخدم أرقام PR متشابهة أو أسماء فروع قديمة دون ذكر العنوان والـ SHA.
+- لا تعتبر PR جاهزًا أو مدمجًا أو منشورًا حتى تُثبت GitHub/Render الحالة الفعلية.
+
+## 8. أول إجراء فني بعد اعتماد هذا السجل
+
+مراجعة PR #692 لإعداد مزود Embeddings. يجب أن يحتوي فقط على:
+- إعدادات `EMBEDDING_PROVIDER` و`EMBEDDING_API_KEY` و`EMBEDDING_API_BASE_URL` مع توافق رجعي عندما تترك فارغة.
+- اختيار مزود Embeddings ونموذجه وعنوانه ومفتاحه بشكل آمن، وعدم إرسال مفتاح مزود المحادثة إلى مضيف غير موثوق.
+- تحقق أبعاد المتجهات من المخطط الحالي.
+- اختبارات إعدادات وطلبات HTTP mock لمزود Gemini وOpenAI-compatible.
+- توثيق متغيرات البيئة.
+
+يجب ألا يتضمن هذا PR بصمات الفهرسة أو migration `0081` أو RAG authorization أو اقتراحات الذاكرة أو واجهتها. كما يجب أن يحتفظ بدعم parser المفرد الذي سبق دمجه في #690 من دون إعادة تعديل مساره.
+
+## 9. روابط العمل الحالية
+
+- سجل التفكيك: https://github.com/HVA09/ai-chat-app/pull/691
+- أول طلب فرعي لإعداد Embeddings: https://github.com/HVA09/ai-chat-app/pull/692
+- طلب المصدر الكبير الذي لا يزال Draft: https://github.com/HVA09/ai-chat-app/pull/665
+
+| 2026-11-12 | فشل أول compileall لـ #692 في `embeddings.py` بسبب قص غير صحيح لدالة بصمة الفهرسة أثناء الاستخراج | CI job `130927113038`، head `7da65b46b44e09a3e5a13c4bbb6ebbfee1f6dac2`; commit إصلاح `718683fe8089a93e7de1fa911f870f5b5089b28e` | لم يدخل `main`؛ أُصلح الملف وأعيد بناء الدالة من المصدر قبل طلب إعادة الفحوص |
+
+| 2026-11-12 | بدء إعادة فحوص رأس #692 المصحح | CI run `43140987241`؛ CodeQL run `43140987205`؛ head `718683fe8089a93e7de1fa911f870f5b5089b28e` | الفحوص قيد التنفيذ؛ لا نتيجة نهائية بعد |
+
+## 10. آخر حالة فحوص PR #692 — 2026-11-12
+
+- الرأس الجاري اختباره: `718683fe8089a93e7de1fa911f870f5b5089b28e`.
+- CI run: [43140987241](https://github.com/HVA09/ai-chat-app/actions/runs/43140987241) — ما زال قيد التنفيذ في Job الخلفية، وتحديدًا `Run backend tests with hang diagnostics`.
+- نجحت حتى آخر فحص: `frontend`، `sdk`، `preview-builder`، `production-compose`.
+- CodeQL run: [43140987205](https://github.com/HVA09/ai-chat-app/actions/runs/43140987205) — اكتمل بنجاح في Python وJavaScript/TypeScript.
+- حالة PR #692: Open / Draft / mergeable=true؛ لم يتم الدمج أو النشر.
+- لا تُعلن نتيجة CI الكاملة ناجحة حتى يكتمل Job الخلفية وتظهر النتيجة النهائية للـrun.
+
+## 11. إصلاح الاختبار الوحيد الفاشل — 2026-11-12
+
+- فشل التشغيل السابق في اختبار واحد: `tests/test_rag.py::test_gemini_embed_content_single_embedding_response_is_parsed`؛ النتيجة كانت 589 passed / 1 failed.
+- السبب: الاختبار يستخدم متجهًا اصطناعيًا من 3 أبعاد ولم يهيئ ثابت بُعد مخطط قاعدة البيانات للاختبار؛ كما كان يتوقع `taskType` في الموضع القديم بدل `embedContentConfig.taskType`.
+- إصلاح الاختبار نُقل إلى فرع #692 في commit `b1630280ce274e969cc25c9dd0a43ba5090aaf0b`، بضبط البعد 3 داخل الاختبار فقط وتحديث assertion. لم يتغير بُعد الإنتاج `vector(768)` ولا سلوك التطبيق لهذا الإصلاح الاختباري.
+- PR #693 أُغلق كطلب تابع مكرر بعد نقل التغيير مباشرة إلى فرع #692؛ لم يُدمج في `main`.
+- حالة #692 الحالية: Open / Draft؛ رأس جديد، وينبغي انتظار CI وCodeQL على الرأس الجديد قبل اعتباره ناجحًا.
+
+- بعد نقل تحديث الاختبار إلى فرع #692، بدأ تشغيل جديد على الرأس `b1630280ce274e969cc25c9dd0a43ba5090aaf0b`: CI [43142197727](https://github.com/HVA09/ai-chat-app/actions/runs/43142197727) وCodeQL [43142197795](https://github.com/HVA09/ai-chat-app/actions/runs/43142197795). آخر تحقق: كلاهما قيد التنفيذ؛ SDK مكتمل بنجاح، وبقية الوظائف لم تكتمل بعد.
+
+- مراجعة مرجعية لصيغة Gemini REST: وثائق Google الحالية تدرج `embedContentConfig` ضمن `EmbedContentRequest` وتعرض `taskType` و`outputDimensionality` في `EmbedContentConfig`؛ لذلك لا نرجع إلى حقول المستوى الأعلى القديمة التي أصبحت deprecated. المرجع: https://ai.google.dev/api/batch-api?hl=en و https://ai.google.dev/api/embeddings.
+
+## 12. إغلاق مراجعة #692 ونتائج الفحوص — 2026-11-12
+
+### نتيجة CI على رأس الكود
+
+- رأس الكود الذي اجتاز المجموعة الكاملة: `b1630280ce274e969cc25c9dd0a43ba5090aaf0b`.
+- CI run: [43142197727](https://github.com/HVA09/ai-chat-app/actions/runs/43142197727) — اكتمل بنجاح.
+- Backend: **590 passed, 2 warnings in 260.05s**؛ لا توجد اختبارات فاشلة.
+- Frontend tests وProduction build: نجاح.
+- SDK: نجاح.
+- Preview Builder: نجاح.
+- Production Compose validation/build: نجاح.
+- CodeQL run: [43142197795](https://github.com/HVA09/ai-chat-app/actions/runs/43142197795) — نجاح في Python وJavaScript/TypeScript.
+- تنبيهات الاختبارين كانت تحذيرات إهمال من مكتبات (`crypt` وStarlette)، وليست حالات فشل.
+
+### نتيجة مراجعة التغيير
+
+- راجعت ملفات #692 الثمانية، بما فيها خدمة Embeddings والإعدادات واختبارات HTTP mock ودليل الإعداد.
+- تحققت من أن صيغة Gemini REST تستخدم `embedContentConfig`؛ وثائق Google الحالية تضع `taskType` و`outputDimensionality` داخل هذا الكائن، وتصف الحقول القديمة في المستوى الأعلى بأنها deprecated.
+- المراجع الرسمية: https://ai.google.dev/api/batch-api?hl=en و https://ai.google.dev/api/embeddings.
+- ملاحظة مراجعة مهمة: تطابق عدد الأبعاد وحده لا يعني أن المتجهات متوافقة. تغيير المزود أو النموذج يغير فضاء Embeddings، ويلزم إعادة توليد متجهات المقاطع قبل استخدام المزود/النموذج الجديد للاستعلام.
+- أضيف هذا التحذير إلى `ai-backend/docs/EMBEDDING_PROVIDER_CONFIGURATION.md` في commit توثيقي فقط: `26c2c30fe7ed67eba814f0ace81985074c5d9d8f`.
+- أضيف أيضًا تنبيه صريح إلى أن ترك `EMBEDDING_PROVIDER` فارغًا يعني اتباع `AI_PROVIDER`؛ تغيير مزود المحادثة قد يغيّر المزود الافتراضي للمتجهات. ينبغي تثبيت إعدادات Embeddings صراحة قبل تغيير مزود المحادثة، أو تنفيذ خطة إعادة فهرسة معتمدة.
+- لا migration، ولا إعادة فهرسة، ولا تغيير إنتاجي ضمن هذا التعديل التوثيقي.
+
+### الحالة الحالية بعد التعديل التوثيقي
+
+- رأس PR #692 الحالي: `26c2c30fe7ed67eba814f0ace81985074c5d9d8f`.
+- هذا الرأس يحتوي على توثيق إضافي فقط فوق رأس الكود `b1630280ce274e969cc25c9dd0a43ba5090aaf0b` الذي اجتاز كل CI وCodeQL أعلاه؛ لا يوجد تشغيل CI جديد مسجل للالتزام التوثيقي وحده.
+- PR #692: Open / Draft / mergeable=true / لم يدمج.
+- Base SHA ما زال `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee`.
+- PR #691: Open / Draft؛ سجل التتبع نفسه لم يدمج.
+- PR #665: يبقى Open / Draft كمصدر للتفكيك.
+- لم يتغير `main`، ولم يحدث نشر أو تعديل Render/Supabase.
+- القرار: #692 اجتاز الاختبارات والمراجعة الفنية على رأسه الأخير؛ يُحوّل إلى Ready ويُدمج تلقائيًا وفق تفويض المستخدم العام الموثق في القسم 13. لا نبدأ PR صلاحيات RAG التابع حتى نثبت SHA الجديد لـ `main` بعد الدمج.
+## 13. تفويض الدمج التلقائي عند الجاهزية — 2026-11-12
+
+**قرار المستخدم:** إذا راجع المساعد PR ورأى أن التغيير مناسب وآمن ومكتمل الفحوص المطلوبة، فله تحويله من Draft إلى Ready ودمجه مباشرة دون طلب موافقة إضافية في كل مرة؛ الهدف تجنب تعطيل التقدم بأسئلة متكررة.
+
+### شروط تطبيق التفويض
+
+- النطاق واضح ومحدود، ولا توجد تعارضات أو تغييرات غير مقصودة.
+- تمت مراجعة الملفات والاعتماديات والتوافق مع الحالة الحالية لـ `main`.
+- جميع الفحوص الإلزامية على رأس PR نفسه مكتملة وناجحة، بما فيها CI وCodeQL.
+- لا توجد ملاحظة أمنية أو بيانات مكشوفة أو تغيير غير مفهوم.
+- لا يتضمن التغيير مخاطرة عالية غير قابلة للعكس.
+
+### حالات التوقف وطلب قرار مستقل
+
+- تعديل الأسرار أو إعدادات Render/Supabase أو موارد الإنتاج يدويًا.
+- migrations أو حذف/تحويل بيانات أو إعادة فهرسة جماعية أو تغيير فضاء Embeddings دون خطة نسخ احتياطي واسترجاع مثبتة.
+- تغييرات صلاحيات أو مصادقة ذات أثر واسع لم تكتمل مراجعتها.
+- تغييرات مالية/مدفوعة أو التزامات خارجية أو إجراء لا يمكن التراجع عنه بأمان.
+- فحوص فاشلة/ناقصة، تعارضات، أو عدم يقين جوهري في سلوك التغيير.
+
+### أسلوب التنفيذ والتوثيق
+
+- عند تحقق الشروط: لا يُطلب إذن جديد؛ يُدمج PR بالطريقة الأنسب (Squash افتراضيًا للتغييرات ذات commits متعددة) مع تثبيت `expected_head_sha` لمنع دمج رأس تغير أثناء المراجعة.
+- بعد الدمج: يُسجل PR، ورأس الفرع، وSHA الدمج، وSHA `main` الجديد، ونتائج الفحوص، وأثر النشر المتوقع/المتحقق.
+- إذا رفض GitHub الدمج بسبب حماية الفرع أو نقص check مطلوب، لا نتجاوز الحماية؛ نعالج سبب المنع ونعيد التحقق.
+- التفويض لا يعني دمج PR المصدر الكبير #665 ككتلة واحدة، ولا يعني تجاوز خطة التفكيك أو ضمانات الإنتاج.
+
+### أول تطبيق
+
+- PR #692 مناسب للدمج: تغييرات إعداد مزود Embeddings مع توافق رجعي، اختبارات mocks، لا migrations ولا إعادة فهرسة ولا أسرار أو تعديل إعدادات الإنتاج.
+- على رأسه الأخير `26c2c30fe7ed67eba814f0ace81985074c5d9d8f`، نجحت الوظائف الثمانية المطلوبة: `backend`, `frontend`, `sdk`, `preview-builder`, `production-compose`, `Analyze (python)`, `Analyze (javascript-typescript)`, و`CodeQL`.
+- CI: [43143159845](https://github.com/HVA09/ai-chat-app/actions/runs/43143159845) — نجاح.
+- CodeQL: [43143159899](https://github.com/HVA09/ai-chat-app/actions/runs/43143159899) — نجاح.
+- تم تحويل #692 إلى Ready ودمجه باستخدام Squash بعد تحقق شروط التفويض؛ يضاف SHA الدمج والرأس الجديد لـ `main` بعد تأكيد GitHub.
+## 14. نتيجة دمج PR #692 — 2026-11-12
+
+- وافق المستخدم على قاعدة الدمج التلقائي عند تحقق شروط الملاءمة والأمان ونجاح الفحوص؛ المرجع الدائم هو القسم 13.
+- تم تحويل #692 من Draft إلى Ready ثم دمجه بـ Squash دون طلب موافقة منفصلة، وفق هذا التفويض.
+- PR #692: https://github.com/HVA09/ai-chat-app/pull/692 — Closed / Merged.
+- رأس الفرع قبل الدمج: `26c2c30fe7ed67eba814f0ace81985074c5d9d8f`.
+- Merge commit وSHA `main` الجديد: `b80f6d658d4848f78c726f0a03b21ae50359fada`.
+- CI على رأس PR الأخير: [43143159845](https://github.com/HVA09/ai-chat-app/actions/runs/43143159845) — نجاح بجميع الوظائف الخمس.
+- CodeQL على رأس PR الأخير: [43143159899](https://github.com/HVA09/ai-chat-app/actions/runs/43143159899) — نجاح في Python وJavaScript/TypeScript.
+- فحوص ما بعد الدمج على `main` بدأت: CI [43143998208](https://github.com/HVA09/ai-chat-app/actions/runs/43143998208)، CodeQL [43143998283](https://github.com/HVA09/ai-chat-app/actions/runs/43143998283)، نشر صورة الخادم [43143998298](https://github.com/HVA09/ai-chat-app/actions/runs/43143998298). آخر تحقق: هذه الوظائف قيد التنفيذ.
+- Production smoke run [43143998272](https://github.com/HVA09/ai-chat-app/actions/runs/43143998272) — نجاح.
+- Render service `ai-chat-backend` مضبوط على `main` مع `autoDeploy=yes` و`autoDeployTrigger=checksPass`. آخر قائمة Deploys لا تزال تعرض `e5d640c...` كآخر نشر Live؛ لا يوجد دليل بعد أن التزام الدمج الجديد أصبح Live.
+- لم نغير إعدادات Render أو Supabase أو الأسرار يدويًا. ننتظر إثبات نشر Render الفعلي ثم فحص `/health` و`/ready` قبل تسجيل الإنتاج مستقرًا.
+- الخطوة التالية بعد ثبات `main` والتحقق من الإنتاج: تجهيز نطاق PR #693؟ لا؛ الرقم #693 مستخدم ومغلق كتغيير اختبار مكرر، لذا يُستخدم رقم PR الجديد الذي يمنحه GitHub عند إنشاء PR مستقل لصلاحيات RAG. لا نعيد استخدام أرقام سابقة.
+- PR #691 ما زال Draft لتسجيل قرارات التفكيك، وPR #665 الأصلي ما زال Draft كمصدر. لا دمج للطلب الكبير.
+### متابعة ما بعد الدمج — آخر فحص مسجل
+
+- CI run [43143998208](https://github.com/HVA09/ai-chat-app/actions/runs/43143998208): `sdk`, `frontend`, `preview-builder`, `production-compose` نجحت؛ بقي `backend` قيد التنفيذ.
+- CodeQL run [43143998283](https://github.com/HVA09/ai-chat-app/actions/runs/43143998283): اكتمل بنجاح في Python وJavaScript/TypeScript.
+- Publish backend image run [43143998298](https://github.com/HVA09/ai-chat-app/actions/runs/43143998298): اكتمل بنجاح.
+- Production smoke run [43143998272](https://github.com/HVA09/ai-chat-app/actions/runs/43143998272): اكتمل بنجاح.
+- آخر فحص Render: لا يزال آخر Deploy Live على commit `e5d640c30b64c01db3a2ab3cac9cb09bf82e96ee`؛ لم يظهر بعد Deploy جديد لـ `b80f6d...`. سياسة `checksPass` تمنع بدء النشر قبل نجاح جميع الفحوص المطلوبة.
+- لا يُعتبر نشر Render قد تم، ولا يُسجل التطبيق على أنه يعمل بالإصدار الجديد، حتى يظهر Deploy على SHA `b80f6d658d4848f78c726f0a03b21ae50359fada` بحالة `live` ثم تنجح فحوص الصحة.
+## 15. تأكيد استقرار الإصدار بعد دمج #692 — 2026-11-12
+
+- اكتملت جميع فحوص ما بعد الدمج على `main` عند `b80f6d658d4848f78c726f0a03b21ae50359fada`: backend، frontend، sdk، preview-builder، production-compose، CodeQL Python، CodeQL JavaScript/TypeScript.
+- CI run [43143998208](https://github.com/HVA09/ai-chat-app/actions/runs/43143998208) — نجاح.
+- CodeQL run [43143998283](https://github.com/HVA09/ai-chat-app/actions/runs/43143998283) — نجاح.
+- نشر صورة الخادم run [43143998298](https://github.com/HVA09/ai-chat-app/actions/runs/43143998298) — نجاح.
+- Production smoke run [43143998272](https://github.com/HVA09/ai-chat-app/actions/runs/43143998272) — نجاح.
+- Render deployment `dep-dbqikcvf3r2c73f7ioq0` على commit `b80f6d658d4848f78c726f0a03b21ae50359fada` — `live` منذ `2026-11-12T02:55:44Z`.
+- `/health`: `{"status":"ok","database":"ok"}`.
+- `/ready`: `{"status":"ready","database":"ok","redis":"ok"}`.
+- لم تُعدّل إعدادات Render/Supabase أو الأسرار. تحقق الصحة قراءة فقط.
+
+## 16. النطاق التالي: صلاحيات RAG وسياق المحادثة — بدء التحضير
+
+- خط أساس `main` بعد نجاح نشر #692: `b80f6d658d4848f78c726f0a03b21ae50359fada`.
+- المصدر المرجعي: PR #665، الفرع `ai/embedding-provider-separation-20261025`، لكنه ليس أساسًا للدمج؛ يُعاد بناء التغيير ملفيًا فوق `main` فقط.
+- النطاق المقصود: تحقق مالك المحادثة، وعضوية مساحة العمل، وصلاحية المشروع الحالية، واستمرار مشاركة المساعد، في خدمة RAG وبناء سياق الملفات/الذاكرة، مع إعادة تحقق بعد انتظار خدمة embeddings وقبل إرسال الصور إلى المزود.
+- تُستبعد من هذا PR: بصمات فهرسة الملفات وmigration `0081` وأي إعادة فهرسة؛ تحسين ترتيب fallback؛ تنظيف prompt delimiters/أسماء الملفات؛ تغييرات رفع/حذف/تنزيل الملفات وZIP safety؛ تغييرات حذف المشروع؛ MCP/ذاكرة API/الواجهة.
+- اختبارات القبول المستهدفة: منع مالك محادثة مختلف من استدعاء RAG؛ منع الاسترجاع بعد سحب عضوية workspace أو project؛ منع استعمال ملفات المساعد بعد إلغاء مشاركته؛ منع تحميل fallback/ذاكرة المشروع/الصورة بعد سحب الإذن؛ وعدم تحويل HTTP 404 الخاص بالصلاحيات إلى RAG fallback صامت.
+- لا migration ولا تعديل production settings ولا استدعاءات AI حية في هذا PR.
+- لا يُنشأ أو يدمج PR الصلاحيات قبل مراجعة فروق الملفات، وتشغيل CI وCodeQL كاملين على رأسه.
+## 17. فتح PR #694 لصلاحيات RAG — 2026-11-12
+
+- قبل بدء العمل، تم إثبات استقرار الإنتاج بعد #692: Render deployment `dep-dbqikcvf3r2c73f7ioq0` على SHA `b80f6d658d4848f78c726f0a03b21ae50359fada` بحالة `live`.
+- نتائج `/health`: `status=ok`, `database=ok`؛ `/ready`: `status=ready`, `database=ok`, `redis=ok`.
+- تصحيح للسجل الزمني: فقرة "آخر فحص Render" القديمة في القسم 14 كانت صحيحة وقت كتابتها قبل اكتمال النشر. القسم 15 هو الحالة النهائية بعد النشر ويحل محل الحالة المؤقتة السابقة.
+- PR #694: https://github.com/HVA09/ai-chat-app/pull/694.
+- العنوان: `fix(rag): enforce live conversation access for retrieval context`.
+- الفرع: `fix/rag-conversation-access-20261112`.
+- Base SHA: `b80f6d658d4848f78c726f0a03b21ae50359fada`.
+- الرأس الحالي: `d386360ea9d9ad540060920a13a3921e13f87620`.
+- التغيير محصور في أربعة ملفات: `ai-backend/app/services/rag.py`, `ai-backend/app/routers/chat.py`, `ai-backend/tests/test_rag.py`, `ai-backend/tests/test_chat.py`.
+- أضيف تحقق service-level من ملكية المحادثة، وحالة الحذف، وعضوية workspace، وصلاحية المشروع، وملكية/مشاركة المساعد؛ وتُعاد مراجعة الصلاحيات بعد انتظار embedding قبل إرجاع المقاطع.
+- أضيف تحقق route-level قبل بناء السياق، وبعد انتظار RAG وقبل fallback النصي، وفي `/chat/compare` و`/chat/vision`؛ وتُمنع أخطاء HTTP 404 للصلاحيات من التحول إلى fallback صامت.
+- حُميت project memories من التحميل عند فقد صلاحية المشروع.
+- الاختبارات الجديدة تغطي محادثة مستخدم آخر، وسحب عضوية workspace، وغياب project role، وإلغاء assistant share، وسحب الإذن أثناء انتظار embedding، ومنع سياق الذاكرة والوكيل والمقارنة والصورة بعد سحب الصلاحية.
+- لا بصمات فهرسة ولا migration `0081` ولا إعادة فهرسة؛ لا تعديل إعدادات Render/Supabase أو الأسرار؛ لا استدعاءات AI حية.
+- CI run [43145917571](https://github.com/HVA09/ai-chat-app/actions/runs/43145917571) وCodeQL run [43145917584](https://github.com/HVA09/ai-chat-app/actions/runs/43145917584) بدآ على الرأس `d386360...`; آخر فحص وقت تحديث هذا السجل: الفحوص ما زالت قيد التنفيذ. SDK وProduction Compose مكتملان بنجاح، وبقية الوظائف قيد التنفيذ.
+- PR #694 يبقى Open / Draft حتى اكتمال الفحوص والمراجعة على رأسه النهائي.
+### نتيجة أول تشغيل لـ #694 والتصحيح — 2026-11-12
+
+- CI run [43145917571](https://github.com/HVA09/ai-chat-app/actions/runs/43145917571) على الرأس `d386360ea9d9ad540060920a13a3921e13f87620` انتهى: **599 passed, 1 failed, 2 warnings**.
+- الفشل الوحيد: `tests/test_pool_release_acceptance.py::test_second_session_can_use_only_pool_slot_while_external_io_is_blocked[vision_provider]` عند `tests/test_pool_release_acceptance.py:344`؛ وجد الاختبار اتصالًا واحدًا محجوزًا أثناء انتظار مزود الرؤية (`checkedout() == 1` بدل 0).
+- السبب المؤكد من ترتيب الكود: أضفنا إعادة فحص ACL بعد تحرير الاتصال وقبل استدعاء مزود الرؤية، وهذا الفحص أعاد استخدام جلسة قاعدة البيانات ولم يُحرر الاتصال مرة ثانية قبل الانتظار الخارجي.
+- التصحيح في commit `c3053f3439db853202a4ec82295ff4021593ab60`: استدعاء `commit_and_release_connection(db)` مباشرة بعد إعادة فحص ACL النهائية وبعد تجهيز الصورة، وقبل `get_ai_vision_reply`.
+- بذلك نحافظ على الهدفين معًا: إعادة التحقق من صلاحية المستخدم بعد تجهيز الصورة، ثم تحرير اتصال DB قبل استدعاء مزود الرؤية. لا يتطلب التصحيح أي تعديل إنتاج أو schema.
+- رأس #694 الحالي بعد التصحيح: `c3053f3439db853202a4ec82295ff4021593ab60`; يجب تشغيل CI وCodeQL مجددًا على هذا الرأس تحديدًا. لا دمج حتى نجاحهما.
+- بعد إصلاح حد تحرير الاتصال في Vision، بدأ تشغيل جديد على الرأس `c3053f3439db853202a4ec82295ff4021593ab60`: CI [43146675524](https://github.com/HVA09/ai-chat-app/actions/runs/43146675524) وCodeQL [43146675611](https://github.com/HVA09/ai-chat-app/actions/runs/43146675611). آخر تحقق: كلاهما قيد التنفيذ؛ SDK هو أول job مكتمل بنجاح.
+
+### إعادة التحقق الثالثة بعد تصحيح ترتيب تحرير DB في Vision — 2026-11-12
+
+- أوضح التشغيل السابق [43146675524](https://github.com/HVA09/ai-chat-app/actions/runs/43146675524) أن اختبار قبول حجز الاتصال أصبح ناجحًا، بما فيه `vision_provider`؛ الفشل الوحيد كان في توقع سجل الأحداث لا في سلوك تحرير الاتصال:
+  `tests/test_vision.py::test_analyze_attached_image` توقع `["release", "vision"]` بينما السلوك الجديد الصحيح هو `["release", "release", "vision"]`.
+- الترتيب المقصود: تحرير اتصال DB قبل materialize/قراءة الصورة من التخزين، ثم إعادة تحميل صلاحيات المحادثة بعد تجهيز الصورة، ثم تحرير الاتصال الذي أعادت عملية التحقق فتحه، وبعدها فقط استدعاء مزود الرؤية.
+- تم تحديث اختبار `ai-backend/tests/test_vision.py` بهذا الترتيب مع تعليق يشرح السببين؛ لم يتم حذف assertion أو تخفيفه.
+- الرأس الجديد: `b3592da30ef4ce862cdb7d9cb813b5e70c7f66c3`.
+- CI run [43150034903](https://github.com/HVA09/ai-chat-app/actions/runs/43150034903) وCodeQL run [43150035008](https://github.com/HVA09/ai-chat-app/actions/runs/43150035008) يعملان على هذا الرأس.
+- آخر حالة: SDK نجح؛ Backend وFrontend وProduction Compose وPreview Builder وCodeQL ما زالت قيد التنفيذ. لا تُعتبر الفحوص ناجحة حتى تكتمل جميعها.
+- PR #694 يبقى Draft، لم يُدمج، ولم يتغير `main` أو Render بسبب هذا الفرع.
+
+
+- **تحديث نطاق الملفات بعد تصحيح اختبار Vision:** أصبح PR #694 يغيّر خمسة ملفات، بعد إضافة `ai-backend/tests/test_vision.py` لتوثيق تسلسل تحرير DB المزدوج:
+  1. `ai-backend/app/routers/chat.py`
+  2. `ai-backend/app/services/rag.py`
+  3. `ai-backend/tests/test_chat.py`
+  4. `ai-backend/tests/test_rag.py`
+  5. `ai-backend/tests/test_vision.py`
+- هذا تحديث تصحيحي لعبارة "أربعة ملفات" في القسم 17؛ النطاق الوظيفي لا يزال هو نفسه.
+
+## 18. التحضير المبدئي لمرحلة بصمات فهرسة الملفات — لا تغيير كود بعد
+
+- لا يبدأ طلب بصمات الفهرسة إلا بعد دمج #694 والتحقق من `main` ونشره وصحة الخدمة.
+- ملفات المصدر المحتملة في #665:
+  - `ai-backend/app/models/file_attachment.py`: حقول مصدر النص/بصمة نموذج embeddings/وقت الفهرسة، ودالة normalized-text fingerprint.
+  - `ai-backend/migrations/versions/0081_file_index_fingerprints.py`: migration لإضافة أعمدة nullable فقط، مع مراجعة downgrade/ترتيب revision chain.
+  - `ai-backend/app/services/rag.py`: تحديث `index_file_chunks` لحفظ هوية المصدر والنموذج، واستبعاد المقاطع التي لا تتوافق بصماتها مع المصدر/النموذج الحالي.
+  - `ai-backend/tests/test_rag_index_fingerprints.py`: اختبارات رفض الفهرس القديم عندما يتغير النص أو نموذج embeddings.
+  - أجزاء محددة فقط من `ai-backend/app/routers/files.py` و`tests/test_files.py` لحالة الفهرسة وإعادة الفهرسة، بعد فصل الـ ACL وملفات ZIP الموجودة في نفس الملف.
+- عناصر يجب استبعادها من PR الفهرسة:
+  - صلاحيات workspace/project والتحميل/الإرفاق/الحذف — نُقلت وظيفيًا إلى #694 أو يجب فصلها في نطاق مستقل.
+  - حماية ZIP/Office extraction وتطبيع أسماء الملفات.
+  - تحسين ترتيب ملفات fallback وتنظيف prompt delimiters.
+  - تغيير `ai-backend/app/tasks.py` الذي يمرر دور المستخدم إلى agent configuration version؛ لا يعتمد عليه fingerprint PR ويجب نقله إلى نطاق Agent/MCP لاحق.
+- خطر تشغيلي يجب فحصه قبل أي دمج: migration `0081` يجب أن تكون إضافة أعمدة nullable فقط بلا backfill أو إعادة فهرسة تلقائية أو قفل طويل للجدول. تحديث الفهارس القديمة يكون عملية منفصلة قابلة للتدرج، ولا يُجرى على الإنتاج ضمن migration.
+- لا ينفذ أي migration على Render/Supabase يدويًا خلال التحضير. الاختبار يكون على قاعدة CI أولًا، ثم مراجعة خطة النشر/backfill قبل الدمج.
+
+## 19. دمج #694 والتحقق من main وRender — 2026-11-12
+
+### الدمج ومراجعة النطاق
+- PR #694: https://github.com/HVA09/ai-chat-app/pull/694 — أُغلق بصفته مدمجًا في `main` بطريقة Squash.
+- PR head الذي اجتاز الفحوص: `b3592da30ef4ce862cdb7d9cb813b5e70c7f66c3`.
+- Base قبل الدمج: `b80f6d658d4848f78c726f0a03b21ae50359fada`.
+- Merge commit ورأس `main` الحالي: `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13`.
+- الملفات الخمسة النهائية:
+  1. `ai-backend/app/routers/chat.py`
+  2. `ai-backend/app/services/rag.py`
+  3. `ai-backend/tests/test_chat.py`
+  4. `ai-backend/tests/test_rag.py`
+  5. `ai-backend/tests/test_vision.py`
+- لم يتضمن PR migrations أو reindex أو تعديلات Render/Supabase أو الأسرار أو تغييرات إنتاجية يدوية.
+
+### نتائج الفحوص قبل الدمج
+- CI [43150034903](https://github.com/HVA09/ai-chat-app/actions/runs/43150034903): **600 passed, 2 warnings in 311.64s**.
+- CodeQL [43150035008](https://github.com/HVA09/ai-chat-app/actions/runs/43150035008): نجاح.
+- جميع الفحوص الثمانية الظاهرة على رأس PR انتهت بنجاح.
+- لم تظهر مراجعات أو threads معلقة في PR.
+
+### نتائج الفحوص بعد الدمج على main
+- CI [43151446387](https://github.com/HVA09/ai-chat-app/actions/runs/43151446387): **600 passed, 2 warnings in 291.74s**.
+- CodeQL [43151446356](https://github.com/HVA09/ai-chat-app/actions/runs/43151446356): نجاح، Python وJavaScript/TypeScript.
+- Production smoke [43151446481](https://github.com/HVA09/ai-chat-app/actions/runs/43151446481): نجاح.
+- Publish backend image [43151446459](https://github.com/HVA09/ai-chat-app/actions/runs/43151446459): نجاح.
+- جميع check runs التسعة على merge SHA اكتملت بنجاح، دون checks فاشلة أو معلقة.
+
+### Render بعد الدمج
+- الخدمة: `srv-dakc4nbm8hqs73e2po9g` (`ai-chat-backend`)، الخطة Free، الفرع `main`، والنشر التلقائي مضبوط على `checksPass`.
+- Render deployment: `dep-dbqjkd59el5s73f04dg0`، commit `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13`، الحالة النهائية `live`.
+- `/health`: `{"status":"ok","database":"ok"}`.
+- `/ready`: `{"status":"ready","database":"ok","redis":"ok"}`.
+- ظهرت استجابة `503` واحدة في أول محاولة تحقق أثناء متابعة التحديث؛ عادت نقاط الصحة بعد ذلك بنجاح في محاولات متكررة، بما فيها التحقق بعد أن أصبح Deploy الجديد `live`. لا يوجد تشخيص مؤكد لسبب الاستجابة المؤقتة، ولا تُسجل كفشل نشر.
+- لا يوجد أي تدخل يدوي في الإنتاج أو تغيير إعدادات/أسرار.
+
+### القرار التالي
+- أصبح شرط البدء في مرحلة بصمات فهرسة الملفات متحققًا: #694 مدمج، `main` أخضر، وRender `live` ونقاط الصحة سليمة.
+- المرحلة التالية المقترحة هي PR صغير مستقل فوق `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13`, لنطاق بصمات النص ومصدر embeddings فقط.
+- لا تبدأ migration `0081` أو أي reindex قبل قراءة سلسلة revisions كاملة، وفحص downgrade، وقياس أثر الأعمدة nullable، ونجاح CI على فرع المرحلة.
+## 20. بدء مرحلة بصمات فهرسة الملفات — PR #695 — 2026-11-12
+
+### PR الجديد وحدود التنفيذ
+- PR #695: https://github.com/HVA09/ai-chat-app/pull/695 — Open / Draft، غير مدمج.
+- Branch: `fix/rag-index-fingerprints-20261112`.
+- Base: `main` على `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13`.
+- Head بعد آخر تعديل: `12b83ba2826e80de75e1084a51608f8396c7db7a`.
+- سبعة ملفات: نموذج FileAttachment، Embedding identity، RAG index writer، migration، واختبارات الهوية والفهرسة.
+
+### قرار سلسلة migrations
+- المصدر القديم في #665 اقترح `0081_file_index_fingerprints` بعد `0080_harden_public_rls`.
+- لكن main يحتوي بالفعل `0081_harden_all_public_tables`، وهي child لنفس revision `0080_harden_public_rls`.
+- لذلك migration المرحلة الحالية مرقمة `0082_file_index_fingerprints` و`down_revision = 0081_harden_all_public_tables`. هذا يحافظ على خط واحد بعد head الحالي ولا ينشئ migration head موازية.
+
+### استراتيجية نشر مرحلية للحفاظ على توافق الملفات القديمة
+- #695 هو write-side foundation فقط: يضيف nullable metadata، ويحسب بصمة النص الحالي، وهوية embedding سرية المفتاح، ويسجل metadata بعد اكتمال توليد المتجهات.
+- لا يضيف #695 شرط stale-index إلى retrieval بعد. تبقى ملفات الإنتاج القديمة ذات metadata NULL قابلة للاسترجاع كما كانت قبل هذا التغيير، فلا يحدث تعطيل مفاجئ للمعرفة القديمة عند تطبيق migration.
+- لا يحتوي migration على backfill أو reindex، ولا تُجرى أي عملية reindex إنتاجية.
+- يجب أن تنفذ مرحلة منفصلة بعد #695 آلية reindex آمنة للملفات القديمة، وبعدها فقط تفعيل strict retrieval fingerprint filtering في PR منفصل مع اختبارات stale source/provider.
+- تم استبعاد تغييرات files router وZIP/Office paths وtasks/Agent من هذا PR.
+
+### حالة الفحوص
+- بعد آخر commit `12b83ba2826e80de75e1084a51608f8396c7db7a`, GitHub أنشأ CI run `43152937955` وCodeQL run `43152937843`. حالتهما كانت pending عند تسجيل هذه الملاحظة؛ لا تُسجل أي نتيجة نجاح قبل اكتمالهما.
+- PR #695 Draft ولا يُدمج حتى تكتمل جميع الفحوص والمراجعة.
+
+## 21. بوابة migration الإنتاجية في PR #695 — 2026-11-12
+
+- تمت مراجعة `ai-backend/scripts/start.sh`: أمر بدء حاوية Backend ينفذ `alembic upgrade head` قبل تشغيل Uvicorn.
+- إعداد Render الفعلي للخدمة `srv-dakc4nbm8hqs73e2po9g` هو `autoDeploy=yes` و`autoDeployTrigger=checksPass`. لذلك دمج #695 سيؤدي إلى تطبيق migration `0082` تلقائيًا في نشر Render التالي؛ عدم تشغيل migration يدويًا لا يعني أن الدمج بلا أثر على قاعدة الإنتاج.
+- أُضيفت هذه الحقيقة إلى وصف PR #695. يبقى Open / Draft، ولا يُحوّل إلى Ready ولا يُدمج قبل:
+  1. إثبات وجود نسخة PostgreSQL احتياطية حديثة ومعرفة مسار الاستعادة.
+  2. اختبار الترقية على قاعدة مرحلية/مؤقتة عند schema مطابق لـ `main`، والتأكد من أن الأعمدة الستة nullable ولا يوجد backfill أو reindex.
+  3. مراجعة مدة/أقفال migration وأثر downgrade؛ downgrade يحذف الأعمدة الستة، ولذلك يختبر على قاعدة مؤقتة فقط.
+  4. قرار صريح بالموافقة على تغيير schema في الإنتاج.
+- هذا الشرط منفصل عن تفويض الدمج التلقائي للطلبات منخفضة المخاطر، ويتوافق مع بوابة التغييرات الإنتاجية في القسم 13.
+- حالة الفحوص عند التحديث: CodeQL Python وJavaScript/TypeScript ناجحان؛ Frontend وSDK وPreview Builder وProduction Compose ناجحة؛ Backend pytest ما زال قيد التنفيذ. لا تُسجل نتيجة Backend قبل نهاية job.
+
+## 22. دمج #695 ونتائج ما بعد الدمج — 2026-11-12
+
+### حالة PR والفحوص على رأسه
+- GitHub يؤكد أن PR #695 أُغلق بصفته مدمجًا في `2026-11-12T04:16:31Z`؛ merge commit: `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f`.
+- PR head: `12b83ba2826e80de75e1084a51608f8396c7db7a`; base قبل الدمج: `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13`.
+- CI PR run [43152937955](https://github.com/HVA09/ai-chat-app/actions/runs/43152937955): جميع الوظائف الخمس ناجحة.
+- Backend pytest: **607 passed, 2 warnings in 292.60s**.
+- CodeQL PR run [43152937843](https://github.com/HVA09/ai-chat-app/actions/runs/43152937843): Python وJavaScript/TypeScript ناجحان.
+- لا فحوص فاشلة على رأس PR.
+
+### فحوص push على main
+- `main` انتقل مباشرة من `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13` إلى `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f` (commit واحد، لا commits إضافية).
+- CI push run [43153718406](https://github.com/HVA09/ai-chat-app/actions/runs/43153718406): SDK وFrontend وPreview Builder وProduction Compose نجحت؛ Backend pytest كان لا يزال قيد التنفيذ عند آخر تحقق.
+- CodeQL push run [43153718347](https://github.com/HVA09/ai-chat-app/actions/runs/43153718347): نجاح.
+- Production smoke push run [43153718382](https://github.com/HVA09/ai-chat-app/actions/runs/43153718382): نجاح.
+- Publish backend image push run [43153718274](https://github.com/HVA09/ai-chat-app/actions/runs/43153718274): نجاح.
+- عند آخر تحقق لم تبدأ أحداث Render على SHA `f3ba9...` بعد، وآخر deployment Live كان على `c8264a...`. إعداد Render ما زال `autoDeploy=yes` و`autoDeployTrigger=checksPass`؛ ننتظر اكتمال CI على main ثم نعيد فحص deployment وhealth/ready.
+- لم تُنفذ migration أو backfill أو إعادة فهرسة يدويًا، ولم تُعدّل أسرار أو إعدادات الإنتاج. لا تعتبر migration 0082 مطبقة حتى يؤكد Render deployment الجديد أو تحقق قاعدة البيانات المصرّح به.
+### إعادة فحص الخدمة أثناء انتظار CI الخاص بـ main
+- عند إعادة الفحص، بقي Backend job في CI push run [43153718406](https://github.com/HVA09/ai-chat-app/actions/runs/43153718406) داخل خطوة Backend pytest؛ بقية وظائف CI الأربع انتهت بنجاح، وCodeQL push run [43153718347](https://github.com/HVA09/ai-chat-app/actions/runs/43153718347) انتهى بنجاح.
+- فحص Production smoke [43153718382](https://github.com/HVA09/ai-chat-app/actions/runs/43153718382) انتهى بنجاح.
+- Render لا يزال يعرض deployment السابق `dep-dbqjkd59el5s73f04dg0` على SHA `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13` بحالة `live`؛ لم تظهر أحداث build/deploy جديدة بعد دمج #695.
+- نقاط الخدمة على النسخة التي لا تزال Live: `/health = {status:ok,database:ok}` و`/ready = {status:ready,database:ok,redis:ok}`. هذه النتائج تثبت سلامة النسخة السابقة فقط، ولا تثبت أن migration 0082 طُبقت.
+- القرار: لا نعلن نشر #695 حتى يظهر Render deploy على SHA `f3ba9d4...` بحالة `live`، ثم نعيد فحص `/health` و`/ready` ونراجع سجل بدء الحاوية لإثبات ترقية Alembic.
+## 21. نتائج PR #695 واختبار staging وحالة بوابة الإنتاج — 2026-11-12
+
+### دمج وفحوص PR
+- PR #695: https://github.com/HVA09/ai-chat-app/pull/695 — merged بطريقة Squash.
+- رأس PR المختبر: `12b83ba2826e80de75e1084a51608f8396c7db7a`.
+- Merge commit ورأس `main`: `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f`.
+- CI [43152937955](https://github.com/HVA09/ai-chat-app/actions/runs/43152937955): **607 passed, 2 warnings in 292.60s**.
+- CodeQL [43152937843](https://github.com/HVA09/ai-chat-app/actions/runs/43152937843): Python وJavaScript/TypeScript ناجحان.
+- وظائف Backend وFrontend وSDK وPreview Builder وProduction Compose نجحت؛ فحوص migration upgrade وORM metadata check نجحت.
+
+### اختبار Supabase staging
+- المشروع `ai-chat-stage-db`، project ref `ihjuewvddqsesbrqqptj`, كان Alembic revision `0081_harden_all_public_tables` قبل الاختبار.
+- طُبقت DDL مكافئة لأعمدة migration الستة على staging فقط، ثم فُحص `information_schema.columns`.
+- ظهرت الأعمدة الستة جميعها nullable، والأطوال النصية 64/64/64/40/120، و`indexed_at` من نوع timestamptz.
+- عدد صفوف `file_attachments` في staging كان 0، وعدد القيم غير الفارغة في جميع أعمدة البصمات الجديدة كان 0؛ لم يحدث backfill أو reindex.
+- اختُبر downgrade على staging بإزالة الأعمدة الستة؛ النتيجة: `remaining_fingerprint_columns = 0`, وظل `alembic_version = 0081_harden_all_public_tables`.
+- هذا اختبار DDL عملي على staging باستخدام Supabase migration tool، وليس تشغيل Alembic CLI على staging. Alembic upgrade الفعلي اختُبر مستقلًا على PostgreSQL المؤقت داخل CI.
+
+### بوابة النسخة الاحتياطية والموافقة — عائق غير مغلق
+- ظهر في نص PR #695 قبل الدمج شرط إضافي: لا تجعل PR Ready ولا تدمجه قبل تأكيد نسخة إنتاج احتياطية حديثة وإمكانية استعادتها، واختبار staging، ومراجعة lock/downgrade، والموافقة الصريحة على تغيير مخطط الإنتاج.
+- **حدث خطأ إجرائي:** حُوّل PR إلى Ready ودُمج قبل التحقق من النسخة الاحتياطية والموافقة الصريحة. هذا الشرط كان ينبغي أن يوقف الدمج.
+- تم التحقق من Supabase organization plan: `free`، لذلك لا توجد نسخ يومية تلقائية ضمن الخطة بحسب توثيق Supabase الحالي. النسخ اليدوي ممكن عبر Supabase CLI، لكن لم يظهر في الأدوات المتاحة دليل على وجود نسخة يدوية حديثة أو اختبار restore.
+- المصدر الرسمي: https://supabase.com/kb/faqs/platform/free-plan-backups وhttps://supabase.com/docs/guides/platform/backups (راجِع تاريخ تحديث الوثائق في 2026-10-30 و2026-11-05).
+- Production project `ai-chat-prod-db` ref `wfhijmawoojcmfdgibxg` عند آخر فحص: `alembic_version = 0081_harden_all_public_tables`. عدد أعمدة fingerprint الجديدة في `public.file_attachments` = 0.
+- Render auto-deploy ما زال `checksPass`. آخر deploy ظاهر هو `dep-dbqjkd59el5s73f04dg0` على SHA `c8264a391ba1b5cfaa02821320d3ae5dd6b17c13` بحالة `live`. لم يبدأ deploy للـ `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f` عند آخر فحص.
+- Main CI [43153718406](https://github.com/HVA09/ai-chat-app/actions/runs/43153718406) كان لا يزال `in_progress`؛ CodeQL [43153718347](https://github.com/HVA09/ai-chat-app/actions/runs/43153718347)، Publish image [43153718274](https://github.com/HVA09/ai-chat-app/actions/runs/43153718274)، وProduction smoke [43153718382](https://github.com/HVA09/ai-chat-app/actions/runs/43153718382) اكتملت بنجاح.
+- لا يوجد تأكيد من المستخدم بعد على نشر migration `0082` إلى قاعدة الإنتاج. لا تنفذ migration أو reindex يدويًا ولا تغيّر إعدادات Render أثناء انتظار القرار.
+
+
+## 23. اكتمال CI على main وبدء نشر Render — 2026-11-12
+
+### نتيجة CI بعد الدمج
+- GitHub CI push run [43153718406](https://github.com/HVA09/ai-chat-app/actions/runs/43153718406) اكتمل عند `2026-11-12T04:22:50Z` على SHA `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f` بنتيجة **success**.
+- جميع وظائف CI الخمس ناجحة: Backend وFrontend وSDK وPreview Builder وProduction Compose.
+- خطوات Backend التالية اكتملت بنجاح: `pip-audit`, `compileall`, `alembic upgrade head` على PostgreSQL المؤقت في CI، وفحص تطابق ORM metadata، ثم Backend pytest. لم يتوفر في مخرجات الوظائف رقم إجمالي pass count لهذا التشغيل؛ لذلك لا يُنسخ رقم 607 الخاص بتشغيل PR #695 على أنه عدد اختبارات تشغيل main.
+- CodeQL push [43153718347](https://github.com/HVA09/ai-chat-app/actions/runs/43153718347)، Production smoke [43153718382](https://github.com/HVA09/ai-chat-app/actions/runs/43153718382)، وPublish image [43153718274](https://github.com/HVA09/ai-chat-app/actions/runs/43153718274) ظلت ناجحة حسب آخر تحقق.
+
+### حالة Render بعد اكتمال CI
+- بعد اكتمال CI بدأ Render النشر التلقائي للـ SHA نفسه.
+- deployment الجديد: `dep-dbqju7e7bikc739n63i0`.
+- build: `bld-dbqju7e7bikc739n63ig`، وحدث `build_ended` بحالة `succeeded` عند `2026-11-12T04:23:05Z`.
+- حدث `deploy_started` عند `2026-11-12T04:22:53Z`، وكانت الحالة عند آخر فحص `update_in_progress`؛ لم يصل بعد إلى `live`.
+- تم تأكيد إعداد الخدمة: `autoDeploy=yes`, `autoDeployTrigger=checksPass`, الفرع `main`.
+- آخر فحصي `/health` و`/ready` أعادا OK قبل بدء deployment الجديد، ولذلك فهما يثبتان سلامة الإصدار السابق فقط، ولا يثبتان صحة الإصدار الجديد أو تطبيق migration.
+- لا يوجد حتى هذه اللحظة دليل مباشر على تنفيذ Alembic revision `0082_file_index_fingerprints` على الإنتاج.
+
+### حاجز فحص سجلات Render وسلامة قاعدة الإنتاج
+- أداة سجلات Render طلبت تحديد workspace. أظهر استعلام workspaces وجود مساحة واحدة باسم `My Workspace` ومعرف `tea-dagsi5ou01pc73f2g470`، لكن لم يتم اختيارها دون موافقة المستخدم.
+- بوابة النسخة الاحتياطية والموافقة الصريحة على تغيير مخطط الإنتاج ما زالت غير موثقة الإغلاق كما في القسم 21 (المضاف لاحقًا)؛ staging وCI ليسا بديلًا عن backup/restore production.
+- لا تُنفذ إعادة فهرسة، ولا backfill، ولا migration يدوية. لا تُجرى تغييرات لإعدادات Render أو قاعدة الإنتاج. يلزم أولًا حسم إذن استخدام مساحة Render المحددة لمراجعة logs/deploy، ثم التحقق من حالة النشر والصحة وrevision قبل أي مرحلة لاحقة.
+
+
+## 24. تحقق تطبيق migration 0082 على قاعدة الإنتاج — 2026-11-12
+
+### دليل قاعدة البيانات
+- تم التحقق للقراءة فقط من المشروع `ai-chat-prod-db`، ref `wfhijmawoojcmfdgibxg`، وحالة المشروع `ACTIVE_HEALTHY`.
+- نتيجة `alembic_version`: `0082_file_index_fingerprints`.
+- جميع الأعمدة الستة في `public.file_attachments` موجودة، وجميعها `nullable = YES`:
+  - `extracted_text_sha256`
+  - `indexed_text_sha256`
+  - `indexed_embedding_fingerprint`
+  - `indexed_embedding_provider`
+  - `indexed_embedding_model`
+  - `indexed_at`
+- عدد صفوف `file_attachments` في لحظة الفحص: 49.
+- عدد الصفوف التي تحتوي أي قيمة في أعمدة metadata الستة الجديدة: **0**. هذا يثبت عدم وجود backfill/reindex في وقت الفحص؛ لا توجد بيانات فهرسة جديدة مخزنة في هذه الحقول.
+- استعلاما التحقق كانا SELECT فقط؛ لم يُنفذ أي DDL أو DML يدوي على الإنتاج.
+
+### صحة الخدمة بعد ظهور revision 0082
+- `/health`: `{"status":"ok","database":"ok"}`.
+- `/ready`: `{"status":"ready","database":"ok","redis":"ok"}`.
+- لا أخطاء في طلبات فحص الصحة عند هذه المحاولة.
+
+### ما لم يُحسم بعد
+- Render deployment `dep-dbqju7e7bikc739n63i0` على SHA `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f` أظهر build ناجحًا وبدأ deploy، لكن Render API كان لا يزال يعرض `update_in_progress` في آخر قراءة؛ لذلك لا نسجل `live` حتى الآن.
+- لم تتم مراجعة application logs التي تثبت تسلسل بدء الحاوية؛ يتطلب Render تحديد workspace. توجد مساحة واحدة ظاهرة باسم `My Workspace` ومعرف `tea-dagsi5ou01pc73f2g470`، ولم تُستخدم دون تأكيد المستخدم.
+- نتيجة قاعدة البيانات تثبت وصول Alembic إلى revision 0082، لكنها لا تكفي وحدها لتأكيد استقرار عملية Render أو اكتمال deployment.
+- مسألة backup/restore production لم تُغلق قبل تشغيل migration. لا دليل في الأدوات الحالية على نسخة إنتاج حديثة أو اختبار استعادة. يجب الاحتفاظ بهذه الملاحظة كحادث حوكمة/تشغيل، وعدم وصف الشرط بأنه تحقق.
+- لا تنفيذ لإعادة الفهرسة أو backfill أو تغييرات أخرى على مخطط الإنتاج. المرحلة التالية تبقى متوقفة حتى تثبت حالة Render `live` وتُستكمل مراجعة الخدمة.
+
+
+## 25. فحص سجلات Render بعد موافقة المستخدم على مساحة العمل — 2026-11-12
+
+### التفويض والفحص
+- وافق المستخدم صراحةً على استخدام مساحة Render `My Workspace`، وطلب اعتمادها للفحوص المستقبلية دون الرجوع إليه في كل مرة لتجنب تعطيل العمل.
+- استخدمت `workspaceId = tea-dagsi5ou01pc73f2g470` للقراءة فقط. لم يتم تغيير إعدادات الخدمة أو الأسرار أو أي مورد Render.
+- Render deployment `dep-dbqju7e7bikc739n63i0` على commit `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f` انتهى `live`:
+  - `startedAt = 2026-11-12T04:22:53Z`
+  - `finishedAt = 2026-11-12T04:24:47Z`
+  - event `deploy_ended` بنجاح عند `2026-11-12T04:24:48Z`.
+- Build `bld-dbqju7e7bikc739n63ig` انتهى بنجاح.
+
+### دليل سجلات بدء الحاوية
+- سجل Render للـ instance الجديد `srv-dakc4nbm8hqs73e2po9g-wj2mw` يحتوي على:
+  - `INFO [alembic.runtime.migration] Context impl PostgresqlImpl.`
+  - `Will assume transactional DDL.`
+  - `Running upgrade 0081_harden_all_public_tables -> 0082_file_index_fingerprints`
+  - `Object Storage connectivity: OK`
+  - `Embedded Celery enabled`
+  - بدء Celery worker وCelery beat.
+  - `Starting API on 0.0.0.0:10000`.
+- هذا دليل مباشر أن عملية بدء الحاوية نفذت migration 0082، وليس مجرد استنتاج من استعلام قاعدة البيانات.
+- سجلات Health Check الداخلية على الـ instance الجديد أظهرت `HTTP GET /health 200` بشكل دوري، على الأقل حتى `2026-11-12T04:27:57Z`، مع latency تقريبًا 9–15ms.
+- استعلام Render لأحداث `server_failed`, `server_restarted`, `server_available`, و`server_hardware_failure` بعد وقت النشر لم يُظهر أي حدث من هذه الأنواع؛ الحدث الظاهر كان `deploy_ended: succeeded`.
+- سجل مستويات `error` للـ instance الجديد لم يُظهر entries. ظهرت فقط تحذيرات 404 لـ `GET /` و`GET /favicon.ico` في بداية النشر؛ لا تُعد هذه أخطاء تشغيل API.
+
+### التحقق الخارجي المتعارض وحدوده
+- أداة جلب HTTP الخارجية أعادت `503` لـ `/health` و`/ready` في ثلاث محاولات بعد النشر، بينما Render health-check logs الداخلية استمرت في تسجيل `/health 200`.
+- استعلام Render request logs عن `/health`, `/ready` و5xx لم يُرجع سجلات؛ لا يوجد دليل كافٍ أن 503 صدر من التطبيق نفسه. لذلك تُسجل كاختلاف بين مسار الفحص الخارجي وفحص Render الداخلي، ولا نعلن أن اختبار HTTP الخارجي نجح.
+- محاولة فحص المتصفح المستقل عبر TinyFish لم تبدأ لأن رصيد TinyFish غير كافٍ؛ لم تتم أي عملية مدفوعة أو تعبئة رصيد.
+- واجهة فتح URL الخارجية لم تتمكن من الوصول إلى نطاق الخدمة؛ لا تُعتبر هذه النتيجة فشلًا للخدمة.
+- آخر دليل قوي للاستقرار التشغيلي: deploy Live، migration في startup log، Health Check الداخلي 200 بصورة دورية، ولا أحداث server failure ولا أخطاء application logs. يظل اختبار الصحة من مسار خارجي مستقل غير محسوم.
+
+### قرار المتابعة
+- لا reindex جماعي، ولا backfill، ولا strict fingerprint filtering حتى يتم تجهيز مسار إعادة فهرسة مضبوط لكل ملف ومراجعته واختباره.
+- تبقى ملاحظة backup/restore production المفتوحة كما في القسم 21؛ نجاة النشر لا تمحو عدم إثبات backup قبل migration.
+- لا تغيير في Render أو Supabase من هذا التحقق، وجميع استعلامات Supabase السابقة كانت SELECT فقط.
+- الخطوة الهندسية التالية بعد معالجة حاجز النسخة الاحتياطية وتوثيق استعادتها هي تصميم endpoint آمن لإعادة فهرسة ملف واحد في PR مستقل، مع ACLs واختبارات صلاحيات وفشل مزود embeddings والحفاظ على الفهرس القديم عند الفشل؛ لا يُفعّل strict retrieval filtering في ذلك PR.
+
+
+## 26. فتح PR #696 لإعادة فهرسة ملف واحد بأمان — 2026-11-12
+
+### الهدف والنطاق
+- PR #696: https://github.com/HVA09/ai-chat-app/pull/696 — Open / Draft، لا دمج بعد.
+- العنوان: `feat(rag): add safe per-file reindex endpoint`.
+- Branch: `feat/rag-per-file-reindex-20261112`.
+- Base: `main` عند `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f`.
+- Head وقت فتح PR: `d8cfa9d36b044582362d9e3fcd8ccf87a86e5b9f`.
+- ثلاثة ملفات فقط:
+  1. `ai-backend/app/services/rag.py`
+  2. `ai-backend/app/routers/files.py`
+  3. `ai-backend/tests/test_file_reindex.py`
+
+### التصميم الأمني
+- فُصل تحضير الفهرس (التقطيع وتوليد embeddings) عن حفظه في DB.
+- Endpoint جديد صريح: `POST /files/{file_id}/reindex`، يعالج ملفًا واحدًا فقط بطلب authenticated.
+- يتم تحرير اتصال DB قبل انتظار مزود embeddings؛ بعد انتهاء المزود يُعاد تحميل صف الملف مع `FOR UPDATE`، وتُعاد مراجعة صلاحية المستخدم وبصمة النص قبل تبديل المقاطع في transaction واحدة.
+- فشل مزود embeddings أو تغير النص لا يحذف الفهرس السابق.
+- صلاحيات Personal files: مالك الملف فقط.
+- ملفات Project: مالك المشروع أو editor/manager وفق `can_edit_project`؛ عضوية Workspace الأساسية لا تمنح إذن كتابة المشروع.
+- ملفات Workspace غير المرتبطة بمشروع: صاحب الملف أو من لديه `files.manage`.
+- طُبق شرط صلاحية الكتابة أيضًا على مسار `index-image` الموجود، لأنه يغيّر بيانات معرفة الملف.
+- endpoint يستخدم حدود AI اليومية وحدود Workspace القائمة.
+
+### ما لم يدخل في PR
+- لا migration ولا أعمدة أو تغييرات schema.
+- لا backfill ولا bulk/scheduled reindex ولا أي استدعاء embeddings على بيانات الإنتاج.
+- لا strict fingerprint filtering في Retrieval؛ الملفات القديمة ذات metadata NULL تظل على سلوكها الحالي.
+- لا تغييرات Frontend/UI في هذا الطلب.
+- يظل حاجز backup/restore الإنتاجي المفتوح في القسم 21 قائمًا؛ هذا PR لا ينفذ عمليات بيانات تلقائية.
+
+### الاختبارات والفحوص
+- أُضيفت اختبارات للنجاح، والحفاظ على المقاطع/metadata القديمة عند فشل المزود، ومنع Project viewer والسماح للمحرر، ومنع Workspace member دون `files.manage` والسماح للـ admin، ورفض حفظ index مبني على source قديم.
+- Compare من main إلى head: ahead بثلاثة commits، behind صفر، وثلاثة ملفات متغيرة.
+- PR CI run [43158683373](https://github.com/HVA09/ai-chat-app/actions/runs/43158683373): Frontend وSDK وPreview Builder وProduction Compose ناجحة؛ Backend pytest كان قيد التنفيذ عند آخر تسجيل.
+- CodeQL run [43158683271](https://github.com/HVA09/ai-chat-app/actions/runs/43158683271): Python وJavaScript/TypeScript ناجحان.
+- لا review threads معلقة عند آخر تحقق.
+- يظل PR Draft حتى يكتمل Backend CI ويُراجع أي إخفاق أو تعليق. لا يدمج قبل اكتمال جميع الشروط المطلوبة على نفس head SHA.
+
+
+## 27. ضبط نطاق PR #696 وإعادة تشغيل الفحوص على أحدث رأس — 2026-11-12
+
+- أثناء مراجعة الطلب، أُزيل تعديل صلاحيات مسار `index-image` القديم من PR #696؛ لأن إعادة تصميم إعادة التحقق بعد Vision تقع خارج نطاق إعادة الفهرسة النصية الحالية ويجب مراجعتها منفصلة.
+- وصف PR صُحح ليؤكد أن سلوك فهرسة الصور الحالي غير متغير وخارج هذا الطلب.
+- أحدث رأس للفرع أصبح `f559b0d97aacf7e54aedec5239aff01e2fcea159`، والقاعدة لا تزال `main = f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f`.
+- GitHub أنشأ فحوصًا جديدة على الرأس الأخير:
+  - CI run [43158964480](https://github.com/HVA09/ai-chat-app/actions/runs/43158964480): pending عند تسجيل هذا التحديث.
+  - CodeQL run [43158964413](https://github.com/HVA09/ai-chat-app/actions/runs/43158964413): in_progress.
+- الفحوص التي بدأت قبل تعديل النطاق، مثل CI [43158683373](https://github.com/HVA09/ai-chat-app/actions/runs/43158683373)، ليست بديلًا عن إعادة فحص الرأس الجديد. لا تعتمد عليها لإعلان اكتمال CI.
+- PR #696 يظل Draft وغير مدمج. لا تُنفذ أي إعادة فهرسة على الإنتاج، وتظل بوابة backup/restore الإنتاجية مستقلة ومفتوحة كما في الأقسام السابقة.
+
+
+## 28. حالة فحوص PR #696 على الرأس الحالي — 2026-11-12
+
+- رأس الفرع الحالي: `f559b0d97aacf7e54aedec5239aff01e2fcea159`.
+- CI run [43158964480](https://github.com/HVA09/ai-chat-app/actions/runs/43158964480): `in_progress`؛ وظيفة SDK انتهت بنجاح، ووظائف Backend وFrontend وPreview Builder وProduction Compose كانت قيد التنفيذ.
+- CodeQL run [43158964413](https://github.com/HVA09/ai-chat-app/actions/runs/43158964413): Python وJavaScript/TypeScript كانتا قيد التحليل.
+- لم تظهر نتيجة فشل في آخر check-runs، لكن لا تُسجل هذه الوظائف نجاحًا قبل اكتمالها.
+- PR #696 ما زال Open / Draft / unmerged؛ لم يحدث deploy إلى Render أو أي تغيير إنتاجي بسبب هذا الفرع.
+- يبقى القرار: لا تدمج قبل اكتمال جميع checks على الرأس الحالي ومراجعة نتائج Backend tests؛ لا تُنفذ أي reindex إنتاجي.
+
+
+
+## 29. إصلاح إعادة تحميل ACL وإضافة اختبار سحب الصلاحية أثناء إعادة الفهرسة — 2026-11-12
+
+### نتيجة مراجعة PR #696
+- أُنجز CI وCodeQL بنجاح على الرأس السابق `f559b0d97aacf7e54aedec5239aff01e2fcea159`؛ Backend وFrontend وPreview Builder وProduction Compose وSDK وCodeQL كلها Success.
+- أثناء مراجعة أعمق، ظهرت ثغرة توقيت محتملة في إعادة التحقق: كائنات WorkspaceMember وProjectMember وعلاقات RBAC التي حُمّلت قبل استدعاء مزود embeddings قد تبقى في SQLAlchemy identity map، وبالتالي لا يكفي تكرار الاستعلام وحده لضمان قراءة أحدث صلاحيات بعد سحبها.
+- لم يُدمج الرأس السابق؛ أُوقف الدمج لإصلاح هذا السلوك.
+
+### الإصلاح
+- في `POST /files/{file_id}/reindex` أصبح `db.expire_all()` يُنفذ بعد عودة مزود embeddings وقبل إعادة قفل الملف وإعادة فحص الوصول والصلاحيات؛ هذا يبطل snapshots السابقة ويجبر الاستعلامات التالية على تحميل قيم ACL/RBAC الحالية من قاعدة البيانات.
+- أُضيف اختبار تكاملي يحوّل عضو المشروع من editor إلى viewer أثناء callback تجهيز embeddings، مع تعطيل مزامنة SQLAlchemy للـ identity map، ويتحقق من رفض العملية `403` وعدم استبدال المقاطع القديمة.
+- لا توجد تغييرات schema أو migration أو تعديل على Render/Supabase أو بيانات الإنتاج.
+
+### حالة الرأس والفحوص
+- PR #696: https://github.com/HVA09/ai-chat-app/pull/696 — Open / Draft / غير مدمج.
+- أحدث head بعد الإصلاح: `06e30ac92be8861199b47e847e034ff6c692d276`.
+- Base: `main = f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f`.
+- Compare: 6 commits ahead، 0 behind، 3 ملفات متغيرة.
+- فحوص الرأس الجديد:
+  - CI run [43258432310](https://github.com/HVA09/ai-chat-app/actions/runs/43258432310): `in_progress` عند تسجيل هذا القسم.
+  - CodeQL run [43258432091](https://github.com/HVA09/ai-chat-app/actions/runs/43258432091): `in_progress`.
+- نجاح CI/CodeQL على `f559b0d...` لا يُعد دليلاً على نجاح الرأس الجديد `06e30ac...`؛ يجب انتظار النتائج النهائية الخاصة به.
+- لا توجد مراجعات أو review threads معلّقة عند آخر تحقق.
+- القرار: لا تحويل إلى Ready ولا دمج حتى نجاح كل checks على أحدث head ومراجعة نتيجة اختبار سحب صلاحية المشروع. لا إعادة فهرسة إنتاجية، ولا backfill، وتبقى بوابة backup/restore الإنتاجية مفتوحة كما سُجل سابقًا.
+
+
+
+## 30. دمج PR #696 وتأكيد نجاح ما قبل الدمج — 2026-11-12
+
+### قرار الدمج والدليل
+- اكتملت كل فحوص PR على الرأس `06e30ac92be8861199b47e847e034ff6c692d276` بنجاح:
+  - Backend، Frontend، SDK، Preview Builder، Production Compose.
+  - CodeQL Python وJavaScript/TypeScript.
+- Backend test job اكتمل Success عند `2026-11-12T16:31:29Z`؛ جميع check-runs الثمانية على الرأس نفسه أصبحت `completed/success`.
+- PR #696 لم يكن يحتوي review threads أو مراجعات معلقة، وكان GitHub يعرض `mergeable_state=clean`.
+- حُوّل PR من Draft إلى Ready بعد نجاح كل الفحوص، ثم دُمج بطريقة Squash بتفويض المستخدم السابق.
+- PR: https://github.com/HVA09/ai-chat-app/pull/696
+- Merge commit وmain الحالي وقت التسجيل: `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db`.
+- عنوان commit: `feat(rag): add safe per-file reindex endpoint`.
+- يحتوي commit على فصل prepare/persist، endpoint أحادي الملف، فحوص ACL حية بعد provider I/O مع `db.expire_all()`، واختبار تغيير دور المشروع أثناء embeddings.
+
+### فحوص ما بعد الدمج
+- بدأت GitHub workflows على merge commit:
+  - CI run [43262134820](https://github.com/HVA09/ai-chat-app/actions/runs/43262134820): `in_progress` في آخر فحص.
+  - Production smoke [43262134748](https://github.com/HVA09/ai-chat-app/actions/runs/43262134748): `in_progress`.
+  - CodeQL [43262134713](https://github.com/HVA09/ai-chat-app/actions/runs/43262134713): `in_progress`.
+  - Publish backend image [43262134613](https://github.com/HVA09/ai-chat-app/actions/runs/43262134613): `in_progress`.
+- هذه فحوص Push بعد الدمج؛ لا تخلط مع PR checks التي نجحت قبل الدمج. يجب تسجيل نتائجها عند اكتمالها.
+
+### Render بعد الدمج
+- الخدمة ما زالت إعداداتها كما هي: `autoDeploy=yes`, `autoDeployTrigger=checksPass`, branch `main`, plan `free`, health path `/health`، workspace `My Workspace`.
+- قراءة Render الأخيرة أظهرت أن أحدث deployment Live ما زال على SHA السابق `f3ba9d4...`; لم يظهر بعد deploy على `31503ae...` عند وقت الفحص.
+- لا manual deploy ولا أي تغيير في إعدادات Render. ينتظر Render تحقق شروط checksPass تلقائيًا.
+- عند الفحص الأخير، سجل Render deployment الحالي `dep-dbqju7e7bikc739n63i0` بقي Live على SHA السابق. يجب إعادة فحص deployments/events بعد انتهاء GitHub checks.
+- PR #696 كود فقط ولا يتضمن migration أو عملية reindex أو backfill؛ لا يتوقع أي تحديث لقاعدة الإنتاج من هذا الدمج.
+- بوابة backup/restore الإنتاجية لا تزال مفتوحة؛ يمنع أي bulk reindex/backfill أو strict retrieval fingerprint filtering قبل إغلاقها بأدلة.
+
+
+
+
+## 31. تحديث فحوص Push بعد دمج PR #696 — 2026-11-12
+
+- commit الدمج `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db` مؤكد على `main`.
+- CodeQL Push run [43262134713](https://github.com/HVA09/ai-chat-app/actions/runs/43262134713): `completed/success`.
+- Publish backend image run [43262134613](https://github.com/HVA09/ai-chat-app/actions/runs/43262134613): `completed/success`.
+- CI run [43262134820](https://github.com/HVA09/ai-chat-app/actions/runs/43262134820): ما زال `in_progress`؛ Backend tests وFrontend test كانت قيد التشغيل في آخر قراءة، بينما SDK وPreview Builder وProduction Compose نجحت.
+- Production smoke run [43262134748](https://github.com/HVA09/ai-chat-app/actions/runs/43262134748): ما زال `in_progress` في آخر قراءة.
+- Render service ما زال يعلن `autoDeploy=yes` و`autoDeployTrigger=checksPass` على main، ولم يظهر بعد deployment على SHA `31503ae...`. أحدث deployment المسجل ما زال SHA `f3ba9d4...`.
+- لا نُطلق manual deploy؛ نعيد فحص Render بعد اكتمال CI/smoke. لا تغييرات يدوية على الخدمة أو الإنتاج.
+
+
+
+## 32. نجاح Production smoke بعد دمج PR #696 — 2026-11-12
+
+- Production smoke run [43262134748](https://github.com/HVA09/ai-chat-app/actions/runs/43262134748) على merge commit `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db`: `completed/success`.
+- CodeQL Push وPublish backend image: `completed/success`.
+- CI run [43262134820](https://github.com/HVA09/ai-chat-app/actions/runs/43262134820): الوظائف Frontend وSDK وPreview Builder وProduction Compose نجحت؛ Backend ما زال عند خطوة `Run backend tests with hang diagnostics` في آخر قراءة.
+- Render لم يبدأ deployment على commit الدمج بعد؛ آخر deployment Live ما زال على `f3ba9d4...`. الإعداد `checksPass` ما زال مفعّلًا ولا توجد عملية نشر يدوية.
+- لا يُغلق فحص النشر إلا بعد نجاح Backend CI ثم ظهور deployment جديد على `31503ae...` والتحقق من الصحة الداخلية/السجلات.
+
+
+
+## 33. اكتمال نشر PR #696 وتوثيق إشارات التشغيل بعد النشر — 2026-11-12
+
+### نجاح الدمج والفحوص والنشر
+- PR #696 مدمج؛ merge commit على `main`: `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db`.
+- Post-merge CI run [43262134820](https://github.com/HVA09/ai-chat-app/actions/runs/43262134820): `completed/success`، بما في ذلك Backend **613 passed, 2 warnings**، وFrontend، SDK، Preview Builder، Production Compose.
+- Production smoke [43262134748](https://github.com/HVA09/ai-chat-app/actions/runs/43262134748): Success.
+- CodeQL [43262134713](https://github.com/HVA09/ai-chat-app/actions/runs/43262134713): Success.
+- Publish backend image [43262134613](https://github.com/HVA09/ai-chat-app/actions/runs/43262134613): Success.
+- Render deployment [dep-dbqusce7bikc73971u30](https://dashboard.render.com/web/srv-dakc4nbm8hqs73e2po9g): commit `31503ae...`, build succeeded، وانتهى deployment `live` عند `2026-11-12T16:52:18Z`.
+- Render startup logs للـ instance الجديد `srv-dakc4nbm8hqs73e2po9g-f94zg` أكدت Object Storage connectivity OK، وبدء Celery worker/beat، و`Application startup complete`، وبدء Uvicorn.
+- Health-check logs على instance الجديد أظهرت `GET /health 200` بصورة متكررة (latency بعد أول فحص بين نحو 10 و14ms).
+- استعلام Render عن app errors من `16:52:18Z` إلى `16:57:00Z` أعاد قائمة فارغة. لم يُرصد server_failed أو server_restarted في أحداث الفترة؛ الحدث التشغيلي المسجل هو `deploy_ended: succeeded`.
+- لم تُشغّل يدويًا عملية Deploy، ولم تتغير إعدادات Render أو Supabase أو الأسرار. لا migration أو reindex أو backfill في PR #696.
+
+### ملاحظة QueuePool على الإصدار السابق — تتبع #674
+- في instance القديم `srv-dakc4nbm8hqs73e2po9g-52f48` وقبل بدء deployment الجديد، عند `2026-11-12T16:49:46Z`، ظهرت أخطاء SQLAlchemy:
+  `QueuePool limit of size 2 overflow 1 reached, connection timed out, timeout 15.00`.
+- ظهر `GET /chat/models` بنتيجة `500` بعد latency تقارب 15.2 ثانية.
+- يوضح traceback أن محاولة مصادقة WebSocket في `app/routers/notifications.py:89` فشلت عند `db.get(User, user_id)` لعدم توفر اتصال.
+- لا نستنتج أن WebSocket احتفظ باتصال طوال عمره؛ الشيفرة الحالية تستخدم `SessionLocal()` قصير العمر حول هذا الاستعلام. الدليل يثبت فقط أن خانات pool الثلاث (2 + overflow 1) كانت كلها مشغولة وقت المحاولة؛ ما زال يلزم ربط ذلك بالطلبات الأخرى التي كانت تحتفظ بالاتصالات.
+- الحادث وقع في `16:49:46Z`، قبل `deploy_started` للإصدار الجديد في `16:49:53Z`، لذلك لا يُنسب إلى PR #696.
+- أُضيفت الأدلة والتحفظات إلى Issue [#674](https://github.com/HVA09/ai-chat-app/issues/674) (comment ID `6830129617`). تبقى القضية مفتوحة لاستكمال تحليل مدة checkout ومسارات الانتظار الخارجية؛ لا ترفع pool size أو تغير Render/DB استنادًا إلى عينة واحدة.
+
+### ملاحظة Gemini 503 — تتبع #683
+- في instance القديم نفسه عند `2026-11-12T16:49:51.53Z`، فشل بث محادثة برقم request ID `e66d3c9aeb8241c3` برسالة upstream `503 Service Unavailable` من Gemini OpenAI-compatible `/chat/completions`.
+- التطبيق سجل `retryable=True` و`emitted=False` ثم `AI streaming failover unavailable primary_provider=gemini`.
+- وقع الحدث قبل بدء deployment الجديد بنحو ثانيتين؛ لا يوجد دليل لربطه بـ PR #696.
+- يثبت السجل عدم توفر fallback صالح لهذا الطلب، لكنه لا يميز هل السبب غياب الإعداد، نقصه، أو تطابقه مع المزود الأساسي. لم نفحص أو نغير أسرار/إعدادات مزود الإنتاج ولم ننفذ اختبار AI حيًا بعد النشر.
+- أُضيفت الأدلة إلى Issue [#683](https://github.com/HVA09/ai-chat-app/issues/683) (comment ID `6830132102`). تبقى القضية مفتوحة لفحص سبب عدم توفر fallback والتعامل الآمن مع أخطاء المزود العابرة.
+
+### حالة الاستقرار والحدود المتبقية
+- النسخة المدمجة والمنشورة حاليًا: `31503ae...`، وRender status `Live`.
+- الاختبارات وفحص الصحة الداخلي ناجحان. فحص HTTP خارجي مستقل لم ينجح عبر أداة الويب؛ تعذر الوصول إلى `/health` و`/ready` منها، فلا نسجل نجاح اختبار خارجي.
+- لا نعلن أن تجربة محادثة حقيقية مع Gemini نجحت بعد النشر؛ لا توجد مكالمة إنتاجية اختبارية موثقة بعد تلك الواقعة.
+- بوابة backup/restore الإنتاجية لا تزال مفتوحة كما في الأقسام السابقة؛ يمنع backfill أو bulk reindex أو strict retrieval fingerprint filtering حتى تتوفر أدلة نسخة احتياطية واختبار استعادة.
+- لا توجد ميزات جديدة في هذا المسار؛ العمل التالي ضمن الاستقرار: تحليل pool exhaustion في #674، وإغلاق تشخيص provider/fallback في #683 بأدلة واختبارات قبل أي إعداد إنتاجي.
+
+
+
+## 33. تأكيد استقرار Render بعد PR #696 واكتشاف توافق أبعاد Gemini — 2026-11-12
+
+### Deployment الجديد
+- Render deployment [dep-dbqusce7bikc73971u30](https://dashboard.render.com/web/srv-dakc4nbm8hqs73e2po9g/deploys/dep-dbqusce7bikc73971u30) على SHA `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db` أصبح `live`.
+- وقت الانتهاء: `2026-11-12T16:52:18.876505Z`; event `deploy_ended/succeeded` عند `16:52:18.999789Z`.
+- Instance الجديد: `srv-dakc4nbm8hqs73e2po9g-f94zg`.
+- Startup logs أكدت بدء التطبيق production، اتصال Object Storage، تشغيل Celery worker/beat، وبدء Uvicorn.
+- Render internal health logs سجلت `GET /health 200` بصورة دورية، latency غالبًا 10–15ms، من `16:52:18Z` إلى آخر فحص `17:00:38Z`.
+- سجلات `error` بعد وقت Live (من `16:52:18Z` إلى `17:05:00Z`) كانت فارغة، ولا request logs برموز 500/502/503/504 على instance الجديد في الفترة نفسها.
+- حدث `GET /` واحد برمز 404 عند بدء التشغيل فقط؛ هذا ليس endpoint صحة الخدمة ولا يُسجل كفشل في التطبيق.
+- أدوات الويب المستقلة لم تستطع فتح /health أو /ready؛ لذلك لا نسجل فحص HTTP خارجي ناجح. دليل الصحة الحالي مبني على Render internal logs فقط.
+
+### فصل أخطاء النسخة القديمة عن الجديدة
+- قبل بدء deployment الجديد، على instance القديم `...-52f48`:
+  - `16:49:46Z`: SQLAlchemy QueuePool exhaustion (`pool_size=2`, `max_overflow=1`, timeout 15s)، وطلب `GET /chat/models` استغرق نحو 15.2 ثانية ثم فشل.
+  - `16:49:48Z`: RAG query فشل لأن مزود Gemini أعاد 3072 بعدًا بينما التطبيق يتطلب 768؛ انتقل ذلك الطلب إلى fallback للسياق الكامل.
+  - `16:49:51Z`: Gemini chat completions أعاد `503 Service Unavailable` في محادثة واحدة، وسُجل أن AI streaming failover غير متاح.
+  - بدأ Render deploy الجديد عند `16:49:53Z`، أي بعد هذه الأخطاء.
+- لم تتكرر أخطاء QueuePool أو 5xx أو Gemini logs على instance الجديد بعد وصوله إلى Live خلال نافذة الفحص؛ مع ذلك لم يُنفذ اختبار محادثة فعلي موثق على النسخة الجديدة، فلا نستنتج من غياب السجلات نجاح مزود Gemini عند الاستخدام الفعلي.
+- لا نغيّر DATABASE_POOL_SIZE أو إعدادات Gemini في الإنتاج بناءً على حادثة واحدة. تُتابع هذه النقاط كتحقيقين منفصلين.
+
+### PR #697 لمعالجة أبعاد Gemini
+- PR #697: https://github.com/HVA09/ai-chat-app/pull/697 — Draft / Open / غير مدمج.
+- Branch: `fix/gemini-mrl-embedding-dimensions-20261112`.
+- Base: `main = 31503ae13b7215a7dc6ca312ea0dfd8a6abff5db`.
+- Head: `ed84bc40443c337729b993127fae10baff9c36e8`.
+- التغيير محدود بملفين: `ai-backend/app/services/embeddings.py` و`ai-backend/tests/test_embedding_configuration.py`.
+- السبب: خدمة Gemini embedding model `gemini-embedding-001` تعيد 3072 بعدًا افتراضيًا؛ وثائق Google توضح دعم MRL لتقليل المتجه إلى 768/1536 وإعادة تطبيعه عند تقليل أبعاد `gemini-embedding-001`.
+- أضيف fallback دقيق عند تحقق الشروط كلها: provider=Gemini، model=`gemini-embedding-001`، الاستجابة كلها 3072، والأبعاد المطلوبة أقل من 3072. نأخذ البادئة المطلوبة ونعيد L2 normalization. ينطبق ذلك على query embeddings وdocument batch embeddings معًا.
+- النماذج الأخرى والمزودون الآخرون والمتجهات غير المطابقة تمامًا 3072 لا تُقتطع؛ يظل التحقق الصارم قائمًا.
+- لا migration، لا تغيير `vector(768)`، لا reindex/backfill إنتاجي، لا مفاتيح أو متغيرات بيئة أو Render/Supabase writes.
+- اختبارات CI وCodeQL على أحدث رأس لم تكتمل بعد عند تسجيل هذا القسم؛ PR يبقى Draft ولا يدمج قبل نجاحها.
+- الروابط الرسمية:
+  - https://ai.google.dev/gemini-api/docs/embeddings
+  - https://ai.google.dev/api/embeddings
+
+### بوابات لم تُغلق
+- backup/restore production ما زالت غير مثبتة؛ لا bulk reindex/backfill ولا strict retrieval fingerprint filtering.
+- لا دليل خارجي مستقل لفحص /health أو /ready بعد النشر.
+- لا نقوم باختبار محادثة إنتاجية مصطنع أو إعادة فهرسة حقيقية على بيانات المستخدم دون تفويض/خطة محددة؛ الفحص الحالي read-only.
+
+
+
+## 34. حالة CI الأولية لطلب إصلاح أبعاد Gemini #697 — 2026-11-12
+
+- PR #697 ما زال Open / Draft / غير مدمج.
+- أحدث رأس: `ed84bc40443c337729b993127fae10baff9c36e8`، والقاعدة `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db`.
+- CodeQL على الرأس الحالي: `completed/success` (Python وJavaScript/TypeScript).
+- CI run [43265924789](https://github.com/HVA09/ai-chat-app/actions/runs/43265924789):
+  - SDK: Success.
+  - Preview Builder: Success.
+  - Production Compose: Success.
+  - Frontend: Success.
+  - Backend: لا يزال عند `Run backend tests with hang diagnostics` في آخر قراءة.
+- لم تظهر مراجعات أو review threads معلّقة.
+- سجل job logs لم يكن قابلًا للتنزيل أثناء استمرار المهمة (GitHub/Azure BlobNotFound)؛ هذا ليس فشل اختبار.
+- لا تعتمد نجاحًا نهائيًا للطلب حتى تنتهي Backend pytest على نفس head SHA، ثم نفحص جميع check-runs ونجعل PR Ready/merge عند استيفاء الشروط.
+- لا production writes أو إعادة فهرسة؛ PR #697 تغييرات كود واختبارات فقط.
+
+
+
+## 35. دمج PR #697 لمعالجة أبعاد Gemini بعد نجاح الاختبارات — 2026-11-12
+
+### نتائج PR checks
+- PR #697 على head `ed84bc40443c337729b993127fae10baff9c36e8` اجتاز كل check-runs الثمانية بنجاح:
+  - Backend pytest: **616 passed, 2 warnings** في 302.73 ثانية.
+  - Frontend، SDK، Preview Builder، Production Compose: Success.
+  - CodeQL Python وJavaScript/TypeScript: Success.
+- سجل Backend يثبت نجاح الاختبارات الثلاثة الجديدة:
+  - `test_gemini_embedding_001_query_truncates_full_mrl_vector_to_schema_dimension`
+  - `test_gemini_embedding_001_documents_truncate_full_mrl_vectors_to_schema_dimension`
+  - `test_gemini_mrl_fallback_is_limited_to_gemini_embedding_001`
+- لا review threads أو reviews معلقة، GitHub `mergeable_state=clean`.
+- حُوّل PR من Draft إلى Ready ثم دُمج Squash بتفويض المستخدم السابق.
+- PR: https://github.com/HVA09/ai-chat-app/pull/697
+- Merge commit وmain: `48c451545c0ab2b05e08c94b4afc72b2215a4910`.
+- الأب المباشر للدمج: `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db`.
+
+### فحوص Push بعد الدمج
+- Production smoke run [43267652368](https://github.com/HVA09/ai-chat-app/actions/runs/43267652368): completed/success.
+- CI run [43267652121](https://github.com/HVA09/ai-chat-app/actions/runs/43267652121): in_progress عند آخر قراءة.
+- CodeQL run [43267652046](https://github.com/HVA09/ai-chat-app/actions/runs/43267652046): in_progress عند آخر قراءة.
+- Publish backend image run [43267652172](https://github.com/HVA09/ai-chat-app/actions/runs/43267652172): in_progress عند آخر قراءة.
+- هذه فحوص Push بعد الدمج وليست فحوص PR السابقة؛ لا تُسجل كاملة قبل انتهائها على SHA `48c4515...`.
+
+### نطاق الإصلاح وضوابط الإنتاج
+- المعالجة تتعامل مع Gemini `gemini-embedding-001` فقط: إذا أعاد كل متجه 3072 قيمة وكانت أبعاد التطبيق أصغر، تُستخدم بادئة MRL المطلوبة ثم يعاد تطبيعها.
+- يطبق السلوك على Query وDocument embeddings، ويحافظ على التحقق الصارم للمزودين والنماذج الأخرى.
+- لا تغيير على مخطط قاعدة البيانات `vector(768)`، ولا migration، ولا تغيير secrets أو environment variables، ولا إعادة فهرسة أو backfill.
+- Render ما زال عليه deployment سابق SHA `31503ae...` وقت آخر فحص؛ يجب انتظار GitHub checksPass ثم إعادة التحقق من deployment الجديد. لا manual deploy.
+- لا إجراء بيانات إنتاجية. تبقى بوابة backup/restore مفتوحة قبل أي bulk reindex/backfill أو strict retrieval fingerprint filtering.
+
+
+
+## 36. نجاح CI ونشر PR #697 على Render — 2026-11-12
+
+### نتائج ما بعد الدمج
+- main والـ merge commit: `48c451545c0ab2b05e08c94b4afc72b2215a4910`.
+- CI push run [43267652121](https://github.com/HVA09/ai-chat-app/actions/runs/43267652121): `completed/success`.
+  - Backend، Frontend، SDK، Preview Builder، Production Compose: جميعها Success.
+- CodeQL [43267652046](https://github.com/HVA09/ai-chat-app/actions/runs/43267652046): Success.
+- Publish backend image [43267652172](https://github.com/HVA09/ai-chat-app/actions/runs/43267652172): Success.
+- Production smoke [43267652368](https://github.com/HVA09/ai-chat-app/actions/runs/43267652368): Success.
+- PR #697 مدمج: https://github.com/HVA09/ai-chat-app/pull/697.
+
+### Render deployment
+- Deployment [dep-dbqvb6mq1p3s73dn2m3g](https://dashboard.render.com/web/srv-dakc4nbm8hqs73e2po9g/deploys/dep-dbqvb6mq1p3s73dn2m3g) على SHA `48c451545c0ab2b05e08c94b4afc72b2215a4910` وصل `live`.
+- بدأ: `2026-11-12T17:21:30.987833Z`; انتهى: `2026-11-12T17:23:36.372365Z`.
+- event `deploy_ended/succeeded` عند `17:23:36.461029Z`.
+- Instance الجديد: `srv-dakc4nbm8hqs73e2po9g-gm6g7`.
+- Startup logs: Alembic بدأ في سياق PostgreSQL؛ Object Storage connectivity OK؛ Celery worker وbeat بدءا؛ `Application startup complete` عند `17:23:25.932317Z`.
+- Render internal `GET /health 200` على instance الجديد تكرر كل ~5 ثوانٍ، latency في العادة 9–14ms من `17:23:35Z` إلى `17:24:55Z` على الأقل.
+- سجلات app `error` على instance الجديد في الفترة `17:23:36Z–17:28:00Z`: فارغة.
+- طلبات HTTP ذات status 500/502/503/504 على instance الجديد في الفترة نفسها: لا نتائج.
+- ظهرت طلبات `HEAD / 404` و`GET / 404` في probes الافتراضية عند بدء التشغيل؛ ليست endpoint صحة الخدمة ولا تُسجل كفشل API.
+- لا تغيير يدوي في Render ولا Secrets ولا إعدادات الخدمة؛ النشر حدث تلقائيًا عبر `autoDeployTrigger=checksPass`.
+
+### حدود التحقق المتبقية
+- تم التأكد من نشر الكود ونجاح الصحة الداخلية، لكن سجلات الفترة بعد الإصدار الجديد لم تعرض طلب محادثة authenticated يستدعي RAG؛ لذلك لا نعلن end-to-end Gemini/RAG chat success من health checks فقط.
+- اختبار MRL الجديد اجتاز المحاكاة على CI (query + document)، ويُتوقع أن يعالج اختلاف 3072/768 دون تغيير المخطط، لكن أول استخدام فعلي بعد النشر ما زال دليله مطلوبًا.
+- حادثة Gemini chat 503 السابقة تخص instance القديم قبل نشر الإصدار السابق؛ لا دليل أنها تكررت بعد النشر الأخير، لكن لا تغيير على إعدادات fallback أو المفاتيح.
+- حادثة QueuePool المؤقتة كانت على instance القديم قبل نشر PR #696، ولم تظهر على instance الجديد في نافذة المراقبة. لا تغييرات pool settings.
+- لا reindex إنتاجي، ولا bulk/backfill، ولا strict fingerprint filtering؛ بوابة backup/restore الإنتاجية ما زالت مفتوحة.
+- في سجلات PostgreSQL الخاصة ببيئة CI ظهر duplicate key واحد على قيد `uq_scheduled_task_runs_task_scheduled_for` أثناء تشغيل الاختبارات، مع أن pytest انتهت `616 passed, 2 warnings`؛ لا يمثل فشل CI، لكنه يستحق مراجعة منفصلة إن تكرر أو ظهر على الإنتاج.
+
+
+
+## 34. دمج إصلاح أبعاد Gemini والتحقق بعد النشر — 2026-11-12
+
+### PR #697 والدمج
+- PR #697 `fix(rag): handle full-dimensional Gemini 001 embeddings`: merged بواسطة مالك المستودع عند `2026-11-12T17:16:21Z`.
+- PR: https://github.com/HVA09/ai-chat-app/pull/697
+- Merge commit / main الحالي وقت الفحص: `48c451545c0ab2b05e08c94b4afc72b2215a4910`.
+- PR checks على head `ed84bc40443c337729b993127fae10baff9c36e8`: Backend، Frontend، SDK، Preview Builder، Production Compose، CodeQL Python وJavaScript/TypeScript كلها Success.
+- Backend pytest: `616 passed, 2 warnings in 237.79s`.
+- Post-merge runs كلها `completed/success`:
+  - CI [43267652121](https://github.com/HVA09/ai-chat-app/actions/runs/43267652121)
+  - Production smoke [43267652368](https://github.com/HVA09/ai-chat-app/actions/runs/43267652368)
+  - Publish backend image [43267652172](https://github.com/HVA09/ai-chat-app/actions/runs/43267652172)
+  - CodeQL [43267652046](https://github.com/HVA09/ai-chat-app/actions/runs/43267652046)
+
+### مراجعة الكود والقيود
+- تعديل MRL محصور في `gemini-embedding-001` عندما تكون كل المتجهات المستلمة 3072 بعدًا والأبعاد المخزنة المطلوبة أقل من 3072؛ يأخذ البادئة المطلوبة ويعيد L2 normalization.
+- يطبق المنطق على document batch وquery embeddings معًا؛ باقي المزودين والنماذج والأبعاد غير المطابقة تبقى تحت التحقق الصارم.
+- وثائق Google الرسمية توضح أن `gemini-embedding-001` يدعم أبعاد 768/1536/3072، وأن تقليل أبعاد هذا النموذج يتطلب إعادة normalization يدويًا: https://ai.google.dev/gemini-api/docs/embeddings
+- تعليق Codex الآلي على PR #697 سجّل أنه لم يتمكن من إكمال مراجعة الكود بسبب حد الاستخدام؛ هذا ليس دليلًا على مراجعة آلية نظيفة. CodeQL نجح، وأُجري فحص يدوي لنطاق التعديل قبل تسجيل هذه النتيجة، لكن لم تتوفر مراجعة Codex مستقلة كاملة.
+- لا migration ولا schema change ولا تعديل إعدادات Render/Supabase أو الأسرار، ولا reindex/backfill إنتاجي. `vector(768)` بقي كما هو.
+
+### Render بعد PR #697
+- Deployment [dep-dbqvb6mq1p3s73dn2m3g](https://dashboard.render.com/web/srv-dakc4nbm8hqs73e2po9g/deploys/dep-dbqvb6mq1p3s73dn2m3g) على SHA `48c451545c0ab2b05e08c94b4afc72b2215a4910` أصبح `live`، وانتهى عند `2026-11-12T17:23:36Z`.
+- Render events: build وdeploy succeeded؛ Render auto-deploy ظل `checksPass`، ولم يُطلق manual deploy.
+- بعد Live وحتى آخر نافذة سجلات تمت مراجعتها:
+  - لا app-level error logs.
+  - لا request 500/502/503/504.
+  - لا QueuePool exhaustion.
+  - لا تحذيرات mismatch لأبعاد embeddings.
+  - سجلات Render الداخلية أظهرت `GET /health 200` بصورة دورية بزمن غالبًا 9–16ms؛ آخر عينة مرئية في نتيجة الفحص كانت قبل `17:38:36Z`.
+- فحص HTTP خارجي مباشر لم يكتمل من بيئة العمل بسبب فشل DNS؛ لذلك لا نسجل external /health test ناجحًا. الدليل الإيجابي الحالي هو Render internal logs ونجاح Production smoke.
+- لا يوجد طلب Gemini chat/RAG إنتاجي فعلي موثق بعد التغيير في السجلات المعروضة؛ اختبارات CI تثبت السلوك بالكود والـmocks، لكنها لا تثبت توافر Gemini upstream وقت الاستخدام الفعلي.
+
+### بوابات مستمرة
+- حادثة QueuePool وGemini HTTP 503 وعدم تطابق 3072/768 سُجلت على الـinstance القديم قبل انتهاء تبديل Render؛ لم تتكرر على الـinstance الجديد في السجلات التي تمت مراجعتها.
+- لا تغيير لحدود اتصال قاعدة البيانات استنادًا إلى حادثة واحدة.
+- بوابة backup/restore الإنتاجية ما زالت مفتوحة؛ يُمنع bulk reindex/backfill وstrict retrieval fingerprint filtering قبل توفير backup حديث ودليل restore ناجح.
+
+
+
+## 37. إثبات نسخة احتياطية خارجية ناجحة وفتح إصلاح أمان الاستعادة على main الحالي — 2026-11-12
+
+### النسخة الاحتياطية الخارجية
+- عُثر على تشغيل Workflow المجدول [43199588287](https://github.com/HVA09/ai-chat-app/actions/runs/43199588287) بعنوان `Production database backup`.
+- التشغيل: `2026-11-12T10:21:07Z`، على commit `f3ba9d4ab6d9c35276e4ca0baec5ff70558f592f`، والحالة `completed/success`.
+- نجح job `backup` بجميع خطواته: `pg_dump --format=custom`، وفحص الأرشيف بـ`pg_restore --list`، ورفع S3-compatible، والتحقق البعيد بـ`head-object`، ثم حذف النسخة المحلية.
+- اسم الملف المعلن في سجل job: `ai-chat-postgres-20261112T102110Z.dump`.
+- حجم الكائن البعيد الذي أعاده `head-object`: `862003` bytes؛ وقد عاد ETag في السجل.
+- أكّد preflight أن `PRODUCTION_BACKUP_ENABLED=true` و`PRODUCTION_DB_CREDENTIAL_ROTATED=true` وأن حقول الإعداد الأساسية كانت موجودة؛ لم تُقرأ أي أسرار أو تُعرض قيمها.
+- هذا دليل على وجود أرشيف خارجي تم إنشاؤه والتحقق من هيكله ووجوده البعيد. لكنه ليس دليل استعادة.
+- قيد إثبات مهم: قيمة GitHub secret `PRODUCTION_DATABASE_URL` مخفية عن القراءة؛ لذلك لا يثبت سجل Actions وحده المضيف/المشروع المصدر الذي جرى تصديره. يجب عدم الادعاء أن نسخة الملف تطابق مشروع Supabase `ai-chat-prod-db` بشكل مؤكد حتى يتم إثبات provenance بطريقة آمنة لا تكشف الاعتماد السري.
+- لم يتوفر دليل أن هذا الأرشيف استُعيد بنجاح إلى قاعدة staging. تظل بوابة restore test مفتوحة.
+- Supabase organization على خطة `free`; وثائق Supabase الرسمية تقول إن النسخ التلقائية اليومية متاحة لخطط Pro/Team/Enterprise، وتوصي الخطة المجانية بتصدير `db dump` دوريًا خارج المنصة. تشغيل Workflow المجدول أعلاه هو مسار off-site مستقل، ولا يثبت تشغيل النسخ التلقائية على Supabase Free.
+- وثائق Supabase: https://supabase.com/docs/guides/platform/backups
+
+### حالة PR #673 وإصلاح الاستعادة
+- PR #673 القديم ما زال Draft وعلى branch متأخر 59 commit عن `main` عند SHA `48c4515...`; لم ندمجه.
+- ملف `.github/workflows/restore-to-supabase.yml` الموجود في `main` الحالي ما زال يستخدم أسرار S3 العامة و`SUPABASE_DB_URL` عامة، ويختار أحدث `.dump` من prefix عام `database/` ثم ينفذ `pg_restore --clean --if-exists --schema=public`. هذا مسار قابل لتحديد وجهة غير staging إذا شُغّل بإعدادات خاطئة؛ يجب استبداله قبل أي استخدام.
+- أُعيد تطبيق التغيير الأمني من PR #673 على branch جديد مبني مباشرة على main الحالي لتجنب فجوة الـ59 commit:
+  - PR #698: https://github.com/HVA09/ai-chat-app/pull/698
+  - Branch: `security/restore-supabase-staging-only-20261112`.
+  - Base: `main = 48c451545c0ab2b05e08c94b4afc72b2215a4910`.
+  - Head: `7086001c962711dd2fcd5bbfa28a848aa34d3a25`.
+  - التغييرات الثلاثة: استبدال workflow إلى staging-only، إضافة `restore_target_guard.py`، واختبارات guard.
+  - ضوابط التغيير: لا target إلا staging، تأكيد يدوي صريح، قفل على فرع main، GitHub Environment `supabase-staging` مع required reviewers prerequisite، secrets مخصصة، حظر production project ref، تحقق URL/port/database/TLS/root CA وإعادة التحقق قبل restore، وحصر اختيار dump تحت `database/staging-sanitized/`.
+- PR #698 ما زال Draft، غير مدمج؛ CI run [43275707523](https://github.com/HVA09/ai-chat-app/actions/runs/43275707523) وCodeQL [43275715170](https://github.com/HVA09/ai-chat-app/actions/runs/43275715170) كانا `in_progress` في آخر تسجيل.
+- لا توجد مراجعات أو review threads معلقة عند إنشاء PR #698.
+- لم نشغّل workflow الاستعادة، ولم ننشئ staging secrets أو GitHub Environment، ولم نغيّر قاعدة Supabase أو أي إعدادات Render/Supabase.
+- لا يُحوّل PR #698 إلى Ready ولا يُدمج حتى نجاح جميع الفحوص على أحدث head ومراجعة workflow والاختبارات. بعد دمجه، تظل تجربة restore إلى staging بحاجة إلى إعداد بيئة staging معزولة وموافقة reviewer ونسخة sanitized dump صالحة.
+
+### القرار التشغيلي
+- **Backup artifact وجوده مثبت** على مستوى workflow/object-store metadata.
+- **Source provenance غير مثبت بالكامل** لأن قيمة `PRODUCTION_DATABASE_URL` سرية ولا تظهر في السجل.
+- **Restore capability غير مثبتة** حتى الآن.
+- يُسمح بالاستمرار في مراجعة الكود والاختبارات، لكن لا bulk reindex/backfill ولا strict retrieval fingerprint filtering ولا تشغيل restore على Production. لا إعادة فهرسة إنتاجية لحد الآن.
+- أضيف تصحيحًا للحالة التاريخية: PR #697 مدمج ومنشور على main في SHA `48c451545c0ab2b05e08c94b4afc72b2215a4910`; الأقسام السابقة التي تسجل أنه Draft تعكس حالة سابقة فقط.
+
+
+## 38. تحسين قابلية تدقيق ملف الاستعادة المحدد في PR #698 — 2026-11-12
+
+### ما تم إنجازه
+- تأكد دمج PR #696 بعد نجاح جميع الفحوص؛ merge commit: `31503ae13b7215a7dc6ca312ea0dfd8a6abff5db`.
+- تأكد دمج PR #697 لمعالجة Gemini Embedding 001، وأن main وصل إلى `48c451545c0ab2b05e08c94b4afc72b2215a4910`.
+- PR #697 post-merge CI وCodeQL وProduction smoke وPublish image كلها Success، ونشر Render `dep-dbqvb6mq1p3s73dn2m3g` على SHA `48c4515...` وصل Live.
+- PR #698 الحالي: https://github.com/HVA09/ai-chat-app/pull/698
+  - base `48c451545c0ab2b05e08c94b4afc72b2215a4910`.
+  - قبل التحسين، head `7086001c962711dd2fcd5bbfa28a848aa34d3a25` اجتاز جميع 8 check-runs؛ Backend `644 passed, 2 warnings` في `296.64s`، وCodeQL Python/JavaScript-TypeScript Success.
+  - لا reviews أو review threads على PR.
+- مراجعة Workflow وجدت أن اختيار أحدث ملف آليًا داخل `database/staging-sanitized/` لا يُظهر للمراجع قبل موافقته على GitHub Environment اسم الأرشيف الدقيق، ويضعف ربط الموافقة بالملف المقصود.
+- تم تعديل Workflow ليطلب `backup_filename` صراحة كـworkflow_dispatch input، ويكوّن المفتاح تحت prefix الثابت، ثم يطبق `is_safe_staging_backup_key` ويفحص `head-object` على الكائن نفسه قبل تنزيله. لم يعد هناك auto-select لأحدث dump.
+- تحديث PR body يوضح أن المشغل يختار الملف الذي تمت مراجعته مسبقًا؛ وتم تثبيت إبقاء PR Draft حتى اكتمال الفحوص على الرأس الجديد.
+
+### رأس PR #698 بعد التحسين
+- head: `fde39323282a5f87770709222a9cf6ff20ad5b55`.
+- Workflow commit: `ed21f1cdc6eabcd7c2d790398749356904fe05d4`، ثم تصحيح صيغة expression وGITHUB_ENV export ضمن commit `fde39323282a5f87770709222a9cf6ff20ad5b55`.
+- CI run [43278133710](https://github.com/HVA09/ai-chat-app/actions/runs/43278133710): بدأ؛ Backend وFrontend وPreview Builder وProduction Compose كانت In Progress في آخر قراءة؛ SDK Success.
+- CodeQL run [43278133548](https://github.com/HVA09/ai-chat-app/actions/runs/43278133548): Analyze Python وJavaScript/TypeScript In Progress.
+- لا merge قبل اكتمال الفحوص ومراجعة النسخة الأخيرة نفسها.
+
+### حدود التشغيل
+- لم نشغّل Workflow الاستعادة، ولم ننفذ `pg_restore`، ولم نُنشئ GitHub Environment أو secrets أو متغيرات staging، ولم نغيّر Supabase أو Render أو قاعدة الإنتاج أو ملفات النسخ الاحتياطية.
+- النسخة الخارجية الموجودة تثبت object existence/archive listing فقط؛ source provenance غير مثبت بالكامل، وsuccessful restore غير مثبت.
+- لا bulk reindex/backfill ولا strict retrieval fingerprint filtering قبل إثبات provenance وsuccessful restore إلى staging معزول.
+- سجل الاختبارات السابق سجل duplicate-key واحدًا على قيد `uq_scheduled_task_runs_task_scheduled_for` ضمن PostgreSQL CI مع نجاح pytest؛ يبقى ملاحظة مراقبة وليس فشلًا في PR #698.
+
+
+## 39. تثبيت اسم النسخة وSHA-256 في Workflow الاستعادة — 2026-11-12
+
+- أُضيف حقل `backup_sha256` مطلوب إلى `workflow_dispatch`؛ يجب أن يكون 64 قيمة hex وأن يطابق الملف الذي تمت مراجعته قبل التشغيل.
+- أضيفت الدالة `verify_sha256_file` باستخدام SHA-256 وconstant-time digest comparison؛ تعيد رفض أي digest ناقص/غير صالح أو لا يطابق محتوى الملف.
+- أضيفت اختبارات:
+  - يقبل SHA-256 المطابق للأرشيف.
+  - يرفض digest غير المطابق.
+  - يرفض digest بترميز/طول غير صحيح.
+- تحقق الملف الآن يتطلب ثلاثة مدخلات متوافقة: target=staging، اسم الملف exact تحت prefix ثابت، وSHA-256 المعتمد. لم يعد يسمح باختيار أحدث backup تلقائيًا أو صلاحية S3 ListBucket؛ التعليق والتوثيق يطلبان object-read فقط تحت prefix المحدد، بلا list/write.
+- PR body عُدّل ليشترط مراجعة نفس الملف المحدد ونفس digest، ويعرض المتطلبات التشغيلية قبل استخدام workflow.
+- PR #698 آخر head: `f72f2601dbc329e0c69860a0ab192929b7503de1`، base `48c451545c0ab2b05e08c94b4afc72b2215a4910`.
+- CI [43279524991](https://github.com/HVA09/ai-chat-app/actions/runs/43279524991) بدأ على الرأس الحالي؛ SDK Success، بينما Backend/Frontend/Preview Builder/Production Compose In Progress عند آخر قراءة.
+- CodeQL [43279525021](https://github.com/HVA09/ai-chat-app/actions/runs/43279525021) بدأ على الرأس الحالي؛ لم تكتمل النتيجة عند آخر قراءة. لم يعتمد حالة CodeQL المجمّعة `neutral` كنجاح؛ ننتظر نتيجة workflow الفعلية.
+- PR يبقى Draft؛ لا Ready/merge حتى تنتهي كل الفحوص على هذا الرأس وبعدها مراجعة الحالة النهائية.
+- لا workflow execution، لا `pg_restore`، لا Supabase/Render writes، لا secrets أو environments، ولا تغيير إنتاجي.
+
+
+## 40. دمج PR #698 وتحقق ما بعد الدمج — 2026-11-12
+
+### نتيجة الدمج
+- PR #698 `security: restrict Supabase restore workflow to staging only` أصبح merged.
+- PR: https://github.com/HVA09/ai-chat-app/pull/698
+- Head الذي اجتاز الاختبارات: `f72f2601dbc329e0c69860a0ab192929b7503de1`.
+- Merge commit/main: `df92952686f2a1f21339ab1ae55acb3f6d866164`.
+- CI السابق للدمج: 8/8 Success؛ Backend `650 passed, 2 warnings in 237.92s`؛ Frontend/SDK/Preview Builder/Production Compose وCodeQL Python/JavaScript-TypeScript كلها Success.
+- لا review submissions أو inline review threads عند مراجعة ما قبل الدمج.
+- التغيير النهائي يتطلب `target=staging`, تأكيد يدوي، التشغيل من `main`, اسم ملف محدد، وSHA-256 expected digest؛ يتحقق من الملف المحدد ويعيد فحص مشروع Supabase وTLS قبل `pg_restore`. لا يختار newest archive تلقائيًا. IAM المطلوب object-read فقط تحت prefix المعزول، بلا ListBucket أو write.
+- لا workflow restore تم تشغيله؛ لا `pg_restore` ولا staging environment/secrets تم إنشاؤها أو تعديلها.
+
+### ما بعد الدمج
+- Production smoke [43280882516](https://github.com/HVA09/ai-chat-app/actions/runs/43280882516): completed/success.
+- CI push run [43280882496](https://github.com/HVA09/ai-chat-app/actions/runs/43280882496): كان in_progress عند آخر قراءة؛ Backend ما زال في `Run backend tests with hang diagnostics`; Frontend/SDK/Preview Builder/Production Compose Success. يجب تحديث السجل بعد انتهائه.
+- Render service `srv-dakc4nbm8hqs73e2po9g` ما زال configured على main و`autoDeployTrigger=checksPass`, Free Ohio, health path `/health`.
+- أحدث Render deployment وقت فحص ما بعد الدمج ظل `dep-dbqvb6mq1p3s73dn2m3g` على SHA `48c451545c0ab2b05e08c94b4afc72b2215a4910`، حالة `live`. لم يظهر deploy جديد على `df929526...` وقت الفحص؛ نعيد التحقق بعد انتهاء post-merge CI. لم يتم manual deploy.
+
+### ملاحظات وضوابط باقية
+- سجل Backend CI أظهر duplicate-key واحدًا على `uq_scheduled_task_runs_task_scheduled_for` رغم نجاح pytest؛ لا يزال بند مراقبة منفصلًا.
+- backup object الخارجي: وجوده وبنيته تم التحقق منهما عبر workflow السابق، لكن provenance من المصدر لم يثبت بالكامل. Restore capability لم تُثبت بعد.
+- إنشاء GitHub Environment `supabase-staging`، حماية required reviewers، secrets scoped، S3 read-only credentials، sanitized dump، exact filename وSHA-256 كلها متطلبات خارجية لم تُجهّز بعد.
+- لا تشغيل Workflow الاستعادة قبل مراجعة بيئة staging والـsecrets والـreviewers والملف/البصمة المحددة. لا استعادة production مطلقًا عبر workflow.
+- لا bulk RAG reindex/backfill ولا strict retrieval fingerprint filtering قبل provenance موثوق ودليل restore ناجح إلى staging معزول.
+- لا تعديل Render/Supabase production أو أسرار، ولا إجراءات بيانات إنتاجية بهذا القسم.
+
+## 41. متابعة QueuePool وPR #699 لتحرير اتصال Agent قبل انتظار المزود — 2026-11-12
+
+### تحديث تصحيحي لما بعد PR #698
+- CI بعد الدمج على main df92952686f2a1f21339ab1ae55acb3f6d866164 اكتمل بنجاح:
+  - run https://github.com/HVA09/ai-chat-app/actions/runs/43280882496
+  - Backend: 650 passed, 2 warnings in 274.15s.
+  - Frontend, SDK, Preview Builder, Production Compose: Success.
+  - CodeQL Python وJavaScript/TypeScript: Success.
+  - Production smoke https://github.com/HVA09/ai-chat-app/actions/runs/43280882516: Success.
+- Render deployment dep-dbr0f415efls73dsn45g على df929526 انتهى Live عند 2026-11-12T18:40:12Z.
+- بعد النشر، Render internal logs سجلت 104 استجابات GET /health 200 تقريبًا بين 18:40:11Z و18:47:31Z؛ أزمنة الاستجابة كانت غالبًا 10–15ms. لم تسجل app error logs في نافذة 18:40:10Z–18:50:00Z.
+- هذا دليل تعافٍ داخلي لفحص الصحة بعد النشر، وليس إثباتًا كاملًا لتجربة المستخدم أو محادثة RAG/Agent من طرف إلى طرف.
+- قبل النشر، حدثت أخطاء SQLAlchemy موثقة:
+  - 2026-11-12T17:53:19Z على instance srv-dakc4nbm8hqs73e2po9g-bwvm4.
+  - 2026-11-12T18:34:33Z–18:34:34Z على instance srv-dakc4nbm8hqs73e2po9g-9vpxx.
+  - النوع: QueuePool limit of size 2 overflow 1 reached, connection timed out, timeout 15.00.
+  - تأثرت طلبات مثل GET /saved-prompts وGET /users/me وGET /conversations/bookmarks وGET /folders، كما فشل DB health probe في نافذة الحادثة.
+- لا يوجد حتى الآن ما يثبت أن سبب الحادثة الوحيد هو مسار Agent؛ لذا يبقى السبب الجذري قيد التحقق بعد الإصلاح والمراقبة.
+
+### سبب برمجي قابل للإصلاح اكتشف في main
+- SQLAlchemy pool defaults: DATABASE_POOL_SIZE=2, DATABASE_MAX_OVERFLOW=1, DATABASE_POOL_TIMEOUT_SECONDS=15؛ أي حد أقصى 3 checkouts لكل process/engine.
+- start.sh يشغل API وembedded Celery worker وbeat كعمليات منفصلة، ولكل عملية engine/pool مستقل.
+- في ai-backend/app/tasks.py، دالة _agent_job_event_sink كانت تنفذ db.get(AgentJob, job_id) على Session العامل وتعيدها دون إغلاق transaction.
+- يستدعي AgentRuntime هذه الأحداث قبل provider calls: runtime_start وruntime_round_start، وكذلك حول الأدوات start وresult. قراءة ORM تُنشئ transaction، وكان بالإمكان الاحتفاظ بـcheckout أثناء انتظار AI provider أو tool I/O.
+- هذا مسار حقيقي عالي المخاطر لاستبقاء اتصال، لا مجرد تخمين من Render logs؛ لكنه ليس إثباتًا بأن جميع حالات QueuePool سببها هذا المسار.
+
+### PR #699
+- PR: https://github.com/HVA09/ai-chat-app/pull/699
+- Branch: fix/agent-event-db-pool-release-20261112.
+- Base: df92952686f2a1f21339ab1ae55acb3f6d866164.
+- Head الحالي عند فتح الطلب: e4b3bf75fdedc84b3ed8a0ebb5d57f18c8073337.
+- التغيير: بعد قراءة حالة AgentJob في event sink، استخدام commit_and_release_connection(db) لتحرير checkout قبل الرجوع إلى AgentRuntime. هذا الحدّ يعامل اكتمال event/tool unit-of-work كنقطة commit مقصودة.
+- أضيف اختبار قبول PostgreSQL test_agent_event_sink_releases_db_pool_before_provider_wait: يستخدم QueuePool من اتصال واحد، ويحاكي provider wait، ويشترط أن Session ثانية تستطيع تنفيذ SELECT 42 أثناء الانتظار.
+- الملفات: ai-backend/app/tasks.py وai-backend/tests/test_pool_release_acceptance.py.
+- PR يبقى Draft؛ لا دمج حتى نجاح Backend وFrontend وSDK وPreview Builder وProduction Compose وCodeQL ومراجعة أحدث head.
+- CI run https://github.com/HVA09/ai-chat-app/actions/runs/43285215042, CodeQL https://github.com/HVA09/ai-chat-app/actions/runs/43285215153. عند آخر قراءة: SDK Success، Backend/Frontend/Preview Builder/Production Compose وCodeQL ما زالت In Progress.
+
+### حدود التشغيل والقرار
+- لا رفع pool size أو overflow عشوائيًا؛ الحدّ الحالي مقصود لمراعاة session pooler ومحدودية الموارد.
+- لا تغييرات Render/Supabase أو secrets أو قاعدة الإنتاج أو البيانات؛ لا تغيير في deployment خلال PR #699.
+- لا restore أو backfill/reindex.
+- بعد دمج PR #699 (إذا اجتاز كل الفحوص): راقب QueuePool/health/app errors مجددًا، ثم اختبر طلبات مستخدم فعلية ومهمة Agent؛ لا تعتبر تعافي /health وحده إغلاقًا لحادثة الاستنفاد.
+- ملاحظة مستقلة ما زالت مرصودة في PostgreSQL CI: duplicate key على uq_scheduled_task_runs_task_scheduled_for مع نجاح مجموعة الاختبارات؛ تبقى للمراقبة والمعالجة المنفصلة.
+
+
+## 41. حادثة QueuePool في Render ومراجعة احتجاز الاتصالات في Agent — 2026-11-12
+
+### مرجع الإنتاج بعد PR #698
+- main: `df92952686f2a1f21339ab1ae55acb3f6d866164`.
+- PR #698 merged؛ post-merge CI [43280882496](https://github.com/HVA09/ai-chat-app/actions/runs/43280882496) انتهى بنجاح؛ Backend `650 passed, 2 warnings in 274.15s`، وFrontend/SDK/Preview Builder/Production Compose Success.
+- Production smoke [43280882516](https://github.com/HVA09/ai-chat-app/actions/runs/43280882516) Success.
+- Render نشر main commit إلى Live عبر `dep-dbr0f415efls73dsn45g` عند `2026-11-12T18:40:12Z`.
+
+### دليل حادثة الاتصالات
+- سجلات Render لخدمة `srv-dakc4nbm8hqs73e2po9g` رصدت SQLAlchemy:
+  `QueuePool limit of size 2 overflow 1 reached, connection timed out, timeout 15.00`.
+- المجموعة الأولى عند `17:53:19Z` وأثرت على `GET /saved-prompts`.
+- مجموعة ثانية عند `18:34:33Z–18:34:34Z`؛ فحص `/health` نفسه سجل `فحص الصحة: قاعدة البيانات غير متاحة`، كما ظهرت استثناءات لـ`GET /users/me` و`GET /conversations/bookmarks` و`GET /folders`.
+- هذا دليل على أن الاتصالات الثلاثة المحلية المتاحة للعملية (pool_size=2 + max_overflow=1) كانت محجوزة أو غير متاحة خلال تلك اللحظات. لا يثبت وحده السبب الأعلى أو يحدد أي طلب احتفظ بكل اتصال.
+- بعد نشر `df929526...` ظهرت قراءات داخلية متتالية لـ`GET /health 200` على instance الجديد `srv-dakc4nbm8hqs73e2po9g-w7clc`، غالبها `10–15ms`، وأحيانًا قراءة أبطأ `289ms`. استعلام أخطاء التطبيق للفترة `18:40:10Z–18:50:00Z` أعاد صفرًا.
+- آخر سجل صحة مؤكد في القراءة التفصيلية: `18:47:31.875Z`. لا نعتبر هذه النافذة القصيرة إثبات استقرار دائم.
+- الفحص الخارجي المباشر لـ`/health` و`/ready` لم يمكن التحقق منه عبر أداة الويب في هذه الجولة؛ لذا يبقى التحقق العام end-to-end غير مؤكد.
+
+### المراجعة التقنية والإصلاح المقترح
+- `/chat` في وضع `/agent` يمرر جلسة SQLAlchemy إلى `AgentRuntime`. قبل هذا الإصلاح، كان `AgentRuntime` ينتظر اكتشاف MCP ومزوّد النموذج وتنفيذ بعض الأدوات دون حدود تحرير اتصال مماثلة لمسار chat العادي.
+- مراجعة الكود تحدد ذلك كمسار احتجاز اتصال محتمل وواضح، لكنه لا يثبت أنه سبب كل حوادث Render التي ظهرت.
+- PR #700: https://github.com/HVA09/ai-chat-app/pull/700
+  - branch: `fix/agent-db-pool-release-20261112`.
+  - base main: `df92952686f2a1f21339ab1ae55acb3f6d866164`.
+  - head الحالي: `dbca8adc9269fff5734a29f0a133258904fb6401`.
+  - يحرر الاتصال قبل MCP discovery، وبعد event callback وقبل dispatch للأداة، وقبل كل جولة لمزوّد النموذج.
+  - أدوات `analyze_data` و`create_project_archive` تحرر الاتصال بعد قراءة metadata/quota وقبل عمليات Object Storage.
+  - اختبار SQLite QueuePool من اتصال واحد يحاكي event sink يستخدم DB، أداة تقرأ DB، ثم جولة نموذج لاحقة؛ ويثبت توفر الاتصال للمنافسة. أضيفت اختبارات لأدوات التخزين.
+- CI [43286194209](https://github.com/HVA09/ai-chat-app/actions/runs/43286194209) وCodeQL [43286193933](https://github.com/HVA09/ai-chat-app/actions/runs/43286193933) قيد التشغيل عند آخر قراءة؛ SDK Success وباقي الوظائف كانت In Progress.
+- PR #700 يبقى Draft؛ لا merge حتى تنجح كل الفحوص على آخر SHA وتكتمل المراجعة. لم يتغير main نتيجة هذا الإصلاح حتى الآن.
+
+### الضوابط
+- لم نغيّر DATABASE_POOL_SIZE أو DATABASE_MAX_OVERFLOW أو DATABASE_URL أو أي secret في Render/Supabase؛ لا نزيد حجم pool كحل سريع قبل إثبات حدود الاتصالات لدى Session Pooler.
+- لا تغييرات schema/migrations، ولا استعادة، ولا reindex/backfill أو بيانات إنتاجية.
+- بعد دمج #700 يلزم مراقبة Render logs مجددًا ومقارنة QueuePool timeouts وطلبات /health و5xx قبل اعتبار الحادثة محلولة.
+
+## 42. توسيع إصلاح Pool من Celery إلى AgentRuntime لجميع وسائل النقل — 2026-11-12
+
+### تصحيح PR #699
+- عند مراجعة المسارات تبين أن HTTP POST /chat وSSE POST /chat/stream يستدعيان run_agent مباشرة، ولا يمران عبر _execute_agent_job في tasks.py.
+- لذلك فإن تحرير الاتصال في event sink الخاص بـCelery وحده لا يغطي مسارات Agent المباشرة والمتدفقة.
+- تم توسيع PR #699 إلى الرأس الحالي e9c20256f7ba0301f44104ed85dafe91e819fdb2:
+  - ai-backend/app/services/agent_runtime.py: يستدعي commit_and_release_connection(db) مباشرة قبل كل provider.get_reply_with_tools call، وبذلك يشمل HTTP وSSE وCelery.
+  - ai-backend/app/tasks.py: يبقى تحرير الاتصال بعد قراءة AgentJob داخل event sink قبل متابعة عملية الأداة/المزوّد.
+  - ai-backend/tests/test_pool_release_acceptance.py: اختبار PostgreSQL بــ QueuePool من اتصال واحد، يستخدم AgentRuntime الفعلي ومزوّدًا محاكى ينتظر؛ يتحقق أن Session ثانية تنفذ SELECT 42 خلال انتظار المزوّد.
+- PR #699 ما زال Draft ومفتوحًا وغير مدمج؛ base main df92952686f2a1f21339ab1ae55acb3f6d866164.
+- على أحدث head e9c20256:
+  - CodeQL Python وJavaScript/TypeScript: Success.
+  - Frontend وSDK وPreview Builder وProduction Compose: Success.
+  - Backend: لا يزال Run backend tests with hang diagnostics In Progress في آخر قراءة.
+  - CI run https://github.com/HVA09/ai-chat-app/actions/runs/43286930228
+  - CodeQL run https://github.com/HVA09/ai-chat-app/actions/runs/43286931731
+- لا merge حتى ينجح Backend على الرأس ذاته وتكتمل المراجعة النهائية.
+
+### توضيح حادثة QueuePool في Render
+- نافذة الحادثة الثانية بعد النشر: 2026-11-12T18:51:58Z–18:51:59Z على instance srv-dakc4nbm8hqs73e2po9g-w7clc.
+- ظهرت دفعة طلبات واجهة من العميل 10.27.232.133 و10.29.6.5 قبل الحادثة مباشرة: POST /auth/refresh 200، GET /notifications 200، GET /workspaces 200، GET /saved-prompts 200، GET /tags 200، GET /assistants 200.
+- ثم تعثرت طلبات أخرى بــQueuePool timeout 15s: /memories، /conversations/bookmarks، /chat/models، /users/me، /conversations. بعد استعادة الوصلات عادت بعض الطلبات إلى 200.
+- في التوقيت ذاته، مهمة Celery run_due_scheduled_tasks انتهت بنجاح خلال نحو 0.0196 ثانية، ولا تظهر سجلات Agent task بنفس نافذة الحادثة؛ لذلك لا توجد قرينة مباشرة على أن تلك المهمة سببت الحادثة.
+- /health ظل يعطي 200، لكن بعض probes ارتفع زمنها إلى 700–807ms وقت ضغط الاتصالات ثم عاد إلى 10–12ms.
+- الاستنتاج الحالي: السجلات تثبت استنفاد QueuePool متقطعًا تحت تزامن الطلبات، مع خطر برمجي ملموس في مسارات Agent التي تحتفظ باتصال قبل provider I/O؛ لكنها لا تثبت أن Agent هو السبب الوحيد أو أن الإصلاح وحده يغلق كل حالات الاستنفاد.
+- لا تزال الحاجة قائمة لمراقبة Render بعد دمج/نشر PR #699، وملاحظة أداء طلبات المستخدم، وتجربة Agent فعلية. لا تعتبر 200 health وحده إغلاقًا للحادثة.
+
+### الضوابط
+- لم تتغير إعدادات Render أو Supabase أو حجم pool؛ لا تغييرات Production ولا migrations ولا data writes.
+- PR #699 Draft حتى اكتمال Backend/CodeQL ومراجعة latest head.
+- لا تشغيل restore أو reindex/backfill؛ بوابة backup/restore ما زالت مفتوحة.
+
+## 42. دمج PR #700 وتحديث حادثة استنفاد الاتصالات — 2026-11-12
+
+### PR #700
+- PR: https://github.com/HVA09/ai-chat-app/pull/700
+- تم الدمج بطريقة squash بعد نجاح 8/8 check-runs على head `dbca8adc9269fff5734a29f0a133258904fb6401`.
+- Merge/main SHA: `3d5910d68977f049d84ccf7537f2e18e2462aba3`.
+- Backend: `653 passed, 2 warnings in 314.23s`.
+- Frontend, SDK, Preview Builder, Production Compose: Success.
+- CodeQL Python وJavaScript/TypeScript: Success.
+- لا تغييرات schema/migration/config/secret.
+
+### ما بعد الدمج
+- main CI: [43287982770](https://github.com/HVA09/ai-chat-app/actions/runs/43287982770) بدأ على SHA `3d5910d...`; SDK Success، وباقي الوظائف كانت In Progress عند آخر قراءة.
+- Production smoke: [43287982446](https://github.com/HVA09/ai-chat-app/actions/runs/43287982446) In Progress عند آخر قراءة.
+- CodeQL: [43287982533](https://github.com/HVA09/ai-chat-app/actions/runs/43287982533) In Progress عند آخر قراءة.
+- Render لم يقدم بعد دليل نشر Live على SHA `3d5910d...` عند آخر poll؛ يلزم التحقق من deployment الجديد بعد نجاح checks.
+- لا نعلن حل QueuePool بالكامل من merge وحده.
+
+### مراجعة مسارات async DB إضافية — ليست ضمن PR #700
+- `billing.cancel_subscription`: provider cancellation awaited بعد تحميل subscription، قبل تحديث الحالة المحلية. يحتاج تحرير اتصال بعد قراءة provider_subscription_id ثم إعادة تحميل/التحقق قبل الحفظ.
+- `billing._apply_webhook_event`: بعد commit وكتابة log_event يحصل await لـ`notify_realtime`; يلزم فحص notify_realtime وهل يحتفظ أو يفتح DB checkout خلال بثه.
+- `billing.create_checkout`: يحتفظ بمعاملة `pg_advisory_xact_lock(user_id)` أثناء provider checkout call. لا تضف commit/release مباشرًا هنا، لأن ذلك يسقط قفل المعاملة ويُبطل منع checkout المتكرر. يتطلب تصميم idempotency/checkout-attempt persisted أو session-level advisory lock مستقلًا.
+- `oauth.refresh_connection` / `refresh_oauth_connection`: يقرأ refresh token من صف OAuth ثم ينتظر HTTP refresh قبل commit. مرشح لتحرير الاتصال بعد التقاط البيانات والتحقق، مع reload/locking مناسب قبل update كي لا يُكتب token قديم فوق token أحدث.
+- `projects.build_project_preview`: يقرأ ملفات المشروع ثم ينتظر preview builder خارجي حتى `PREVIEW_BUILD_TIMEOUT_SECONDS` (افتراضي 120s) مع session مفتوحة. مرشح لتحرير الاتصال بعد materializing payload_files وقبل await، ثم يسجل artifact بعد إعادة المعاملة.
+- مسارات chat الأخرى راجعت: compare/regular chat/web search/vision وregenerate/edit لديهم حدود commit/rollback قبل provider، وupload/index image يحرران checkout قبل التخزين/provider. لا دليل أن WebSocket أو Celery كان سبب burst 18:51؛ كلاهما ظهر ضمن الضحايا أو كمهام سريعة.
+- لا تعديل لهذه المسارات في PR #700؛ افصلها في PR مراجع لاحقًا ولا تُسقط advisory locks أو تغير سلوك الدفع/OAuth.
+
+### حادثة Render المسجلة
+- تكرر `QueuePool size=2 overflow=1 timeout=15s` بعد نشر #698 في `17:53:19Z`, `18:34:33Z`, و`18:51:58Z`.
+- Burst `18:51:58Z` أثر على عدة GET requests؛ سجل ASGI واحد أظهر فشل `notifications_websocket` أثناء `db.get(User, user_id)`، وهذا يحدد الضحية لا السبب الجذري.
+- Celery due-scheduled task قبل الـburst عند `18:51:51Z` نجحت في نحو 0.0196s.
+- بعد ذلك استمر internal `/health 200` بأزمنة غالبها 10–12ms، لكن هذا لا ينفي فشل الطلبات العادية تحت ضغط اتصالات DB.
+- المطلوب بعد نشر #700: رصد QueuePool errors وطلبات 5xx، وإثبات نجاح طلبات مستخدم عادية (auth/models/chat) وليس `/health` فقط. لا تغيير pool vars أو Render/Supabase limits دون قياس ومعرفة قيود pooler.
+
+### الحدود
+- لا تعديل إنتاجي لقاعدة البيانات أو Render/Supabase env/secrets.
+- لا تشغيل استعادة أو backfill/reindex، ولا تغيير pool size/overflow.
+- لا تشغيل webhook/payment/OAuth حقيقي بغرض الاختبار على production.
+
+## 43. PR #700 حلّ محل PR #699 وأصبح إصلاح Agent Pool على main — 2026-11-12
+
+### نتيجة PR #700
+- PR: https://github.com/HVA09/ai-chat-app/pull/700
+- العنوان: fix(db): release pool connections during Agent external waits.
+- PR #700 merged؛ merge commit/main: 3d5910d68977f049d84ccf7537f2e18e2462aba3.
+- Parent/base: df92952686f2a1f21339ab1ae55acb3f6d866164.
+- تغييرات runtime:
+  - release قبل MCP discovery (انتظار خارجي).
+  - release بعد callbacks لأحداث الأدوات وقبل تنفيذ tool handler.
+  - release قبل كل model/provider round.
+  - release داخل Agent tools قبل remote Object Storage: analyze_data materialization وcreate_project_archive upload.
+- regression tests أضافت SQLite QueuePool من اتصال واحد تغطي MCP/provider/tool wait، واختبارات registry تغطي تحرير الاتصال قبل materialization والرفع.
+- CI main run https://github.com/HVA09/ai-chat-app/actions/runs/43287982770: success.
+- Backend: 653 passed, 2 warnings in 225.87s.
+- Frontend، SDK، Preview Builder، Production Compose، CodeQL Python وJavaScript/TypeScript، Production smoke، Publish Backend image: كلها Success.
+- PostgreSQL CI سجّل duplicate key منفصلًا على uq_scheduled_task_runs_task_scheduled_for رغم نجاح المجموعة؛ ما زال بندًا تقنيًا مستقلاً للمراقبة.
+- Render بدأ auto deploy لـ3d5910d بتاريخ 2026-11-12T19:18:26Z، build succeeded عند 19:18:38Z، deployment كان update_in_progress عند آخر قراءة؛ لم نعتبره Live بعد حتى تأتي حالة صريحة.
+
+### إغلاق PR #699 المكرر
+- PR #699: https://github.com/HVA09/ai-chat-app/pull/699 أُغلق دون دمج بعد دمج PR #700.
+- سبب الإغلاق: PR #700 يغطي الخطر المركزي ويضيف نقاط release إضافية قبل MCP/tool/storage؛ PR #699 أصبح متأخرًا عن main ويتضمن إصلاحًا متداخلًا.
+- PR #699 head 8ee388dd83965cdaf3809f9a4e377d2518597e45 لم يدمج.
+- CI على PR #699 head e9c20256f7ba0301f44104ed85dafe91e819fdb2 كان فاشلاً: 8 اختبارات AgentRuntime القديمة مرتّرة بـdb=object() اصطدمت بقراءة expire_on_commit؛ بينما test_agent_runtime_releases_db_pool_before_provider_wait الجديد نجح. لم يُنقل هذا الإصلاح إلى main لأنه أصبح مغطّى بحل PR #700؛ PR #700 غيّر الاختبارات القديمة إلى _NoopSession وأثبت السلوك باختبار pool مخصص.
+- لا تغيير production/DB/Supabase/Render settings من فرع PR #699؛ فرع PR #699 لم يتم نشره.
+
+### بوابة التحقق بعد نشر PR #700
+- انتظر حالة Render deploy dep-dbr120e8bjmc739l0l00 لتكون Live.
+- بعد Live، راقب QueuePool timeout وDB health وسجلات التطبيق؛ لا اعتبار 200 health كافيًا وحده، وراقب طلبات المستخدم وأداء Agent/Storage.
+- آخر ملاحظة قبل deploy: incidents على QueuePool في 17:53 و18:34 و18:51؛ وبعد حادثة 18:51 لم تسجل أخطاء QueuePool جديدة حتى 19:13؛ ظهر فقط Gemini provider 503 مرتين عند 18:52:55Z.
+- لا استعادة أو backfill/reindex أو تغييرات بيانات إنتاجية. بوابة backup/restore لا تزال مفتوحة.
+
+## 44. تأكيد نشر PR #700 ومراقبة Render الأولية — 2026-11-12
+
+- Render service srv-dakc4nbm8hqs73e2po9g نشر main commit 3d5910d68977f049d84ccf7537f2e18e2462aba3.
+- Deployment dep-dbr120e8bjmc739l0l00 بدأ 2026-11-12T19:18:25Z وانتهى Live بنجاح عند 19:20:31Z.
+- بعد Live، سجلات Render الداخلية أظهرت 26 استجابة GET /health 200 بين 19:20:35Z و19:22:00Z تقريبًا، بأزمنة 10–12ms.
+- نافذة سجلات app error من 19:20:31Z إلى 19:27:00Z: صفر app errors.
+- هذا تحقق تشغيل أولي داخلي للنشر، وليس اختبارًا كاملاً لكل مسارات المستخدم أو اختبار ضغط يثبت عدم عودة QueuePool تحت أحمال أعلى.
+- PR #699 تأكد إغلاقه دون merge (merged=false) لأنه أصبح مكررًا بعد PR #700؛ لم يحدث deploy من branch #699.
+- لا تغييرات على إعدادات Render أو حجم pool أو Supabase أو DB أو الأسرار. لا migrations، لا restore، لا backfill/reindex.
+- القرار: راقب QueuePool errors مجددًا مع طلبات فعلية وAgent runs وعمليات الملفات؛ لا تغلق حادثة استنفاد الوصلات نهائيًا اعتمادًا على /health وحده. خطأ Gemini 503 في 18:52:55Z كان منفصلًا عن QueuePool، وآخر نافذة بعد deploy لم تسجل أخطاء app.
+
+
+
+## 45. دمج PR #701 — تحرير اتصالات DB في Billing وOAuth وPreview — 2026-11-12
+
+### نتيجة PR
+- PR #701: https://github.com/HVA09/ai-chat-app/pull/701
+- العنوان: `fix(db): release pool connections during billing, OAuth, and preview waits`.
+- تم الدمج بطريقة Squash؛ merge commit وmain: `396cb54aea4b9e8656249434fc7ab09089c27f76`.
+- base السابق: `3d5910d68977f049d84ccf7537f2e18e2462aba3`.
+- head الذي اجتاز فحوص ما قبل الدمج: `c5a6880033be3893632a547c01d13c4b075ec9ed`.
+- Pre-merge CI: 8 check-runs Success؛ Backend `658 passed, 2 warnings in 350.39s`; Frontend وSDK وPreview Builder وProduction Compose وCodeQL Python/JavaScript-TypeScript كلها Success.
+- لا inline review threads أو review submissions عند المراجعة النهائية.
+- لا schema/migration changes.
+
+### الإصلاحات
+- Billing cancel: تحرير اتصال DB قبل await لمزود الدفع، ثم إعادة تحميل وقفل سجل الاشتراك نفسه باستخدام id/user/provider_subscription_id؛ إذا تغير السجل يُرجع 409 ولا يضع الاشتراك الجديد في canceled.
+- Billing webhooks: تحرير الاتصال قبل إرسال SMTP والبث realtime بعد تحميل بيانات المستلم والخطة.
+- OAuth refresh: تحرير الاتصال قبل token endpoint، واستخدام compare-and-swap على encrypted access/refresh token القديم لمنع استجابة بطيئة من الكتابة فوق تحديث أحدث.
+- Project preview: تحرير الاتصال قبل isolated builder، إعادة التحقق من صلاحية المشروع بعد اكتمال البناء، ثم تحرير الاتصال مرة ثانية قبل رفع artifact إلى Object Storage.
+- قفل `pg_advisory_xact_lock` في `billing.create_checkout` بقي كما هو عمدًا؛ تحريره خلال provider await دون بديل idempotency/lock يُعيد خطر إنشاء checkout مكرر.
+
+### Regression tests
+- ملف `ai-backend/tests/test_external_wait_pool_release.py` أضاف اختبارات QueuePool ذات اتصال واحد:
+  1. توفر pool slot خلال provider cancellation.
+  2. عدم إلغاء اشتراك بديل بسبب استجابة cancel قديمة.
+  3. توفر الاتصال أثناء إرسال Billing webhook email.
+  4. تحرير slot خلال OAuth refresh وعدم overwrite token pair أحدث.
+  5. توفر slot أثناء preview builder وأثناء نشر artifact.
+- لم تنفذ أي دفعة أو OAuth حقيقي أو SMTP حقيقي أو builder خارجي حي خلال الاختبارات.
+
+### ما بعد الدمج (آخر قراءة)
+- main commit: `396cb54...`.
+- CI run [43296415363](https://github.com/HVA09/ai-chat-app/actions/runs/43296415363): بدأ؛ SDK Success، Backend/Frontend/Preview Builder/Production Compose كانت In Progress في آخر قراءة.
+- CodeQL [43296415526](https://github.com/HVA09/ai-chat-app/actions/runs/43296415526): Analyze Python وJavaScript/TypeScript In Progress في آخر قراءة.
+- Production smoke [43296415426](https://github.com/HVA09/ai-chat-app/actions/runs/43296415426): In Progress في آخر قراءة.
+- Backend image publish [43296415367](https://github.com/HVA09/ai-chat-app/actions/runs/43296415367): In Progress في آخر قراءة.
+- Render service ما زال عند deploy live السابق `dep-dbr120e8bjmc739l0l00` على SHA `3d5910d...`; لم يبدأ deploy SHA `396cb54...` عند آخر poll.
+- Render configured على `autoDeployTrigger=checksPass`؛ انتظر checks/main publish وبعدها تحقق من Render Live تلقائيًا دون manual deploy.
+
+### بوابة مراقبة الاستقرار
+- بعد نشر #700 (SHA `3d5910d...`)، سجل Render من 19:20:31Z إلى 19:36:00Z لم يُظهر QueuePool أو app errors؛ health 200 مستمر لكن غير كافٍ وحده.
+- Duplicate-key CI على `uq_scheduled_task_runs_task_scheduled_for` ظهر مجددًا رغم نجاح pytest في #701؛ يبقى issue منفصلًا يحتاج تحليل idempotency/locking للـscheduler.
+- لا تغيير في DB_POOL_SIZE/OVERFLOW أو Render/Supabase limits أو env/secrets.
+- لا production restore، ولا reindex/backfill أو strict retrieval fingerprint filtering.
+\n
+
+
+## 46. تحقق ما بعد دمج #701 والنشر الحي — 2026-11-12
+
+### GitHub post-merge
+- main: `396cb54aea4b9e8656249434fc7ab09089c27f76`.
+- CI [43296415363](https://github.com/HVA09/ai-chat-app/actions/runs/43296415363): Success.
+- Backend: `658 passed, 2 warnings in 217.20s`.
+- Frontend, SDK, Preview Builder, Production Compose: Success.
+- CodeQL Python + JavaScript/TypeScript [43296415526](https://github.com/HVA09/ai-chat-app/actions/runs/43296415526): Success.
+- Publish backend image [43296415367](https://github.com/HVA09/ai-chat-app/actions/runs/43296415367): Success.
+- Production smoke [43296415426](https://github.com/HVA09/ai-chat-app/actions/runs/43296415426): Success.
+
+### Render production deployment
+- Deployment: `dep-dbr1p96tlv9c738bj0b0`، commit `396cb54...`.
+- Build succeeded at 20:08:17.661Z؛ deployment succeeded and reached `live` at 20:10:10.196Z؛ Render event `deploy_ended` at 20:10:10.336Z.
+- Render emitted `Your service is live`; app startup completed on new instance `srv-dakc4nbm8hqs73e2po9g-xmxr2`.
+- Startup verified Object Storage connectivity OK, embedded Celery worker and beat started, worker connected to Redis and reported ready, Uvicorn startup complete on port 10000.
+- Health window after deployment (20:10:10Z–20:13:00Z): 38 unique internal `GET /health 200` request IDs (76 paired app/access log lines), latency mostly 9–12ms.
+- Same window: 0 app-level error logs and 0 `QueuePool` timeout logs.
+- This evidence is from Render's internal health and application logs. The external HTTP probe tool could not independently fetch the public health URL in this session; do not overstate that as externally verified.
+
+### Duplicate-key PostgreSQL CI line — classified
+- PostgreSQL CI printed one `duplicate key value violates unique constraint uq_scheduled_task_runs_task_scheduled_for` despite pytest success.
+- Source reviewed: `ai-backend/tests/test_scheduled_tasks.py::test_scheduled_run_slot_is_unique` intentionally attempts to insert the same `(scheduled_task_id, scheduled_for)` twice inside `pytest.raises(IntegrityError)`, then rolls back.
+- This is the deliberate unique-constraint regression test, not evidence of a failing CI suite or a production duplicate task. Keep the database uniqueness constraint; no production change is warranted from this log line.
+- The scheduler code separately catches `IntegrityError` when another worker has already claimed a due slot, preventing double execution.
+
+### Remaining stability gate
+- PRs #696, #697, #698, #700, and #701 are merged and their respective deployments/checks are successful.
+- Initial post-#700 and post-#701 Render observation windows show no `QueuePool` timeout logs; #701 window had 38 successful internal health requests and no app errors.
+- This is a healthy deployment signal, not a concurrency/load test and not proof across every end-user route. Keep monitoring normal chat/RAG/Agent and file workflows before declaring the original pool incident fully closed.
+- Do not increase pool sizes, change Render plans, or edit database connection limits without measuring usage and provider limits.
+- Backup provenance/restore-to-staging remains unproven; the #698 staging-only workflow must not be run until environment reviewers, scoped secrets, sanitized archive, filename, and matching SHA-256 are independently ready. No restore, backfill, bulk reindex, or strict retrieval fingerprint filtering was run.
+\n
+
+
+## 47. دمج #702، نسخة Production backup، وانتكاسة QueuePool وتحسين تهيئة الواجهة — 2026-11-14
+
+### main ونتيجة #702
+- main الحالي: `18b8416cf9b2d13406a8c7d767341d42897496c0`.
+- PR #702: https://github.com/HVA09/ai-chat-app/pull/702 — إصلاح دورة رفع الملفات بعد unmount؛ merged.
+- CI post-merge [43353534426](https://github.com/HVA09/ai-chat-app/actions/runs/43353534426): Success.
+- Backend: `658 passed, 2 warnings in 316.79s`.
+- Frontend، SDK، Preview Builder، Production Compose، CodeQL Python وJavaScript/TypeScript: Success.
+- Production smoke [43413334380](https://github.com/HVA09/ai-chat-app/actions/runs/43413334380): Success.
+- Object Storage smoke [43422588553](https://github.com/HVA09/ai-chat-app/actions/runs/43422588553): Success.
+- Frontend service `srv-daklqph42hec73b1f61g` deploy `dep-dbr7j4ivcj2c73ejojj0` على SHA `18b8416...` وصل Live بتاريخ 2026-11-13T02:45:05Z.
+- Backend service ما زال على PR #701 merge commit `396cb54aea4b9e8656249434fc7ab09089c27f76`، وهذا متوقع لأن #702 frontend-only. Deployment backend `dep-dbr1p96tlv9c738bj0b0` بقي Live.
+
+### نسخة احتياطية إنتاجية أحدث — ليست Restore proof
+- Workflow run [43405958682](https://github.com/HVA09/ai-chat-app/actions/runs/43405958682)، scheduled 2026-11-13T10:01:57Z، jobs preflight وbackup: Success.
+- الاسم: `ai-chat-postgres-20261113T100201Z.dump`.
+- المفتاح البعيد: `database/ai-chat-postgres-20261113T100201Z.dump`.
+- حجم object بحسب remote HEAD: `862936 bytes`.
+- `pg_dump --format=custom` و`pg_restore --list` وفحص remote HEAD والرفع: Success.
+- Object Storage smoke منفصل أثبت upload/read-back/compare/delete لملف اختباري.
+- **حدود الدليل:** لم يسجل backup workflow SHA-256 لملف dump نفسه؛ لا artifact مرفق بـworkflow run؛ لم يتم تنزيل النسخة للتحقق من hash؛ ولم يُجر restore فعلي.
+- backup أعلاه خام من Production، وليس sanitized staging archive. كما أنه يقع تحت `database/` وليس `database/staging-sanitized/` المطلوب في restore workflow. لذلك لا يجوز استخدامه في بوابة الاستعادة الحالية.
+- GitHub Environment `supabase-staging`، reviewers/secrets، sanitized export مع provenance، exact staging object filename + SHA-256، وrestore test ما زالت متطلبات غير مثبتة.
+- قرار البوابة: backup object حديث موجود ومتحقق من حجمه/وجوده وarchive list، لكن backup provenance/hash + restore-to-staging ما زالا OPEN. لا تشغيل restore workflow.
+
+### QueuePool incident — لا إغلاق للحادثة
+- فحص Render logs بعد نشر #701 كشف موجة حقيقية بتاريخ 2026-11-13 حول `03:47:27Z`.
+- نحو 53 رسالة QueuePool timeout ضمن نحو 86 app-error lines في تلك النافذة.
+- النص: `QueuePool limit of size 2 overflow 1 reached, connection timed out, timeout 15.00`.
+- فشلت طلبات عادية، منها `GET /users/me`, `/assistants`, `/saved-prompts`, `/chat/models`, `/conversations/bookmarks`, و`/memories`.
+- خطأ `notifications_websocket` ظهر أثناء `db.get(User,...)` في نفس الموجة؛ الكود الحالي يفتح Session قصيرة ويغلقها قبل قبول/الإبقاء على WebSocket، لذلك هذا endpoint ضحية محتملة وليس سببًا مثبتًا.
+- instance كان مستيقظًا من Render Free hibernation: API startup complete عند ~03:46:59Z؛ health checks أولية كانت بطيئة (212ms ثم 73ms)؛ refresh token POST استغرق ~3050ms عند 03:47:11Z؛ وتبع ذلك موجة timeout.
+- Celery `run_due_scheduled_tasks` بدأ بعد موجة الفشل، عند 03:47:48Z، وانتهى بسرعة؛ لا دليل يحمّل scheduler مسؤولية هذه الموجة.
+- لا QueuePool timeouts أخرى ظهرت في سجل النافذة المفحوصة بعد الموجة وحتى 2026-11-14T05:10Z؛ هذا لا يثبت عدم العودة تحت حمل آخر.
+- لم يتم رفع `DATABASE_POOL_SIZE` أو `DATABASE_MAX_OVERFLOW` أو تغيير Supabase pooler/Render Free tier. لا يجوز إعلان incident closed.
+
+### فحص مصادر الضغط عند تسجيل الدخول
+- `ai-frontend/src/App.jsx` كان يبدأ 6 initial reads مستقلة عند `authed=true`: Current user، AI models، workspaces، tags، assistants، saved prompts.
+- `refreshWorkspaces()` كان يقوم بالفعل بتحميل folders ثم projects ثم assistants ثم conversations بالتتابع، ما جعل التحميل المبكر المباشر للمساعدين مكررًا.
+- effect منفصل كان يطلب conversations بعد 300ms، مكررًا مع تحميل المحادثات داخل `refreshWorkspaces()`.
+- `useBookmarks` و`useMemories` و`useNotifications` كانت تجلب مجموعاتها تلقائيًا فور المصادقة؛ هذا يضيف دفعة موازية أخرى. WebSocket notifications لا يحتفظ بقاعدة البيانات بعد handshake في الكود الحالي.
+- هذه بنية تفسر burst منطقيًا وتبرر تخفيف client-side concurrency، لكنها ليست دليلًا نهائيًا على مالك الاتصالات الثلاثة وقت QueuePool timeout.
+
+### PR #709 — Draft لتسلسل initial hydration
+- PR: https://github.com/HVA09/ai-chat-app/pull/709
+- branch: `fix/frontend-stagger-auth-startup-requests-20261114`.
+- Base: `18b8416...`; head: `c3f736ce542ddd8d0c3350c611f0e90560ced45c`.
+- التغييرات: تسلسل initial data reads (current user، model catalog، workspace hierarchy، tags، saved prompts، bookmarks، memories، notification list)؛ إزالة initial assistant request المكرر؛ تخطي duplicate initial conversations query مع الحفاظ على debounced search refresh؛ fallback assistants/conversations عند فشل workspace discovery؛ إلغاء بقية التسلسل بعد logout/unmount.
+- Auto-load الجديد في hooks اختياري افتراضيًا `true` للحفاظ على التوافق؛ App فقط يضبط `loadOnAuth=false` ويستدعي refresh methods في التسلسل. Notification WebSocket يبقى متصلًا فور المصادقة، ويؤجل REST list فقط.
+- اختبارات جديدة تغطي sequential order/abort، deferred hooks، استمرار WebSocket، ونتيجة workspace fetch.
+- PR ما زال Draft؛ CI run [43561624398](https://github.com/HVA09/ai-chat-app/actions/runs/43561624398) وCodeQL [43561624345](https://github.com/HVA09/ai-chat-app/actions/runs/43561624345) كانا In Progress عند آخر poll. لا merge ولا deploy من هذا الفرع.
+- لا تغييرات backend/DB/schema/migration/Render/Supabase/env/secrets/pool limits.
+
+### المطلوب بعد PR #709
+- انتظر جميع checks على نفس head SHA، ثم راجع أي frontend test/build failures قبل mark-ready/merge.
+- بعد النشر، راقب QueuePool timeout وapp 5xx، وليس /health فقط. المطلوب end-user routes وطلبات أول login بعد hibernation.
+- لا تزال الحاجة إلى pool owner diagnostics قائمة إذا تكررت الحادثة؛ current logs identify victims, not the three held checkouts.
+- لا production restore أو backfill/reindex أو تغيير pool settings. النسخة الإنتاجية لا تُعتبر staging sanitized backup.
+
+
+## 48. دمج PR #709 — تسلسل طلبات التهيئة بعد المصادقة — 2026-11-14
+
+### النتيجة
+- PR #709: https://github.com/HVA09/ai-chat-app/pull/709 — merged via Squash.
+- Base قبل الدمج: `18b8416cf9b2d13406a8c7d767341d42897496c0`.
+- Head الذي اجتاز الفحوص: `4ef03e143d92df1678c7f42a099c12db1dbcb20f`.
+- Merge commit / main: `18ff9bd0f047886c7e5b1121bba95a0b6e00371c`.
+- Pre-merge CI run [43561845096](https://github.com/HVA09/ai-chat-app/actions/runs/43561845096): Success.
+- Backend: `658 passed, 2 warnings in 270.42s`.
+- Frontend: `513 passed across 74 test files`; Vite build Success.
+- SDK، Preview Builder، Production Compose: Success.
+- CodeQL Python + JavaScript/TypeScript: Success.
+- لا inline review threads أو review submissions.
+- لا تغييرات Backend/DB/schema/migration/Render/Supabase/env/secrets/pool size/overflow.
+
+### التغيير
+- ترتيب أولية requests بعد authed: notifications list أولًا (مع بقاء WebSocket فوريًا)، ثم current user، model catalog، workspace hierarchy، tags، saved prompts، bookmarks، memories.
+- إزالة duplicate eager request للمساعدين؛ workspace hierarchy يحمل owned/shared assistants بالفعل.
+- تجاوز duplicate initial conversations request؛ بقي debounced refresh عند تغيير البحث.
+- عند فشل workspace discovery، fallback يقوم بتحميل assistants وconversations كما في السلوك السابق.
+- hooks bookmarks/memories/notifications تقبل `loadOnAuth` اختياريًا، default `true` للتوافق؛ App وحده يتحكم بتحميلها ضمن التسلسل.
+- التسلسل يتوقف عن بدء طلبات جديدة بعد logout/unmount.
+- أضيفت tests للتحقق من التتابع والإلغاء وdeferred hooks واستمرار WebSocket ونتيجة workspace refresh.
+- الهدف تخفيض burst على API Pool صغير عند session restore بعد Render Free hibernation؛ هذا تخفيف client-side محتمل وليس إثباتًا نهائيًا للسبب الجذري الذي احتجز الاتصالات الثلاثة.
+
+### ما بعد الدمج — آخر قراءة
+- main commit: `18ff9bd0f047886c7e5b1121bba95a0b6e00371c`.
+- CI [43562399685](https://github.com/HVA09/ai-chat-app/actions/runs/43562399685): In Progress عند آخر poll.
+- CodeQL [43562399775](https://github.com/HVA09/ai-chat-app/actions/runs/43562399775): In Progress.
+- Production smoke [43562399700](https://github.com/HVA09/ai-chat-app/actions/runs/43562399700): In Progress.
+- Publish backend image [43562399813](https://github.com/HVA09/ai-chat-app/actions/runs/43562399813): In Progress.
+- Render frontend service `srv-daklqph42hec73b1f61g` ما زال آخر deploy مسجلًا `dep-dbr7j4ivcj2c73ejojj0` على `18b8416...` Live؛ لم يظهر deploy جديد على merge commit `18ff9bd...` وقت الفحص، متوقع بسبب `autoDeployTrigger=checksPass`.
+- Backend service `srv-dakc4nbm8hqs73e2po9g` لا يحتاج نشرًا من #709 لأن التغيير Frontend-only؛ بقي على backend merge commit #701 `396cb54...`.
+
+### QueuePool follow-up
+- Render logs للـbackend من 2026-11-14T05:10Z إلى 05:45Z: 0 QueuePool error lines و0 app-level error lines في هذه النافذة.
+- هذه نافذة رصد إضافية، وليست concurrency test ولا دليل end-user load. حادثة 2026-11-13T03:47Z تبقى مفتوحة حتى التحقق من طلبات دخول فعلية بعد النشر وتكرر الاستيقاظ.
+- بعد Render Live للواجهة، راقب QueuePool وطلبات المستخدم العادية؛ health 200 وحده لا يكفي.
+- لا تعديل pool settings أو خطط Render/Supabase.
+
+### بوابة Backup/Restore
+- لا تغيير عن section 47: production backup object 2026-11-13 موجود وarchive list / remote size متحقق، لكن backup SHA-256 نفسه غير مسجل ولا يوجد restore test.
+- production dump خام وغير مؤهل لrestore workflow الذي يتطلب `database/staging-sanitized/`.
+- Restore-to-staging ما زال OPEN؛ لا تشغيل restore workflow ولا backfill/reindex.
+
+
+## 49. اكتمال CI بعد دمج #709 ووصول الواجهة إلى Live — 2026-11-14
+
+### Post-merge CI على main
+- main: `18ff9bd0f047886c7e5b1121bba95a0b6e00371c`.
+- CI [43562399685](https://github.com/HVA09/ai-chat-app/actions/runs/43562399685): Success.
+- Backend: `658 passed, 2 warnings in 268.87s`.
+- Frontend، SDK، Preview Builder، Production Compose: Success.
+- CodeQL Python + JavaScript/TypeScript: Success.
+- Production smoke [43562399700](https://github.com/HVA09/ai-chat-app/actions/runs/43562399700): Success؛ خطوات backend smoke، frontend reachability، وbackend health reachability جميعها Success.
+- Publish backend image [43562399813](https://github.com/HVA09/ai-chat-app/actions/runs/43562399813): Success.
+- كل check-runs التسعة على main: completed/success.
+- PostgreSQL CI أظهر duplicate key على `uq_scheduled_task_runs_task_scheduled_for` ضمن regression test المقصود لتأكيد uniqueness؛ pytest overall success، لا تغيّر constraint.
+
+### Render frontend deploy
+- Frontend service: `srv-daklqph42hec73b1f61g`.
+- Deployment: `dep-dbrv9h15efls73e60teg`.
+- Commit: `18ff9bd0f047886c7e5b1121bba95a0b6e00371c`.
+- بدأ 2026-11-14T05:42:28.262Z، وانتهى Live بنجاح 05:43:01.392Z.
+- Render event `deploy_ended` غير معروض صراحةً في آخر قراءة، لكن سجل deployment نفسه يعرض `status=live` مع `finishedAt`.
+- لم يتم manual deploy.
+
+### Render backend deployment state
+- Backend service `srv-dakc4nbm8hqs73e2po9g` بقي على deploy حيّ #701 `dep-dbr1p96tlv9c738bj0b0`، commit `396cb54...`.
+- هذا متوقع: PR #709 frontend-only ولا يغير ملفات backend. Workflow نشر backend image نجح لكن لم يكن هناك حاجة إلى تغيير كود خدمة API أو قاعدة البيانات.
+- لا تغيير Render env, secrets, pool size/overflow, Supabase, DB.
+
+### Post-deploy observation
+- نافذة backend logs من 05:43:01Z إلى 06:00:00Z:
+  - QueuePool log count: 0.
+  - App-level error log count: 0.
+  - Request 5xx log count: 0.
+  - Internal GET /health logs: 34، بزمن 10ms في السجلات الأولى المعروضة.
+  - Request log query العام لم يعرض سجلات مستخدم في تلك النافذة؛ لذلك هذه مراقبة health/absence-of-errors وليست إثبات تجربة مستخدم فعلية أو تحميل متزامن.
+- لا نعلن incident QueuePool مغلقًا؛ حادثة 2026-11-13T03:47Z تبقى مفتوحة حتى اختبار دخول/محادثة فعلية بعد استيقاظ instance وتحت حركة طبيعية، مع قياس ضغط الاتصال إن تكررت.
+
+### Backup / restore gate
+- لا تغيير عن sections 47–48: production backup بتاريخ 13 نوفمبر موجود وحجمه 862936 bytes وتم التحقق من archive list والوجود البعيد، لكن لا SHA-256 موثق للملف نفسه، ولا sanitized staging dump، ولا restore test.
+- restore-to-staging ما زال OPEN؛ لا تشغيل workflow أو backfill/reindex أو استخدام raw production dump.
+
+
+## 50. PR #710: تحرير DB قبل رسائل التحقق وإصلاح تسرب الرموز في سجلات التطوير — 2026-11-14
+
+### سياق حادثة QueuePool وتحليلها
+- Render backend instance srv-dakc4nbm8hqs73e2po9g-khbxm سجل في 2026-11-13T03:47:27Z عاصفة QueuePool limit of size 2 overflow 1 reached، مع فشل عدة طلبات bootstrap مثل GET /users/me وGET /assistants وGET /saved-prompts وGET /chat/models وGET /conversations/bookmarks وGET /memories بعد قرابة 15.4s.
+- حدثت كذلك أخطاء في notifications_websocket، لكن مراجعة الكود أظهرت أن مسار المصادقة يغلق SessionLocal بعد قراءة المستخدم وقبل manager.connect وحلقة WebSocket؛ لذلك لا يوجد دليل أن WebSocket كان مالك الاتصالات المحجوزة، ويُعامل كطلب متضرر من نفاد pool.
+- قبل العاصفة: بعد استيقاظ Render Free، نجح POST /auth/refresh (3050ms)، وGET /notifications (178ms)، وGET /workspaces (360ms)، ثم وصلت دفعة طلبات bootstrap بالتزامن.
+- PR #709 في main (18ff9bd...) سرّع/سلسل تحميل بيانات المستخدم عند startup، وهو تخفيف client-side مناسب. بعد نشره Live على الواجهة عند 05:43:01Z، أظهرت نافذة مراقبة backend من 05:43 إلى 07:35 UTC عدم وجود QueuePool timeouts أو app errors أو HTTP 5xx، مع /health 200 داخلي متكرر. هذا مؤشر تحسن أولي وليس اختبار ضغط أو إثباتًا نهائيًا للسبب الجذري.
+- تم تحديد مسارين backend مؤكدين يحتجزان checkout أثناء Redis/SMTP: /auth/verify-email/request و/auth/password-reset/request. PR #710 يعالجهما دون الادعاء بأنهما وحدهما سببا عاصفة 13 نوفمبر.
+
+### PR #710
+- PR: https://github.com/HVA09/ai-chat-app/pull/710
+- العنوان: fix(auth): release database pool connections before email waits.
+- الفرع: fix/auth-release-db-before-email-20261114.
+- base: 18ff9bd0f047886c7e5b1121bba95a0b6e00371c.
+- آخر head: 47b3337656edb16fa5e9aecfa192928e0aa49d41.
+- الحالة عند آخر قراءة: Open / Draft / mergeable؛ لا merge، ولا تغييرات production.
+- request_email_verification: صار يستعمل request DB session الموحّدة، يأخذ snapshot للـuser ID/email، ثم commit_and_release_connection(db) قبل Redis token storage وSMTP.
+- request_password_reset: يأخذ snapshot للـID/email، ويحرر pool connection قبل Redis وSMTP، ويحافظ على generic response للحسابات غير الموجودة وعلى TTL الحالي.
+- لا تغييرات schema/migration، ولا secrets/config/Render/Supabase، ولا رسائل حقيقية أُرسلت خلال الاختبارات.
+
+### CodeQL high-severity finding — تم إصلاحه
+- أول CodeQL run على head bda89ae3051a9c6280987edcbb039c9c9080d5ca كشف تنبيه High بعنوان Clear-text logging of sensitive information في ai-backend/app/services/email_service.py:28.
+- Annotation كشف أن فرع dev mode عند غياب SMTP_HOST كان يسجل كامل email body. هذا النص قد يحمل password-reset / verification / workspace-invitation token في URL؛ إذن التسرب حقيقي، حتى لو كان قصد المسار سهولة التطوير.
+- الإصلاح في PR #710: عند غياب SMTP_HOST يسجل التطبيق فقط أن dev email delivery skipped وموضوع الرسالة؛ لا يسجل recipient ولا body ولا token. الإرسال الحقيقي عند SMTP مضبوط لم يتغير.
+- أضيف ai-backend/tests/test_email_service.py::test_development_email_log_never_contains_recipient_or_message_body باستخدام synthetic reset token، ويتأكد أن recipient والـbody والـtoken لا يظهرون في السجل.
+- بعد الإصلاح، CodeQL run 43573848897 على head 47b3337... انتهى نجاحًا؛ check CodeQL aggregate صريح: No new alerts in code changed by this pull request. تحليلا Python وJavaScript/TypeScript كلاهما Success.
+
+### Regression tests / CI
+- اختبارات pool ذات اتصال واحد من PR #710:
+  - email verification يحرر الاتصال قبل Redis وSMTP.
+  - password reset يحرر الاتصال قبل Redis وSMTP.
+- اختبارات email logging regression تمنع تسرب recipient/message/token في dev mode.
+- CI run https://github.com/HVA09/ai-chat-app/actions/runs/43573848891: عند آخر poll كان SDK وFrontend وPreview Builder وProduction Compose كلها Success؛ Backend بقي في Run backend tests with hang diagnostics، لذلك PR لا يزال Draft.
+- Backend أنهى إعداد pip-audit، compileall، Alembic upgrade، ORM metadata consistency بنجاح؛ نتيجة pytest لم تكن قد ظهرت بعد، ورابط سجل الوظيفة كان BlobNotFound أثناء استمرار job.
+- CodeQL https://github.com/HVA09/ai-chat-app/actions/runs/43573848897: Success / لا تنبيهات جديدة على الكود المعدّل.
+- لا تنتقل إلى Ready/merge حتى Backend يكتمل Success على نفس head 47b3337... وبقية check-runs كلها Success.
+- duplicate-key PostgreSQL test على uq_scheduled_task_runs_task_scheduled_for ظهر في CI الأسبق لكنه regression test متعمد للـuniqueness، وليس علامة فشل suite أو دليل production duplication.
+
+### Backup / restore / production safety
+- Production backup run https://github.com/HVA09/ai-chat-app/actions/runs/43405958682 في 2026-11-13 10:01Z Success: pg_dump custom archive، pg_restore --list validation، upload إلى database/ai-chat-postgres-20261113T100201Z.dump، remote head-object size 862936 bytes، وتنظيف الملف المحلي.
+- لا يتوفر حتى الآن SHA-256 موثق لملف dump نفسه، ولا sanitized staging copy، ولا دليل restore ناجح إلى Supabase staging. الـbackup job success لا يعني أن الاستعادة اختُبرت.
+- PR #698 restore workflow ما زال restricted to staging، ويشترط exact filename + matching SHA-256 + required reviewers + staging-only secrets/CA/project ref + S3 object-read scope. لا تشغّل workflow حتى تكون هذه العناصر جاهزة ومراجعة.
+- لا production restore، لا تغيير DB connection limits أو pool size، لا reindex/backfill ولا strict fingerprint retrieval filtering.
+
