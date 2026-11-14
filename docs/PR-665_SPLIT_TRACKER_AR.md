@@ -1381,3 +1381,43 @@
 - production dump خام وغير مؤهل لrestore workflow الذي يتطلب `database/staging-sanitized/`.
 - Restore-to-staging ما زال OPEN؛ لا تشغيل restore workflow ولا backfill/reindex.
 
+
+## 49. اكتمال CI بعد دمج #709 ووصول الواجهة إلى Live — 2026-11-14
+
+### Post-merge CI على main
+- main: `18ff9bd0f047886c7e5b1121bba95a0b6e00371c`.
+- CI [43562399685](https://github.com/HVA09/ai-chat-app/actions/runs/43562399685): Success.
+- Backend: `658 passed, 2 warnings in 268.87s`.
+- Frontend، SDK، Preview Builder، Production Compose: Success.
+- CodeQL Python + JavaScript/TypeScript: Success.
+- Production smoke [43562399700](https://github.com/HVA09/ai-chat-app/actions/runs/43562399700): Success؛ خطوات backend smoke، frontend reachability، وbackend health reachability جميعها Success.
+- Publish backend image [43562399813](https://github.com/HVA09/ai-chat-app/actions/runs/43562399813): Success.
+- كل check-runs التسعة على main: completed/success.
+- PostgreSQL CI أظهر duplicate key على `uq_scheduled_task_runs_task_scheduled_for` ضمن regression test المقصود لتأكيد uniqueness؛ pytest overall success، لا تغيّر constraint.
+
+### Render frontend deploy
+- Frontend service: `srv-daklqph42hec73b1f61g`.
+- Deployment: `dep-dbrv9h15efls73e60teg`.
+- Commit: `18ff9bd0f047886c7e5b1121bba95a0b6e00371c`.
+- بدأ 2026-11-14T05:42:28.262Z، وانتهى Live بنجاح 05:43:01.392Z.
+- Render event `deploy_ended` غير معروض صراحةً في آخر قراءة، لكن سجل deployment نفسه يعرض `status=live` مع `finishedAt`.
+- لم يتم manual deploy.
+
+### Render backend deployment state
+- Backend service `srv-dakc4nbm8hqs73e2po9g` بقي على deploy حيّ #701 `dep-dbr1p96tlv9c738bj0b0`، commit `396cb54...`.
+- هذا متوقع: PR #709 frontend-only ولا يغير ملفات backend. Workflow نشر backend image نجح لكن لم يكن هناك حاجة إلى تغيير كود خدمة API أو قاعدة البيانات.
+- لا تغيير Render env, secrets, pool size/overflow, Supabase, DB.
+
+### Post-deploy observation
+- نافذة backend logs من 05:43:01Z إلى 06:00:00Z:
+  - QueuePool log count: 0.
+  - App-level error log count: 0.
+  - Request 5xx log count: 0.
+  - Internal GET /health logs: 34، بزمن 10ms في السجلات الأولى المعروضة.
+  - Request log query العام لم يعرض سجلات مستخدم في تلك النافذة؛ لذلك هذه مراقبة health/absence-of-errors وليست إثبات تجربة مستخدم فعلية أو تحميل متزامن.
+- لا نعلن incident QueuePool مغلقًا؛ حادثة 2026-11-13T03:47Z تبقى مفتوحة حتى اختبار دخول/محادثة فعلية بعد استيقاظ instance وتحت حركة طبيعية، مع قياس ضغط الاتصال إن تكررت.
+
+### Backup / restore gate
+- لا تغيير عن sections 47–48: production backup بتاريخ 13 نوفمبر موجود وحجمه 862936 bytes وتم التحقق من archive list والوجود البعيد، لكن لا SHA-256 موثق للملف نفسه، ولا sanitized staging dump، ولا restore test.
+- restore-to-staging ما زال OPEN؛ لا تشغيل workflow أو backfill/reindex أو استخدام raw production dump.
+
