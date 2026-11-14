@@ -1421,3 +1421,48 @@
 - لا تغيير عن sections 47–48: production backup بتاريخ 13 نوفمبر موجود وحجمه 862936 bytes وتم التحقق من archive list والوجود البعيد، لكن لا SHA-256 موثق للملف نفسه، ولا sanitized staging dump، ولا restore test.
 - restore-to-staging ما زال OPEN؛ لا تشغيل workflow أو backfill/reindex أو استخدام raw production dump.
 
+
+## 50. PR #710: تحرير DB قبل رسائل التحقق وإصلاح تسرب الرموز في سجلات التطوير — 2026-11-14
+
+### سياق حادثة QueuePool وتحليلها
+- Render backend instance srv-dakc4nbm8hqs73e2po9g-khbxm سجل في 2026-11-13T03:47:27Z عاصفة QueuePool limit of size 2 overflow 1 reached، مع فشل عدة طلبات bootstrap مثل GET /users/me وGET /assistants وGET /saved-prompts وGET /chat/models وGET /conversations/bookmarks وGET /memories بعد قرابة 15.4s.
+- حدثت كذلك أخطاء في notifications_websocket، لكن مراجعة الكود أظهرت أن مسار المصادقة يغلق SessionLocal بعد قراءة المستخدم وقبل manager.connect وحلقة WebSocket؛ لذلك لا يوجد دليل أن WebSocket كان مالك الاتصالات المحجوزة، ويُعامل كطلب متضرر من نفاد pool.
+- قبل العاصفة: بعد استيقاظ Render Free، نجح POST /auth/refresh (3050ms)، وGET /notifications (178ms)، وGET /workspaces (360ms)، ثم وصلت دفعة طلبات bootstrap بالتزامن.
+- PR #709 في main (18ff9bd...) سرّع/سلسل تحميل بيانات المستخدم عند startup، وهو تخفيف client-side مناسب. بعد نشره Live على الواجهة عند 05:43:01Z، أظهرت نافذة مراقبة backend من 05:43 إلى 07:35 UTC عدم وجود QueuePool timeouts أو app errors أو HTTP 5xx، مع /health 200 داخلي متكرر. هذا مؤشر تحسن أولي وليس اختبار ضغط أو إثباتًا نهائيًا للسبب الجذري.
+- تم تحديد مسارين backend مؤكدين يحتجزان checkout أثناء Redis/SMTP: /auth/verify-email/request و/auth/password-reset/request. PR #710 يعالجهما دون الادعاء بأنهما وحدهما سببا عاصفة 13 نوفمبر.
+
+### PR #710
+- PR: https://github.com/HVA09/ai-chat-app/pull/710
+- العنوان: fix(auth): release database pool connections before email waits.
+- الفرع: fix/auth-release-db-before-email-20261114.
+- base: 18ff9bd0f047886c7e5b1121bba95a0b6e00371c.
+- آخر head: 47b3337656edb16fa5e9aecfa192928e0aa49d41.
+- الحالة عند آخر قراءة: Open / Draft / mergeable؛ لا merge، ولا تغييرات production.
+- request_email_verification: صار يستعمل request DB session الموحّدة، يأخذ snapshot للـuser ID/email، ثم commit_and_release_connection(db) قبل Redis token storage وSMTP.
+- request_password_reset: يأخذ snapshot للـID/email، ويحرر pool connection قبل Redis وSMTP، ويحافظ على generic response للحسابات غير الموجودة وعلى TTL الحالي.
+- لا تغييرات schema/migration، ولا secrets/config/Render/Supabase، ولا رسائل حقيقية أُرسلت خلال الاختبارات.
+
+### CodeQL high-severity finding — تم إصلاحه
+- أول CodeQL run على head bda89ae3051a9c6280987edcbb039c9c9080d5ca كشف تنبيه High بعنوان Clear-text logging of sensitive information في ai-backend/app/services/email_service.py:28.
+- Annotation كشف أن فرع dev mode عند غياب SMTP_HOST كان يسجل كامل email body. هذا النص قد يحمل password-reset / verification / workspace-invitation token في URL؛ إذن التسرب حقيقي، حتى لو كان قصد المسار سهولة التطوير.
+- الإصلاح في PR #710: عند غياب SMTP_HOST يسجل التطبيق فقط أن dev email delivery skipped وموضوع الرسالة؛ لا يسجل recipient ولا body ولا token. الإرسال الحقيقي عند SMTP مضبوط لم يتغير.
+- أضيف ai-backend/tests/test_email_service.py::test_development_email_log_never_contains_recipient_or_message_body باستخدام synthetic reset token، ويتأكد أن recipient والـbody والـtoken لا يظهرون في السجل.
+- بعد الإصلاح، CodeQL run 43573848897 على head 47b3337... انتهى نجاحًا؛ check CodeQL aggregate صريح: No new alerts in code changed by this pull request. تحليلا Python وJavaScript/TypeScript كلاهما Success.
+
+### Regression tests / CI
+- اختبارات pool ذات اتصال واحد من PR #710:
+  - email verification يحرر الاتصال قبل Redis وSMTP.
+  - password reset يحرر الاتصال قبل Redis وSMTP.
+- اختبارات email logging regression تمنع تسرب recipient/message/token في dev mode.
+- CI run https://github.com/HVA09/ai-chat-app/actions/runs/43573848891: عند آخر poll كان SDK وFrontend وPreview Builder وProduction Compose كلها Success؛ Backend بقي في Run backend tests with hang diagnostics، لذلك PR لا يزال Draft.
+- Backend أنهى إعداد pip-audit، compileall، Alembic upgrade، ORM metadata consistency بنجاح؛ نتيجة pytest لم تكن قد ظهرت بعد، ورابط سجل الوظيفة كان BlobNotFound أثناء استمرار job.
+- CodeQL https://github.com/HVA09/ai-chat-app/actions/runs/43573848897: Success / لا تنبيهات جديدة على الكود المعدّل.
+- لا تنتقل إلى Ready/merge حتى Backend يكتمل Success على نفس head 47b3337... وبقية check-runs كلها Success.
+- duplicate-key PostgreSQL test على uq_scheduled_task_runs_task_scheduled_for ظهر في CI الأسبق لكنه regression test متعمد للـuniqueness، وليس علامة فشل suite أو دليل production duplication.
+
+### Backup / restore / production safety
+- Production backup run https://github.com/HVA09/ai-chat-app/actions/runs/43405958682 في 2026-11-13 10:01Z Success: pg_dump custom archive، pg_restore --list validation، upload إلى database/ai-chat-postgres-20261113T100201Z.dump، remote head-object size 862936 bytes، وتنظيف الملف المحلي.
+- لا يتوفر حتى الآن SHA-256 موثق لملف dump نفسه، ولا sanitized staging copy، ولا دليل restore ناجح إلى Supabase staging. الـbackup job success لا يعني أن الاستعادة اختُبرت.
+- PR #698 restore workflow ما زال restricted to staging، ويشترط exact filename + matching SHA-256 + required reviewers + staging-only secrets/CA/project ref + S3 object-read scope. لا تشغّل workflow حتى تكون هذه العناصر جاهزة ومراجعة.
+- لا production restore، لا تغيير DB connection limits أو pool size، لا reindex/backfill ولا strict fingerprint retrieval filtering.
+
