@@ -12,6 +12,7 @@ import { getErrorMessage } from "../lib/errors";
  */
 export default function useBookmarks({
   authed,
+  loadOnAuth = true,
   conversationId,
   loading,
   readOnlyConversation,
@@ -120,10 +121,10 @@ export default function useBookmarks({
   }, []);
 
   useEffect(() => {
-    if (authed) {
+    if (authed && loadOnAuth) {
       refreshBookmarkedMessages();
     }
-  }, [authed, refreshBookmarkedMessages]);
+  }, [authed, loadOnAuth, refreshBookmarkedMessages]);
 
   return {
     bookmarkedMessages,

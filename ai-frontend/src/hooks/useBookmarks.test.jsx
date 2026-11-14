@@ -22,6 +22,7 @@ vi.mock("react-i18next", async (importOriginal) => {
 
 function setupHook({
   authed = false,
+  loadOnAuth = true,
   conversationId = 1,
   setMessages = vi.fn(),
 } = {}) {
@@ -30,6 +31,7 @@ function setupHook({
   const hook = renderHook(() =>
     useBookmarks({
       authed,
+      loadOnAuth,
       conversationId,
       loading: false,
       readOnlyConversation: false,
@@ -46,6 +48,11 @@ describe("useBookmarks", () => {
     vi.clearAllMocks();
     listBookmarkedMessages.mockResolvedValue([]);
     toggleMessageBookmark.mockResolvedValue({ bookmarked: true });
+  });
+
+  it("defers the automatic bookmark fetch when startup hydration owns the request", () => {
+    setupHook({ authed: true, loadOnAuth: false });
+    expect(listBookmarkedMessages).not.toHaveBeenCalled();
   });
 
   it("loads bookmarks successfully", async () => {

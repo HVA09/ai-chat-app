@@ -24,12 +24,14 @@ vi.mock("react-i18next", async (importOriginal) => {
 
 function setupHook({
   authed = false,
+  loadOnAuth = true,
   messages = [{ role: "user", text: "Remember this" }],
 } = {}) {
   const setToast = vi.fn();
   const hook = renderHook(() =>
     useMemories({
       authed,
+      loadOnAuth,
       messages,
       loading: false,
       readOnlyConversation: false,
@@ -46,6 +48,11 @@ describe("useMemories", () => {
     listMemories.mockResolvedValue([]);
     createMemory.mockResolvedValue({ id: 1, content: "Remember this" });
     deleteMemory.mockResolvedValue({});
+  });
+
+  it("defers the automatic memory fetch when startup hydration owns the request", () => {
+    setupHook({ authed: true, loadOnAuth: false });
+    expect(listMemories).not.toHaveBeenCalled();
   });
 
   it("loads memories successfully", async () => {

@@ -17,6 +17,7 @@ import useSavedPrompts from "./hooks/useSavedPrompts";
 import useNotifications from "./hooks/useNotifications";
 import useBookmarks from "./hooks/useBookmarks";
 import useMemories from "./hooks/useMemories";
+import { runSequentially } from "./lib/runSequentially";
 import useAiModels from "./hooks/useAiModels";
 import useNotificationPreferences from "./hooks/useNotificationPreferences";
 import useConversationPreferences from "./hooks/useConversationPreferences";
@@ -210,6 +211,7 @@ export default function App() {
     handleMarkAllNotificationsRead,
   } = useNotifications({
     authed,
+    loadOnAuth: false,
     notificationPreferences,
     setToast,
   });
@@ -345,8 +347,19 @@ export default function App() {
 
   useAppGlobalEvents({ logout, setCommandPaletteOpen, setToast, t });
 
+  const skipInitialConversationSearchLoadRef = useRef(true);
+
   useEffect(() => {
-    if (!authed) return;
+    if (!authed) {
+      skipInitialConversationSearchLoadRef.current = true;
+      return;
+    }
+    // Workspace hydration below already loads the initial conversation page.
+    // Keep this effect for subsequent search changes only.
+    if (skipInitialConversationSearchLoadRef.current) {
+      skipInitialConversationSearchLoadRef.current = false;
+      return;
+    }
     const timer = window.setTimeout(() => {
       refreshConversations(
         showArchivedConversations,
@@ -384,14 +397,47 @@ export default function App() {
 
 
   useEffect(() => {
-    if (authed) {
-      refreshWorkspaces();
-      refreshTags();
-      refreshAssistants(selectedWorkspaceId);
-      refreshSavedPrompts();
-      refreshAiModels();
-      refreshCurrentUser();
-    }
+    if (!authed) return;
+
+    let active = true;
+    void runSequentially(
+      [
+        // Load the notification history first; the WebSocket already connects
+        // immediately, so this keeps its initial REST snapshot from lagging behind.
+        refreshNotifications,
+        refreshCurrentUser,
+        refreshAiModels,
+        async () => {
+          const workspacesLoaded = await refreshWorkspaces();
+          if (!active || workspacesLoaded !== false) return;
+
+          // Preserve the old fallback when workspace discovery fails: owned
+          // assistants and the current conversation list can still be loaded.
+          await refreshAssistants(selectedWorkspaceId);
+          if (!active) return;
+          await refreshConversations(
+            showArchivedConversations,
+            selectedFolderId,
+            selectedWorkspaceId,
+            selectedProjectId,
+            conversationSearch
+          );
+        },
+        refreshTags,
+        refreshSavedPrompts,
+        refreshBookmarkedMessages,
+        refreshMemories,
+      ],
+      () => active
+    ).catch((error) => {
+      if (active) {
+        console.error("Initial application data hydration failed", error);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
   }, [authed]);
 
 
@@ -404,10 +450,12 @@ export default function App() {
 
   const {
     memories,
+    refreshMemories,
     handleToggleMessageMemory,
     resetMemories,
   } = useMemories({
     authed,
+    loadOnAuth: false,
     messages,
     loading,
     readOnlyConversation,
@@ -487,11 +535,13 @@ export default function App() {
 
   const {
     bookmarkedMessages,
+    refreshBookmarkedMessages,
     handleToggleMessageBookmark,
     handleOpenBookmarkedMessage,
     resetBookmarks,
   } = useBookmarks({
     authed,
+    loadOnAuth: false,
     conversationId,
     loading,
     readOnlyConversation,

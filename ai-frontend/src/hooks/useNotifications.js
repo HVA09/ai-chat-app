@@ -10,6 +10,7 @@ import { getErrorMessage } from "../lib/errors";
 
 export default function useNotifications({
   authed,
+  loadOnAuth = true,
   notificationPreferences,
   setToast,
 }) {
@@ -67,10 +68,10 @@ export default function useNotifications({
   }, [setToast, t]);
 
   useEffect(() => {
-    if (authed) {
+    if (authed && loadOnAuth) {
       refreshNotifications();
     }
-  }, [authed, refreshNotifications]);
+  }, [authed, loadOnAuth, refreshNotifications]);
 
   const showRealtimeError = useCallback(() => {
     setToast({

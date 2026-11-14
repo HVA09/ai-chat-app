@@ -69,10 +69,12 @@ describe("useWorkspaceManagement", () => {
     const props = createProps();
     const { result } = renderHook(() => useWorkspaceManagement(props));
 
+    let loaded;
     await act(async () => {
-      await result.current.refreshWorkspaces();
+      loaded = await result.current.refreshWorkspaces();
     });
 
+    expect(loaded).toBe(true);
     expect(listWorkspaces).toHaveBeenCalledOnce();
     expect(props.setWorkspaces).toHaveBeenCalledWith([
       { id: 2, name: "Research", default_ai_model: "model-b" },
@@ -113,10 +115,12 @@ describe("useWorkspaceManagement", () => {
     const props = createProps();
     const { result } = renderHook(() => useWorkspaceManagement(props));
 
+    let loaded;
     await act(async () => {
-      await result.current.refreshWorkspaces();
+      loaded = await result.current.refreshWorkspaces();
     });
 
+    expect(loaded).toBe(false);
     expect(props.setToast).toHaveBeenCalledWith({
       message: "app.workspacesLoadError",
       type: "error",

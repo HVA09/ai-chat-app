@@ -39,11 +39,16 @@ class MockWebSocket {
   }
 }
 
-function setupHook({ authed = false, realtimeToasts = false } = {}) {
+function setupHook({
+  authed = false,
+  loadOnAuth = true,
+  realtimeToasts = false,
+} = {}) {
   const setToast = vi.fn();
   const hook = renderHook(() =>
     useNotifications({
       authed,
+      loadOnAuth,
       notificationPreferences: { realtimeToasts },
       setToast,
     })
@@ -63,6 +68,12 @@ describe("useNotifications", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("defers the initial notification list while still opening realtime notifications", () => {
+    setupHook({ authed: true, loadOnAuth: false });
+    expect(listNotifications).not.toHaveBeenCalled();
+    expect(MockWebSocket.instances).toHaveLength(1);
   });
 
   it("shows a translated fallback and preserves existing notifications when loading fails", async () => {
