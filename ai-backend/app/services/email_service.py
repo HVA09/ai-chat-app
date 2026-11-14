@@ -1,7 +1,7 @@
 """
 خدمة إرسال الإيميلات.
-لو SMTP_HOST غير مضبوط بـ .env، الإيميل يُطبع في اللوق بدل إرساله فعليًا —
-مفيد للتطوير المحلي: تشوف رابط التحقق/إعادة التعيين بالسجلات وتستخدمه يدويًا.
+لو SMTP_HOST غير مضبوط بـ .env، لا يُرسل الإيميل ولا يُسجل محتواه أو روابطه السرية.
+يُسجل التطبيق فقط أن الإرسال معطل وموضوع الرسالة، حتى لا تتسرب رموز التحقق أو إعادة التعيين أو الدعوات إلى السجلات.
 لتفعيل الإرسال الحقيقي: اضبط SMTP_HOST/PORT/USER/PASSWORD بمتغيرات البيئة الخاصة بك.
 
 الدوال هنا (send_verification_email وأخواتها) ترسل عبر queue_email (خلفية عبر Celery
@@ -20,12 +20,11 @@ logger = get_logger("email")
 def send_email(to: str, subject: str, body: str) -> None:
     """الإرسال الفعلي (sync) — تستخدمها queue_email مباشرة أو عبر مهمة Celery"""
     if not settings.SMTP_HOST:
+        # Message bodies can contain password-reset, verification, and invitation
+        # tokens. Never log the recipient or body when SMTP is unavailable.
         logger.info(
-            "=== [DEV MODE] لم يُرسل إيميل حقيقي — اضبط SMTP_HOST لتفعيل الإرسال ===\n"
-            "إلى: %s | الموضوع: %s\n%s\n=========================================",
-            to,
+            "[DEV MODE] Email delivery skipped because SMTP_HOST is not configured. subject=%s",
             subject,
-            body,
         )
         return
 
