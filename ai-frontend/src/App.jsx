@@ -402,6 +402,9 @@ export default function App() {
     let active = true;
     void runSequentially(
       [
+        // Load the notification history first; the WebSocket already connects
+        // immediately, so this keeps its initial REST snapshot from lagging behind.
+        refreshNotifications,
         refreshCurrentUser,
         refreshAiModels,
         async () => {
@@ -424,7 +427,6 @@ export default function App() {
         refreshSavedPrompts,
         refreshBookmarkedMessages,
         refreshMemories,
-        refreshNotifications,
       ],
       () => active
     ).catch((error) => {
