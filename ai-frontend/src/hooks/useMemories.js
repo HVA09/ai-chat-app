@@ -11,6 +11,7 @@ import { getErrorMessage } from "../lib/errors";
  */
 export default function useMemories({
   authed,
+  loadOnAuth = true,
   messages,
   loading,
   readOnlyConversation,
@@ -111,10 +112,10 @@ export default function useMemories({
   }, []);
 
   useEffect(() => {
-    if (authed) {
+    if (authed && loadOnAuth) {
       refreshMemories();
     }
-  }, [authed, refreshMemories]);
+  }, [authed, loadOnAuth, refreshMemories]);
 
   return {
     memories,
