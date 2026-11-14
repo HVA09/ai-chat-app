@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
 from starlette.requests import Request
 
+from app.auth import routes as auth_routes
 from app.database import Base
 from app.models.oauth_connection import OAuthConnection
 from app.models.plan import Plan
@@ -413,6 +414,131 @@ def test_project_preview_releases_pool_before_external_builder_wait(
         )
         assert response.preview_expires_at == published.expires_at
         assert access_checks == [987, 987]
+    finally:
+        db.close()
+        engine.dispose()
+
+def test_email_verification_request_releases_pool_before_redis_and_smtp(
+    tmp_path, monkeypatch
+):
+    engine, sessions = _pool_database(
+        tmp_path,
+        "email-verification-request",
+        [User.__table__],
+    )
+    with sessions() as seed:
+        user = User(
+            email="pool-verify@example.test",
+            hashed_password="test-only-password-hash",
+        )
+        seed.add(user)
+        seed.commit()
+        user_id = user.id
+
+    monkeypatch.setattr(
+        auth_routes,
+        "create_email_verification_token",
+        lambda target_user_id: "verification-token",
+    )
+    monkeypatch.setattr(
+        auth_routes,
+        "decode_token",
+        lambda _token: {"jti": "verification-jti"},
+    )
+
+    def remember_verification(jti, ttl):
+        assert jti == "verification-jti"
+        assert ttl == 24 * 3600
+        _assert_pool_slot_available(engine, sessions)
+        return True
+
+    def send_verification(email, token):
+        assert email == "pool-verify@example.test"
+        assert token == "verification-token"
+        _assert_pool_slot_available(engine, sessions)
+
+    monkeypatch.setattr(
+        auth_routes,
+        "remember_email_verification_token",
+        remember_verification,
+    )
+    monkeypatch.setattr(
+        auth_routes,
+        "send_verification_email",
+        send_verification,
+    )
+
+    db = sessions()
+    try:
+        user = db.get(User, user_id)
+        assert user is not None
+        response = auth_routes.request_email_verification(user, db)
+        assert response == {"detail": "تم إرسال رابط التأكيد"}
+    finally:
+        db.close()
+        engine.dispose()
+
+
+def test_password_reset_request_releases_pool_before_redis_and_smtp(
+    tmp_path, monkeypatch
+):
+    engine, sessions = _pool_database(
+        tmp_path,
+        "password-reset-request",
+        [User.__table__],
+    )
+    with sessions() as seed:
+        user = User(
+            email="pool-reset@example.test",
+            hashed_password="test-only-password-hash",
+        )
+        seed.add(user)
+        seed.commit()
+        user_id = user.id
+
+    monkeypatch.setattr(
+        auth_routes,
+        "create_password_reset_token",
+        lambda target_user_id: "password-reset-token",
+    )
+    monkeypatch.setattr(
+        auth_routes,
+        "decode_token",
+        lambda _token: {"jti": "password-reset-jti"},
+    )
+
+    def remember_reset(jti, ttl):
+        assert jti == "password-reset-jti"
+        assert ttl == 3600
+        _assert_pool_slot_available(engine, sessions)
+        return True
+
+    def send_reset(email, token):
+        assert email == "pool-reset@example.test"
+        assert token == "password-reset-token"
+        _assert_pool_slot_available(engine, sessions)
+
+    monkeypatch.setattr(
+        auth_routes,
+        "remember_password_reset_token",
+        remember_reset,
+    )
+    monkeypatch.setattr(
+        auth_routes,
+        "send_password_reset_email",
+        send_reset,
+    )
+
+    db = sessions()
+    try:
+        assert db.get(User, user_id) is not None
+        response = auth_routes.request_password_reset(
+            SimpleNamespace(email="pool-reset@example.test"),
+            db,
+        )
+        assert response == {
+            "detail": "إذا كان البريد مسجلًا، فسيتم إرسال رابط الاستعادة"
+        }
     finally:
         db.close()
         engine.dispose()
