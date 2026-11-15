@@ -33,7 +33,7 @@ def _with_truncation_marker(
     max_chars: int,
     marker: str = TRUNCATION_MARKER,
 ) -> str:
-    return f"{text[:max_chars].rstrip()}\\n\\n{marker}"
+    return f"{text[:max_chars].rstrip()}\n\n{marker}"
 
 
 def _limit(text: str, max_chars: int) -> str:
@@ -55,11 +55,12 @@ def _append_bounded_part(
     value: str,
     used: int,
     max_chars: int,
+    separator: str = "\n",
 ) -> tuple[int, bool]:
-    """Append a text fragment without allowing accumulated output to exceed its cap."""
+    """Append one fragment, accounting for the exact separator used when joining."""
     if not value:
         return used, False
-    separator_size = 1 if parts else 0
+    separator_size = len(separator) if parts else 0
     remaining = max_chars - used - separator_size
     if remaining <= 0:
         return used, True
@@ -93,7 +94,7 @@ def _read_csv_file(path: Path, max_chars: int) -> str:
         used, row_truncated = _append_bounded_part(rendered, line, used, max_chars)
         if row_truncated:
             break
-    result = "\\n".join(rendered)
+    result = "\n".join(rendered)
     if byte_truncated or row_truncated:
         return _with_truncation_marker(result, max_chars)
     return _limit(result, max_chars)
@@ -113,10 +114,12 @@ def _read_pdf_file(
         page_text = (page.extract_text() or "").strip()
         if not page_text:
             continue
-        used, char_limit_hit = _append_bounded_part(parts, page_text, used, max_chars)
+        used, char_limit_hit = _append_bounded_part(
+            parts, page_text, used, max_chars, separator="\\n\\n"
+        )
         if char_limit_hit:
             break
-    result = "\\n\\n".join(parts)
+    result = "\n\n".join(parts)
     if page_limit_hit and used < max_chars:
         return _with_truncation_marker(
             result,
@@ -142,7 +145,7 @@ def _read_docx_file(path: Path, max_chars: int) -> str:
     if not truncated:
         for table in document.tables:
             for row in table.rows:
-                cells = [cell.text.strip().replace("\\n", " ") for cell in row.cells]
+                cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
                 if any(cells):
                     used, truncated = _append_bounded_part(
                         parts, " | ".join(cells), used, max_chars
@@ -152,7 +155,7 @@ def _read_docx_file(path: Path, max_chars: int) -> str:
             if truncated:
                 break
 
-    result = "\\n".join(parts)
+    result = "\n".join(parts)
     if truncated:
         return _with_truncation_marker(result, max_chars)
     return _limit(result, max_chars)
@@ -185,7 +188,7 @@ def _read_xlsx_file(path: Path, max_chars: int) -> str:
                     break
             if truncated:
                 break
-        result = "\\n".join(parts)
+        result = "\n".join(parts)
         if truncated:
             return _with_truncation_marker(result, max_chars)
         return _limit(result, max_chars)
