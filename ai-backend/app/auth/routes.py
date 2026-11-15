@@ -19,7 +19,7 @@ from app.cache import (
     remember_email_verification_token, remember_password_reset_token, remember_refresh_token,
 )
 from app.config import settings
-from app.database import get_db
+from app.database import commit_and_release_connection, get_db
 from app.dependencies import get_current_user
 from app.logging_config import get_logger
 from app.models.user import User, UserRole
@@ -330,14 +330,25 @@ def logout(
 
 
 @router.post("/verify-email/request", status_code=status.HTTP_202_ACCEPTED)
-def request_email_verification(current_user: User = Depends(get_current_user)):
+def request_email_verification(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     if current_user.is_email_verified:
         return {"detail": "البريد مؤكد مسبقًا"}
-    token = create_email_verification_token(current_user.id)
+
+    user_id = current_user.id
+    email = current_user.email
+    token = create_email_verification_token(user_id)
     jti = decode_token(token).get("jti")
-    if not jti or not remember_email_verification_token(jti, 24 * 3600):
+    if not jti:
         raise HTTPException(status_code=503, detail="خدمة التحقق غير متاحة مؤقتًا")
-    send_verification_email(current_user.email, token)
+
+    # The user lookup is complete. Return the DB checkout before Redis and SMTP I/O.
+    commit_and_release_connection(db)
+    if not remember_email_verification_token(jti, 24 * 3600):
+        raise HTTPException(status_code=503, detail="خدمة التحقق غير متاحة مؤقتًا")
+    send_verification_email(email, token)
     return {"detail": "تم إرسال رابط التأكيد"}
 
 
@@ -364,12 +375,20 @@ def confirm_email_verification(payload: EmailVerificationConfirm, db: Session = 
 @router.post("/password-reset/request", status_code=status.HTTP_202_ACCEPTED)
 def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
-    if user:
-        token = create_password_reset_token(user.id)
+    if user is not None:
+        user_id = user.id
+        email = user.email
+        token = create_password_reset_token(user_id)
         jti = decode_token(token).get("jti")
-        if not jti or not remember_password_reset_token(jti, 3600):
+        if not jti:
             raise HTTPException(status_code=503, detail="خدمة الاستعادة غير متاحة مؤقتًا")
-        send_password_reset_email(user.email, token)
+
+        # Keep account-existence privacy while releasing the DB checkout before
+        # Redis token storage and synchronous email delivery.
+        commit_and_release_connection(db)
+        if not remember_password_reset_token(jti, 3600):
+            raise HTTPException(status_code=503, detail="خدمة الاستعادة غير متاحة مؤقتًا")
+        send_password_reset_email(email, token)
     return {"detail": "إذا كان البريد مسجلًا، فسيتم إرسال رابط الاستعادة"}
 
 
