@@ -20,83 +20,156 @@ SUPPORTED_TEXT_TYPES = {
 }
 
 DEFAULT_MAX_CHARS = 20_000
+DEFAULT_MAX_PDF_PAGES = 200
+TRUNCATION_MARKER = "[تم اختصار المحتوى بسبب الحد المسموح]"
 
 
 class FileTextExtractionError(Exception):
     """فشل في قراءة محتوى الملف."""
 
 
+def _with_truncation_marker(
+    text: str,
+    max_chars: int,
+    marker: str = TRUNCATION_MARKER,
+) -> str:
+    return f"{text[:max_chars].rstrip()}\\n\\n{marker}"
+
+
 def _limit(text: str, max_chars: int) -> str:
     text = text.strip()
     if len(text) <= max_chars:
         return text
-    return f"{text[:max_chars]}\n\n[تم اختصار المحتوى بسبب الحد المسموح]"
+    return _with_truncation_marker(text, max_chars)
+
+
+def _read_bounded_bytes(path: Path, max_bytes: int) -> tuple[bytes, bool]:
+    """Read no more than max_bytes plus one sentinel byte to detect truncation."""
+    with path.open("rb") as source:
+        raw = source.read(max_bytes + 1)
+    return raw[:max_bytes], len(raw) > max_bytes
+
+
+def _append_bounded_part(
+    parts: list[str],
+    value: str,
+    used: int,
+    max_chars: int,
+) -> tuple[int, bool]:
+    """Append a text fragment without allowing accumulated output to exceed its cap."""
+    if not value:
+        return used, False
+    separator_size = 1 if parts else 0
+    remaining = max_chars - used - separator_size
+    if remaining <= 0:
+        return used, True
+    if len(value) > remaining:
+        parts.append(value[:remaining])
+        return max_chars, True
+    parts.append(value)
+    used += separator_size + len(value)
+    return used, used >= max_chars
 
 
 def _read_text_file(path: Path, max_chars: int) -> str:
-    raw = path.read_bytes()[: max_chars * 4]
+    raw, truncated = _read_bounded_bytes(path, max_chars * 4)
     text = raw.decode("utf-8-sig", errors="replace")
+    if truncated:
+        return _with_truncation_marker(text, max_chars)
     return _limit(text, max_chars)
 
 
 def _read_csv_file(path: Path, max_chars: int) -> str:
-    raw = path.read_bytes()[: max_chars * 8]
+    raw, byte_truncated = _read_bounded_bytes(path, max_chars * 8)
     text = raw.decode("utf-8-sig", errors="replace")
     rows = csv.reader(StringIO(text))
-    rendered = []
+    rendered: list[str] = []
     used = 0
+    row_truncated = False
     for row in rows:
         line = " | ".join(cell.strip() for cell in row)
         if not line:
             continue
-        rendered.append(line)
-        used += len(line) + 1
-        if used >= max_chars:
+        used, row_truncated = _append_bounded_part(rendered, line, used, max_chars)
+        if row_truncated:
             break
-    return _limit("\n".join(rendered), max_chars)
+    result = "\\n".join(rendered)
+    if byte_truncated or row_truncated:
+        return _with_truncation_marker(result, max_chars)
+    return _limit(result, max_chars)
 
 
-def _read_pdf_file(path: Path, max_chars: int) -> str:
+def _read_pdf_file(
+    path: Path,
+    max_chars: int,
+    max_pages: int = DEFAULT_MAX_PDF_PAGES,
+) -> str:
     reader = PdfReader(str(path))
+    pages = reader.pages
+    page_limit_hit = len(pages) > max_pages
     parts: list[str] = []
     used = 0
-    for page in reader.pages:
+    for page in pages[:max_pages]:
         page_text = (page.extract_text() or "").strip()
         if not page_text:
             continue
-        parts.append(page_text)
-        used += len(page_text) + 1
-        if used >= max_chars:
+        used, char_limit_hit = _append_bounded_part(parts, page_text, used, max_chars)
+        if char_limit_hit:
             break
-    return _limit("\n\n".join(parts), max_chars)
+    result = "\\n\\n".join(parts)
+    if page_limit_hit and used < max_chars:
+        return _with_truncation_marker(
+            result,
+            max_chars,
+            "[تم اختصار الملف بسبب الحد الأقصى لعدد صفحات PDF]",
+        )
+    return _limit(result, max_chars)
 
 
 def _read_docx_file(path: Path, max_chars: int) -> str:
     document = Document(str(path))
     parts: list[str] = []
+    used = 0
+    truncated = False
 
     for paragraph in document.paragraphs:
-        text = paragraph.text.strip()
-        if text:
-            parts.append(text)
+        used, truncated = _append_bounded_part(
+            parts, paragraph.text.strip(), used, max_chars
+        )
+        if truncated:
+            break
 
-    for table in document.tables:
-        for row in table.rows:
-            cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
-            if any(cells):
-                parts.append(" | ".join(cells))
+    if not truncated:
+        for table in document.tables:
+            for row in table.rows:
+                cells = [cell.text.strip().replace("\\n", " ") for cell in row.cells]
+                if any(cells):
+                    used, truncated = _append_bounded_part(
+                        parts, " | ".join(cells), used, max_chars
+                    )
+                    if truncated:
+                        break
+            if truncated:
+                break
 
-    return _limit("\n".join(parts), max_chars)
+    result = "\\n".join(parts)
+    if truncated:
+        return _with_truncation_marker(result, max_chars)
+    return _limit(result, max_chars)
 
 
 def _read_xlsx_file(path: Path, max_chars: int) -> str:
     workbook = load_workbook(filename=str(path), read_only=True, data_only=True)
     parts: list[str] = []
     used = 0
+    truncated = False
     try:
         for worksheet in workbook.worksheets:
-            parts.append(f"[ورقة: {worksheet.title}]")
-            used += len(parts[-1]) + 1
+            used, truncated = _append_bounded_part(
+                parts, f"[ورقة: {worksheet.title}]", used, max_chars
+            )
+            if truncated:
+                break
             for row in worksheet.iter_rows(values_only=True):
                 values = [
                     str(value).strip()
@@ -105,12 +178,17 @@ def _read_xlsx_file(path: Path, max_chars: int) -> str:
                 ]
                 if not values:
                     continue
-                line = " | ".join(values)
-                parts.append(line)
-                used += len(line) + 1
-                if used >= max_chars:
-                    return _limit("\n".join(parts), max_chars)
-        return _limit("\n".join(parts), max_chars)
+                used, truncated = _append_bounded_part(
+                    parts, " | ".join(values), used, max_chars
+                )
+                if truncated:
+                    break
+            if truncated:
+                break
+        result = "\\n".join(parts)
+        if truncated:
+            return _with_truncation_marker(result, max_chars)
+        return _limit(result, max_chars)
     finally:
         workbook.close()
 
@@ -119,10 +197,15 @@ def extract_text(
     path: str | Path,
     content_type: str,
     max_chars: int = DEFAULT_MAX_CHARS,
+    max_pdf_pages: int = DEFAULT_MAX_PDF_PAGES,
 ) -> str | None:
     """يرجع النص المستخرج، أو None للملفات غير النصية (مثل الصور)."""
     if content_type not in SUPPORTED_TEXT_TYPES:
         return None
+    if max_chars <= 0:
+        raise ValueError("max_chars must be positive")
+    if max_pdf_pages <= 0:
+        raise ValueError("max_pdf_pages must be positive")
 
     path = Path(path)
     try:
@@ -131,7 +214,7 @@ def extract_text(
         if content_type in {"text/csv", "application/vnd.ms-excel"}:
             return _read_csv_file(path, max_chars)
         if content_type == "application/pdf":
-            return _read_pdf_file(path, max_chars)
+            return _read_pdf_file(path, max_chars, max_pdf_pages)
         if content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
             return _read_docx_file(path, max_chars)
         if content_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
