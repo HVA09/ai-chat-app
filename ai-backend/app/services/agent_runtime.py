@@ -326,7 +326,10 @@ class AgentRuntime:
         # MCP servers are application-global today. Until connector ownership
         # and per-user/workspace grants exist, regular users must not cause
         # external MCP discovery or receive those tools.
-        if getattr(current_user, "role", None) == UserRole.admin:
+        if (
+            settings.MCP_ENABLED
+            and getattr(current_user, "role", None) == UserRole.admin
+        ):
             mcp_specs = await self.mcp_discoverer()
         else:
             mcp_specs = []
