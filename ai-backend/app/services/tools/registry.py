@@ -399,6 +399,24 @@ async def _create_project_archive(arguments: dict[str, Any], context: ToolContex
             destination.unlink(missing_ok=True)
             raise
 
+        # Upload is an external wait. Recheck project edit access before the
+        # archive is attached or its contents are written into the project tree.
+        permission_denial = _project_permission_denial(
+            context,
+            require_edit=True,
+        )
+        if permission_denial:
+            try:
+                delete_stored_file(object_key, destination)
+            except Exception:
+                pass
+            destination.unlink(missing_ok=True)
+            return ToolResult(
+                content=permission_denial,
+                sources=[],
+                succeeded=False,
+            )
+
         attachment = FileAttachment(
             user_id=context.current_user.id,
             workspace_id=context.conversation.workspace_id,
@@ -716,6 +734,14 @@ async def _edit_project_file(arguments: dict[str, Any], context: ToolContext) ->
         )
         .first()
     )
+
+    # Recheck after resolving the target and before applying any mutation.
+    permission_denial = _project_permission_denial(
+        context,
+        require_edit=True,
+    )
+    if permission_denial:
+        return ToolResult(content=permission_denial, sources=[], succeeded=False)
 
     if expected_content is not None:
         current = project_file.content if project_file is not None else ""
