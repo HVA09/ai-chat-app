@@ -38,7 +38,7 @@ PERMISSION_DESCRIPTIONS = {
     "projects.manage": "إدارة مشاريع مساحة العمل.",
     "assistants.manage": "إدارة المساعدين المشتركين.",
     "files.manage": "إدارة ملفات مساحة العمل.",
-    "scheduled_tasks.manage": "إدارة المهام المجدولة.",
+    "scheduled_tasks.manage": "إنشاء وإدارة المهام المجدولة التي يملكها العضو داخل مساحة العمل.",
     "billing.manage": "إدارة الفوترة والاشتراكات.",
     "api_keys.manage": "إدارة مفاتيح Developer API المرتبطة بالمساحة.",
     "webhooks.manage": "إدارة Webhooks الخاصة بالمساحة.",
