@@ -374,11 +374,12 @@ def test_runtime_keeps_an_ordinary_code_comment_as_a_normal_response():
     assert result.text == text
 
 
-def test_runtime_releases_database_pool_during_mcp_provider_and_tool_waits():
+def test_runtime_releases_database_pool_during_mcp_provider_and_tool_waits(monkeypatch):
     from types import SimpleNamespace
 
     from app.models.user import UserRole
 
+    monkeypatch.setattr(settings, "MCP_ENABLED", True)
     engine = create_engine(
         "sqlite://",
         poolclass=QueuePool,
@@ -492,11 +493,12 @@ def test_agent_tool_policy_snapshot_hides_global_mcp_from_regular_users(monkeypa
     ]
 
 
-def test_runtime_does_not_discover_global_mcp_tools_for_regular_users():
+def test_runtime_does_not_discover_global_mcp_tools_for_regular_users(monkeypatch):
     from types import SimpleNamespace
 
     from app.models.user import UserRole
 
+    monkeypatch.setattr(settings, "MCP_ENABLED", True)
     discovery_calls = 0
 
     async def forbidden_discovery():
