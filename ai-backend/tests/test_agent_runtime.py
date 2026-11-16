@@ -296,7 +296,7 @@ def test_agent_configuration_version_tracks_tool_policy(monkeypatch):
     first = get_agent_configuration_version()
     snapshot = get_agent_tool_policy_snapshot()
     assert snapshot["allowed_tools"] == ["calculator", "python"]
-    assert first.startswith("agent-1-")
+    assert first.startswith("agent-2-")
 
     monkeypatch.setattr(
         settings,
@@ -304,7 +304,7 @@ def test_agent_configuration_version_tracks_tool_policy(monkeypatch):
         "[\"calculator\",\"web_search\"]",
     )
     second = get_agent_configuration_version()
-    assert second.startswith("agent-1-")
+    assert second.startswith("agent-2-")
     assert second != first
 
 
@@ -448,7 +448,7 @@ def test_runtime_releases_database_pool_during_mcp_provider_and_tool_waits():
                 task="check pool availability",
                 history=[],
                 conversation=object(),
-                current_user=object(),
+                current_user=SimpleNamespace(role=UserRole.admin),
                 db=db,
             )
         )
@@ -462,4 +462,88 @@ def test_runtime_releases_database_pool_during_mcp_provider_and_tool_waits():
     finally:
         db.close()
         engine.dispose()
+
+
+def test_agent_tool_policy_snapshot_hides_global_mcp_from_regular_users(monkeypatch):
+    from app.models.user import UserRole
+    from app.services.agent_runtime import get_agent_tool_policy_snapshot
+
+    monkeypatch.setattr(settings, "MCP_ENABLED", True)
+    monkeypatch.setattr(
+        settings,
+        "MCP_SERVERS_JSON",
+        '[{"name":"private-service","url":"https://internal.example/mcp",'
+        '"enabled":true,"allowed_tools":["read_records"]}]',
+    )
+
+    user_snapshot = get_agent_tool_policy_snapshot(user_role=UserRole.user)
+    assert user_snapshot["mcp_access_policy"] == "application_admin_only"
+    assert user_snapshot["mcp_enabled_for_user"] is False
+    assert user_snapshot["mcp_servers"] == []
+
+    admin_snapshot = get_agent_tool_policy_snapshot(user_role=UserRole.admin)
+    assert admin_snapshot["mcp_enabled_for_user"] is True
+    assert admin_snapshot["mcp_servers"] == [
+        {"name": "private-service", "allowed_tools": ["read_records"]}
+    ]
+
+
+def test_runtime_does_not_discover_global_mcp_tools_for_regular_users():
+    from types import SimpleNamespace
+
+    from app.models.user import UserRole
+
+    discovery_calls = 0
+
+    async def forbidden_discovery():
+        nonlocal discovery_calls
+        discovery_calls += 1
+        raise AssertionError("Regular users must not contact global MCP servers.")
+
+    result = asyncio.run(
+        AgentRuntime(
+            provider=CaptureToolsProvider(),
+            registry_factory=lambda: ToolRegistry(allowed_names=set()),
+            mcp_discoverer=forbidden_discovery,
+        ).run(
+            task="regular user request",
+            history=[],
+            conversation=object(),
+            current_user=SimpleNamespace(role=UserRole.user),
+            db=_NoopSession(),
+        )
+    )
+
+    assert result.status == "completed"
+    assert discovery_calls == 0
+
+
+def test_runtime_keeps_mcp_discovery_available_for_application_admins():
+    from types import SimpleNamespace
+
+    from app.models.user import UserRole
+
+    discovery_calls = 0
+
+    async def discover():
+        nonlocal discovery_calls
+        discovery_calls += 1
+        return []
+
+    result = asyncio.run(
+        AgentRuntime(
+            provider=CaptureToolsProvider(),
+            registry_factory=lambda: ToolRegistry(allowed_names=set()),
+            mcp_discoverer=discover,
+        ).run(
+            task="admin request",
+            history=[],
+            conversation=object(),
+            current_user=SimpleNamespace(role=UserRole.admin),
+            db=_NoopSession(),
+        )
+    )
+
+    assert result.status == "completed"
+    assert discovery_calls == 1
 
