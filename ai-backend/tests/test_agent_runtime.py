@@ -522,10 +522,13 @@ def test_runtime_does_not_discover_global_mcp_tools_for_regular_users():
     assert discovery_calls == 0
 
 
-def test_runtime_keeps_mcp_discovery_available_for_application_admins():
+def test_runtime_keeps_mcp_discovery_available_for_application_admins(monkeypatch):
     from types import SimpleNamespace
 
+    from app.config import settings
     from app.models.user import UserRole
+
+    monkeypatch.setattr(settings, "MCP_ENABLED", True)
 
     discovery_calls = 0
 
