@@ -375,6 +375,10 @@ def test_runtime_keeps_an_ordinary_code_comment_as_a_normal_response():
 
 
 def test_runtime_releases_database_pool_during_mcp_provider_and_tool_waits():
+    from types import SimpleNamespace
+
+    from app.models.user import UserRole
+
     engine = create_engine(
         "sqlite://",
         poolclass=QueuePool,
