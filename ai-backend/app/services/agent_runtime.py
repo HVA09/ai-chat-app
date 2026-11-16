@@ -85,7 +85,7 @@ def get_agent_tool_policy_snapshot(
 
     mcp_servers = []
     for item in raw_servers:
-        if not isinstance(item, dict) or item.get("enabled") is not True:
+        if not isinstance(item, dict) or not item.get("enabled", True):
             continue
         server_name = str(item.get("name") or "").strip()
         allowed_names = item.get("allowed_tools", [])
