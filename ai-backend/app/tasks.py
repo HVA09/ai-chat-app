@@ -23,6 +23,7 @@ from app.models.scheduled_task_run import ScheduledTaskRun, ScheduledTaskRunStat
 from app.models.usage_log import UsageLog
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace, WorkspaceMember
+from app.services.workspace_rbac import has_workspace_permission
 from app.notifications import notify
 from app.services.agent_runtime import AgentRuntime, get_agent_configuration_version, get_agent_tool_policy_snapshot
 from app.services.ai_providers.factory import get_provider
@@ -756,6 +757,16 @@ def _execute_scheduled_task(
         if not membership:
             task.is_active = False
             task.last_error = "لم تعد تملك عضوية في مساحة العمل."
+            task.last_run_at = now
+            run.status = ScheduledTaskRunStatus.failed
+            run.finished_at = now
+            run.error = task.last_error
+            db.commit()
+            return
+
+        if not has_workspace_permission(db, membership, "scheduled_tasks.manage"):
+            task.is_active = False
+            task.last_error = "لم تعد تملك صلاحية scheduled_tasks.manage في مساحة العمل."
             task.last_run_at = now
             run.status = ScheduledTaskRunStatus.failed
             run.finished_at = now
