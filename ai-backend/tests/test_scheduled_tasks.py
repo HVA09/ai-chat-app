@@ -433,3 +433,87 @@ def test_custom_scheduled_task_role_is_owner_scoped_and_revocable(
         headers=manager_headers,
     )
     assert denied_delete.status_code == 403
+
+
+def test_scheduled_worker_deactivates_task_after_manage_permission_revocation(
+    client, db_session, monkeypatch
+):
+    from app import tasks as tasks_module
+    from app.models.user import User
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+    from app.models.workspace_rbac import WorkspaceRBACPermission, WorkspaceRBACRole
+    from app.models.scheduled_task_run import ScheduledTaskRunStatus
+
+    owner_token = _register_and_login(
+        client, "schedule-worker-revoke-owner@example.com"
+    )
+    workspace = _create_workspace(client, owner_token, "Worker permission revoke")
+    owner = (
+        db_session.query(User)
+        .filter(User.email == "schedule-worker-revoke-owner@example.com")
+        .one()
+    )
+
+    member_token = _register_and_login(
+        client, "schedule-worker-revoke-member@example.com"
+    )
+    member = (
+        db_session.query(User)
+        .filter(User.email == "schedule-worker-revoke-member@example.com")
+        .one()
+    )
+    role = WorkspaceRBACRole(
+        workspace_id=workspace["id"],
+        name="Temporary scheduler",
+        created_by_user_id=owner.id,
+    )
+    role.permissions.append(
+        WorkspaceRBACPermission(permission="scheduled_tasks.manage")
+    )
+    membership = WorkspaceMember(
+        workspace_id=workspace["id"],
+        user_id=member.id,
+        role=WorkspaceRole.member,
+        rbac_role=role,
+    )
+    db_session.add_all([role, membership])
+    db_session.commit()
+
+    future = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+    created = client.post(
+        "/scheduled-tasks",
+        json={
+            "workspace_id": workspace["id"],
+            "prompt": "يجب إيقافها بعد سحب الصلاحية",
+            "schedule_type": "daily",
+            "next_run_at": future,
+        },
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
+    assert created.status_code == 201
+    task_id = created.json()["id"]
+
+    db_session.query(WorkspaceRBACPermission).filter(
+        WorkspaceRBACPermission.role_id == role.id,
+        WorkspaceRBACPermission.permission == "scheduled_tasks.manage",
+    ).delete(synchronize_session=False)
+    db_session.commit()
+    db_session.expire_all()
+
+    def unexpected_provider_call(*_args, **_kwargs):
+        pytest.fail("A schedule without the required permission must not call the AI provider.")
+
+    monkeypatch.setattr(tasks_module, "_scheduled_task_ai_reply", unexpected_provider_call)
+    tasks_module._execute_scheduled_task(task_id, db=db_session)
+
+    db_session.expire_all()
+    task = db_session.get(ScheduledTask, task_id)
+    run = (
+        db_session.query(ScheduledTaskRun)
+        .filter(ScheduledTaskRun.scheduled_task_id == task_id)
+        .one()
+    )
+    assert task.is_active is False
+    assert "scheduled_tasks.manage" in task.last_error
+    assert run.status == ScheduledTaskRunStatus.failed
+    assert "scheduled_tasks.manage" in run.error
