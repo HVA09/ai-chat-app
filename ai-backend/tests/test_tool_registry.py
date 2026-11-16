@@ -318,6 +318,166 @@ def test_analyze_data_releases_database_before_remote_file_materialization(
     assert db.expire_on_commit is True
 
 
+
+
+
+def test_project_viewer_acl_is_rechecked_inside_agent_tools(db_session):
+    """A project viewer can read, but cannot mutate; revoked access is immediate."""
+    from app.models.conversation import Conversation
+    from app.models.file_attachment import FileAttachment
+    from app.models.project import WorkspaceProject
+    from app.models.project_file import ProjectFile
+    from app.models.project_member import ProjectMember, ProjectMemberRole
+    from app.models.user import User
+    from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
+    from app.services.tools.registry import (
+        _create_project_archive,
+        _edit_project_file,
+        _list_project_files,
+        _read_project_file,
+        _search_project_files,
+    )
+
+    owner = User(
+        email="agent-project-acl-owner@example.com",
+        hashed_password="test-hash",
+    )
+    viewer = User(
+        email="agent-project-acl-viewer@example.com",
+        hashed_password="test-hash",
+    )
+    db_session.add_all([owner, viewer])
+    db_session.flush()
+
+    workspace = Workspace(owner_id=owner.id, name="Agent project ACL")
+    db_session.add(workspace)
+    db_session.flush()
+
+    project = WorkspaceProject(
+        workspace_id=workspace.id,
+        owner_id=owner.id,
+        name="Read-only project",
+        instructions="",
+    )
+    db_session.add(project)
+    db_session.flush()
+
+    workspace_member = WorkspaceMember(
+        workspace_id=workspace.id,
+        user_id=viewer.id,
+        role=WorkspaceRole.member,
+    )
+    project_member = ProjectMember(
+        project_id=project.id,
+        user_id=viewer.id,
+        role=ProjectMemberRole.viewer,
+    )
+    conversation = Conversation(
+        user_id=viewer.id,
+        workspace_id=workspace.id,
+        project_id=project.id,
+        title="Agent project ACL conversation",
+    )
+    source = ProjectFile(
+        project_id=project.id,
+        path="src/main.py",
+        content="print('original')",
+    )
+    db_session.add_all([workspace_member, project_member, conversation, source])
+    db_session.commit()
+    db_session.refresh(conversation)
+
+    context = ToolContext(
+        conversation=conversation,
+        current_user=viewer,
+        db=db_session,
+    )
+
+    listed = asyncio.run(_list_project_files({}, context))
+    read = asyncio.run(_read_project_file({"path": "src/main.py"}, context))
+    searched = asyncio.run(_search_project_files({"query": "original"}, context))
+
+    assert listed.succeeded is True
+    assert "src/main.py" in listed.content
+    assert read.succeeded is True
+    assert "print('original')" in read.content
+    assert searched.succeeded is True
+    assert "src/main.py:1" in searched.content
+
+    edited = asyncio.run(
+        _edit_project_file(
+            {"path": "src/main.py", "content": "print('changed')"},
+            context,
+        )
+    )
+    archived = asyncio.run(
+        _create_project_archive(
+            {
+                "project_name": "viewer-write-attempt",
+                "files": [
+                    {"path": "src/main.py", "content": "print('changed')"},
+                ],
+            },
+            context,
+        )
+    )
+
+    assert edited.succeeded is False
+    assert "صلاحية تعديل" in edited.content
+    assert archived.succeeded is False
+    assert "صلاحية تعديل" in archived.content
+
+    db_session.expire_all()
+    saved = (
+        db_session.query(ProjectFile)
+        .filter(
+            ProjectFile.project_id == project.id,
+            ProjectFile.path == "src/main.py",
+        )
+        .one()
+    )
+    assert saved.content == "print('original')"
+    assert db_session.query(FileAttachment).filter(
+        FileAttachment.user_id == viewer.id,
+    ).count() == 0
+
+    # The same conversation no longer grants access after the project share
+    # is revoked. Each subsequent tool call re-reads the current ACL.
+    db_session.delete(project_member)
+    db_session.commit()
+
+    revoked_list = asyncio.run(_list_project_files({}, context))
+    revoked_read = asyncio.run(
+        _read_project_file({"path": "src/main.py"}, context)
+    )
+    revoked_search = asyncio.run(
+        _search_project_files({"query": "original"}, context)
+    )
+    revoked_edit = asyncio.run(
+        _edit_project_file(
+            {"path": "src/main.py", "content": "print('after-revoke')"},
+            context,
+        )
+    )
+
+    assert revoked_list.succeeded is False
+    assert revoked_read.succeeded is False
+    assert revoked_search.succeeded is False
+    assert revoked_edit.succeeded is False
+    assert "صلاحية" in revoked_read.content or "غير متاح" in revoked_read.content
+
+    db_session.expire_all()
+    saved_after_revoke = (
+        db_session.query(ProjectFile)
+        .filter(
+            ProjectFile.project_id == project.id,
+            ProjectFile.path == "src/main.py",
+        )
+        .one()
+    )
+    assert saved_after_revoke.content == "print('original')"
+
+
 def test_project_archive_releases_database_before_remote_upload(
     monkeypatch, tmp_path
 ):
