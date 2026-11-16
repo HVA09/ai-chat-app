@@ -230,7 +230,7 @@ def pause_agent_job(
 
     db.commit()
     db.refresh(job)
-    return _job_response_for_user(job, current_user)
+    return job
 
 
 @router.post("/{job_id}/resume", response_model=AgentJobOut, status_code=status.HTTP_202_ACCEPTED)
