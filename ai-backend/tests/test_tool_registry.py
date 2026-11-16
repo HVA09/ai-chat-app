@@ -478,6 +478,133 @@ def test_project_viewer_acl_is_rechecked_inside_agent_tools(db_session):
     assert saved_after_revoke.content == "print('original')"
 
 
+
+
+
+def test_project_archive_rechecks_acl_after_storage_upload(
+    db_session, monkeypatch, tmp_path
+):
+    """A share revoked during the storage upload must not update the project."""
+    from app.config import settings
+    from app.models.conversation import Conversation
+    from app.models.file_attachment import FileAttachment
+    from app.models.project import WorkspaceProject
+    from app.models.project_file import ProjectFile
+    from app.models.project_member import ProjectMember, ProjectMemberRole
+    from app.models.user import User
+    from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
+    from app.services.tools.registry import _create_project_archive
+
+    owner = User(
+        email="agent-project-archive-owner@example.com",
+        hashed_password="test-hash",
+    )
+    viewer = User(
+        email="agent-project-archive-viewer@example.com",
+        hashed_password="test-hash",
+    )
+    db_session.add_all([owner, viewer])
+    db_session.flush()
+
+    workspace = Workspace(owner_id=owner.id, name="Archive ACL recheck")
+    db_session.add(workspace)
+    db_session.flush()
+    project = WorkspaceProject(
+        workspace_id=workspace.id,
+        owner_id=owner.id,
+        name="Archive ACL project",
+        instructions="",
+    )
+    db_session.add(project)
+    db_session.flush()
+
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=viewer.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    project_member = ProjectMember(
+        project_id=project.id,
+        user_id=viewer.id,
+        role=ProjectMemberRole.editor,
+    )
+    conversation = Conversation(
+        user_id=viewer.id,
+        workspace_id=workspace.id,
+        project_id=project.id,
+        title="Archive ACL recheck conversation",
+    )
+    original = ProjectFile(
+        project_id=project.id,
+        path="README.md",
+        content="original project content",
+    )
+    db_session.add_all([project_member, conversation, original])
+    db_session.commit()
+    db_session.refresh(conversation)
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    uploads = []
+    deletions = []
+
+    def revoke_during_upload(source, object_key, content_type):
+        assert source.exists()
+        assert content_type == "application/zip"
+        uploads.append(object_key)
+        db_session.delete(project_member)
+        db_session.commit()
+
+    def record_delete(object_key, fallback_path):
+        deletions.append((object_key, fallback_path))
+
+    monkeypatch.setattr(
+        "app.services.tools.registry.put_file",
+        revoke_during_upload,
+    )
+    monkeypatch.setattr(
+        "app.services.tools.registry.delete_stored_file",
+        record_delete,
+    )
+
+    result = asyncio.run(
+        _create_project_archive(
+            {
+                "project_name": "revoked-during-upload",
+                "files": [
+                    {"path": "README.md", "content": "unauthorized replacement"},
+                ],
+            },
+            ToolContext(
+                conversation=conversation,
+                current_user=viewer,
+                db=db_session,
+            ),
+        )
+    )
+
+    assert result.succeeded is False
+    assert "صلاحية تعديل" in result.content
+    assert len(uploads) == 1
+    assert len(deletions) == 1
+    assert deletions[0][0] == uploads[0]
+    assert db_session.query(FileAttachment).filter(
+        FileAttachment.user_id == viewer.id,
+    ).count() == 0
+
+    db_session.expire_all()
+    saved = (
+        db_session.query(ProjectFile)
+        .filter(
+            ProjectFile.project_id == project.id,
+            ProjectFile.path == "README.md",
+        )
+        .one()
+    )
+    assert saved.content == "original project content"
+
+
 def test_project_archive_releases_database_before_remote_upload(
     monkeypatch, tmp_path
 ):
