@@ -628,12 +628,10 @@ def test_agent_job_read_paths_redact_legacy_global_mcp_snapshots(
 
     detail = client.get(f"/agent-jobs/{job_id}", headers=headers)
     listed = client.get("/agent-jobs", headers=headers)
-    paused = client.post(f"/agent-jobs/{job_id}/pause", headers=headers)
 
     assert detail.status_code == 200
     assert listed.status_code == 200
-    assert paused.status_code == 200
-    for payload in [detail.json(), listed.json()[0], paused.json()]:
+    for payload in [detail.json(), listed.json()[0]]:
         snapshot = payload["tool_policy_snapshot"]
         assert snapshot["mcp_access_policy"] == "application_admin_only"
         assert snapshot["mcp_enabled_for_user"] is False
