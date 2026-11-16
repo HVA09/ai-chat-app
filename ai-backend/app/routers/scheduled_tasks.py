@@ -15,6 +15,7 @@ from app.models.scheduled_task import (
 from app.models.scheduled_task_run import ScheduledTaskRun
 from app.models.user import User
 from app.models.workspace import WorkspaceMember
+from app.services.workspace_rbac import has_workspace_permission
 from app.schemas.scheduled_task_runs import ScheduledTaskRunOut
 from app.schemas.scheduled_tasks import (
     ScheduledTaskCreate,
@@ -45,6 +46,20 @@ def _get_membership(workspace_id: int, current_user: User, db: Session) -> Works
     return membership
 
 
+def _require_scheduled_task_permission(
+    workspace_id: int,
+    current_user: User,
+    db: Session,
+) -> WorkspaceMember:
+    membership = _get_membership(workspace_id, current_user, db)
+    if not has_workspace_permission(db, membership, "scheduled_tasks.manage"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="تحتاج إلى الصلاحية scheduled_tasks.manage",
+        )
+    return membership
+
+
 def _get_owned_task(task_id: int, current_user: User, db: Session) -> ScheduledTask:
     task = (
         db.query(ScheduledTask)
@@ -59,6 +74,7 @@ def _get_owned_task(task_id: int, current_user: User, db: Session) -> ScheduledT
             status_code=status.HTTP_404_NOT_FOUND,
             detail="المهمة المجدولة غير موجودة",
         )
+    _require_scheduled_task_permission(task.workspace_id, current_user, db)
     return task
 
 
@@ -88,8 +104,22 @@ def list_scheduled_tasks(
 ):
     query = db.query(ScheduledTask).filter(ScheduledTask.user_id == current_user.id)
     if workspace_id is not None:
-        _get_membership(workspace_id, current_user, db)
+        _require_scheduled_task_permission(workspace_id, current_user, db)
         query = query.filter(ScheduledTask.workspace_id == workspace_id)
+    else:
+        memberships = (
+            db.query(WorkspaceMember)
+            .filter(WorkspaceMember.user_id == current_user.id)
+            .all()
+        )
+        permitted_workspace_ids = [
+            membership.workspace_id
+            for membership in memberships
+            if has_workspace_permission(db, membership, "scheduled_tasks.manage")
+        ]
+        if not permitted_workspace_ids:
+            return []
+        query = query.filter(ScheduledTask.workspace_id.in_(permitted_workspace_ids))
     return query.order_by(ScheduledTask.is_active.desc(), ScheduledTask.next_run_at.asc()).all()
 
 
@@ -99,7 +129,7 @@ def create_scheduled_task(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _get_membership(payload.workspace_id, current_user, db)
+    _require_scheduled_task_permission(payload.workspace_id, current_user, db)
     _validate_schedule(payload.schedule_type, payload.next_run_at, payload.weekday)
 
     task = ScheduledTask(
