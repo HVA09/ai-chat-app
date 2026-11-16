@@ -321,12 +321,12 @@ class AgentRuntime:
         messages.append({"role": "user", "content": task})
 
         registry = self.registry_factory()
+        # Release the DB checkout before any provider/tool network wait.
+        commit_and_release_connection(db)
         # MCP servers are application-global today. Until connector ownership
         # and per-user/workspace grants exist, regular users must not cause
         # external MCP discovery or receive those tools.
         if getattr(current_user, "role", None) == UserRole.admin:
-            # Discovery may perform remote I/O; release the DB checkout first.
-            commit_and_release_connection(db)
             mcp_specs = await self.mcp_discoverer()
         else:
             mcp_specs = []
