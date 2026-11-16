@@ -28,7 +28,7 @@ RegistryFactory = Callable[[], ToolRegistry]
 MCPDiscoverer = Callable[[], Awaitable[list[Any]]]
 
 
-AGENT_RUNTIME_VERSION = "1"
+AGENT_RUNTIME_VERSION = "2"
 
 
 def _looks_like_unstructured_tool_call(text: str, tool_names: set[str]) -> bool:
