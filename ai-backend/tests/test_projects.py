@@ -563,3 +563,160 @@ def test_project_name_conflicts_are_case_insensitive(client):
     )
     assert duplicate.status_code == 409
     assert duplicate.json()["detail"] == "يوجد مشروع بهذا الاسم في مساحة العمل"
+
+def test_project_delete_keeps_attachments_private_and_out_of_workspace_rag(
+    client, db_session, tmp_path, monkeypatch
+):
+    import asyncio
+    from pathlib import Path
+
+    from app.config import settings as app_settings
+    from app.models.assistant_file_link import AssistantFileLink
+    from app.models.assistant_workspace_share import AssistantWorkspaceShare
+    from app.models.conversation import Conversation
+    from app.models.file_attachment import FileAttachment
+    from app.models.file_chunk import FileChunk
+    from app.models.project_memory import ProjectMemory
+    from app.models.user import User
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+    from app.services import rag
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    owner_token = _register_and_login(client, "project-delete-private-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace = _create_workspace(client, owner_headers, "Private retention")
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Restricted project"},
+        headers=owner_headers,
+    ).json()
+    assistant = _create_assistant(
+        client,
+        owner_headers,
+        name="Project knowledge assistant",
+    )
+
+    member_token = _register_and_login(client, "project-delete-private-member@example.com")
+    member_headers = {"Authorization": f"Bearer {member_token}"}
+    owner = (
+        db_session.query(User)
+        .filter(User.email == "project-delete-private-owner@example.com")
+        .one()
+    )
+    member = (
+        db_session.query(User)
+        .filter(User.email == "project-delete-private-member@example.com")
+        .one()
+    )
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace["id"],
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        )
+    )
+
+    payload = b"private project attachment"
+    stored_filename = "project-private-attachment.txt"
+    file_path = Path(app_settings.UPLOAD_DIR) / str(owner.id) / stored_filename
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    file_path.write_bytes(payload)
+    attachment = FileAttachment(
+        user_id=owner.id,
+        workspace_id=workspace["id"],
+        project_id=project["id"],
+        original_filename="private-attachment.txt",
+        stored_filename=stored_filename,
+        object_key=f"users/{owner.id}/{stored_filename}",
+        content_type="text/plain",
+        size_bytes=len(payload),
+        extracted_text="confidential project knowledge",
+    )
+    db_session.add(attachment)
+    db_session.flush()
+    db_session.add(
+        FileChunk(
+            file_id=attachment.id,
+            chunk_index=0,
+            content="confidential project knowledge",
+            embedding=[0.1] * 768,
+        )
+    )
+    db_session.add(
+        AssistantFileLink(
+            assistant_id=assistant["id"],
+            file_id=attachment.id,
+        )
+    )
+    db_session.add(
+        AssistantWorkspaceShare(
+            assistant_id=assistant["id"],
+            workspace_id=workspace["id"],
+            shared_by_user_id=owner.id,
+        )
+    )
+    db_session.add(
+        ProjectMemory(
+            project_id=project["id"],
+            created_by_user_id=owner.id,
+            content="project-only memory",
+        )
+    )
+    member_conversation = Conversation(
+        user_id=member.id,
+        workspace_id=workspace["id"],
+        title="Workspace member conversation",
+    )
+    db_session.add(member_conversation)
+    db_session.commit()
+    file_id = attachment.id
+    member_conversation_id = member_conversation.id
+
+    deleted = client.delete(f"/projects/{project['id']}", headers=owner_headers)
+    assert deleted.status_code == 204
+    db_session.expire_all()
+
+    retained = db_session.get(FileAttachment, file_id)
+    assert retained is not None
+    assert retained.user_id == owner.id
+    assert retained.workspace_id is None
+    assert retained.project_id is None
+    assert db_session.query(FileChunk).filter(FileChunk.file_id == file_id).count() == 1
+    assert db_session.query(AssistantFileLink).filter(
+        AssistantFileLink.file_id == file_id
+    ).count() == 0
+    assert db_session.query(ProjectMemory).filter(
+        ProjectMemory.project_id == project["id"]
+    ).count() == 0
+
+    owner_files = client.get("/files", headers=owner_headers)
+    assert owner_files.status_code == 200
+    assert file_id in {item["id"] for item in owner_files.json()}
+    owner_download = client.get(f"/files/{file_id}", headers=owner_headers)
+    assert owner_download.status_code == 200
+    assert owner_download.content == payload
+
+    workspace_files = client.get(
+        "/files",
+        params={"workspace_id": workspace["id"]},
+        headers=member_headers,
+    )
+    assert workspace_files.status_code == 200
+    assert file_id not in {item["id"] for item in workspace_files.json()}
+    member_download = client.get(f"/files/{file_id}", headers=member_headers)
+    assert member_download.status_code == 404
+
+    async def unexpected_embedding_call(_query):
+        raise AssertionError("Private orphaned project files must not enter workspace RAG.")
+
+    monkeypatch.setattr(rag, "embed_query", unexpected_embedding_call)
+    rows = asyncio.run(
+        rag.retrieve_relevant_chunks(
+            db_session,
+            member.id,
+            member_conversation_id,
+            "confidential project knowledge",
+            workspace_id=workspace["id"],
+        )
+    )
+    assert rows == []
