@@ -44,7 +44,12 @@ function createProps(overrides = {}) {
     startNewChat: vi.fn(),
     refreshConversations: vi.fn().mockResolvedValue(undefined),
     setToast: vi.fn(),
-    t: (key, values) => (values ? `${key}:${values.name}` : key),
+    t: (key, values) => {
+      if (key === "sidebar.projectDeleteConfirm") {
+        return `Delete project ${values.name}? Uploaded attachments will be kept in your private My Files and removed from workspace and shared-assistant access.`;
+      }
+      return values ? `${key}:${values.name}` : key;
+    },
     ...overrides,
   };
 }
@@ -194,6 +199,9 @@ describe("useProjectManagement", () => {
       await result.current.handleDeleteProject(5, "Existing");
     });
 
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining("kept in your private My Files")
+    );
     expect(deleteProject).toHaveBeenCalledWith(5);
     expect(props.setSelectedProjectId).toHaveBeenCalledWith(null);
     expect(props.startNewChat).toHaveBeenCalledOnce();
