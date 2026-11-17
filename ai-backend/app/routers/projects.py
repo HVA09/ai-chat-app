@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.database import commit_and_release_connection, get_db
 from app.config import settings
 from app.models.assistant import Assistant
+from app.models.assistant_file_link import AssistantFileLink
 from app.models.assistant_workspace_share import AssistantWorkspaceShare
 from app.dependencies import get_current_user
 from app.models.conversation import Conversation
@@ -1011,8 +1012,29 @@ def delete_project(
     db.query(Conversation).filter(
         Conversation.project_id == project.id
     ).update({"project_id": None}, synchronize_session=False)
-    db.query(FileAttachment).filter(
-        FileAttachment.project_id == project.id
-    ).update({"project_id": None}, synchronize_session=False)
+
+    # Preserve uploaded attachments for their owner, but never silently promote
+    # project-scoped knowledge to workspace/shared-assistant scope on deletion.
+    project_file_ids = [
+        file_id
+        for (file_id,) in db.query(FileAttachment.id)
+        .filter(FileAttachment.project_id == project.id)
+        .all()
+    ]
+    if project_file_ids:
+        # A previously shared assistant must not keep access to a formerly
+        # project-private file after the project boundary is removed.
+        db.query(AssistantFileLink).filter(
+            AssistantFileLink.file_id.in_(project_file_ids)
+        ).delete(synchronize_session=False)
+        db.query(FileAttachment).filter(
+            FileAttachment.id.in_(project_file_ids)
+        ).update(
+            {"project_id": None, "workspace_id": None},
+            synchronize_session=False,
+        )
+
+    # ProjectFile, ProjectMemory, members, and preview-artifact metadata remain
+    # project-owned and follow the project's existing cascade/cleanup behavior.
     db.delete(project)
     db.commit()
