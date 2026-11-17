@@ -582,6 +582,14 @@ def test_project_delete_keeps_attachments_private_and_out_of_workspace_rag(
     from app.services import rag
 
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    for setting_name in (
+        "S3_BUCKET",
+        "S3_ENDPOINT_URL",
+        "S3_REGION",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.setattr(app_settings, setting_name, "")
     owner_token = _register_and_login(client, "project-delete-private-owner@example.com")
     owner_headers = {"Authorization": f"Bearer {owner_token}"}
     workspace = _create_workspace(client, owner_headers, "Private retention")
