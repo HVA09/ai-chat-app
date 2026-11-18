@@ -10,6 +10,7 @@ import {
   updateProject,
 } from "../lib/projectsApi";
 import useProjectManagement from "./useProjectManagement";
+import i18n from "../i18n";
 
 vi.mock("../lib/projectsApi", () => ({
   createProject: vi.fn(),
@@ -69,6 +70,22 @@ describe("useProjectManagement", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("uses accurate original-uploader and all-conversation deletion copy in both locales", () => {
+    const arabic = i18n.t("sidebar.projectDeleteConfirm", {
+      lng: "ar",
+      name: "مشروع تجريبي",
+    });
+    const english = i18n.t("sidebar.projectDeleteConfirm", {
+      lng: "en",
+      name: "Example project",
+    });
+
+    expect(arabic).toContain("المستخدمين الذين رفعوها أصلاً");
+    expect(arabic).toContain("جميع محادثات المشروع");
+    expect(english).toContain("original uploaders");
+    expect(english).toContain("All project conversations");
   });
 
   it("loads projects and preserves the current selection only when it still exists", async () => {
