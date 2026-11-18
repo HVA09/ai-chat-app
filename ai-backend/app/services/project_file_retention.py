@@ -46,6 +46,12 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
             )
         )
         .filter(AssistantVersion.knowledge_file_ids.is_not(None))
+        # Restore locks the selected snapshot row. Retention must take the same
+        # row lock (after workspace locks) before scrubbing it, even when the
+        # assistant is shared only to a different workspace. This closes the
+        # stale-snapshot race independently of the assistant's current shares.
+        .order_by(AssistantVersion.id.asc())
+        .with_for_update()
         .yield_per(200)
     )
     for snapshot in snapshots:
