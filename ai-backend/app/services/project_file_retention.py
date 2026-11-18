@@ -111,9 +111,21 @@ def privatize_account_workspace_attachments(db: Session, user_id: int) -> list[i
         .order_by(Workspace.id.asc())
         .all()
     ]
-    lock_workspaces_for_update(db, workspace_ids)
-    # Refresh the scope after locks are held so account/project cascades cannot
-    # race with a file upload that is finalizing its database row.
+    owned_project_workspace_ids = [
+        workspace_id
+        for (workspace_id,) in db.query(WorkspaceProject.workspace_id)
+        .filter(WorkspaceProject.owner_id == user_id)
+        .distinct()
+        .order_by(WorkspaceProject.workspace_id.asc())
+        .all()
+    ]
+    # A user can own projects inside somebody else's workspace. Lock those
+    # workspace rows too, otherwise their uploads could race with account
+    # deletion even though the user's own workspaces are protected.
+    lock_workspaces_for_update(
+        db,
+        workspace_ids + owned_project_workspace_ids,
+    )
 
     # Preserve audit history but detach references to workspaces that are about
     # to disappear in the account-delete cascade.
