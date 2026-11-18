@@ -868,3 +868,83 @@ def test_account_delete_keeps_other_members_project_uploads_private(
         AssistantVersion.version == 1,
     ).one()
     assert snapshot.knowledge_file_ids == []
+
+
+def test_account_retention_locks_workspaces_containing_owned_projects(
+    client, db_session, monkeypatch
+):
+    """Projects owned by the deleting user can live in another user's workspace."""
+    from app.models.file_attachment import FileAttachment
+    from app.models.project import WorkspaceProject
+    from app.models.user import User
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+    from app.services import project_file_retention
+
+    owner_token = _register_and_login(client, "external-workspace-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace = _create_workspace(client, owner_headers, "External project workspace")
+    workspace_owner = db_session.query(User).filter_by(
+        email="external-workspace-owner@example.com"
+    ).one()
+
+    project_owner_token = _register_and_login(
+        client, "external-workspace-project-owner@example.com"
+    )
+    project_owner_headers = {"Authorization": f"Bearer {project_owner_token}"}
+    project_owner = db_session.query(User).filter_by(
+        email="external-workspace-project-owner@example.com"
+    ).one()
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace["id"],
+            user_id=project_owner.id,
+            role=WorkspaceRole.admin,
+        )
+    )
+    db_session.commit()
+
+    project_response = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Member-owned project"},
+        headers=project_owner_headers,
+    )
+    assert project_response.status_code == 201
+    project_id = project_response.json()["id"]
+
+    attachment = FileAttachment(
+        user_id=workspace_owner.id,
+        workspace_id=workspace["id"],
+        project_id=project_id,
+        original_filename="other-uploader.txt",
+        stored_filename="other-uploader-retention.txt",
+        object_key=f"users/{workspace_owner.id}/other-uploader-retention.txt",
+        content_type="text/plain",
+        size_bytes=18,
+        extracted_text="retained privately",
+    )
+    db_session.add(attachment)
+    db_session.commit()
+    file_id = attachment.id
+
+    locked_ids = []
+    original_lock = project_file_retention.lock_workspaces_for_update
+
+    def capture_locks(db, workspace_ids):
+        locked_ids.extend(workspace_ids)
+        return original_lock(db, workspace_ids)
+
+    monkeypatch.setattr(
+        project_file_retention, "lock_workspaces_for_update", capture_locks
+    )
+    project_file_retention.privatize_account_workspace_attachments(
+        db_session, project_owner.id
+    )
+    db_session.flush()
+    db_session.expire_all()
+
+    retained = db_session.get(FileAttachment, file_id)
+    assert workspace["id"] in locked_ids
+    assert retained is not None
+    assert retained.user_id == workspace_owner.id
+    assert retained.workspace_id is None
+    assert retained.project_id is None
