@@ -86,7 +86,9 @@ def privatize_account_workspace_attachments(db: Session, user_id: int) -> list[i
             AuditLog.workspace_id.in_(workspace_ids)
         ).update(
             {AuditLog.workspace_id: None},
-            synchronize_session=False,
+            # Keep already-loaded AuditLog ORM instances in sync. Account deletion
+            # may flush them again when their user_id is nulled by ORM cascades.
+            synchronize_session="fetch",
         )
 
     project_query = db.query(WorkspaceProject.id).filter(
