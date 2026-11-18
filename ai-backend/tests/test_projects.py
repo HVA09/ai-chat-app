@@ -758,6 +758,7 @@ def test_account_delete_keeps_other_members_project_uploads_private(
     from app.models.assistant_file_link import AssistantFileLink
     from app.models.assistant_version import AssistantVersion
     from app.models.assistant_workspace_share import AssistantWorkspaceShare
+    from app.models.audit_log import AuditLog
     from app.models.file_attachment import FileAttachment
     from app.models.user import User
     from app.models.workspace import WorkspaceMember, WorkspaceRole
@@ -831,8 +832,16 @@ def test_account_delete_keeps_other_members_project_uploads_private(
         AssistantVersion.version == 1,
     ).one()
     historical_version.knowledge_file_ids = [attachment.id]
+    audit_entry = AuditLog(
+        user_id=member.id,
+        workspace_id=workspace["id"],
+        event_type="test_workspace_retention",
+        description="Audit history should survive workspace deletion",
+    )
+    db_session.add(audit_entry)
     db_session.commit()
     file_id = attachment.id
+    audit_entry_id = audit_entry.id
 
     deleted = client.request(
         "DELETE",
@@ -848,6 +857,9 @@ def test_account_delete_keeps_other_members_project_uploads_private(
     assert retained.user_id == member.id
     assert retained.workspace_id is None
     assert retained.project_id is None
+    retained_audit_entry = db_session.get(AuditLog, audit_entry_id)
+    assert retained_audit_entry is not None
+    assert retained_audit_entry.workspace_id is None
     assert db_session.query(AssistantFileLink).filter(
         AssistantFileLink.file_id == file_id
     ).count() == 0
