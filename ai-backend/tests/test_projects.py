@@ -753,3 +753,114 @@ def test_project_delete_keeps_attachments_private_and_out_of_workspace_rag(
         )
     )
     assert rows == []
+
+
+def test_account_delete_keeps_other_members_project_uploads_private(
+    client, db_session, monkeypatch
+):
+    from app.config import settings as app_settings
+    from app.models.assistant_file_link import AssistantFileLink
+    from app.models.assistant_version import AssistantVersion
+    from app.models.assistant_workspace_share import AssistantWorkspaceShare
+    from app.models.file_attachment import FileAttachment
+    from app.models.user import User
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    for setting_name in (
+        "S3_BUCKET",
+        "S3_ENDPOINT_URL",
+        "S3_REGION",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.setattr(app_settings, setting_name, "")
+
+    owner_token = _register_and_login(client, "cascade-retention-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace = _create_workspace(client, owner_headers, "Cascade retention")
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Owned project"},
+        headers=owner_headers,
+    ).json()
+
+    member_token = _register_and_login(client, "cascade-retention-member@example.com")
+    member_headers = {"Authorization": f"Bearer {member_token}"}
+    owner = db_session.query(User).filter(
+        User.email == "cascade-retention-owner@example.com"
+    ).one()
+    member = db_session.query(User).filter(
+        User.email == "cascade-retention-member@example.com"
+    ).one()
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace["id"],
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    assistant = _create_assistant(
+        client,
+        member_headers,
+        name="Member's private assistant",
+    )
+    attachment = FileAttachment(
+        user_id=member.id,
+        workspace_id=workspace["id"],
+        project_id=project["id"],
+        original_filename="member-upload.txt",
+        stored_filename="member-upload-cascade.txt",
+        object_key=f"users/{member.id}/member-upload-cascade.txt",
+        content_type="text/plain",
+        size_bytes=12,
+        extracted_text="member private",
+    )
+    db_session.add(attachment)
+    db_session.flush()
+    db_session.add(
+        AssistantFileLink(
+            assistant_id=assistant["id"],
+            file_id=attachment.id,
+        )
+    )
+    db_session.add(
+        AssistantWorkspaceShare(
+            assistant_id=assistant["id"],
+            workspace_id=workspace["id"],
+            shared_by_user_id=member.id,
+        )
+    )
+    db_session.add(
+        AssistantVersion(
+            assistant_id=assistant["id"],
+            version=1,
+            name="Member's private assistant",
+            instructions="Keep this file private after project deletion.",
+            knowledge_file_ids=[attachment.id],
+        )
+    )
+    db_session.commit()
+    file_id = attachment.id
+
+    deleted = client.request(
+        "DELETE",
+        "/users/me",
+        json={"password": "StrongPass123"},
+        headers=owner_headers,
+    )
+    assert deleted.status_code == 204
+    db_session.expire_all()
+
+    retained = db_session.get(FileAttachment, file_id)
+    assert retained is not None
+    assert retained.user_id == member.id
+    assert retained.workspace_id is None
+    assert retained.project_id is None
+    assert db_session.query(AssistantFileLink).filter(
+        AssistantFileLink.file_id == file_id
+    ).count() == 0
+    snapshot = db_session.query(AssistantVersion).filter(
+        AssistantVersion.assistant_id == assistant["id"],
+        AssistantVersion.version == 1,
+    ).one()
+    assert snapshot.knowledge_file_ids == []
