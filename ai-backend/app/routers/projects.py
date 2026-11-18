@@ -13,11 +13,9 @@ from sqlalchemy.orm import Session
 from app.database import commit_and_release_connection, get_db
 from app.config import settings
 from app.models.assistant import Assistant
-from app.models.assistant_file_link import AssistantFileLink
 from app.models.assistant_workspace_share import AssistantWorkspaceShare
 from app.dependencies import get_current_user
 from app.models.conversation import Conversation
-from app.models.file_attachment import FileAttachment
 from app.models.project import WorkspaceProject
 from app.models.project_file import ProjectFile
 from app.models.project_memory import ProjectMemory
