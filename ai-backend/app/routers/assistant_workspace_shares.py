@@ -12,6 +12,7 @@ from app.schemas.assistant_workspace_shares import (
     AssistantWorkspaceShareOut,
     WorkspaceSharedAssistantOut,
 )
+from app.services.project_file_retention import lock_workspaces_for_update
 
 router = APIRouter(tags=["Assistant Workspace Sharing"])
 
@@ -116,6 +117,9 @@ def share_assistant_with_workspace(
     db: Session = Depends(get_db),
 ):
     assistant = _get_owned_assistant(assistant_id, current_user, db)
+    # Serialize share creation with workspace deletion and file privatization.
+    lock_workspaces_for_update(db, [workspace_id])
+    # Membership must be revalidated after the lock, not before it.
     _get_membership(workspace_id, current_user, db)
 
     existing = (
@@ -161,6 +165,8 @@ def unshare_assistant_from_workspace(
     db: Session = Depends(get_db),
 ):
     assistant = _get_owned_assistant(assistant_id, current_user, db)
+    # Use the same lock order as share creation and retention operations.
+    lock_workspaces_for_update(db, [workspace_id])
     _get_membership(workspace_id, current_user, db)
     share = (
         db.query(AssistantWorkspaceShare)
