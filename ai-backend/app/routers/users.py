@@ -28,6 +28,7 @@ from app.models.user_memory import UserMemory
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.user import ChangePasswordRequest, DeleteAccountRequest, ProfileUpdate, UserOut
 from app.services.storage import StorageError, delete_user_objects
+from app.services.project_file_retention import privatize_account_workspace_attachments
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -359,6 +360,9 @@ def delete_account(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="تعذر تنظيف ملفات الحساب الآن. أعد المحاولة لاحقًا.",
         ) from exc
+
+    # Workspace/project cascades must not leave other members' uploads in a shared scope.
+    privatize_account_workspace_attachments(db, current_user.id)
 
     log_event(db, "account_deleted", f"حذف حساب: {current_user.email}", current_user.id)
     user_upload_dir = Path(settings.UPLOAD_DIR) / str(current_user.id)
