@@ -1,9 +1,10 @@
 """Preserve original-uploader privacy when a project/workspace scope is removed."""
 
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.models.assistant_file_link import AssistantFileLink
+from app.models.audit_log import AuditLog
 from app.models.assistant_version import AssistantVersion
 from app.models.file_attachment import FileAttachment
 from app.models.project import WorkspaceProject
@@ -20,10 +21,18 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
     ).delete(synchronize_session=False)
 
     target_ids = set(file_ids)
+    # Stream only the two fields needed; never materialize unrelated assistant
+    # instructions/tool policies or the full version history during deletion.
     snapshots = (
         db.query(AssistantVersion)
+        .options(
+            load_only(
+                AssistantVersion.id,
+                AssistantVersion.knowledge_file_ids,
+            )
+        )
         .filter(AssistantVersion.knowledge_file_ids.is_not(None))
-        .all()
+        .yield_per(200)
     )
     for snapshot in snapshots:
         saved_ids = snapshot.knowledge_file_ids
@@ -69,6 +78,16 @@ def privatize_account_workspace_attachments(db: Session, user_id: int) -> list[i
         .filter(Workspace.owner_id == user_id)
         .all()
     ]
+
+    # Preserve audit history but detach references to workspaces that are about
+    # to disappear in the account-delete cascade.
+    if workspace_ids:
+        db.query(AuditLog).filter(
+            AuditLog.workspace_id.in_(workspace_ids)
+        ).update(
+            {AuditLog.workspace_id: None},
+            synchronize_session=False,
+        )
 
     project_query = db.query(WorkspaceProject.id).filter(
         WorkspaceProject.owner_id == user_id
