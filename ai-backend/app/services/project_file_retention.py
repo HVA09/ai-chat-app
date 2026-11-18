@@ -11,6 +11,20 @@ from app.models.project import WorkspaceProject
 from app.models.workspace import Workspace
 
 
+def lock_workspaces_for_update(db: Session, workspace_ids: list[int]) -> None:
+    """Serialize file-scope changes with uploads and assistant-version restores."""
+    unique_ids = sorted({int(workspace_id) for workspace_id in workspace_ids})
+    if not unique_ids:
+        return
+    (
+        db.query(Workspace.id)
+        .filter(Workspace.id.in_(unique_ids))
+        .order_by(Workspace.id.asc())
+        .with_for_update()
+        .all()
+    )
+
+
 def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
     """Detach files from shared scopes and invalidate historical assistant links."""
     if not file_ids:
@@ -60,6 +74,24 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
 
 def privatize_project_attachments(db: Session, project_id: int) -> list[int]:
     """Move all uploads in a deleted project to each original uploader's scope."""
+    project_scope = (
+        db.query(WorkspaceProject.workspace_id)
+        .filter(WorkspaceProject.id == project_id)
+        .first()
+    )
+    if project_scope is None:
+        return []
+    lock_workspaces_for_update(db, [project_scope.workspace_id])
+    # Re-read after acquiring the workspace lock. An upload that completed
+    # first is included; an upload arriving later must revalidate and fail.
+    project_scope = (
+        db.query(WorkspaceProject.workspace_id)
+        .populate_existing()
+        .filter(WorkspaceProject.id == project_id)
+        .first()
+    )
+    if project_scope is None:
+        return []
     file_ids = [
         file_id
         for (file_id,) in db.query(FileAttachment.id)
@@ -76,8 +108,12 @@ def privatize_account_workspace_attachments(db: Session, user_id: int) -> list[i
         workspace_id
         for (workspace_id,) in db.query(Workspace.id)
         .filter(Workspace.owner_id == user_id)
+        .order_by(Workspace.id.asc())
         .all()
     ]
+    lock_workspaces_for_update(db, workspace_ids)
+    # Refresh the scope after locks are held so account/project cascades cannot
+    # race with a file upload that is finalizing its database row.
 
     # Preserve audit history but detach references to workspaces that are about
     # to disappear in the account-delete cascade.
