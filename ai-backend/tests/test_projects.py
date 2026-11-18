@@ -657,15 +657,11 @@ def test_project_delete_keeps_attachments_private_and_out_of_workspace_rag(
             file_id=attachment.id,
         )
     )
-    db_session.add(
-        AssistantVersion(
-            assistant_id=assistant["id"],
-            version=1,
-            name="Project knowledge assistant",
-            instructions="Use the attached project knowledge.",
-            knowledge_file_ids=[attachment.id],
-        )
-    )
+    historical_version = db_session.query(AssistantVersion).filter(
+        AssistantVersion.assistant_id == assistant["id"],
+        AssistantVersion.version == 1,
+    ).one()
+    historical_version.knowledge_file_ids = [attachment.id]
     db_session.add(
         AssistantWorkspaceShare(
             assistant_id=assistant["id"],
@@ -830,15 +826,11 @@ def test_account_delete_keeps_other_members_project_uploads_private(
             shared_by_user_id=member.id,
         )
     )
-    db_session.add(
-        AssistantVersion(
-            assistant_id=assistant["id"],
-            version=1,
-            name="Member's private assistant",
-            instructions="Keep this file private after project deletion.",
-            knowledge_file_ids=[attachment.id],
-        )
-    )
+    historical_version = db_session.query(AssistantVersion).filter(
+        AssistantVersion.assistant_id == assistant["id"],
+        AssistantVersion.version == 1,
+    ).one()
+    historical_version.knowledge_file_ids = [attachment.id]
     db_session.commit()
     file_id = attachment.id
 
