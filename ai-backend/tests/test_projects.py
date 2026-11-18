@@ -572,6 +572,7 @@ def test_project_delete_keeps_attachments_private_and_out_of_workspace_rag(
 
     from app.config import settings as app_settings
     from app.models.assistant_file_link import AssistantFileLink
+    from app.models.assistant_version import AssistantVersion
     from app.models.assistant_workspace_share import AssistantWorkspaceShare
     from app.models.conversation import Conversation
     from app.models.file_attachment import FileAttachment
@@ -657,6 +658,15 @@ def test_project_delete_keeps_attachments_private_and_out_of_workspace_rag(
         )
     )
     db_session.add(
+        AssistantVersion(
+            assistant_id=assistant["id"],
+            version=1,
+            name="Project knowledge assistant",
+            instructions="Use the attached project knowledge.",
+            knowledge_file_ids=[attachment.id],
+        )
+    )
+    db_session.add(
         AssistantWorkspaceShare(
             assistant_id=assistant["id"],
             workspace_id=workspace["id"],
@@ -690,6 +700,21 @@ def test_project_delete_keeps_attachments_private_and_out_of_workspace_rag(
     assert retained.workspace_id is None
     assert retained.project_id is None
     assert db_session.query(FileChunk).filter(FileChunk.file_id == file_id).count() == 1
+    assert db_session.query(AssistantFileLink).filter(
+        AssistantFileLink.file_id == file_id
+    ).count() == 0
+    snapshot = db_session.query(AssistantVersion).filter(
+        AssistantVersion.assistant_id == assistant["id"],
+        AssistantVersion.version == 1,
+    ).one()
+    assert snapshot.knowledge_file_ids == []
+
+    restored = client.post(
+        f"/assistants/{assistant['id']}/versions/1/restore",
+        headers=owner_headers,
+    )
+    assert restored.status_code == 200
+    db_session.expire_all()
     assert db_session.query(AssistantFileLink).filter(
         AssistantFileLink.file_id == file_id
     ).count() == 0
