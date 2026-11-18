@@ -24,7 +24,7 @@ from app.models.file_chunk import FileChunk
 from app.models.project import WorkspaceProject
 from app.models.usage_log import UsageLog
 from app.models.user import User
-from app.models.workspace import WorkspaceMember, WorkspaceRole
+from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
 from app.schemas.file import FileOut
 from app.services.embeddings import EmbeddingServiceError
 from app.services.file_text_extractor import FileTextExtractionError, extract_text
@@ -368,6 +368,40 @@ async def upload_file(
                 f"فشل استخراج نص الملف: {file.filename or stored_filename} ({exc})",
                 current_user.id,
             )
+
+    if workspace_id is not None:
+        # The upload body is read without holding a DB connection. Before the
+        # attachment row is inserted, serialize against project/account
+        # deletion and revalidate the project after acquiring the same lock.
+        locked_workspace = (
+            db.query(Workspace.id)
+            .filter(Workspace.id == workspace_id)
+            .with_for_update()
+            .first()
+        )
+        if locked_workspace is None:
+            delete_stored_file(object_key, destination)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="مساحة العمل غير موجودة",
+            )
+        _get_workspace_membership(workspace_id, current_user, db)
+        if project_id is not None:
+            current_project = (
+                db.query(WorkspaceProject)
+                .populate_existing()
+                .filter(
+                    WorkspaceProject.id == project_id,
+                    WorkspaceProject.workspace_id == workspace_id,
+                )
+                .first()
+            )
+            if current_project is None:
+                delete_stored_file(object_key, destination)
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="المشروع غير موجود",
+                )
 
     attachment = FileAttachment(
         user_id=current_user.id,
