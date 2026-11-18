@@ -46,7 +46,7 @@ function createProps(overrides = {}) {
     setToast: vi.fn(),
     t: (key, values) => {
       if (key === "sidebar.projectDeleteConfirm") {
-        return `Delete project ${values.name}? Uploaded attachments will be kept in your private My Files and removed from workspace and shared-assistant access.`;
+        return `Delete project ${values.name}? Uploaded attachments will move to the original uploaders’ private My Files and be removed from workspace and shared-assistant access. All project conversations will remain in the workspace without their project association.`;
       }
       return values ? `${key}:${values.name}` : key;
     },
@@ -200,7 +200,7 @@ describe("useProjectManagement", () => {
     });
 
     expect(window.confirm).toHaveBeenCalledWith(
-      expect.stringContaining("kept in your private My Files")
+      expect.stringContaining("original uploaders’ private My Files")
     );
     expect(deleteProject).toHaveBeenCalledWith(5);
     expect(props.setSelectedProjectId).toHaveBeenCalledWith(null);
