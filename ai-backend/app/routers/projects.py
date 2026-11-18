@@ -49,6 +49,7 @@ from app.services.project_preview_artifact_registry import (
     register_preview_artifact,
 )
 from app.services.project_archive import ProjectArchiveError, build_project_export, parse_project_import
+from app.services.project_file_retention import privatize_project_attachments
 from app.audit import log_event
 
 router = APIRouter(prefix="/projects", tags=["Workspace Projects"])
@@ -1013,26 +1014,9 @@ def delete_project(
         Conversation.project_id == project.id
     ).update({"project_id": None}, synchronize_session=False)
 
-    # Preserve uploaded attachments for their owner, but never silently promote
-    # project-scoped knowledge to workspace/shared-assistant scope on deletion.
-    project_file_ids = [
-        file_id
-        for (file_id,) in db.query(FileAttachment.id)
-        .filter(FileAttachment.project_id == project.id)
-        .all()
-    ]
-    if project_file_ids:
-        # A previously shared assistant must not keep access to a formerly
-        # project-private file after the project boundary is removed.
-        db.query(AssistantFileLink).filter(
-            AssistantFileLink.file_id.in_(project_file_ids)
-        ).delete(synchronize_session=False)
-        db.query(FileAttachment).filter(
-            FileAttachment.id.in_(project_file_ids)
-        ).update(
-            {"project_id": None, "workspace_id": None},
-            synchronize_session=False,
-        )
+    # Preserve uploads privately for their original owners and invalidate
+    # both live assistant links and historical version snapshots.
+    privatize_project_attachments(db, project.id)
 
     # ProjectFile, ProjectMemory, members, and preview-artifact metadata remain
     # project-owned and follow the project's existing cascade/cleanup behavior.
