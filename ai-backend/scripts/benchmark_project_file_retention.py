@@ -302,7 +302,7 @@ def main() -> None:
         "seed": args.seed,
         "repetitions": args.repetitions,
         "batch_size": args.batch_size,
-        "non_null_ratio_requested": args.array_ratio,
+        "array_ratio_requested": args.array_ratio,
         "results": results,
         "notes": [
             "Synthetic isolated schema only; no application tables are read or changed.",
