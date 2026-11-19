@@ -35,6 +35,27 @@ The default matrix is 10k / 100k / 500k rows, sparse / dense / no-match target I
 on constrained machines.
 The 500k case is optional and may take several minutes.
 
+## Run on GitHub Actions (phone-friendly)
+
+The repository also provides an isolated GitHub Actions workflow at
+`.github/workflows/project-file-retention-benchmark.yml`. It starts a disposable
+PostgreSQL service on the runner and exposes it only as
+`localhost:5432/ai_backend_test`, so the script's local-only database guard remains
+unchanged. The workflow installs only SQLAlchemy and psycopg, runs all three scenarios,
+prints a compact summary, and uploads the JSON report as a 14-day artifact. It has
+read-only repository permissions and uses no repository secrets or application services.
+
+On pull requests that contain this workflow and target the retention benchmark base
+branch, the workflow is scoped to the benchmark branch. After the workflow is merged
+into the repository's default branch, it can also be started manually from
+**Actions → Project file retention benchmark → Run workflow**. Start with 1,000 rows,
+2 repetitions, and a 0.5 non-null ratio. Larger row counts are optional and should be
+used only after the smoke run succeeds.
+
+The GitHub-hosted runner is a reproducible CI environment, not the user's laptop or
+production infrastructure. Record its runner metadata and compare only runs on
+comparable runner types.
+
 ## Reported measures
 
 - Requested and observed non-null snapshot count, plus actual matching-row count.
