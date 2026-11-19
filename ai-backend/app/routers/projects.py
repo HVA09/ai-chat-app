@@ -174,9 +174,6 @@ async def import_project(
     db: Session = Depends(get_db),
 ):
     _get_membership(workspace_id, current_user, db)
-    lock_user_for_update(db, current_user.id)
-    lock_workspaces_for_update(db, [workspace_id])
-    _get_membership(workspace_id, current_user, db)
     try:
         imported = parse_project_import(archive.file)
     except ProjectArchiveError as exc:
@@ -184,6 +181,10 @@ async def import_project(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
         ) from exc
+
+    lock_user_for_update(db, current_user.id)
+    lock_workspaces_for_update(db, [workspace_id])
+    _get_membership(workspace_id, current_user, db)
 
     requested_name = imported.manifest.project["name"]
     name = requested_name
