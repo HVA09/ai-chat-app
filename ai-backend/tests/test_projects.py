@@ -1105,6 +1105,8 @@ def test_account_deletion_user_lock_serializes_project_creation_on_postgres(
     finally:
         if retention.in_transaction():
             retention.rollback()
+        if thread.ident is not None:
+            thread.join(timeout=5)
         retention.close()
         with session_factory() as cleanup:
             cleanup.query(User).filter(User.id == user_id).delete()
