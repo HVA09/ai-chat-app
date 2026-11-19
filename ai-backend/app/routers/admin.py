@@ -590,6 +590,10 @@ def delete_user(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المستخدم غير موجود")
 
+    # Complete DB-side retention work before deleting external objects. If
+    # this phase fails, no user objects have been irreversibly removed.
+    privatize_account_workspace_attachments(db, user.id)
+
     try:
         delete_user_objects(user.id)
     except StorageError as exc:
@@ -598,9 +602,6 @@ def delete_user(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="تعذر تنظيف ملفات المستخدم الآن. أعد المحاولة لاحقًا.",
         ) from exc
-
-    # Keep the user lock while workspace/project attachments are privatized.
-    privatize_account_workspace_attachments(db, user.id)
 
     log_event(db, "admin_user_deleted", f"admin {admin.email} حذف المستخدم {user.email}", admin.id)
     shutil.rmtree(Path(app_settings.UPLOAD_DIR) / str(user.id), ignore_errors=True)
