@@ -10,6 +10,12 @@ from app.models.assistant_version import AssistantVersion
 from app.models.file_attachment import FileAttachment
 from app.models.project import WorkspaceProject
 from app.models.workspace import Workspace
+from app.models.user import User
+
+
+def lock_user_for_update(db: Session, user_id: int) -> None:
+    """Serialize project creation with deletion of the owning account."""
+    db.query(User.id).filter(User.id == user_id).with_for_update().one()
 
 
 def lock_workspaces_for_update(db: Session, workspace_ids: list[int]) -> None:
@@ -135,6 +141,10 @@ def privatize_project_attachments(db: Session, project_id: int) -> list[int]:
 
 def privatize_account_workspace_attachments(db: Session, user_id: int) -> list[int]:
     """Protect other members' uploads when an account deletion cascades workspaces/projects."""
+    # Project creation/import takes this same user-row lock before workspace
+    # locks. This prevents a new owned project in somebody else's workspace
+    # from appearing after the account-deletion inventory was collected.
+    lock_user_for_update(db, user_id)
     workspace_ids = [
         workspace_id
         for (workspace_id,) in db.query(Workspace.id)
