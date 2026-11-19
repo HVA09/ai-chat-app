@@ -959,15 +959,23 @@ def test_project_creation_acquires_workspace_retention_lock(
     headers = {"Authorization": f"Bearer {token}"}
     workspace = _create_workspace(client, headers, "Project creation lock")
 
-    locked = []
-    original_lock = projects_router_module.lock_workspaces_for_update
+    lock_order = []
+    original_user_lock = projects_router_module.lock_user_for_update
+    original_workspace_lock = projects_router_module.lock_workspaces_for_update
 
-    def capture_lock(db, workspace_ids):
-        locked.extend(workspace_ids)
-        return original_lock(db, workspace_ids)
+    def capture_user_lock(db, user_id):
+        lock_order.append(("user", user_id))
+        return original_user_lock(db, user_id)
+
+    def capture_workspace_lock(db, workspace_ids):
+        lock_order.append(("workspace", list(workspace_ids)))
+        return original_workspace_lock(db, workspace_ids)
 
     monkeypatch.setattr(
-        projects_router_module, "lock_workspaces_for_update", capture_lock
+        projects_router_module, "lock_user_for_update", capture_user_lock
+    )
+    monkeypatch.setattr(
+        projects_router_module, "lock_workspaces_for_update", capture_workspace_lock
     )
     created = client.post(
         "/projects",
@@ -976,7 +984,10 @@ def test_project_creation_acquires_workspace_retention_lock(
     )
 
     assert created.status_code == 201
-    assert locked == [workspace["id"]]
+    assert lock_order == [
+        ("user", int(client.get("/auth/me", headers=headers).json()["id"])),
+        ("workspace", [workspace["id"]]),
+    ]
 
 
 def test_project_deletion_acquires_workspace_lock_before_conversation_detach(
