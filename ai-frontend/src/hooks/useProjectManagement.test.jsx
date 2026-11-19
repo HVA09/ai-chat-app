@@ -10,6 +10,7 @@ import {
   updateProject,
 } from "../lib/projectsApi";
 import useProjectManagement from "./useProjectManagement";
+import i18n from "../i18n";
 
 vi.mock("../lib/projectsApi", () => ({
   createProject: vi.fn(),
@@ -44,7 +45,12 @@ function createProps(overrides = {}) {
     startNewChat: vi.fn(),
     refreshConversations: vi.fn().mockResolvedValue(undefined),
     setToast: vi.fn(),
-    t: (key, values) => (values ? `${key}:${values.name}` : key),
+    t: (key, values) => {
+      if (key === "sidebar.projectDeleteConfirm") {
+        return `Delete project ${values.name}? Uploaded attachments will move to the original uploaders’ private My Files and be removed from workspace and shared-assistant access. All project conversations will remain in the workspace without their project association.`;
+      }
+      return values ? `${key}:${values.name}` : key;
+    },
     ...overrides,
   };
 }
@@ -64,6 +70,22 @@ describe("useProjectManagement", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("uses accurate original-uploader and all-conversation deletion copy in both locales", () => {
+    const arabic = i18n.t("sidebar.projectDeleteConfirm", {
+      lng: "ar",
+      name: "مشروع تجريبي",
+    });
+    const english = i18n.t("sidebar.projectDeleteConfirm", {
+      lng: "en",
+      name: "Example project",
+    });
+
+    expect(arabic).toContain("المستخدمين الذين رفعوها أصلاً");
+    expect(arabic).toContain("جميع محادثات المشروع");
+    expect(english).toContain("original uploaders");
+    expect(english).toContain("All project conversations");
   });
 
   it("loads projects and preserves the current selection only when it still exists", async () => {
@@ -194,6 +216,9 @@ describe("useProjectManagement", () => {
       await result.current.handleDeleteProject(5, "Existing");
     });
 
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining("original uploaders’ private My Files")
+    );
     expect(deleteProject).toHaveBeenCalledWith(5);
     expect(props.setSelectedProjectId).toHaveBeenCalledWith(null);
     expect(props.startNewChat).toHaveBeenCalledOnce();

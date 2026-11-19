@@ -16,7 +16,6 @@ from app.models.assistant import Assistant
 from app.models.assistant_workspace_share import AssistantWorkspaceShare
 from app.dependencies import get_current_user
 from app.models.conversation import Conversation
-from app.models.file_attachment import FileAttachment
 from app.models.project import WorkspaceProject
 from app.models.project_file import ProjectFile
 from app.models.project_memory import ProjectMemory
@@ -48,6 +47,7 @@ from app.services.project_preview_artifact_registry import (
     register_preview_artifact,
 )
 from app.services.project_archive import ProjectArchiveError, build_project_export, parse_project_import
+from app.services.project_file_retention import privatize_project_attachments
 from app.audit import log_event
 
 router = APIRouter(prefix="/projects", tags=["Workspace Projects"])
@@ -1011,8 +1011,12 @@ def delete_project(
     db.query(Conversation).filter(
         Conversation.project_id == project.id
     ).update({"project_id": None}, synchronize_session=False)
-    db.query(FileAttachment).filter(
-        FileAttachment.project_id == project.id
-    ).update({"project_id": None}, synchronize_session=False)
+
+    # Preserve uploads privately for their original owners and invalidate
+    # both live assistant links and historical version snapshots.
+    privatize_project_attachments(db, project.id)
+
+    # ProjectFile, ProjectMemory, members, and preview-artifact metadata remain
+    # project-owned and follow the project's existing cascade/cleanup behavior.
     db.delete(project)
     db.commit()

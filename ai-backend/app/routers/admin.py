@@ -25,6 +25,7 @@ from app.models.file_attachment import FileAttachment
 from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.services.storage import StorageError, delete_user_objects
+from app.services.project_file_retention import privatize_account_workspace_attachments
 from app.schemas.admin import (
     AdminConversationOut,
     AdminPlanOut,
@@ -582,6 +583,9 @@ def delete_user(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="تعذر تنظيف ملفات المستخدم الآن. أعد المحاولة لاحقًا.",
         ) from exc
+
+    # Protect uploads owned by other members before workspace/project cascades run.
+    privatize_account_workspace_attachments(db, user.id)
 
     log_event(db, "admin_user_deleted", f"admin {admin.email} حذف المستخدم {user.email}", admin.id)
     shutil.rmtree(Path(app_settings.UPLOAD_DIR) / str(user.id), ignore_errors=True)

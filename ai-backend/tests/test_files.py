@@ -287,6 +287,62 @@ def test_upload_file_to_project_and_list(client, db_session, tmp_path, monkeypat
     assert [item["project_id"] for item in listed.json()] == [project_id]
 
 
+
+def test_project_upload_revalidates_project_after_storage_io(
+    client, db_session, tmp_path, monkeypatch
+):
+    """An upload finishing after project deletion is discarded, not left workspace-scoped."""
+    from app.models.file_attachment import FileAttachment
+    from app.models.project import WorkspaceProject
+    from app.models.user import User
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    token = _register_and_login(client, "project-upload-race@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    owner = db_session.query(User).filter_by(
+        email="project-upload-race@example.com"
+    ).one()
+    workspace = owner.owned_workspaces[0]
+    project_id = client.post(
+        "/projects",
+        json={"workspace_id": workspace.id, "name": "Upload race"},
+        headers=headers,
+    ).json()["id"]
+
+    objects = {}
+
+    def fake_put_file(path, object_key, content_type):
+        objects[object_key] = path.read_bytes()
+        # Simulate the project disappearing while the upload is doing external
+        # storage I/O, after its initial authorization check.
+        db_session.query(WorkspaceProject).filter(
+            WorkspaceProject.id == project_id
+        ).delete(synchronize_session=False)
+        db_session.commit()
+
+    def fake_delete_file(object_key, fallback_path):
+        objects.pop(object_key, None)
+        fallback_path.unlink(missing_ok=True)
+
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
+
+    response = client.post(
+        "/files/upload",
+        params={"project_id": project_id},
+        files={"file": ("late-upload.txt", b"late project content", "text/plain")},
+        headers=headers,
+    )
+
+    assert response.status_code == 404
+    assert objects == {}
+    db_session.expire_all()
+    assert db_session.query(FileAttachment).filter(
+        FileAttachment.user_id == owner.id,
+        FileAttachment.project_id == project_id,
+    ).count() == 0
+
 def test_project_file_requires_project_membership(client, db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
 

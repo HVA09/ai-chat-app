@@ -15,6 +15,8 @@ from app.models.conversation import Conversation, Message
 from app.models.assistant_file_link import AssistantFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.assistant_version import AssistantVersion
+from app.models.assistant_workspace_share import AssistantWorkspaceShare
+from app.models.workspace import Workspace
 from app.models.user import User
 from app.schemas.assistant_versions import AssistantVersionCompareOut, AssistantVersionOut
 from app.schemas.assistants import (
@@ -305,6 +307,7 @@ def compare_assistant_version_with_current(
     db: Session = Depends(get_db),
 ):
     assistant = _get_owned_assistant(assistant_id, current_user, db)
+
     snapshot = (
         db.query(AssistantVersion)
         .filter(
@@ -361,8 +364,30 @@ def restore_assistant_version(
     db: Session = Depends(get_db),
 ):
     assistant = _get_owned_assistant(assistant_id, current_user, db)
+
+    # Use the same workspace-row lock as project/account privatization. This
+    # serializes restore against retention so a stale snapshot cannot relink a
+    # file after its shared scope has been removed.
+    shared_workspace_ids = [
+        workspace_id
+        for (workspace_id,) in db.query(AssistantWorkspaceShare.workspace_id)
+        .filter(AssistantWorkspaceShare.assistant_id == assistant.id)
+        .order_by(AssistantWorkspaceShare.workspace_id.asc())
+        .all()
+    ]
+    if shared_workspace_ids:
+        (
+            db.query(Workspace.id)
+            .filter(Workspace.id.in_(shared_workspace_ids))
+            .order_by(Workspace.id.asc())
+            .with_for_update()
+            .all()
+        )
+
     snapshot = (
         db.query(AssistantVersion)
+        .populate_existing()
+        .with_for_update()
         .filter(
             AssistantVersion.assistant_id == assistant.id,
             AssistantVersion.version == version,
