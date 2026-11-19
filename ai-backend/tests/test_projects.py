@@ -1026,3 +1026,86 @@ def test_project_deletion_acquires_workspace_lock_before_conversation_detach(
 
     assert deleted.status_code == 204
     assert locked == [workspace["id"]]
+
+
+def test_account_deletion_user_lock_serializes_project_creation_on_postgres(
+    db_session,
+):
+    """A project creator must wait while account retention owns the user row."""
+    from threading import Event, Thread
+    from time import monotonic, sleep
+    from uuid import uuid4
+
+    import pytest
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+
+    from app.models.user import User
+    from app.services.project_file_retention import lock_user_for_update
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
+
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    email = f"retention-lock-{uuid4().hex}@example.test"
+    creator = session_factory()
+    user = User(email=email, hashed_password="test-only-hash")
+    creator.add(user)
+    creator.commit()
+    user_id = user.id
+    creator.close()
+
+    retention = session_factory()
+    contender_started = Event()
+    contender_acquired = Event()
+    contender_pid = {}
+
+    def attempt_project_owner_lock():
+        with session_factory() as contender:
+            contender.begin()
+            contender_pid["value"] = contender.execute(
+                text("SELECT pg_backend_pid()")
+            ).scalar_one()
+            contender_started.set()
+            lock_user_for_update(contender, user_id)
+            contender_acquired.set()
+            contender.rollback()
+
+    thread = Thread(target=attempt_project_owner_lock, daemon=True)
+    try:
+        retention.begin()
+        lock_user_for_update(retention, user_id)
+        thread.start()
+        assert contender_started.wait(5), "contender did not start"
+
+        deadline = monotonic() + 5
+        waiting_on_lock = False
+        while monotonic() < deadline:
+            with session_factory() as probe:
+                wait_type = probe.execute(
+                    text(
+                        "SELECT wait_event_type FROM pg_stat_activity "
+                        "WHERE pid = :pid"
+                    ),
+                    {"pid": contender_pid["value"]},
+                ).scalar_one_or_none()
+            if wait_type == "Lock":
+                waiting_on_lock = True
+                break
+            sleep(0.01)
+
+        assert waiting_on_lock, "project-creation lock did not wait on the user row"
+        assert not contender_acquired.is_set()
+        retention.commit()
+        assert contender_acquired.wait(5), "contender did not acquire the released user lock"
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+    finally:
+        if retention.in_transaction():
+            retention.rollback()
+        retention.close()
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
+            cleanup.commit()
