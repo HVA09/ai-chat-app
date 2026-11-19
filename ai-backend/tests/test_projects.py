@@ -948,3 +948,62 @@ def test_account_retention_locks_workspaces_containing_owned_projects(
     assert retained.user_id == workspace_owner.id
     assert retained.workspace_id is None
     assert retained.project_id is None
+
+
+def test_project_creation_acquires_workspace_retention_lock(
+    client, monkeypatch
+):
+    from app.routers import projects as projects_router_module
+
+    token = _register_and_login(client, "project-create-lock@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = _create_workspace(client, headers, "Project creation lock")
+
+    locked = []
+    original_lock = projects_router_module.lock_workspaces_for_update
+
+    def capture_lock(db, workspace_ids):
+        locked.extend(workspace_ids)
+        return original_lock(db, workspace_ids)
+
+    monkeypatch.setattr(
+        projects_router_module, "lock_workspaces_for_update", capture_lock
+    )
+    created = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Serialized project"},
+        headers=headers,
+    )
+
+    assert created.status_code == 201
+    assert locked == [workspace["id"]]
+
+
+def test_project_deletion_acquires_workspace_lock_before_conversation_detach(
+    client, monkeypatch
+):
+    from app.routers import projects as projects_router_module
+
+    token = _register_and_login(client, "project-delete-lock@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = _create_workspace(client, headers, "Project deletion lock")
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Lock order project"},
+        headers=headers,
+    ).json()
+
+    locked = []
+    original_lock = projects_router_module.lock_workspaces_for_update
+
+    def capture_lock(db, workspace_ids):
+        locked.extend(workspace_ids)
+        return original_lock(db, workspace_ids)
+
+    monkeypatch.setattr(
+        projects_router_module, "lock_workspaces_for_update", capture_lock
+    )
+    deleted = client.delete(f"/projects/{project['id']}", headers=headers)
+
+    assert deleted.status_code == 204
+    assert locked == [workspace["id"]]
