@@ -39,6 +39,39 @@ def test_upload_file_success(client, tmp_path, monkeypatch):
 
 
 
+def test_upload_lock_failure_attempts_cleanup_without_masking_original_error(
+    client, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    events = []
+
+    def fail_user_lock(_db, _user_id):
+        raise RuntimeError("user lock query failed")
+
+    def fake_put_file(_path, object_key, _content_type):
+        events.append(("stored", object_key))
+
+    def fail_cleanup(_object_key, _fallback_path):
+        events.append(("cleanup_failed", None))
+        raise OSError("storage cleanup unavailable")
+
+    monkeypatch.setattr(files_router, "lock_user_for_update", fail_user_lock)
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(files_router, "delete_stored_file", fail_cleanup)
+
+    token = _register_and_login(client, "upload-lock-failure@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with pytest.raises(RuntimeError, match="user lock query failed"):
+        client.post(
+            "/files/upload",
+            files={"file": ("report.csv", b"name,value\\nalpha,1\\n", "text/csv")},
+            headers=headers,
+        )
+
+    assert [event[0] for event in events] == ["stored", "cleanup_failed"]
+
+
 def test_upload_releases_db_before_storage_and_embedding_io(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     events = []
