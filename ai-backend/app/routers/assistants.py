@@ -16,7 +16,6 @@ from app.models.assistant_file_link import AssistantFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.assistant_version import AssistantVersion
 from app.models.assistant_workspace_share import AssistantWorkspaceShare
-from app.models.workspace import Workspace
 from app.models.user import User
 from app.schemas.assistant_versions import AssistantVersionCompareOut, AssistantVersionOut
 from app.schemas.assistants import (
@@ -443,6 +442,7 @@ def delete_assistant(
     db: Session = Depends(get_db),
 ):
     assistant = _get_owned_assistant(assistant_id, current_user, db)
+    _lock_assistant_version_context(assistant, db)
     db.delete(assistant)
     db.commit()
 
