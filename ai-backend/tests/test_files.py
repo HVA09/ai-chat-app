@@ -1,6 +1,8 @@
 """
 اختبارات المرحلة السادسة: رفع الملفات وإدارتها
 """
+
+import pytest
 from app.config import settings as app_settings
 from app.routers import files as files_router
 
