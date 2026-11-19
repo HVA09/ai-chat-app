@@ -50,16 +50,19 @@ def percentile(values: list[float], fraction: float) -> float:
     return ordered[index]
 
 
-def synthetic_batches(count: int, mode: str, seed: int, batch_size: int):
+def synthetic_batches(count: int, mode: str, seed: int, batch_size: int, non_null_ratio: float):
     rng = random.Random(seed)
     next_id = 1
     while next_id <= count:
         batch = []
         for _ in range(min(batch_size, count - next_id + 1)):
-            length = rng.randint(1, 8)
-            ids = [rng.randint(1, max(10, count // 10)) for _ in range(length)]
-            if mode == "dense" or (mode == "sparse" and rng.random() < 0.01):
-                ids[rng.randrange(length)] = TARGET_FILE_ID
+            if rng.random() > non_null_ratio:
+                ids = None
+            else:
+                length = rng.randint(1, 8)
+                ids = [rng.randint(1, max(10, count // 10)) for _ in range(length)]
+                if mode == "dense" or (mode == "sparse" and rng.random() < 0.01):
+                    ids[rng.randrange(length)] = TARGET_FILE_ID
             batch.append({"id": next_id, "knowledge_file_ids": ids})
             next_id += 1
         yield batch
@@ -148,6 +151,7 @@ def main() -> None:
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=200)
     parser.add_argument("--seed", type=int, default=20261119)
+    parser.add_argument("--non-null-ratio", type=float, default=1.0)
     parser.add_argument("--output", default="")
     args = parser.parse_args()
 
@@ -159,6 +163,8 @@ def main() -> None:
         raise SystemExit("--modes accepts sparse,dense,no-match")
     if not 1 <= args.repetitions <= 20 or args.batch_size < 1:
         raise SystemExit("--repetitions must be 1..20 and --batch-size must be positive")
+    if not 0 < args.non_null_ratio <= 1:
+        raise SystemExit("--non-null-ratio must be greater than 0 and at most 1")
 
     engine = create_engine(local_test_url(), pool_size=3, max_overflow=0, pool_pre_ping=True)
     schema = "retention_bench_" + uuid.uuid4().hex
@@ -183,15 +189,16 @@ def main() -> None:
                 with engine.begin() as connection:
                     for batch in synthetic_batches(
                         count, "sparse" if mode == "no-match" else mode,
-                        args.seed + count, args.batch_size,
+                        args.seed + count, args.batch_size, args.non_null_ratio,
                     ):
                         if mode == "no-match":
                             for item in batch:
-                                item["knowledge_file_ids"] = [
-                                    value for value in item["knowledge_file_ids"]
-                                    if value != TARGET_FILE_ID
-                                ]
-                        # Reserve the final row as a guaranteed non-matching lock probe.
+                                if item["knowledge_file_ids"] is not None:
+                                    item["knowledge_file_ids"] = [
+                                        value for value in item["knowledge_file_ids"]
+                                        if value != TARGET_FILE_ID
+                                    ]
+                        # Reserve the final row as a non-null, guaranteed non-matching lock probe.
                         if batch and batch[-1]["id"] == count:
                             batch[-1]["knowledge_file_ids"] = [count + 10]
                         connection.execute(table.insert(), batch)
@@ -203,6 +210,8 @@ def main() -> None:
                         select(table.c.knowledge_file_ids).order_by(table.c.id.asc())
                     )
                     for (ids,) in stats:
+                        if ids is None:
+                            continue
                         lengths.append(len(ids))
                         if TARGET_FILE_ID in ids:
                             expected_matches += 1
@@ -224,7 +233,8 @@ def main() -> None:
                 results.append({
                     "rows": count,
                     "mode": mode,
-                    "non_null_rows": count,
+                    "non_null_rows": len(lengths),
+                    "non_null_ratio_requested": args.non_null_ratio,
                     "expected_matches": expected_matches,
                     "scanned_rows_per_run": scanned_total // args.repetitions,
                     "matched_rows_per_run": matched_total // args.repetitions,
@@ -258,6 +268,7 @@ def main() -> None:
         "seed": args.seed,
         "repetitions": args.repetitions,
         "batch_size": args.batch_size,
+        "non_null_ratio_requested": args.non_null_ratio,
         "results": results,
         "notes": [
             "Synthetic isolated schema only; no application tables are read or changed.",
