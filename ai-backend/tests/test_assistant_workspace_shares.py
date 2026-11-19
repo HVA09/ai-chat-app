@@ -217,3 +217,45 @@ def test_share_revalidates_assistant_after_workspace_lock(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "المساعد غير موجود"
+
+
+def test_unshare_revalidates_assistant_after_workspace_lock(
+    client, db_session, monkeypatch
+):
+    owner_token = _register_and_login(
+        client, "assistant-unshare-stale-owner@example.com"
+    )
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace_id = _create_workspace(client, owner_token)
+    assistant = client.post(
+        "/assistants",
+        json={"name": "Delete Before Unshare", "instructions": "Private"},
+        headers=owner_headers,
+    ).json()
+    shared = client.post(
+        f"/assistants/{assistant['id']}/workspace-share/{workspace_id}",
+        headers=owner_headers,
+    )
+    assert shared.status_code in (200, 201)
+
+    def delete_assistant_when_workspace_lock_is_acquired(db, workspace_ids):
+        assistant_row = db.query(Assistant).filter(
+            Assistant.id == assistant["id"]
+        ).first()
+        assert assistant_row is not None
+        db.delete(assistant_row)
+        db.commit()
+
+    monkeypatch.setattr(
+        share_router_module,
+        "lock_workspaces_for_update",
+        delete_assistant_when_workspace_lock_is_acquired,
+    )
+
+    response = client.delete(
+        f"/assistants/{assistant['id']}/workspace-share/{workspace_id}",
+        headers=owner_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "المساعد غير موجود"
