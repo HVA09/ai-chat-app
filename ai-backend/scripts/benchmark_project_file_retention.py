@@ -9,12 +9,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import random
 import statistics
 import threading
 import time
 import tracemalloc
 import uuid
+import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
@@ -285,6 +287,13 @@ def main() -> None:
             "ORDER BY id FOR UPDATE; stream rows and filter target IDs in Python"
         ),
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "commit_sha": os.getenv("GITHUB_SHA") or os.getenv("RETENTION_BENCH_COMMIT_SHA"),
+        "runtime": {
+            "python": platform.python_version(),
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+            "cpu_count": multiprocessing.cpu_count(),
+        },
         "database": "disposable local ai_backend_test only",
         "postgresql_version": postgres_version,
         "seed": args.seed,
