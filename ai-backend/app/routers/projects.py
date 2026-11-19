@@ -47,7 +47,7 @@ from app.services.project_preview_artifact_registry import (
     register_preview_artifact,
 )
 from app.services.project_archive import ProjectArchiveError, build_project_export, parse_project_import
-from app.services.project_file_retention import lock_workspaces_for_update, privatize_project_attachments
+from app.services.project_file_retention import lock_user_for_update, lock_workspaces_for_update, privatize_project_attachments
 from app.audit import log_event
 
 router = APIRouter(prefix="/projects", tags=["Workspace Projects"])
@@ -174,6 +174,7 @@ async def import_project(
     db: Session = Depends(get_db),
 ):
     _get_membership(workspace_id, current_user, db)
+    lock_user_for_update(db, current_user.id)
     lock_workspaces_for_update(db, [workspace_id])
     _get_membership(workspace_id, current_user, db)
     try:
@@ -267,6 +268,7 @@ def create_project(
     db: Session = Depends(get_db),
 ):
     _get_membership(payload.workspace_id, current_user, db)
+    lock_user_for_update(db, current_user.id)
     # Account retention locks workspace rows before inventorying owned projects.
     # Project creation must use the same lock so it cannot appear after that inventory.
     lock_workspaces_for_update(db, [payload.workspace_id])
