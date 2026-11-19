@@ -191,6 +191,9 @@ def main() -> None:
                                     value for value in item["knowledge_file_ids"]
                                     if value != TARGET_FILE_ID
                                 ]
+                        # Reserve the final row as a guaranteed non-matching lock probe.
+                        if batch and batch[-1]["id"] == count:
+                            batch[-1]["knowledge_file_ids"] = [count + 10]
                         connection.execute(table.insert(), batch)
 
                 lengths = []
