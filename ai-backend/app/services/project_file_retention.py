@@ -13,9 +13,15 @@ from app.models.workspace import Workspace
 from app.models.user import User
 
 
-def lock_user_for_update(db: Session, user_id: int) -> None:
-    """Serialize project creation with deletion of the owning account."""
-    db.query(User.id).filter(User.id == user_id).with_for_update().first()
+def lock_user_for_update(db: Session, user_id: int) -> bool:
+    """Lock an existing user row; return False when account deletion already committed."""
+    return (
+        db.query(User.id)
+        .filter(User.id == user_id)
+        .with_for_update()
+        .first()
+        is not None
+    )
 
 
 def lock_workspaces_for_update(db: Session, workspace_ids: list[int]) -> None:
