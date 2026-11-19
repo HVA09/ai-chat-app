@@ -29,8 +29,8 @@ on:
           - "2"
           - "3"
           - "5"
-      non_null_ratio:
-        description: Requested non-null snapshot ratio
+      array_ratio:
+        description: Requested array snapshot ratio
         type: choice
         required: true
         default: "0.5"
@@ -65,7 +65,7 @@ jobs:
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ai_backend_test
       ROWS: ${{ inputs.rows || '1000' }}
       REPETITIONS: ${{ inputs.repetitions || '2' }}
-      NON_NULL_RATIO: ${{ inputs.non_null_ratio || '0.5' }}
+      ARRAY_RATIO: ${{ inputs.array_ratio || '0.5' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -90,7 +90,7 @@ jobs:
           python scripts/benchmark_project_file_retention.py \
             --rows "$ROWS" \
             --modes sparse,dense,no-match \
-            --non-null-ratio "$NON_NULL_RATIO" \
+            --array-ratio "$ARRAY_RATIO" \
             --repetitions "$REPETITIONS" \
             --output retention-benchmark-report.json
           cat retention-benchmark-report.json
