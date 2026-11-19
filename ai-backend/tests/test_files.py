@@ -632,6 +632,7 @@ def test_upload_preserves_original_file_when_text_extraction_fails(
 
 
 
+
 def test_project_upload_finalization_waits_for_project_deletion_on_postgres(
     db_session, tmp_path, monkeypatch
 ):
@@ -639,11 +640,9 @@ def test_project_upload_finalization_waits_for_project_deletion_on_postgres(
     import asyncio
     from io import BytesIO
     from threading import Event, Thread
-    from time import monotonic, sleep
     from uuid import uuid4
 
     import pytest
-    from sqlalchemy import text
     from sqlalchemy.orm import sessionmaker
     from starlette.datastructures import Headers, UploadFile
 
@@ -690,16 +689,32 @@ def test_project_upload_finalization_waits_for_project_deletion_on_postgres(
     user_id, workspace_id, project_id = user.id, workspace.id, project.id
     creator.close()
 
-    put_started = Event()
     allow_upload_to_finalize = Event()
     delete_finished = Event()
     delete_errors = []
+    upload_errors = []
     objects = {}
+
+    def delete_project_during_upload():
+        try:
+            with session_factory() as delete_db:
+                delete_db.begin()
+                current_user = delete_db.get(User, user_id)
+                projects_router.delete_project(project_id, current_user, delete_db)
+        except BaseException as exc:
+            delete_errors.append(exc)
+        finally:
+            delete_finished.set()
+            allow_upload_to_finalize.set()
+
+    deletion_thread = Thread(target=delete_project_during_upload, daemon=True)
 
     def fake_put_file(path, object_key, content_type):
         objects[object_key] = path.read_bytes()
-        put_started.set()
-        if not allow_upload_to_finalize.wait(10):
+        # Start deletion only after upload has passed initial authorization and
+        # reached external storage I/O, with its database connection released.
+        deletion_thread.start()
+        if not delete_finished.wait(10):
             raise AssertionError("project deletion did not finish during storage I/O")
 
     def fake_delete_file(object_key, fallback_path):
@@ -710,26 +725,6 @@ def test_project_upload_finalization_waits_for_project_deletion_on_postgres(
     monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
     monkeypatch.setattr(files_router, "extract_text", lambda *_args, **_kwargs: None)
 
-    def delete_project_during_upload():
-        try:
-            with session_factory() as delete_db:
-                delete_db.begin()
-                current_user = delete_db.get(User, user_id)
-                projects_router.delete_project(
-                    project_id,
-                    current_user,
-                    delete_db,
-                )
-        except BaseException as exc:
-            delete_errors.append(exc)
-        finally:
-            delete_finished.set()
-            allow_upload_to_finalize.set()
-
-    deletion_thread = Thread(target=delete_project_during_upload, daemon=True)
-    upload_error = []
-    upload_result = {}
-
     try:
         with session_factory() as upload_db:
             upload_db.begin()
@@ -739,33 +734,26 @@ def test_project_upload_finalization_waits_for_project_deletion_on_postgres(
                 file=BytesIO(b"late project content"),
                 headers=Headers({"content-type": "text/plain"}),
             )
-            deletion_thread.start()
-
-            async def run_upload():
-                try:
-                    upload_result["value"] = await files_router.upload_file(
+            try:
+                asyncio.run(
+                    files_router.upload_file(
                         upload,
                         project_id=project_id,
                         current_user=current_user,
                         db=upload_db,
                     )
-                except BaseException as exc:
-                    upload_error.append(exc)
+                )
+            except BaseException as exc:
+                upload_errors.append(exc)
+            finally:
+                upload_db.rollback()
 
-            upload_task = asyncio.create_task(run_upload())
-            assert put_started.wait(5), "upload did not reach storage I/O"
-
-            # Deletion runs on an independent PostgreSQL session while the upload
-            # has released its DB connection and is blocked in object storage.
-            assert delete_finished.wait(5), "project deletion did not finish during upload I/O"
-            await upload_task
-            upload_db.rollback()
-
+        assert delete_finished.is_set()
         assert delete_errors == []
-        assert len(upload_error) == 1
+        assert len(upload_errors) == 1
         from fastapi import HTTPException
-        assert isinstance(upload_error[0], HTTPException)
-        assert upload_error[0].status_code == 404
+        assert isinstance(upload_errors[0], HTTPException)
+        assert upload_errors[0].status_code == 404
         assert objects == {}
         deletion_thread.join(timeout=5)
         assert not deletion_thread.is_alive()
