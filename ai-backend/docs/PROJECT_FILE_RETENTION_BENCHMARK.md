@@ -43,7 +43,8 @@ The 500k case is optional and may take several minutes.
 - Scan latency p50/p95 across repetitions.
 - Peak Python memory observed during the scan.
 - A concurrent lock-wait probe against an unrelated synthetic row while the full scan
-  holds its row locks.
+  holds its row locks; the probe waits until PostgreSQL reports the waiter in
+  `pg_stat_activity.wait_event_type = 'Lock'` before releasing the scan transaction.
 
 The output includes PostgreSQL version, seed, batch size, and UTC timestamp. Save the
 JSON report together with the exact commit SHA and runner hardware/CPU/RAM. Compare
