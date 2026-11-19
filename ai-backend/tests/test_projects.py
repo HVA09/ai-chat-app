@@ -926,15 +926,23 @@ def test_account_retention_locks_workspaces_containing_owned_projects(
     db_session.commit()
     file_id = attachment.id
 
-    locked_ids = []
-    original_lock = project_file_retention.lock_workspaces_for_update
+    lock_order = []
+    original_user_lock = project_file_retention.lock_user_for_update
+    original_workspace_lock = project_file_retention.lock_workspaces_for_update
 
-    def capture_locks(db, workspace_ids):
-        locked_ids.extend(workspace_ids)
-        return original_lock(db, workspace_ids)
+    def capture_user_lock(db, user_id):
+        lock_order.append(("user", user_id))
+        return original_user_lock(db, user_id)
+
+    def capture_workspace_lock(db, workspace_ids):
+        lock_order.append(("workspace", list(workspace_ids)))
+        return original_workspace_lock(db, workspace_ids)
 
     monkeypatch.setattr(
-        project_file_retention, "lock_workspaces_for_update", capture_locks
+        project_file_retention, "lock_user_for_update", capture_user_lock
+    )
+    monkeypatch.setattr(
+        project_file_retention, "lock_workspaces_for_update", capture_workspace_lock
     )
     project_file_retention.privatize_account_workspace_attachments(
         db_session, project_owner.id
@@ -943,7 +951,8 @@ def test_account_retention_locks_workspaces_containing_owned_projects(
     db_session.expire_all()
 
     retained = db_session.get(FileAttachment, file_id)
-    assert workspace["id"] in locked_ids
+    assert lock_order[0] == ("user", project_owner.id)
+    assert any(item == ("workspace", [workspace["id"]]) for item in lock_order[1:])
     assert retained is not None
     assert retained.user_id == workspace_owner.id
     assert retained.workspace_id is None
