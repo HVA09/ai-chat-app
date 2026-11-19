@@ -46,8 +46,10 @@ The 500k case is optional and may take several minutes.
   holds its row locks; the probe waits until PostgreSQL reports the waiter in
   `pg_stat_activity.wait_event_type = 'Lock'` before releasing the scan transaction.
 
-The output includes PostgreSQL version, seed, batch size, and UTC timestamp. Save the
-JSON report together with the exact commit SHA and runner hardware/CPU/RAM. Compare
+The output includes PostgreSQL version, seed, batch size, UTC timestamp, Python/runtime
+platform, machine architecture, and CPU count. Set `RETENTION_BENCH_COMMIT_SHA` to the
+benchmark commit before running when `GITHUB_SHA` is not already available. Save the JSON
+report together with the exact commit SHA and runner hardware/CPU/RAM. Compare
 results only on comparable environments. This benchmark does not set an SLO and does
 not justify a schema/index change by itself.
 
