@@ -40,7 +40,7 @@ The 500k case is optional and may take several minutes.
 - Requested and observed non-null snapshot count, plus actual matching-row count.
 - Rows scanned/locked per run (the current query locks every non-null snapshot).
 - Average and p95 JSON-array length.
-- Scan latency p50/p95 across repetitions.
+- Scan latency p50/p95 across repetitions, plus every individual scan duration (`scan_ms_samples`) so small-sample results remain inspectable.
 - Peak Python memory observed during the scan.
 - A concurrent lock-wait probe against an unrelated synthetic row while the full scan
   holds its row locks; the probe waits until PostgreSQL reports the waiter in
@@ -50,8 +50,11 @@ The output includes PostgreSQL version, seed, batch size, UTC timestamp, Python/
 platform, machine architecture, and CPU count. Set `RETENTION_BENCH_COMMIT_SHA` to the
 benchmark commit before running when `GITHUB_SHA` is not already available. Save the JSON
 report together with the exact commit SHA and runner hardware/CPU/RAM. Compare
-results only on comparable environments. This benchmark does not set an SLO and does
-not justify a schema/index change by itself.
+results only on comparable environments. With the default three repetitions, p95 is a
+coarse descriptive quantile (effectively near the upper observed sample), not a statistically
+reliable tail-latency estimate; inspect `scan_ms_samples` and increase repetitions for
+exploratory comparisons when the machine can support it. This benchmark does not set an SLO
+and does not justify a schema/index change by itself.
 
 ## Limitations
 
