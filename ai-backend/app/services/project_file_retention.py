@@ -30,10 +30,6 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
     if not file_ids:
         return
 
-    db.query(AssistantFileLink).filter(
-        AssistantFileLink.file_id.in_(file_ids)
-    ).delete(synchronize_session=False)
-
     target_ids = set(file_ids)
     # Stream only the two fields needed; never materialize unrelated assistant
     # instructions/tool policies or the full version history during deletion.
@@ -69,6 +65,14 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
         if len(filtered_ids) != len(saved_ids):
             # Reassign rather than mutating JSON in place so SQLAlchemy detects it.
             snapshot.knowledge_file_ids = filtered_ids
+
+    # Keep the same row-lock order as assistant-version restore:
+    # workspace rows (held by the caller), then AssistantVersion rows, then
+    # AssistantFileLink rows. Deleting links before locking snapshots can
+    # deadlock with restore, which locks a snapshot before replacing links.
+    db.query(AssistantFileLink).filter(
+        AssistantFileLink.file_id.in_(file_ids)
+    ).delete(synchronize_session=False)
 
     db.query(FileAttachment).filter(
         FileAttachment.id.in_(file_ids)
