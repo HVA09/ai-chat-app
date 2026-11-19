@@ -5,10 +5,8 @@ on:
   push:
     branches: [main]
   pull_request:
-  # Required checks must also run on GitHub's synthetic merge-queue commit.
-  merge_group:
-    types: [checks_requested]
-    branches: [main]
+  # Allow the branch-sync workflow to re-run required checks after an API branch update.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
