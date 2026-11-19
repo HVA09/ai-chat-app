@@ -236,7 +236,10 @@ def main() -> None:
                     "unrelated_row_lock_wait_ms": round(lock_wait_ms, 3),
                 })
                 with engine.begin() as connection:
-                    connection.execute(table.delete())
+                    # Avoid accumulating dead tuples between scenarios.
+                    connection.exec_driver_sql(
+                        f'TRUNCATE TABLE "{schema}".assistant_versions_synthetic'
+                    )
 
     finally:
         with engine.begin() as connection:
