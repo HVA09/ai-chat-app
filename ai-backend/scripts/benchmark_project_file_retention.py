@@ -101,12 +101,14 @@ def run_scan(engine, table: Table, batch_size: int):
 def measure_unrelated_lock_wait(engine, table: Table, row_id: int, batch_size: int) -> float:
     """Measure a concurrent lock request on a synthetic row outside the target set."""
     query_started = threading.Event()
+    waiter_pid: list[int] = []
 
     def waiter() -> float:
         with engine.connect() as connection:
             transaction = connection.begin()
             try:
                 connection.execute(text("SET LOCAL lock_timeout = '8s'"))
+                waiter_pid.append(connection.execute(text("SELECT pg_backend_pid()")).scalar_one())
                 query_started.set()
                 started = time.perf_counter()
                 connection.execute(
@@ -136,9 +138,29 @@ def measure_unrelated_lock_wait(engine, table: Table, row_id: int, batch_size: i
                 future = pool.submit(waiter)
                 if not query_started.wait(timeout=3):
                     raise RuntimeError("Lock-wait probe did not start")
-                time.sleep(0.15)
+                deadline = time.monotonic() + 5
+                observed_lock_wait = False
+                while time.monotonic() < deadline:
+                    wait_event = locker.execute(
+                        text(
+                            "SELECT wait_event_type FROM pg_stat_activity "
+                            "WHERE pid = :pid"
+                        ),
+                        {"pid": waiter_pid[0]},
+                    ).scalar_one_or_none()
+                    if wait_event == "Lock":
+                        observed_lock_wait = True
+                        break
+                    if future.done():
+                        break
+                    time.sleep(0.01)
                 transaction.rollback()
-                return future.result(timeout=10)
+                elapsed = future.result(timeout=10)
+                if not observed_lock_wait:
+                    raise RuntimeError(
+                        "PostgreSQL did not report the unrelated-row probe waiting on a lock"
+                    )
+                return elapsed
         finally:
             if transaction.is_active:
                 transaction.rollback()
