@@ -684,10 +684,11 @@ def test_personal_upload_cannot_orphan_object_during_account_deletion(
     delete_errors = []
 
     def fake_put_file(path, object_key, _content_type):
+        payload = path.read_bytes()
         put_started.set()
         if delete_before_object_write and not allow_object_write.wait(10):
             raise AssertionError("account deletion did not finish before object write")
-        objects[object_key] = path.read_bytes()
+        objects[object_key] = payload
 
     def fake_delete_file(object_key, fallback_path):
         objects.pop(object_key, None)
