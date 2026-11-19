@@ -29,7 +29,7 @@ python scripts/benchmark_project_file_retention.py \
   --rows 1000 --modes sparse,dense,no-match --array-ratio 0.5 --repetitions 2
 ```
 
-The default matrix is 10k / 100k / 500k rows, sparse / dense / no-match target IDs,
+The script's local default matrix is 10k / 100k / 500k rows, sparse / dense / no-match target IDs,
 100% array-valued snapshots, three repetitions, and batches of 200. Set
 `--array-ratio 0.5` to generate arrays in about half the rows; the remaining Python `None` values are stored as JSON null, not SQL NULL. Reduce the matrix
 on constrained machines.
@@ -48,9 +48,10 @@ read-only repository permissions and uses no repository secrets or application s
 On pull requests that contain this workflow and target the retention benchmark base
 branch, the workflow is scoped to the benchmark branch. After the workflow is merged
 into the repository's default branch, it can also be started manually from
-**Actions → Project file retention benchmark → Run workflow**. Start with 1,000 rows,
-2 repetitions, and a 0.5 non-null ratio. Larger row counts are optional and should be
-used only after the smoke run succeeds.
+**Actions → Project file retention benchmark → Run workflow**. The current default is
+10,000 rows, 3 repetitions, and a 0.5 array ratio; the 1,000-row smoke profile remains
+available as a smaller option. Larger row counts are optional and should be used only
+after reviewing the 10,000-row result.
 
 The GitHub-hosted runner is a reproducible CI environment, not the user's laptop or
 production infrastructure. Record its runner metadata and compare only runs on
