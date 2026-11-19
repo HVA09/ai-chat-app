@@ -87,6 +87,26 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
             .with_for_update()
             .all()
         )
+        # A concurrent snapshot writer may have completed while we waited for
+        # the Assistant lock. Re-scan the now-serialized assistants so newly
+        # committed versions referencing target files are included as well.
+        candidate_ids = set(candidate_ids)
+        refreshed_candidates = (
+            db.query(AssistantVersion.id, AssistantVersion.knowledge_file_ids)
+            .filter(
+                AssistantVersion.assistant_id.in_(assistant_ids),
+                AssistantVersion.knowledge_file_ids.is_not(None),
+            )
+            .order_by(AssistantVersion.id.asc())
+            .yield_per(200)
+        )
+        for snapshot_id, saved_ids in refreshed_candidates:
+            if isinstance(saved_ids, list) and any(
+                str(file_id).isdigit() and int(file_id) in target_ids
+                for file_id in saved_ids
+            ):
+                candidate_ids.add(snapshot_id)
+        candidate_ids = sorted(candidate_ids)
     # Lock and refresh only snapshots discovered to reference target IDs.
     # The JSON membership scan above is portable across supported dialects.
 
