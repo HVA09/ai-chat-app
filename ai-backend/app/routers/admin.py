@@ -25,7 +25,10 @@ from app.models.file_attachment import FileAttachment
 from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.services.storage import StorageError, delete_user_objects
-from app.services.project_file_retention import privatize_account_workspace_attachments
+from app.services.project_file_retention import (
+    lock_user_for_update,
+    privatize_account_workspace_attachments,
+)
 from app.schemas.admin import (
     AdminConversationOut,
     AdminPlanOut,
