@@ -428,7 +428,7 @@ async def upload_file(
             )
         try:
             _get_workspace_membership(workspace_id, current_user, db)
-        except HTTPException:
+        except Exception:
             db.rollback()
             cleanup_unfinalized_upload()
             raise
