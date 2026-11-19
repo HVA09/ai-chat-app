@@ -364,16 +364,26 @@ async def upload_file(
     def cleanup_unfinalized_upload() -> None:
         try:
             delete_stored_file(object_key, destination)
-        except StorageError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="تعذر تنظيف الملف الذي لم يكتمل تسجيله؛ يلزم إعادة محاولة التنظيف.",
-            ) from exc
+        except Exception:
+            # Never replace the original DB/authorization failure with a
+            # secondary cleanup error. Keep the orphan visible for operations.
+            logger.exception(
+                "Failed to clean up unfinalized upload object %s",
+                object_key,
+            )
 
     # Match account deletion's user -> workspace lock order immediately after
     # external storage I/O. Hold the user lock through extraction and finalization
     # so deletion cannot remove the local path or miss a late S3 object.
-    if not lock_user_for_update(db, current_user.id):
+    try:
+        user_locked = lock_user_for_update(db, current_user.id)
+    except Exception:
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise
+
+    if not user_locked:
+        db.rollback()
         cleanup_unfinalized_upload()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
