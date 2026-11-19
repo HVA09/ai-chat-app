@@ -41,7 +41,7 @@ jobs:
             fi
             pr_numbers=("$EVENT_PR_NUMBER")
           else
-            mapfile -t pr_numbers < <(gh api --paginate \
+            mapfile -t pr_numbers < <(gh api --paginate --method GET \
               "repos/$REPOSITORY/pulls" \
               -f state=open -f base="$EVENT_BASE_REF" -f per_page=100 \
               --jq '.[].number')
