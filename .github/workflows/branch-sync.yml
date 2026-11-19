@@ -1,9 +1,10 @@
 name: Keep pull request branches current
 
 on:
-  # When any base branch advances, refresh open PRs that target that branch.
+  # Only run the write-capable push workflow from the trusted default branch.
+  # Updated PR branches are handled by pull_request_target or explicit dispatch.
   push:
-    branches: ['**']
+    branches: [main]
   # Also check newly opened or updated PRs, including stacked PR dependencies.
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review]
