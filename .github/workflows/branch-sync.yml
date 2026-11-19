@@ -7,9 +7,17 @@ on:
   # Also check newly opened or updated PRs, including stacked PR dependencies.
   pull_request_target:
     types: [opened, reopened, synchronize, ready_for_review]
+  # API branch updates made with GITHUB_TOKEN do not reliably fan out push events.
+  # Dispatch this workflow explicitly to refresh PRs stacked on an updated PR branch.
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Repository branch whose dependent PRs should be refreshed
+        required: true
+        type: string
 
 concurrency:
-  group: branch-sync-${{ github.event.pull_request.number || github.ref }}
+  group: branch-sync-${{ github.event.pull_request.number || inputs.base_ref || github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -28,7 +36,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
           EVENT_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
-          EVENT_BASE_REF: ${{ github.event.pull_request.base.ref || github.ref_name }}
+          EVENT_BASE_REF: ${{ github.event.pull_request.base.ref || inputs.base_ref || github.ref_name }}
           EVENT_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || '' }}
         shell: bash
         run: |
@@ -85,8 +93,13 @@ jobs:
             fi
 
             # GITHUB_TOKEN-created pushes do not start pull_request workflows.
-            # Dispatch the existing required workflows explicitly against the updated head ref.
+            # Dispatch required checks explicitly against the updated head ref.
             gh workflow run ci.yml --repo "$REPOSITORY" --ref "$head_ref"
             gh workflow run codeql.yml --repo "$REPOSITORY" --ref "$head_ref"
-            echo "Updated PR #$pr_number to $updated_sha and dispatched CI + CodeQL."
+
+            # Explicitly cascade to PRs whose base is this newly updated branch.
+            # This avoids depending on a push event that GITHUB_TOKEN may suppress.
+            gh workflow run branch-sync.yml --repo "$REPOSITORY" --ref main \
+              -f base_ref="$head_ref"
+            echo "Updated PR #$pr_number to $updated_sha; dispatched CI, CodeQL, and dependent-branch synchronization."
           done
