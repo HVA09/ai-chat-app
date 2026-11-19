@@ -358,6 +358,25 @@ async def upload_file(
         if temp_path:
             temp_path.unlink(missing_ok=True)
 
+    def cleanup_unfinalized_upload() -> None:
+        try:
+            delete_stored_file(object_key, destination)
+        except StorageError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="تعذر تنظيف الملف الذي لم يكتمل تسجيله؛ يلزم إعادة محاولة التنظيف.",
+            ) from exc
+
+    # Match account deletion's user -> workspace lock order immediately after
+    # external storage I/O. Hold the user lock through extraction and finalization
+    # so deletion cannot remove the local path or miss a late S3 object.
+    if not lock_user_for_update(db, current_user.id):
+        cleanup_unfinalized_upload()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الحساب غير موجود",
+        )
+
     extracted_text = None
     if sniffed is not None:
         try:
@@ -369,24 +388,10 @@ async def upload_file(
                 f"فشل استخراج نص الملف: {file.filename or stored_filename} ({exc})",
                 current_user.id,
             )
-
-    def cleanup_unfinalized_upload() -> None:
-        try:
-            delete_stored_file(object_key, destination)
-        except StorageError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="تعذر تنظيف الملف الذي لم يكتمل تسجيله؛ يلزم إعادة محاولة التنظيف.",
-            ) from exc
-
-    # Match account deletion's user -> workspace lock order. If deletion won
-    # while storage I/O was in progress, remove the object instead of orphaning it.
-    if not lock_user_for_update(db, current_user.id):
-        cleanup_unfinalized_upload()
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="الحساب غير موجود",
-        )
+        except Exception:
+            db.rollback()
+            cleanup_unfinalized_upload()
+            raise
 
     if workspace_id is not None:
         # Finalization locks user first, then workspace, matching account-retention order.
@@ -397,7 +402,7 @@ async def upload_file(
             .first()
         )
         if locked_workspace is None:
-            delete_stored_file(object_key, destination)
+            cleanup_unfinalized_upload()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="مساحة العمل غير موجودة",
@@ -419,7 +424,7 @@ async def upload_file(
                 .first()
             )
             if current_project is None:
-                delete_stored_file(object_key, destination)
+                cleanup_unfinalized_upload()
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="المشروع غير موجود",
