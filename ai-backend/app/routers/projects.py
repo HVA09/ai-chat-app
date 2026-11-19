@@ -47,7 +47,7 @@ from app.services.project_preview_artifact_registry import (
     register_preview_artifact,
 )
 from app.services.project_archive import ProjectArchiveError, build_project_export, parse_project_import
-from app.services.project_file_retention import privatize_project_attachments
+from app.services.project_file_retention import lock_user_for_update, lock_workspaces_for_update, privatize_project_attachments
 from app.audit import log_event
 
 router = APIRouter(prefix="/projects", tags=["Workspace Projects"])
@@ -182,6 +182,10 @@ async def import_project(
             detail=str(exc),
         ) from exc
 
+    lock_user_for_update(db, current_user.id)
+    lock_workspaces_for_update(db, [workspace_id])
+    _get_membership(workspace_id, current_user, db)
+
     requested_name = imported.manifest.project["name"]
     name = requested_name
     if db.query(WorkspaceProject).filter(
@@ -264,6 +268,11 @@ def create_project(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    _get_membership(payload.workspace_id, current_user, db)
+    lock_user_for_update(db, current_user.id)
+    # Account retention locks workspace rows before inventorying owned projects.
+    # Project creation must use the same lock so it cannot appear after that inventory.
+    lock_workspaces_for_update(db, [payload.workspace_id])
     _get_membership(payload.workspace_id, current_user, db)
     _ensure_unique_name(payload.workspace_id, payload.name, db)
 
@@ -1007,6 +1016,13 @@ def delete_project(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="تعذر تنظيف artifacts الخاصة بالمشروع.",
         )
+
+    # Use the same workspace-first order as account deletion before touching
+    # conversation rows; this prevents conversation/workspace lock inversion.
+    lock_workspaces_for_update(db, [project.workspace_id])
+    project = _get_project(project_id, current_user, db)
+    membership = _get_membership(project.workspace_id, current_user, db)
+    _can_manage(project, membership, db)
 
     db.query(Conversation).filter(
         Conversation.project_id == project.id
