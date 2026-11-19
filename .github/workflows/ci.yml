@@ -5,6 +5,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Allow the branch-sync workflow to re-run required checks after an API branch update.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

@@ -5,6 +5,8 @@ on:
     branches:
       - main
   pull_request:
+  # Allow the branch-sync workflow to re-run required security checks after an API branch update.
+  workflow_dispatch:
   schedule:
     - cron: "23 3 * * 1"
 
