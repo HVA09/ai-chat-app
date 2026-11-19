@@ -189,7 +189,7 @@ def main() -> None:
     if not 1 <= args.repetitions <= 20 or args.batch_size < 1:
         raise SystemExit("--repetitions must be 1..20 and --batch-size must be positive")
     if not 0 < args.array_ratio <= 1:
-        raise SystemExit("--non-null-ratio must be greater than 0 and at most 1")
+        raise SystemExit("--array-ratio must be greater than 0 and at most 1")
 
     engine = create_engine(local_test_url(), pool_size=3, max_overflow=0, pool_pre_ping=True)
     schema = "retention_bench_" + uuid.uuid4().hex
