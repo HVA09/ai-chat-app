@@ -3,6 +3,7 @@
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, load_only
 
+from app.models.assistant import Assistant
 from app.models.assistant_file_link import AssistantFileLink
 from app.models.audit_log import AuditLog
 from app.models.assistant_version import AssistantVersion
@@ -31,6 +32,26 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
         return
 
     target_ids = set(file_ids)
+    # Snapshot creation/update takes the assistant row lock before reading live
+    # links. Lock every assistant currently linked to these files first so a
+    # concurrent snapshot either commits before this scan or observes links
+    # after they have been removed. Assistant IDs are always locked in order.
+    assistant_ids = [
+        assistant_id
+        for (assistant_id,) in db.query(AssistantFileLink.assistant_id)
+        .filter(AssistantFileLink.file_id.in_(file_ids))
+        .distinct()
+        .order_by(AssistantFileLink.assistant_id.asc())
+        .all()
+    ]
+    if assistant_ids:
+        (
+            db.query(Assistant.id)
+            .filter(Assistant.id.in_(assistant_ids))
+            .order_by(Assistant.id.asc())
+            .with_for_update()
+            .all()
+        )
     # Stream only the two fields needed; never materialize unrelated assistant
     # instructions/tool policies or the full version history during deletion.
     snapshots = (
@@ -67,8 +88,8 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
             snapshot.knowledge_file_ids = filtered_ids
 
     # Keep the same row-lock order as assistant-version restore:
-    # workspace rows (held by the caller), then AssistantVersion rows, then
-    # AssistantFileLink rows. Deleting links before locking snapshots can
+    # workspace rows (held by the caller), then Assistant rows, then
+    # AssistantVersion rows, then AssistantFileLink rows. Deleting links before locking snapshots can
     # deadlock with restore, which locks a snapshot before replacing links.
     db.query(AssistantFileLink).filter(
         AssistantFileLink.file_id.in_(file_ids)
