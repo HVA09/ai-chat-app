@@ -197,9 +197,11 @@ def test_share_revalidates_assistant_after_workspace_lock(
     def delete_assistant_when_workspace_lock_is_acquired(db, workspace_ids):
         # Simulate deletion winning while the share request waits for its
         # workspace lock. The route must not use its pre-lock ORM instance.
-        db.query(Assistant).filter(
+        assistant_row = db.query(Assistant).filter(
             Assistant.id == assistant["id"]
-        ).delete(synchronize_session=False)
+        ).first()
+        assert assistant_row is not None
+        db.delete(assistant_row)
         db.commit()
 
     monkeypatch.setattr(
