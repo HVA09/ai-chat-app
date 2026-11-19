@@ -30,8 +30,8 @@ python scripts/benchmark_project_file_retention.py \
 ```
 
 The default matrix is 10k / 100k / 500k rows, sparse / dense / no-match target IDs,
-100% non-null snapshots, three repetitions, and batches of 200. Set
-`--array-ratio 0.5` to model a 50% non-null snapshot population. Reduce the matrix
+100% array-valued snapshots, three repetitions, and batches of 200. Set
+`--array-ratio 0.5` to generate arrays in about half the rows; the remaining Python `None` values are stored as JSON null, not SQL NULL. Reduce the matrix
 on constrained machines.
 The 500k case is optional and may take several minutes.
 
@@ -67,7 +67,7 @@ comparable runner types.
   holds its row locks; the probe waits until PostgreSQL reports the waiter in
   `pg_stat_activity.wait_event_type = 'Lock'` before releasing the scan transaction.
 
-The model uses SQLAlchemy `JSON` with its default `none_as_null=False`: Python `None` is stored as JSON null, not SQL NULL. Therefore JSON-null rows still satisfy the query's `IS NOT NULL` predicate and are scanned/locked. `array_snapshot_rows` counts list-valued snapshots; `json_null_rows` counts JSON null values. This matches the declared `AssistantVersion.knowledge_file_ids` JSON type.
+The model uses SQLAlchemy `JSON` with its default `none_as_null=False`: Python `None` is stored as JSON null, not SQL NULL. Therefore JSON-null rows still satisfy the query's `IS NOT NULL` predicate and are scanned/locked. `array_snapshot_rows` counts list-valued snapshots; `json_null_rows` counts JSON null values. This matches the declared `AssistantVersion.knowledge_file_ids` JSON type. In this benchmark, the query therefore scans all generated rows, including JSON-null values; the array ratio changes match density, not the number of SQL rows selected.
 
 The output includes PostgreSQL version, seed, batch size, UTC timestamp, Python/runtime
 platform, machine architecture, and CPU count. Set `RETENTION_BENCH_COMMIT_SHA` to the
