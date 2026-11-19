@@ -26,12 +26,12 @@ A small smoke run:
 
 ```bash
 python scripts/benchmark_project_file_retention.py \
-  --rows 1000 --modes sparse,dense,no-match --non-null-ratio 0.5 --repetitions 2
+  --rows 1000 --modes sparse,dense,no-match --array-ratio 0.5 --repetitions 2
 ```
 
 The default matrix is 10k / 100k / 500k rows, sparse / dense / no-match target IDs,
 100% non-null snapshots, three repetitions, and batches of 200. Set
-`--non-null-ratio 0.5` to model a 50% non-null snapshot population. Reduce the matrix
+`--array-ratio 0.5` to model a 50% non-null snapshot population. Reduce the matrix
 on constrained machines.
 The 500k case is optional and may take several minutes.
 
@@ -58,7 +58,7 @@ comparable runner types.
 
 ## Reported measures
 
-- Requested and observed non-null snapshot count, plus actual matching-row count.
+- Array-snapshot count, JSON-null count, and actual matching-row count.
 - Rows scanned/locked per run (the current query locks every non-null snapshot).
 - Average and p95 JSON-array length.
 - Scan latency p50/p95 across repetitions, plus every individual scan duration (`scan_ms_samples`) so small-sample results remain inspectable.
@@ -66,6 +66,8 @@ comparable runner types.
 - A concurrent lock-wait probe against an unrelated synthetic row while the full scan
   holds its row locks; the probe waits until PostgreSQL reports the waiter in
   `pg_stat_activity.wait_event_type = 'Lock'` before releasing the scan transaction.
+
+The model uses SQLAlchemy `JSON` with its default `none_as_null=False`: Python `None` is stored as JSON null, not SQL NULL. Therefore JSON-null rows still satisfy the query's `IS NOT NULL` predicate and are scanned/locked. `array_snapshot_rows` counts list-valued snapshots; `json_null_rows` counts JSON null values. This matches the declared `AssistantVersion.knowledge_file_ids` JSON type.
 
 The output includes PostgreSQL version, seed, batch size, UTC timestamp, Python/runtime
 platform, machine architecture, and CPU count. Set `RETENTION_BENCH_COMMIT_SHA` to the
