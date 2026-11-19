@@ -5,6 +5,10 @@ on:
     branches:
       - main
   pull_request:
+  # Keep the required CodeQL checks available for merge-queue candidates.
+  merge_group:
+    types: [checks_requested]
+    branches: [main]
   schedule:
     - cron: "23 3 * * 1"
 
