@@ -926,15 +926,23 @@ def test_account_retention_locks_workspaces_containing_owned_projects(
     db_session.commit()
     file_id = attachment.id
 
-    locked_ids = []
-    original_lock = project_file_retention.lock_workspaces_for_update
+    lock_order = []
+    original_user_lock = project_file_retention.lock_user_for_update
+    original_workspace_lock = project_file_retention.lock_workspaces_for_update
 
-    def capture_locks(db, workspace_ids):
-        locked_ids.extend(workspace_ids)
-        return original_lock(db, workspace_ids)
+    def capture_user_lock(db, user_id):
+        lock_order.append(("user", user_id))
+        return original_user_lock(db, user_id)
+
+    def capture_workspace_lock(db, workspace_ids):
+        lock_order.append(("workspace", list(workspace_ids)))
+        return original_workspace_lock(db, workspace_ids)
 
     monkeypatch.setattr(
-        project_file_retention, "lock_workspaces_for_update", capture_locks
+        project_file_retention, "lock_user_for_update", capture_user_lock
+    )
+    monkeypatch.setattr(
+        project_file_retention, "lock_workspaces_for_update", capture_workspace_lock
     )
     project_file_retention.privatize_account_workspace_attachments(
         db_session, project_owner.id
@@ -943,8 +951,163 @@ def test_account_retention_locks_workspaces_containing_owned_projects(
     db_session.expire_all()
 
     retained = db_session.get(FileAttachment, file_id)
-    assert workspace["id"] in locked_ids
+    assert lock_order[0] == ("user", project_owner.id)
+    assert any(item == ("workspace", [workspace["id"]]) for item in lock_order[1:])
     assert retained is not None
     assert retained.user_id == workspace_owner.id
     assert retained.workspace_id is None
     assert retained.project_id is None
+
+
+def test_project_creation_acquires_workspace_retention_lock(
+    client, monkeypatch
+):
+    from app.routers import projects as projects_router_module
+
+    token = _register_and_login(client, "project-create-lock@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = _create_workspace(client, headers, "Project creation lock")
+
+    lock_order = []
+    original_user_lock = projects_router_module.lock_user_for_update
+    original_workspace_lock = projects_router_module.lock_workspaces_for_update
+
+    def capture_user_lock(db, user_id):
+        lock_order.append(("user", user_id))
+        return original_user_lock(db, user_id)
+
+    def capture_workspace_lock(db, workspace_ids):
+        lock_order.append(("workspace", list(workspace_ids)))
+        return original_workspace_lock(db, workspace_ids)
+
+    monkeypatch.setattr(
+        projects_router_module, "lock_user_for_update", capture_user_lock
+    )
+    monkeypatch.setattr(
+        projects_router_module, "lock_workspaces_for_update", capture_workspace_lock
+    )
+    created = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Serialized project"},
+        headers=headers,
+    )
+
+    assert created.status_code == 201
+    assert len(lock_order) == 2
+    assert lock_order[0][0] == "user"
+    assert lock_order[1] == ("workspace", [workspace["id"]])
+
+
+def test_project_deletion_acquires_workspace_lock_before_conversation_detach(
+    client, monkeypatch
+):
+    from app.routers import projects as projects_router_module
+
+    token = _register_and_login(client, "project-delete-lock@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace = _create_workspace(client, headers, "Project deletion lock")
+    project = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Lock order project"},
+        headers=headers,
+    ).json()
+
+    locked = []
+    original_lock = projects_router_module.lock_workspaces_for_update
+
+    def capture_lock(db, workspace_ids):
+        locked.extend(workspace_ids)
+        return original_lock(db, workspace_ids)
+
+    monkeypatch.setattr(
+        projects_router_module, "lock_workspaces_for_update", capture_lock
+    )
+    deleted = client.delete(f"/projects/{project['id']}", headers=headers)
+
+    assert deleted.status_code == 204
+    assert locked == [workspace["id"]]
+
+
+def test_account_deletion_user_lock_serializes_project_creation_on_postgres(
+    db_session,
+):
+    """A project creator must wait while account retention owns the user row."""
+    from threading import Event, Thread
+    from time import monotonic, sleep
+    from uuid import uuid4
+
+    import pytest
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+
+    from app.models.user import User
+    from app.services.project_file_retention import lock_user_for_update
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
+
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    email = f"retention-lock-{uuid4().hex}@example.test"
+    creator = session_factory()
+    user = User(email=email, hashed_password="test-only-hash")
+    creator.add(user)
+    creator.commit()
+    user_id = user.id
+    creator.close()
+
+    retention = session_factory()
+    contender_started = Event()
+    contender_acquired = Event()
+    contender_pid = {}
+
+    def attempt_project_owner_lock():
+        with session_factory() as contender:
+            contender.begin()
+            contender_pid["value"] = contender.execute(
+                text("SELECT pg_backend_pid()")
+            ).scalar_one()
+            contender_started.set()
+            lock_user_for_update(contender, user_id)
+            contender_acquired.set()
+            contender.rollback()
+
+    thread = Thread(target=attempt_project_owner_lock, daemon=True)
+    try:
+        retention.begin()
+        lock_user_for_update(retention, user_id)
+        thread.start()
+        assert contender_started.wait(5), "contender did not start"
+
+        deadline = monotonic() + 5
+        waiting_on_lock = False
+        while monotonic() < deadline:
+            with session_factory() as probe:
+                wait_type = probe.execute(
+                    text(
+                        "SELECT wait_event_type FROM pg_stat_activity "
+                        "WHERE pid = :pid"
+                    ),
+                    {"pid": contender_pid["value"]},
+                ).scalar_one_or_none()
+            if wait_type == "Lock":
+                waiting_on_lock = True
+                break
+            sleep(0.01)
+
+        assert waiting_on_lock, "project-creation lock did not wait on the user row"
+        assert not contender_acquired.is_set()
+        retention.commit()
+        assert contender_acquired.wait(5), "contender did not acquire the released user lock"
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+    finally:
+        if retention.in_transaction():
+            retention.rollback()
+        if thread.ident is not None:
+            thread.join(timeout=5)
+        retention.close()
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
+            cleanup.commit()
