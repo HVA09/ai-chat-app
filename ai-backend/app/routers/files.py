@@ -408,13 +408,19 @@ async def upload_file(
 
     if workspace_id is not None:
         # Finalization locks user first, then workspace, matching account-retention order.
-        locked_workspace = (
-            db.query(Workspace.id)
-            .filter(Workspace.id == workspace_id)
-            .with_for_update()
-            .first()
-        )
+        try:
+            locked_workspace = (
+                db.query(Workspace.id)
+                .filter(Workspace.id == workspace_id)
+                .with_for_update()
+                .first()
+            )
+        except Exception:
+            db.rollback()
+            cleanup_unfinalized_upload()
+            raise
         if locked_workspace is None:
+            db.rollback()
             cleanup_unfinalized_upload()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
