@@ -42,6 +42,8 @@ from app.services.workspace_rbac import has_workspace_permission
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
+logger = logging.getLogger(__name__)
+
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg",
     "image/png",
