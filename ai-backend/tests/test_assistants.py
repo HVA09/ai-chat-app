@@ -307,3 +307,53 @@ def test_assistant_usage_analytics_is_private_to_owner(client):
         headers={"Authorization": f"Bearer {token_b}"},
     )
     assert response.status_code == 404
+
+
+def test_assistant_snapshot_update_locks_shared_workspaces_first(
+    client, db_session, monkeypatch
+):
+    from app.models.assistant_workspace_share import AssistantWorkspaceShare
+    from app.routers import assistants as assistants_router_module
+
+    token = _register_and_login(client, "assistant-snapshot-lock@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    assistant = client.post(
+        "/assistants",
+        json={"name": "Lock-aware assistant", "instructions": "Initial"},
+        headers=headers,
+    ).json()
+    workspace = client.post(
+        "/workspaces",
+        json={"name": "Snapshot lock workspace"},
+        headers=headers,
+    ).json()
+    owner = db_session.query(Assistant).filter(
+        Assistant.id == assistant["id"]
+    ).one()
+    db_session.add(
+        AssistantWorkspaceShare(
+            assistant_id=owner.id,
+            workspace_id=workspace["id"],
+            shared_by_user_id=owner.user_id,
+        )
+    )
+    db_session.commit()
+
+    locked = []
+    original_lock = assistants_router_module.lock_workspaces_for_update
+
+    def capture_lock(db, workspace_ids):
+        locked.extend(workspace_ids)
+        return original_lock(db, workspace_ids)
+
+    monkeypatch.setattr(
+        assistants_router_module, "lock_workspaces_for_update", capture_lock
+    )
+    updated = client.patch(
+        f"/assistants/{assistant['id']}",
+        json={"instructions": "Updated after acquiring lock context"},
+        headers=headers,
+    )
+
+    assert updated.status_code == 200
+    assert locked == [workspace["id"]]
