@@ -52,13 +52,13 @@ def percentile(values: list[float], fraction: float) -> float:
     return ordered[index]
 
 
-def synthetic_batches(count: int, mode: str, seed: int, batch_size: int, non_null_ratio: float):
+def synthetic_batches(count: int, mode: str, seed: int, batch_size: int, array_ratio: float):
     rng = random.Random(seed)
     next_id = 1
     while next_id <= count:
         batch = []
         for _ in range(min(batch_size, count - next_id + 1)):
-            if rng.random() > non_null_ratio:
+            if rng.random() > array_ratio:
                 ids = None
             else:
                 length = rng.randint(1, 8)
@@ -175,7 +175,8 @@ def main() -> None:
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=200)
     parser.add_argument("--seed", type=int, default=20261119)
-    parser.add_argument("--non-null-ratio", type=float, default=1.0)
+    parser.add_argument("--array-ratio", "--non-null-ratio", dest="array_ratio", type=float, default=1.0,
+                        help="Fraction of rows containing JSON arrays; remaining values are JSON null.")
     parser.add_argument("--output", default="")
     args = parser.parse_args()
 
@@ -187,7 +188,7 @@ def main() -> None:
         raise SystemExit("--modes accepts sparse,dense,no-match")
     if not 1 <= args.repetitions <= 20 or args.batch_size < 1:
         raise SystemExit("--repetitions must be 1..20 and --batch-size must be positive")
-    if not 0 < args.non_null_ratio <= 1:
+    if not 0 < args.array_ratio <= 1:
         raise SystemExit("--non-null-ratio must be greater than 0 and at most 1")
 
     engine = create_engine(local_test_url(), pool_size=3, max_overflow=0, pool_pre_ping=True)
@@ -213,7 +214,7 @@ def main() -> None:
                 with engine.begin() as connection:
                     for batch in synthetic_batches(
                         count, "sparse" if mode == "no-match" else mode,
-                        args.seed + count, args.batch_size, args.non_null_ratio,
+                        args.seed + count, args.batch_size, args.array_ratio,
                     ):
                         if mode == "no-match":
                             for item in batch:
@@ -257,8 +258,9 @@ def main() -> None:
                 results.append({
                     "rows": count,
                     "mode": mode,
-                    "non_null_rows": len(lengths),
-                    "non_null_ratio_requested": args.non_null_ratio,
+                    "array_snapshot_rows": len(lengths),
+                    "json_null_rows": count - len(lengths),
+                    "array_ratio_requested": args.array_ratio,
                     "expected_matches": expected_matches,
                     "scanned_rows_per_run": scanned_total // args.repetitions,
                     "matched_rows_per_run": matched_total // args.repetitions,
@@ -300,11 +302,12 @@ def main() -> None:
         "seed": args.seed,
         "repetitions": args.repetitions,
         "batch_size": args.batch_size,
-        "non_null_ratio_requested": args.non_null_ratio,
+        "non_null_ratio_requested": args.array_ratio,
         "results": results,
         "notes": [
             "Synthetic isolated schema only; no application tables are read or changed.",
-            "Every scanned row is locked, including snapshots unrelated to the target file.",
+            "Every scanned SQL-non-NULL row is locked, including JSON null values and snapshots unrelated to the target file.",
+            "SQLAlchemy JSON defaults to none_as_null=False: Python None is stored as JSON null, which still passes SQL IS NOT NULL.",
             "Lock-wait probe requests a concurrent lock on an unrelated synthetic row.",
             "No performance SLO is asserted; record runner hardware and commit SHA with results.",
         ],
