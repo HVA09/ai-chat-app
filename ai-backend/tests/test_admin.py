@@ -93,6 +93,39 @@ def test_admin_can_delete_other_user(client):
     assert login_response.status_code in (401, 403)
 
 
+def test_admin_delete_locks_user_and_finishes_db_retention_before_storage(client, monkeypatch):
+    from app.routers import admin as admin_router_module
+
+    events = []
+    monkeypatch.setattr(
+        admin_router_module,
+        "lock_user_for_update",
+        lambda _db, user_id: (events.append(("lock", user_id)) or True),
+    )
+    monkeypatch.setattr(
+        admin_router_module,
+        "privatize_account_workspace_attachments",
+        lambda _db, user_id: events.append(("retention", user_id)),
+    )
+    monkeypatch.setattr(
+        admin_router_module,
+        "delete_user_objects",
+        lambda user_id: events.append(("storage", user_id)),
+    )
+
+    admin_token = _register_and_login(client, "ordered-delete-admin@example.com", admin=True)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    _register_and_login(client, "ordered-delete-target@example.com")
+    users = client.get("/admin/users", headers=headers).json()
+    target = next(u for u in users if u["email"] == "ordered-delete-target@example.com")
+
+    response = client.delete(f"/admin/users/{target['id']}", headers=headers)
+
+    assert response.status_code == 204
+    assert [event[0] for event in events] == ["lock", "retention", "storage"]
+    assert all(event[1] == target["id"] for event in events)
+
+
 def test_admin_can_list_and_delete_any_conversation(client, monkeypatch):
     monkeypatch.setattr(chat_router_module, "get_ai_reply", AsyncMock(return_value=AIReply(text="رد")))
     admin_token = _register_and_login(client, "convadmin@example.com", admin=True)
