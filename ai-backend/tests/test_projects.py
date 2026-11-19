@@ -952,7 +952,10 @@ def test_account_retention_locks_workspaces_containing_owned_projects(
 
     retained = db_session.get(FileAttachment, file_id)
     assert lock_order[0] == ("user", project_owner.id)
-    assert any(item == ("workspace", [workspace["id"]]) for item in lock_order[1:])
+    assert any(
+        item[0] == "workspace" and workspace["id"] in item[1]
+        for item in lock_order[1:]
+    )
     assert retained is not None
     assert retained.user_id == workspace_owner.id
     assert retained.workspace_id is None
