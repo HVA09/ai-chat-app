@@ -3,6 +3,7 @@
 تُخزَّن الملفات على القرص (مجلد UPLOAD_DIR) والبيانات الوصفية بقاعدة البيانات
 """
 import base64
+import logging
 import uuid
 from pathlib import Path
 import tempfile
