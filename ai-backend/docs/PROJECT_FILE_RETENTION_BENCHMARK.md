@@ -26,16 +26,18 @@ A small smoke run:
 
 ```bash
 python scripts/benchmark_project_file_retention.py \
-  --rows 1000 --modes sparse,dense,no-match --repetitions 2
+  --rows 1000 --modes sparse,dense,no-match --non-null-ratio 0.5 --repetitions 2
 ```
 
 The default matrix is 10k / 100k / 500k rows, sparse / dense / no-match target IDs,
-three repetitions, and batches of 200. Reduce the matrix on constrained machines.
+100% non-null snapshots, three repetitions, and batches of 200. Set
+`--non-null-ratio 0.5` to model a 50% non-null snapshot population. Reduce the matrix
+on constrained machines.
 The 500k case is optional and may take several minutes.
 
 ## Reported measures
 
-- Non-null snapshot count and actual matching-row count.
+- Requested and observed non-null snapshot count, plus actual matching-row count.
 - Rows scanned/locked per run (the current query locks every non-null snapshot).
 - Average and p95 JSON-array length.
 - Scan latency p50/p95 across repetitions.
