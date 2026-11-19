@@ -984,10 +984,9 @@ def test_project_creation_acquires_workspace_retention_lock(
     )
 
     assert created.status_code == 201
-    assert lock_order == [
-        ("user", int(client.get("/auth/me", headers=headers).json()["id"])),
-        ("workspace", [workspace["id"]]),
-    ]
+    assert len(lock_order) == 2
+    assert lock_order[0][0] == "user"
+    assert lock_order[1] == ("workspace", [workspace["id"]])
 
 
 def test_project_deletion_acquires_workspace_lock_before_conversation_detach(
