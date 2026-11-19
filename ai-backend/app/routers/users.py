@@ -28,7 +28,10 @@ from app.models.user_memory import UserMemory
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.user import ChangePasswordRequest, DeleteAccountRequest, ProfileUpdate, UserOut
 from app.services.storage import StorageError, delete_user_objects
-from app.services.project_file_retention import privatize_account_workspace_attachments
+from app.services.project_file_retention import (
+    lock_user_for_update,
+    privatize_account_workspace_attachments,
+)
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -351,6 +354,14 @@ def delete_account(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="كلمة المرور غير صحيحة"
         )
+    # Serialize account deletion with uploads before remote cleanup. Upload
+    # finalization takes this same user lock before any workspace lock.
+    if not lock_user_for_update(db, current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الحساب غير موجود",
+        )
+
     # Clean remote objects before deleting the account metadata, so a storage failure
     # does not silently leave user-owned objects behind after the account is gone.
     try:
