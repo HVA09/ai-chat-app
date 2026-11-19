@@ -429,24 +429,29 @@ def test_retention_serializes_with_assistant_snapshot_creation_on_postgres(db_se
     writer_started = Event()
     writer_finished = Event()
     writer_pid = {}
+    writer_errors = []
 
     def create_snapshot_after_retention():
-        with session_factory() as writer:
-            writer.begin()
-            writer_pid["value"] = writer.execute(
-                text("SELECT pg_backend_pid()")
-            ).scalar_one()
-            writer_started.set()
-            current_assistant = writer.query(Assistant).filter(
-                Assistant.id == assistant_id
-            ).one()
-            assistants_router_module._lock_assistant_version_context(
-                current_assistant, writer
-            )
-            assistants_router_module._create_assistant_version(
-                current_assistant, writer
-            )
-            writer.commit()
+        try:
+            with session_factory() as writer:
+                writer.begin()
+                writer_pid["value"] = writer.execute(
+                    text("SELECT pg_backend_pid()")
+                ).scalar_one()
+                writer_started.set()
+                current_assistant = writer.query(Assistant).filter(
+                    Assistant.id == assistant_id
+                ).one()
+                assistants_router_module._lock_assistant_version_context(
+                    current_assistant, writer
+                )
+                assistants_router_module._create_assistant_version(
+                    current_assistant, writer
+                )
+                writer.commit()
+        except BaseException as exc:
+            writer_errors.append(exc)
+        finally:
             writer_finished.set()
 
     thread = Thread(target=create_snapshot_after_retention, daemon=True)
@@ -478,24 +483,28 @@ def test_retention_serializes_with_assistant_snapshot_creation_on_postgres(db_se
         assert writer_finished.wait(5), "snapshot writer did not finish after retention commit"
         thread.join(timeout=5)
         assert not thread.is_alive()
+        assert writer_errors == []
     finally:
         if retention.in_transaction():
             retention.rollback()
         if thread.ident is not None:
             thread.join(timeout=5)
         retention.close()
-        with session_factory() as verify:
-            versions = (
-                verify.query(AssistantVersion)
-                .filter(AssistantVersion.assistant_id == assistant_id)
-                .order_by(AssistantVersion.version.asc())
-                .all()
-            )
-            assert [item.version for item in versions] == [1, 2]
-            assert versions[0].knowledge_file_ids == []
-            assert versions[1].knowledge_file_ids == []
-            assert verify.query(AssistantFileLink).filter(
-                AssistantFileLink.file_id == file_id
-            ).count() == 0
-            verify.query(User).filter(User.id == user_id).delete()
-            verify.commit()
+        try:
+            with session_factory() as verify:
+                versions = (
+                    verify.query(AssistantVersion)
+                    .filter(AssistantVersion.assistant_id == assistant_id)
+                    .order_by(AssistantVersion.version.asc())
+                    .all()
+                )
+                assert [item.version for item in versions] == [1, 2]
+                assert versions[0].knowledge_file_ids == []
+                assert versions[1].knowledge_file_ids == []
+                assert verify.query(AssistantFileLink).filter(
+                    AssistantFileLink.file_id == file_id
+                ).count() == 0
+        finally:
+            with session_factory() as cleanup:
+                cleanup.query(User).filter(User.id == user_id).delete()
+                cleanup.commit()
