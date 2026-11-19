@@ -433,16 +433,22 @@ async def upload_file(
             cleanup_unfinalized_upload()
             raise
         if project_id is not None:
-            current_project = (
-                db.query(WorkspaceProject)
-                .populate_existing()
-                .filter(
-                    WorkspaceProject.id == project_id,
-                    WorkspaceProject.workspace_id == workspace_id,
+            try:
+                current_project = (
+                    db.query(WorkspaceProject)
+                    .populate_existing()
+                    .filter(
+                        WorkspaceProject.id == project_id,
+                        WorkspaceProject.workspace_id == workspace_id,
+                    )
+                    .first()
                 )
-                .first()
-            )
+            except Exception:
+                db.rollback()
+                cleanup_unfinalized_upload()
+                raise
             if current_project is None:
+                db.rollback()
                 cleanup_unfinalized_upload()
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
