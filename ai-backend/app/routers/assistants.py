@@ -41,7 +41,13 @@ def _lock_assistant_version_context(assistant: Assistant, db: Session) -> None:
         .all()
     ]
     lock_workspaces_for_update(db, workspace_ids)
-    db.query(Assistant.id).filter(Assistant.id == assistant.id).with_for_update().one()
+    (
+        db.query(Assistant)
+        .populate_existing()
+        .filter(Assistant.id == assistant.id)
+        .with_for_update()
+        .one()
+    )
 
 def _create_assistant_version(assistant: Assistant, db: Session) -> AssistantVersion:
     current_version = db.query(func.max(AssistantVersion.version)).filter(
