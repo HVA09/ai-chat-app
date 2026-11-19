@@ -48,14 +48,37 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
     # links. Lock every assistant currently linked to these files first so a
     # concurrent snapshot either commits before this scan or observes links
     # after they have been removed. Assistant IDs are always locked in order.
-    assistant_ids = [
+    # Discover snapshot candidates before taking Assistant locks so we can
+    # preserve the global Assistant -> AssistantVersion lock order.
+    candidate_ids = []
+    candidate_assistant_ids = set()
+    candidates = (
+        db.query(
+            AssistantVersion.id,
+            AssistantVersion.assistant_id,
+            AssistantVersion.knowledge_file_ids,
+        )
+        .filter(AssistantVersion.knowledge_file_ids.is_not(None))
+        .order_by(AssistantVersion.id.asc())
+        .yield_per(200)
+    )
+    for snapshot_id, assistant_id, saved_ids in candidates:
+        if isinstance(saved_ids, list) and any(
+            str(file_id).isdigit() and int(file_id) in target_ids
+            for file_id in saved_ids
+        ):
+            candidate_ids.append(snapshot_id)
+            candidate_assistant_ids.add(assistant_id)
+
+    linked_assistant_ids = {
         assistant_id
         for (assistant_id,) in db.query(AssistantFileLink.assistant_id)
         .filter(AssistantFileLink.file_id.in_(file_ids))
         .distinct()
         .order_by(AssistantFileLink.assistant_id.asc())
         .all()
-    ]
+    }
+    assistant_ids = sorted(linked_assistant_ids | candidate_assistant_ids)
     if assistant_ids:
         (
             db.query(Assistant.id)
@@ -64,24 +87,8 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
             .with_for_update()
             .all()
         )
-    # JSON is declared with SQLAlchemy's portable JSON type. Avoid assuming
-    # PostgreSQL-only JSONB operators: first discover candidate snapshot IDs
-    # without row locks, then lock and refresh only rows that actually mention
-    # one of the target file IDs. The Python membership check is portable across
-    # the supported JSON dialects and avoids locking unrelated version rows.
-    candidate_ids = []
-    candidates = (
-        db.query(AssistantVersion.id, AssistantVersion.knowledge_file_ids)
-        .filter(AssistantVersion.knowledge_file_ids.is_not(None))
-        .order_by(AssistantVersion.id.asc())
-        .yield_per(200)
-    )
-    for snapshot_id, saved_ids in candidates:
-        if isinstance(saved_ids, list) and any(
-            str(file_id).isdigit() and int(file_id) in target_ids
-            for file_id in saved_ids
-        ):
-            candidate_ids.append(snapshot_id)
+    # Lock and refresh only snapshots discovered to reference target IDs.
+    # The JSON membership scan above is portable across supported dialects.
 
     if candidate_ids:
         snapshots = (
