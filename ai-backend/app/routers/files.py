@@ -395,12 +395,17 @@ async def upload_file(
         try:
             extracted_text = extract_text(destination, sniffed)
         except FileTextExtractionError as exc:
-            log_event(
-                db,
-                "file_text_extraction_failed",
-                f"فشل استخراج نص الملف: {file.filename or stored_filename} ({exc})",
-                current_user.id,
-            )
+            try:
+                log_event(
+                    db,
+                    "file_text_extraction_failed",
+                    f"فشل استخراج نص الملف: {file.filename or stored_filename} ({exc})",
+                    current_user.id,
+                )
+            except Exception:
+                db.rollback()
+                cleanup_unfinalized_upload()
+                raise
         except Exception:
             db.rollback()
             cleanup_unfinalized_upload()
