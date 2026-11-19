@@ -266,6 +266,7 @@ def main() -> None:
                     "array_length_p95": percentile([float(x) for x in lengths], 0.95),
                     "scan_ms_p50": round(percentile(durations, 0.50), 3),
                     "scan_ms_p95": round(percentile(durations, 0.95), 3),
+                    "scan_ms_samples": [round(value, 3) for value in durations],
                     "peak_python_memory_bytes_max": max(peaks),
                     "unrelated_row_lock_wait_ms": round(lock_wait_ms, 3),
                 })
