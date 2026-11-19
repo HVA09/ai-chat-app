@@ -287,6 +287,62 @@ def test_upload_file_to_project_and_list(client, db_session, tmp_path, monkeypat
     assert [item["project_id"] for item in listed.json()] == [project_id]
 
 
+
+def test_project_upload_revalidates_project_after_storage_io(
+    client, db_session, tmp_path, monkeypatch
+):
+    """An upload finishing after project deletion is discarded, not left workspace-scoped."""
+    from app.models.file_attachment import FileAttachment
+    from app.models.project import WorkspaceProject
+    from app.models.user import User
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    token = _register_and_login(client, "project-upload-race@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    owner = db_session.query(User).filter_by(
+        email="project-upload-race@example.com"
+    ).one()
+    workspace = owner.owned_workspaces[0]
+    project_id = client.post(
+        "/projects",
+        json={"workspace_id": workspace.id, "name": "Upload race"},
+        headers=headers,
+    ).json()["id"]
+
+    objects = {}
+
+    def fake_put_file(path, object_key, content_type):
+        objects[object_key] = path.read_bytes()
+        # Simulate the project disappearing while the upload is doing external
+        # storage I/O, after its initial authorization check.
+        db_session.query(WorkspaceProject).filter(
+            WorkspaceProject.id == project_id
+        ).delete(synchronize_session=False)
+        db_session.commit()
+
+    def fake_delete_file(object_key, fallback_path):
+        objects.pop(object_key, None)
+        fallback_path.unlink(missing_ok=True)
+
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
+
+    response = client.post(
+        "/files/upload",
+        params={"project_id": project_id},
+        files={"file": ("late-upload.txt", b"late project content", "text/plain")},
+        headers=headers,
+    )
+
+    assert response.status_code == 404
+    assert objects == {}
+    db_session.expire_all()
+    assert db_session.query(FileAttachment).filter(
+        FileAttachment.user_id == owner.id,
+        FileAttachment.project_id == project_id,
+    ).count() == 0
+
 def test_project_file_requires_project_membership(client, db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
 
@@ -574,3 +630,148 @@ def test_upload_preserves_original_file_when_text_extraction_fails(
     assert downloaded.status_code == 200
     assert downloaded.content == payload
 
+
+
+
+def test_project_upload_finalization_waits_for_project_deletion_on_postgres(
+    db_session, tmp_path, monkeypatch
+):
+    """A two-session upload finishing after project deletion is discarded safely."""
+    import asyncio
+    from io import BytesIO
+    from threading import Event, Thread
+    from uuid import uuid4
+
+    import pytest
+    from sqlalchemy.orm import sessionmaker
+    from starlette.datastructures import Headers, UploadFile
+
+    from app.config import settings
+    from app.models.file_attachment import FileAttachment
+    from app.models.project import WorkspaceProject
+    from app.models.user import User
+    from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
+    from app.routers import files as files_router
+    from app.routers import projects as projects_router
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    creator = session_factory()
+    user = User(
+        email=f"upload-delete-{suffix}@example.test",
+        hashed_password="test-only-hash",
+    )
+    creator.add(user)
+    creator.flush()
+    workspace = Workspace(owner_id=user.id, name=f"Upload delete {suffix[:12]}")
+    creator.add(workspace)
+    creator.flush()
+    creator.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=user.id,
+            role=WorkspaceRole.owner,
+        )
+    )
+    project = WorkspaceProject(
+        workspace_id=workspace.id,
+        owner_id=user.id,
+        name=f"Project {suffix[:12]}",
+    )
+    creator.add(project)
+    creator.commit()
+    user_id, workspace_id, project_id = user.id, workspace.id, project.id
+    creator.close()
+
+    allow_upload_to_finalize = Event()
+    delete_finished = Event()
+    delete_errors = []
+    upload_errors = []
+    objects = {}
+
+    def delete_project_during_upload():
+        try:
+            with session_factory() as delete_db:
+                delete_db.begin()
+                current_user = delete_db.get(User, user_id)
+                projects_router.delete_project(project_id, current_user, delete_db)
+        except BaseException as exc:
+            delete_errors.append(exc)
+        finally:
+            delete_finished.set()
+            allow_upload_to_finalize.set()
+
+    deletion_thread = Thread(target=delete_project_during_upload, daemon=True)
+
+    def fake_put_file(path, object_key, content_type):
+        objects[object_key] = path.read_bytes()
+        # Start deletion only after upload has passed initial authorization and
+        # reached external storage I/O, with its database connection released.
+        deletion_thread.start()
+        if not delete_finished.wait(10):
+            raise AssertionError("project deletion did not finish during storage I/O")
+
+    def fake_delete_file(object_key, fallback_path):
+        objects.pop(object_key, None)
+        fallback_path.unlink(missing_ok=True)
+
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
+    monkeypatch.setattr(files_router, "extract_text", lambda *_args, **_kwargs: None)
+
+    try:
+        with session_factory() as upload_db:
+            upload_db.begin()
+            current_user = upload_db.get(User, user_id)
+            upload = UploadFile(
+                filename="late-upload.txt",
+                file=BytesIO(b"late project content"),
+                headers=Headers({"content-type": "text/plain"}),
+            )
+            try:
+                asyncio.run(
+                    files_router.upload_file(
+                        upload,
+                        project_id=project_id,
+                        current_user=current_user,
+                        db=upload_db,
+                    )
+                )
+            except BaseException as exc:
+                upload_errors.append(exc)
+            finally:
+                upload_db.rollback()
+
+        assert delete_finished.is_set()
+        assert delete_errors == []
+        assert len(upload_errors) == 1
+        from fastapi import HTTPException
+        assert isinstance(upload_errors[0], HTTPException)
+        assert upload_errors[0].status_code == 404
+        assert objects == {}
+        deletion_thread.join(timeout=5)
+        assert not deletion_thread.is_alive()
+
+        with session_factory() as verify:
+            assert verify.get(WorkspaceProject, project_id) is None
+            assert verify.query(FileAttachment).filter(
+                FileAttachment.user_id == user_id,
+                FileAttachment.project_id == project_id,
+            ).count() == 0
+            assert verify.query(FileAttachment).filter(
+                FileAttachment.user_id == user_id,
+                FileAttachment.workspace_id == workspace_id,
+            ).count() == 0
+    finally:
+        allow_upload_to_finalize.set()
+        if deletion_thread.ident is not None:
+            deletion_thread.join(timeout=5)
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
+            cleanup.commit()

@@ -106,3 +106,29 @@ def test_cannot_chat_in_other_users_workspace(client):
         headers=headers_b,
     )
     assert response.status_code == 404
+
+
+def test_workspace_creation_acquires_account_retention_user_lock(client, monkeypatch):
+    from app.routers import workspaces as workspaces_router_module
+
+    token = _register_and_login(client, "workspace-create-retention-lock@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    locked_users = []
+    original_lock = workspaces_router_module.lock_user_for_update
+
+    def capture_lock(db, user_id):
+        locked_users.append(user_id)
+        return original_lock(db, user_id)
+
+    monkeypatch.setattr(
+        workspaces_router_module, "lock_user_for_update", capture_lock
+    )
+    created = client.post(
+        "/workspaces",
+        json={"name": "Serialized workspace"},
+        headers=headers,
+    )
+
+    assert created.status_code == 201
+    assert len(locked_users) == 1
+    assert locked_users[0] > 0

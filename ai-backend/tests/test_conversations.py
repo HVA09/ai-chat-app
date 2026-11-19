@@ -1069,3 +1069,152 @@ def test_bulk_import_requires_workspace_membership(client):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 404
+
+
+def test_project_assignment_waits_for_project_deletion_on_postgres(db_session):
+    """Assignment must re-read the project after waiting for the workspace lock."""
+    from threading import Event, Thread
+    from time import monotonic, sleep
+    from uuid import uuid4
+
+    import pytest
+    from fastapi import HTTPException
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+
+    from app.models.conversation import Conversation
+    from app.models.project import WorkspaceProject
+    from app.models.user import User
+    from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
+    from app.schemas.projects import ConversationProjectUpdate
+    from app.services.project_file_retention import lock_workspaces_for_update
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
+
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    setup = session_factory()
+    owner = User(
+        email=f"conversation-project-race-{uuid4().hex}@example.test",
+        hashed_password="test-only-hash",
+    )
+    setup.add(owner)
+    setup.flush()
+    workspace = Workspace(owner_id=owner.id, name=f"race-{uuid4().hex[:12]}")
+    setup.add(workspace)
+    setup.flush()
+    setup.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=owner.id,
+            role=WorkspaceRole.owner,
+        )
+    )
+    project = WorkspaceProject(
+        workspace_id=workspace.id,
+        owner_id=owner.id,
+        name=f"project-{uuid4().hex[:12]}",
+    )
+    setup.add(project)
+    setup.flush()
+    conversation = Conversation(
+        user_id=owner.id,
+        workspace_id=workspace.id,
+        project_id=None,
+        title="Concurrency regression",
+    )
+    setup.add(conversation)
+    setup.commit()
+
+    user_id = owner.id
+    workspace_id = workspace.id
+    project_id = project.id
+    conversation_id = conversation.id
+    setup.close()
+
+    deletion = session_factory()
+    contender_started = Event()
+    contender_finished = Event()
+    contender_pid = {}
+    outcome = {}
+
+    def attempt_assignment():
+        with session_factory() as contender:
+            try:
+                contender.begin()
+                current_user = contender.get(User, user_id)
+                contender_pid["value"] = contender.execute(
+                    text("SELECT pg_backend_pid()")
+                ).scalar_one()
+                contender_started.set()
+                from app.routers import conversations as conversations_router_module
+
+                conversations_router_module.set_conversation_project(
+                    conversation_id,
+                    ConversationProjectUpdate(project_id=project_id),
+                    current_user,
+                    contender,
+                )
+                outcome["status"] = 200
+            except HTTPException as exc:
+                outcome["status"] = exc.status_code
+                contender.rollback()
+            except Exception as exc:  # surfaced in the main test thread below
+                outcome["error"] = repr(exc)
+                contender.rollback()
+            finally:
+                contender_finished.set()
+
+    thread = Thread(target=attempt_assignment, daemon=True)
+    try:
+        deletion.begin()
+        lock_workspaces_for_update(deletion, [workspace_id])
+        thread.start()
+        assert contender_started.wait(5), "assignment contender did not start"
+
+        deadline = monotonic() + 5
+        waiting_on_lock = False
+        while monotonic() < deadline:
+            with session_factory() as probe:
+                wait_type = probe.execute(
+                    text(
+                        "SELECT wait_event_type FROM pg_stat_activity "
+                        "WHERE pid = :pid"
+                    ),
+                    {"pid": contender_pid["value"]},
+                ).scalar_one_or_none()
+            if wait_type == "Lock":
+                waiting_on_lock = True
+                break
+            sleep(0.01)
+
+        assert waiting_on_lock, "assignment did not wait for the workspace row lock"
+        assert not contender_finished.is_set()
+
+        # Model the deletion transaction after it has acquired the same lock.
+        deletion.query(WorkspaceProject).filter(
+            WorkspaceProject.id == project_id
+        ).delete(synchronize_session=False)
+        deletion.commit()
+
+        assert contender_finished.wait(5), "assignment did not resume after deletion"
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+        assert "error" not in outcome, outcome.get("error")
+        assert outcome.get("status") == 404
+
+        with session_factory() as verify:
+            refreshed_conversation = verify.get(Conversation, conversation_id)
+            assert refreshed_conversation is not None
+            assert refreshed_conversation.project_id is None
+    finally:
+        if deletion.in_transaction():
+            deletion.rollback()
+        if thread.ident is not None:
+            thread.join(timeout=5)
+        deletion.close()
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
+            cleanup.commit()

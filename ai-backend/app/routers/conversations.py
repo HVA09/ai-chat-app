@@ -38,6 +38,7 @@ from app.schemas.folders import ConversationFolderUpdate
 from app.schemas.projects import ConversationProjectUpdate
 from app.schemas.tags import ConversationTagsUpdate
 from app.services.ai_service import get_ai_reply
+from app.services.project_file_retention import lock_workspaces_for_update
 
 
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
@@ -280,14 +281,52 @@ def set_conversation_project(
     conversation = _get_owned_conversation(conversation_id, current_user, db)
 
     if payload.project_id is not None:
+        # Serialize assignment with project deletion using the same workspace-first
+        # lock order. The first read identifies the lock scope; all authorization
+        # checks are repeated against refreshed rows after the lock is acquired.
         project = db.get(WorkspaceProject, payload.project_id)
         if not project or project.workspace_id != conversation.workspace_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="المشروع غير موجود",
             )
+
+        lock_workspaces_for_update(db, [project.workspace_id])
+
+        conversation = (
+            db.query(Conversation)
+            .populate_existing()
+            .filter(
+                Conversation.id == conversation_id,
+                Conversation.user_id == current_user.id,
+                Conversation.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if not conversation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المحادثة غير موجودة",
+            )
+
+        project = (
+            db.query(WorkspaceProject)
+            .populate_existing()
+            .filter(
+                WorkspaceProject.id == payload.project_id,
+                WorkspaceProject.workspace_id == conversation.workspace_id,
+            )
+            .first()
+        )
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="المشروع غير موجود",
+            )
+
         membership = (
             db.query(WorkspaceMember)
+            .populate_existing()
             .filter(
                 WorkspaceMember.workspace_id == project.workspace_id,
                 WorkspaceMember.user_id == current_user.id,

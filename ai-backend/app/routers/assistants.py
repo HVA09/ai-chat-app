@@ -15,6 +15,7 @@ from app.models.conversation import Conversation, Message
 from app.models.assistant_file_link import AssistantFileLink
 from app.models.file_attachment import FileAttachment
 from app.models.assistant_version import AssistantVersion
+from app.models.assistant_workspace_share import AssistantWorkspaceShare
 from app.models.user import User
 from app.schemas.assistant_versions import AssistantVersionCompareOut, AssistantVersionOut
 from app.schemas.assistants import (
@@ -26,8 +27,27 @@ from app.schemas.assistants import (
     AssistantUpdate,
 )
 from app.schemas.file import FileOut
+from app.services.project_file_retention import lock_workspaces_for_update
 
 router = APIRouter(prefix="/assistants", tags=["Assistants"])
+
+def _lock_assistant_version_context(assistant: Assistant, db: Session) -> None:
+    """Lock shared workspaces then the assistant before reading/writing snapshots."""
+    workspace_ids = [
+        workspace_id
+        for (workspace_id,) in db.query(AssistantWorkspaceShare.workspace_id)
+        .filter(AssistantWorkspaceShare.assistant_id == assistant.id)
+        .order_by(AssistantWorkspaceShare.workspace_id.asc())
+        .all()
+    ]
+    lock_workspaces_for_update(db, workspace_ids)
+    (
+        db.query(Assistant)
+        .populate_existing()
+        .filter(Assistant.id == assistant.id)
+        .with_for_update()
+        .one()
+    )
 
 def _create_assistant_version(assistant: Assistant, db: Session) -> AssistantVersion:
     current_version = db.query(func.max(AssistantVersion.version)).filter(
@@ -123,6 +143,7 @@ def create_assistant(
     )
     db.add(assistant)
     db.flush()
+    _lock_assistant_version_context(assistant, db)
     _create_assistant_version(assistant, db)
     db.commit()
     db.refresh(assistant)
@@ -137,6 +158,7 @@ def update_assistant(
     db: Session = Depends(get_db),
 ):
     assistant = _get_owned_assistant(assistant_id, current_user, db)
+    _lock_assistant_version_context(assistant, db)
 
     if payload.name is not None:
         _ensure_unique_name(payload.name, current_user, db, exclude_id=assistant.id)
@@ -305,6 +327,7 @@ def compare_assistant_version_with_current(
     db: Session = Depends(get_db),
 ):
     assistant = _get_owned_assistant(assistant_id, current_user, db)
+
     snapshot = (
         db.query(AssistantVersion)
         .filter(
@@ -361,8 +384,14 @@ def restore_assistant_version(
     db: Session = Depends(get_db),
 ):
     assistant = _get_owned_assistant(assistant_id, current_user, db)
+
+    # Retention uses workspace -> assistant -> snapshot -> link lock order.
+    _lock_assistant_version_context(assistant, db)
+
     snapshot = (
         db.query(AssistantVersion)
+        .populate_existing()
+        .with_for_update()
         .filter(
             AssistantVersion.assistant_id == assistant.id,
             AssistantVersion.version == version,
@@ -419,6 +448,7 @@ def delete_assistant(
     db: Session = Depends(get_db),
 ):
     assistant = _get_owned_assistant(assistant_id, current_user, db)
+    _lock_assistant_version_context(assistant, db)
     db.delete(assistant)
     db.commit()
 

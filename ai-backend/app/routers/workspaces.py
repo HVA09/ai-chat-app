@@ -27,6 +27,7 @@ from app.schemas.workspaces import (
 )
 from app.schemas.workspace_usage import WorkspaceUsageMemberOut, WorkspaceUsageOut
 from app.models.audit_log import AuditLog
+from app.services.project_file_retention import lock_user_for_update
 
 router = APIRouter(prefix="/workspaces", tags=["Workspaces"])
 
@@ -99,6 +100,8 @@ def create_workspace(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Account deletion takes this same user-row lock before inventorying owned workspaces.
+    lock_user_for_update(db, current_user.id)
     _ensure_unique_owned_name(payload.name, current_user.id, db)
     workspace = Workspace(owner_id=current_user.id, name=payload.name)
     db.add(workspace)
