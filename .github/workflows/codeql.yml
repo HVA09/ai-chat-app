@@ -5,10 +5,8 @@ on:
     branches:
       - main
   pull_request:
-  # Keep the required CodeQL checks available for merge-queue candidates.
-  merge_group:
-    types: [checks_requested]
-    branches: [main]
+  # Allow the branch-sync workflow to re-run required security checks after an API branch update.
+  workflow_dispatch:
   schedule:
     - cron: "23 3 * * 1"
 
