@@ -58,6 +58,11 @@ def test_upload_lock_failure_attempts_cleanup_without_masking_original_error(
     monkeypatch.setattr(files_router, "lock_user_for_update", fail_user_lock)
     monkeypatch.setattr(files_router, "put_file", fake_put_file)
     monkeypatch.setattr(files_router, "delete_stored_file", fail_cleanup)
+    monkeypatch.setattr(
+        files_router,
+        "record_file_cleanup_failure",
+        lambda object_key, _path: events.append(("outbox", object_key)),
+    )
 
     token = _register_and_login(client, "upload-lock-failure@example.com")
     headers = {"Authorization": f"Bearer {token}"}
@@ -69,7 +74,7 @@ def test_upload_lock_failure_attempts_cleanup_without_masking_original_error(
             headers=headers,
         )
 
-    assert [event[0] for event in events] == ["stored", "cleanup_failed"]
+    assert [event[0] for event in events] == ["stored", "cleanup_failed", "outbox"]
 
 
 def test_upload_releases_db_before_storage_and_embedding_io(client, tmp_path, monkeypatch):
