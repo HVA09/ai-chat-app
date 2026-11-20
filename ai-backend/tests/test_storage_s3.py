@@ -1,6 +1,6 @@
 """Focused unit tests for S3 object deletion and user-prefix isolation."""
 
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import pytest
 
