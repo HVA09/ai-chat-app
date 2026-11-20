@@ -362,18 +362,20 @@ def delete_account(
             detail="الحساب غير موجود",
         )
 
-    # Clean remote objects before deleting the account metadata, so a storage failure
-    # does not silently leave user-owned objects behind after the account is gone.
+    # Workspace/project cascades must not leave other members' uploads in a shared scope.
+    # Finish the database-side retention changes before touching external storage.
+    privatize_account_workspace_attachments(db, current_user.id)
+
+    # Storage cleanup is still performed before account deletion so a reported
+    # storage failure leaves the account metadata available for a retry.
     try:
         delete_user_objects(current_user.id)
     except StorageError as exc:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="تعذر تنظيف ملفات الحساب الآن. أعد المحاولة لاحقًا.",
         ) from exc
-
-    # Workspace/project cascades must not leave other members' uploads in a shared scope.
-    privatize_account_workspace_attachments(db, current_user.id)
 
     log_event(db, "account_deleted", f"حذف حساب: {current_user.email}", current_user.id)
     user_upload_dir = Path(settings.UPLOAD_DIR) / str(current_user.id)
