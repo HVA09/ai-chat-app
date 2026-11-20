@@ -1096,11 +1096,14 @@ def _run_storage_cleanup_outbox_batch(batch_size: int = 50) -> int:
             try:
                 row = retry_db.get(StorageCleanupOutbox, row_id)
                 if row is not None and row.status == "running":
-                    delay_seconds = min(3600, 30 * (2 ** min(attempt_count - 1, 7)))
-                    row.status = "pending"
                     row.locked_at = None
-                    row.available_at = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
                     row.last_error = str(exc)[:1000]
+                    if attempt_count >= 12:
+                        row.status = "failed"
+                    else:
+                        delay_seconds = min(3600, 30 * (2 ** min(attempt_count - 1, 7)))
+                        row.status = "pending"
+                        row.available_at = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
                     retry_db.commit()
                 logger.warning(
                     "Storage cleanup outbox item %s failed on attempt %s; retry scheduled: %s",
