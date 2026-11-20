@@ -163,3 +163,60 @@ def test_storage_cleanup_moves_repeated_failures_to_dead_letter(db_session, monk
     assert saved.status == "failed"
     assert saved.attempt_count == 12
     assert saved.locked_at is None
+
+
+def test_stale_worker_cannot_mark_reclaimed_item_completed(db_session, monkeypatch):
+    row = StorageCleanupOutbox(
+        operation="delete_user_prefix",
+        user_id=987654325,
+        status="pending",
+        available_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    db_session.add(row)
+    db_session.commit()
+    row_id = row.id
+    monkeypatch.setattr(tasks, "SessionLocal", _worker_session_factory(db_session))
+
+    def reclaim_during_storage_io(*_args):
+        current = db_session.get(StorageCleanupOutbox, row_id)
+        current.status = "running"
+        current.lease_token = "worker-b-lease"
+        current.locked_at = datetime.now(timezone.utc)
+        db_session.commit()
+
+    monkeypatch.setattr(tasks, "_perform_storage_cleanup", reclaim_during_storage_io)
+    assert tasks._run_storage_cleanup_outbox_batch(batch_size=1) == 1
+    db_session.expire_all()
+    saved = db_session.get(StorageCleanupOutbox, row_id)
+    assert saved.status == "running"
+    assert saved.lease_token == "worker-b-lease"
+    assert saved.completed_at is None
+
+
+def test_stale_worker_cannot_schedule_retry_after_lease_reclaim(db_session, monkeypatch):
+    row = StorageCleanupOutbox(
+        operation="delete_user_prefix",
+        user_id=987654326,
+        status="pending",
+        available_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    db_session.add(row)
+    db_session.commit()
+    row_id = row.id
+    monkeypatch.setattr(tasks, "SessionLocal", _worker_session_factory(db_session))
+
+    def reclaim_then_fail(*_args):
+        current = db_session.get(StorageCleanupOutbox, row_id)
+        current.status = "running"
+        current.lease_token = "worker-b-lease"
+        current.locked_at = datetime.now(timezone.utc)
+        db_session.commit()
+        raise OSError("stale worker failure")
+
+    monkeypatch.setattr(tasks, "_perform_storage_cleanup", reclaim_then_fail)
+    assert tasks._run_storage_cleanup_outbox_batch(batch_size=1) == 1
+    db_session.expire_all()
+    saved = db_session.get(StorageCleanupOutbox, row_id)
+    assert saved.status == "running"
+    assert saved.lease_token == "worker-b-lease"
+    assert saved.last_error is None
