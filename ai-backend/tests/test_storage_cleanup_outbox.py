@@ -96,3 +96,30 @@ def test_local_user_prefix_cleanup_removes_only_user_directory(tmp_path, monkeyp
 
     assert not user_dir.exists()
     assert (other_dir / "keep.bin").exists()
+
+
+def test_storage_cleanup_moves_repeated_failures_to_dead_letter(db_session, monkeypatch):
+    row = StorageCleanupOutbox(
+        operation="delete_user_prefix",
+        user_id=987654323,
+        status="pending",
+        attempt_count=11,
+        available_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    db_session.add(row)
+    db_session.commit()
+    row_id = row.id
+
+    monkeypatch.setattr(tasks, "SessionLocal", _worker_session_factory(db_session))
+    monkeypatch.setattr(
+        tasks,
+        "_perform_storage_cleanup",
+        lambda *_args: (_ for _ in ()).throw(OSError("persistent storage failure")),
+    )
+
+    assert tasks._run_storage_cleanup_outbox_batch(batch_size=5) == 1
+    db_session.expire_all()
+    saved = db_session.get(StorageCleanupOutbox, row_id)
+    assert saved.status == "failed"
+    assert saved.attempt_count == 12
+    assert saved.locked_at is None
