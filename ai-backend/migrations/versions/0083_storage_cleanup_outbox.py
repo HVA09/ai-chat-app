@@ -38,7 +38,7 @@ def upgrade() -> None:
             name="ck_storage_cleanup_outbox_operation",
         ),
         sa.CheckConstraint(
-            "status IN ('pending', 'running', 'completed')",
+            "status IN ('pending', 'running', 'completed', 'failed')",
             name="ck_storage_cleanup_outbox_status",
         ),
         sa.CheckConstraint(
