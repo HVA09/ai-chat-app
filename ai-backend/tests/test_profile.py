@@ -69,8 +69,13 @@ def test_delete_account_finishes_db_retention_before_storage(client, monkeypatch
     )
     monkeypatch.setattr(
         users_router_module,
-        "delete_user_objects",
-        lambda user_id: events.append(("storage", user_id)),
+        "enqueue_user_storage_cleanup",
+        lambda _db, user_id: events.append(("outbox", user_id)),
+    )
+    monkeypatch.setattr(
+        users_router_module,
+        "dispatch_storage_cleanup",
+        lambda: events.append(("dispatch", None)),
     )
 
     token = _register_and_login(client, "ordered-self-delete@example.com")
@@ -82,7 +87,7 @@ def test_delete_account_finishes_db_retention_before_storage(client, monkeypatch
     )
 
     assert response.status_code == 204
-    assert [event[0] for event in events] == ["retention", "storage"]
+    assert [event[0] for event in events] == ["retention", "outbox", "dispatch"]
     assert events[0][1] == events[1][1]
 
 
