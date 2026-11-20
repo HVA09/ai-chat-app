@@ -735,9 +735,20 @@ def test_personal_upload_cannot_orphan_object_during_account_deletion(
     def fake_delete_user_objects(_user_id):
         objects.clear()
 
+    # Account deletion now commits a durable outbox row; run the real worker
+    # synchronously in this concurrency test to verify the remote object is
+    # removed after the transaction commits.
+    from app import tasks
+    from app.services import storage as storage_service
+
     monkeypatch.setattr(files_router, "put_file", fake_put_file)
     monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
-    monkeypatch.setattr(users_router, "delete_user_objects", fake_delete_user_objects)
+    monkeypatch.setattr(storage_service, "delete_user_objects", fake_delete_user_objects)
+    monkeypatch.setattr(
+        users_router,
+        "dispatch_storage_cleanup",
+        lambda: tasks._run_storage_cleanup_outbox_batch(),
+    )
 
     def run_upload():
         try:
