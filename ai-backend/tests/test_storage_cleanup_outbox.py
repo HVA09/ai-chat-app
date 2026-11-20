@@ -7,13 +7,14 @@ from app import tasks
 
 
 def _worker_session_factory(db_session):
-    from conftest import TestingSessionLocal
+    from sqlalchemy.orm import sessionmaker
 
     connection = db_session.connection()
-    return lambda: TestingSessionLocal(
+    factory = sessionmaker(
         bind=connection,
         join_transaction_mode="create_savepoint",
     )
+    return factory
 
 
 def test_storage_cleanup_worker_marks_successful_item_completed(db_session, monkeypatch):
