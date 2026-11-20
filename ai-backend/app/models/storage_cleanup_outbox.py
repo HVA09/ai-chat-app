@@ -16,7 +16,7 @@ class StorageCleanupOutbox(Base):
             name="ck_storage_cleanup_outbox_operation",
         ),
         CheckConstraint(
-            "status IN ('pending', 'running', 'completed')",
+            "status IN ('pending', 'running', 'completed', 'failed')",
             name="ck_storage_cleanup_outbox_status",
         ),
         CheckConstraint(
