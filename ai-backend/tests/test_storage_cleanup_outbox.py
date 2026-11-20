@@ -98,6 +98,46 @@ def test_local_user_prefix_cleanup_removes_only_user_directory(tmp_path, monkeyp
     assert (other_dir / "keep.bin").exists()
 
 
+def test_storage_cleanup_worker_recovers_expired_running_lease(db_session, monkeypatch):
+    row = StorageCleanupOutbox(
+        operation="delete_user_prefix",
+        user_id=987654324,
+        status="running",
+        attempt_count=1,
+        available_at=datetime.now(timezone.utc) - timedelta(minutes=16),
+        locked_at=datetime.now(timezone.utc) - timedelta(minutes=16),
+    )
+    db_session.add(row)
+    db_session.commit()
+    row_id = row.id
+
+    monkeypatch.setattr(tasks, "SessionLocal", _worker_session_factory(db_session))
+    performed = []
+    monkeypatch.setattr(
+        tasks,
+        "_perform_storage_cleanup",
+        lambda *args: performed.append(args),
+    )
+
+    assert tasks._run_storage_cleanup_outbox_batch(batch_size=5) == 1
+    db_session.expire_all()
+    saved = db_session.get(StorageCleanupOutbox, row_id)
+    assert saved.status == "completed"
+    assert saved.attempt_count == 2
+    assert saved.locked_at is None
+    assert len(performed) == 1
+
+
+def test_local_file_cleanup_is_idempotent_when_object_is_already_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    for name in ("S3_BUCKET", "S3_ENDPOINT_URL", "S3_REGION", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"):
+        monkeypatch.setattr(app_settings, name, None)
+
+    missing_path = "42/already-deleted.txt"
+    tasks._perform_storage_cleanup("delete_file", None, "users/42/already-deleted.txt", missing_path)
+    tasks._perform_storage_cleanup("delete_file", None, "users/42/already-deleted.txt", missing_path)
+    assert not (tmp_path / missing_path).exists()
+
 def test_storage_cleanup_moves_repeated_failures_to_dead_letter(db_session, monkeypatch):
     row = StorageCleanupOutbox(
         operation="delete_user_prefix",
