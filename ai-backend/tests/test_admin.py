@@ -109,8 +109,13 @@ def test_admin_delete_locks_user_and_finishes_db_retention_before_storage(client
     )
     monkeypatch.setattr(
         admin_router_module,
-        "delete_user_objects",
-        lambda user_id: events.append(("storage", user_id)),
+        "enqueue_user_storage_cleanup",
+        lambda _db, user_id: events.append(("outbox", user_id)),
+    )
+    monkeypatch.setattr(
+        admin_router_module,
+        "dispatch_storage_cleanup",
+        lambda: events.append(("dispatch", None)),
     )
 
     admin_token = _register_and_login(client, "ordered-delete-admin@example.com", admin=True)
@@ -122,8 +127,8 @@ def test_admin_delete_locks_user_and_finishes_db_retention_before_storage(client
     response = client.delete(f"/admin/users/{target['id']}", headers=headers)
 
     assert response.status_code == 204
-    assert [event[0] for event in events] == ["lock", "retention", "storage"]
-    assert all(event[1] == target["id"] for event in events)
+    assert [event[0] for event in events] == ["lock", "retention", "outbox", "dispatch"]
+    assert all(event[1] == target["id"] for event in events[:3])
 
 
 def test_admin_can_list_and_delete_any_conversation(client, monkeypatch):
