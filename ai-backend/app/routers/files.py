@@ -36,6 +36,7 @@ from app.services.rag import (
 )
 from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
+from app.services.storage_cleanup_outbox import record_file_cleanup_failure
 from app.services.project_access import can_edit_project
 from app.services.project_file_retention import lock_user_for_update
 from app.services.workspace_rbac import has_workspace_permission
@@ -366,11 +367,12 @@ async def upload_file(
             delete_stored_file(object_key, destination)
         except Exception:
             # Never replace the original DB/authorization failure with a
-            # secondary cleanup error. Keep the orphan visible for operations.
+            # secondary cleanup error. Persist a retryable cleanup instruction.
             logger.exception(
                 "Failed to clean up unfinalized upload object %s",
                 object_key,
             )
+            record_file_cleanup_failure(object_key, destination)
 
     # Match account deletion's user -> workspace lock order immediately after
     # external storage I/O. Hold the user lock through extraction and finalization
