@@ -70,7 +70,7 @@ def _resolve_public_host(hostname: str) -> list[str]:
                 proto=socket.IPPROTO_TCP,
             )
         })
-    except OSError as exc:
+    except (OSError, IndexError, TypeError, ValueError) as exc:
         raise WebhookValidationError("تعذر التحقق من نطاق Webhook.") from exc
 
     if not addresses or any(not _is_public_ip(address) for address in addresses):
@@ -113,7 +113,10 @@ def _prepare_pinned_webhook_request(url: str) -> tuple[str, str, dict]:
     try:
         literal_ip = ipaddress.ip_address(host)
     except ValueError:
-        ascii_host = host.encode("idna").decode("ascii")
+        try:
+            ascii_host = host.encode("idna").decode("ascii")
+        except UnicodeError as exc:
+            raise WebhookValidationError("اسم نطاق Webhook غير صالح.") from exc
         resolved = _resolve_public_host(ascii_host)
         pinned_ip = ipaddress.ip_address(resolved[0])
     else:
