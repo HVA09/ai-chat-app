@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("authenticates against the disposable backend and loads the account", async ({ page, request }) => {
+test("authenticates against the disposable backend, loads the account, and uploads a chat attachment", async ({ page, request }) => {
   const email = `playwright-${Date.now()}@example.com`;
   const password = "StrongPass123";
 
@@ -21,4 +21,15 @@ test("authenticates against the disposable backend and loads the account", async
   await expect(currentUserResponse).resolves.toBeTruthy();
 
   await expect(page.getByPlaceholder("اكتب رسالتك هنا...")).toBeVisible();
+
+  const uploadResponse = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === "/files/upload" && response.status() === 201
+  );
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "playwright-attachment.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("Disposable Playwright attachment test content."),
+  });
+  await expect(uploadResponse).resolves.toBeTruthy();
+  await expect(page.getByText("playwright-attachment.txt")).toBeVisible();
 });
