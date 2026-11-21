@@ -17,23 +17,86 @@ permissions:
 jobs:
   playwright:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: ai-frontend
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: ghcr.io/jonathanmcohen/pgvector:16-0.8.7
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ai_backend_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ai_backend_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: ghcr.io/valkey-io/valkey@sha256:a038175878d66b9d274fbf8be73c0305e93798b83917647f167e18cef3c71eec
+        ports:
+          - 6379:6379
+    env:
+      ENVIRONMENT: test
+      DEBUG: "false"
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ai_backend_test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ai_backend_test
+      JWT_SECRET_KEY: test-only-secret-change-in-ci-please
+      AI_API_KEY: test-only-not-a-real-provider-key
+      AI_PROVIDER: openai
+      AI_MODEL: test-model
+      AI_ALLOWED_MODELS: '["test-model"]'
+      AI_API_BASE_URL: http://127.0.0.1:9999/v1
+      CORS_ORIGINS: '["http://127.0.0.1:5173"]'
+      FRONTEND_URL: http://127.0.0.1:5173
+      REDIS_URL: redis://localhost:6379/0
+      CELERY_BROKER_URL: redis://localhost:6379/1
+      CELERY_RESULT_BACKEND: redis://localhost:6379/1
+      UPLOAD_DIR: /tmp/ai-chat-e2e-uploads
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          node-version: 24
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ai-backend/requirements-dev.txt
+
+      - name: Install backend dependencies
+        working-directory: ai-backend
+        run: pip install -r requirements-dev.txt
+
+      - name: Apply migrations to disposable test database
+        working-directory: ai-backend
+        run: alembic upgrade head
+
+      - name: Start isolated backend
+        working-directory: ai-backend
+        run: |
+          mkdir -p "$UPLOAD_DIR"
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/ai-chat-e2e-backend.log 2>&1 &
+          echo $! > /tmp/ai-chat-e2e-backend.pid
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:8000/ready; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/ai-chat-e2e-backend.log
+          exit 1
+
       - name: Install frontend dependencies
+        working-directory: ai-frontend
         run: npm install --prefer-online --no-audit --no-fund
+
       - name: Install Chromium
+        working-directory: ai-frontend
         run: npx playwright install --with-deps chromium
-      - name: Run isolated browser smoke tests
+
+      - name: Run isolated browser and backend integration tests
+        working-directory: ai-frontend
         run: npm run test:e2e
         env:
           CI: "true"
+          VITE_API_BASE_URL: http://127.0.0.1:8000
+
       - name: Upload browser diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -42,5 +105,6 @@ jobs:
           path: |
             ai-frontend/playwright-report/
             ai-frontend/test-results/
+            /tmp/ai-chat-e2e-backend.log
           if-no-files-found: ignore
           retention-days: 7
