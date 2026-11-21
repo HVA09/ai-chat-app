@@ -392,6 +392,34 @@ async def upload_file(
             detail="الحساب غير موجود",
         )
 
+    # Recheck account-wide quotas while holding the user row lock. The first
+    # check happens before storage I/O to reject obvious excess early, but
+    # concurrent uploads may have committed while this request was uploading.
+    locked_file_count = (
+        db.query(func.count(FileAttachment.id))
+        .filter(FileAttachment.user_id == current_user.id)
+        .scalar()
+        or 0
+    )
+    if locked_file_count >= settings.MAX_FILES_PER_USER:
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise HTTPException(status_code=413, detail="وصلت للحد الأقصى لعدد الملفات")
+
+    locked_storage_bytes = (
+        db.query(func.coalesce(func.sum(FileAttachment.size_bytes), 0))
+        .filter(FileAttachment.user_id == current_user.id)
+        .scalar()
+        or 0
+    )
+    if locked_storage_bytes + total > max_storage:
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise HTTPException(
+            status_code=413,
+            detail=f"تجاوزت سعة التخزين للحساب ({settings.MAX_STORAGE_PER_USER_MB} ميجابايت)",
+        )
+
     extracted_text = None
     if sniffed is not None:
         try:
