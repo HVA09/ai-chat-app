@@ -48,14 +48,37 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
     # links. Lock every assistant currently linked to these files first so a
     # concurrent snapshot either commits before this scan or observes links
     # after they have been removed. Assistant IDs are always locked in order.
-    assistant_ids = [
+    # Discover snapshot candidates before taking Assistant locks so we can
+    # preserve the global Assistant -> AssistantVersion lock order.
+    candidate_ids = []
+    candidate_assistant_ids = set()
+    candidates = (
+        db.query(
+            AssistantVersion.id,
+            AssistantVersion.assistant_id,
+            AssistantVersion.knowledge_file_ids,
+        )
+        .filter(AssistantVersion.knowledge_file_ids.is_not(None))
+        .order_by(AssistantVersion.id.asc())
+        .yield_per(200)
+    )
+    for snapshot_id, assistant_id, saved_ids in candidates:
+        if isinstance(saved_ids, list) and any(
+            str(file_id).isdigit() and int(file_id) in target_ids
+            for file_id in saved_ids
+        ):
+            candidate_ids.append(snapshot_id)
+            candidate_assistant_ids.add(assistant_id)
+
+    linked_assistant_ids = {
         assistant_id
         for (assistant_id,) in db.query(AssistantFileLink.assistant_id)
         .filter(AssistantFileLink.file_id.in_(file_ids))
         .distinct()
         .order_by(AssistantFileLink.assistant_id.asc())
         .all()
-    ]
+    }
+    assistant_ids = sorted(linked_assistant_ids | candidate_assistant_ids)
     if assistant_ids:
         (
             db.query(Assistant.id)
@@ -64,40 +87,60 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
             .with_for_update()
             .all()
         )
-    # Stream only the two fields needed; never materialize unrelated assistant
-    # instructions/tool policies or the full version history during deletion.
-    snapshots = (
-        db.query(AssistantVersion)
-        .options(
-            load_only(
-                AssistantVersion.id,
-                AssistantVersion.knowledge_file_ids,
+        # A concurrent snapshot writer may have completed while we waited for
+        # the Assistant lock. Re-scan the now-serialized assistants so newly
+        # committed versions referencing target files are included as well.
+        candidate_ids = set(candidate_ids)
+        refreshed_candidates = (
+            db.query(AssistantVersion.id, AssistantVersion.knowledge_file_ids)
+            .filter(
+                AssistantVersion.assistant_id.in_(assistant_ids),
+                AssistantVersion.knowledge_file_ids.is_not(None),
             )
+            .order_by(AssistantVersion.id.asc())
+            .yield_per(200)
         )
-        .filter(AssistantVersion.knowledge_file_ids.is_not(None))
-        # Restore locks the selected snapshot row. Retention must take the same
-        # row lock (after workspace locks) before scrubbing it, even when the
-        # assistant is shared only to a different workspace. This closes the
-        # stale-snapshot race independently of the assistant's current shares.
-        .order_by(AssistantVersion.id.asc())
-        .with_for_update()
-        .yield_per(200)
-    )
-    for snapshot in snapshots:
-        saved_ids = snapshot.knowledge_file_ids
-        if not isinstance(saved_ids, list):
-            continue
-        filtered_ids = [
-            file_id
-            for file_id in saved_ids
-            if not (
-                str(file_id).isdigit()
-                and int(file_id) in target_ids
+        for snapshot_id, saved_ids in refreshed_candidates:
+            if isinstance(saved_ids, list) and any(
+                str(file_id).isdigit() and int(file_id) in target_ids
+                for file_id in saved_ids
+            ):
+                candidate_ids.add(snapshot_id)
+        candidate_ids = sorted(candidate_ids)
+    # Lock and refresh only snapshots discovered to reference target IDs.
+    # The JSON membership scan above is portable across supported dialects.
+
+    if candidate_ids:
+        snapshots = (
+            db.query(AssistantVersion)
+            .options(
+                load_only(
+                    AssistantVersion.id,
+                    AssistantVersion.knowledge_file_ids,
+                )
             )
-        ]
-        if len(filtered_ids) != len(saved_ids):
-            # Reassign rather than mutating JSON in place so SQLAlchemy detects it.
-            snapshot.knowledge_file_ids = filtered_ids
+            .populate_existing()
+            .filter(AssistantVersion.id.in_(candidate_ids))
+            # Keep the same lock order as restore: AssistantVersion before links.
+            .order_by(AssistantVersion.id.asc())
+            .with_for_update()
+            .yield_per(200)
+        )
+        for snapshot in snapshots:
+            saved_ids = snapshot.knowledge_file_ids
+            if not isinstance(saved_ids, list):
+                continue
+            filtered_ids = [
+                file_id
+                for file_id in saved_ids
+                if not (
+                    str(file_id).isdigit()
+                    and int(file_id) in target_ids
+                )
+            ]
+            if len(filtered_ids) != len(saved_ids):
+                # Reassign rather than mutating JSON in place so SQLAlchemy detects it.
+                snapshot.knowledge_file_ids = filtered_ids
 
     # Keep the same row-lock order as assistant-version restore:
     # workspace rows (held by the caller), then Assistant rows, then

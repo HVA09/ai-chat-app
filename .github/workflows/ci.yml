@@ -74,6 +74,21 @@ jobs:
           REDIS_URL: "redis://localhost:6379/0"
           CELERY_BROKER_URL: "redis://localhost:6379/1"
           CELERY_RESULT_BACKEND: "redis://localhost:6379/1"
+      - name: Verify latest migration downgrade and re-upgrade
+        run: |
+          alembic downgrade -1
+          alembic upgrade head
+        env:
+          ENVIRONMENT: test
+          DEBUG: "false"
+          TEST_DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/ai_backend_test"
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/ai_backend_test"
+          JWT_SECRET_KEY: test-only-secret-change-in-ci-please
+          AI_API_KEY: test-key
+          CORS_ORIGINS: '["http://localhost:5173"]'
+          REDIS_URL: "redis://localhost:6379/0"
+          CELERY_BROKER_URL: "redis://localhost:6379/1"
+          CELERY_RESULT_BACKEND: "redis://localhost:6379/1"
       - name: Run backend tests with hang diagnostics
         run: pytest -vv --timeout=180 --timeout-method=signal -o faulthandler_timeout=90 --durations=20 -ra
         env:

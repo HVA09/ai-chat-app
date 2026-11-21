@@ -39,6 +39,44 @@ def test_upload_file_success(client, tmp_path, monkeypatch):
 
 
 
+def test_upload_lock_failure_attempts_cleanup_without_masking_original_error(
+    client, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    events = []
+
+    def fail_user_lock(_db, _user_id):
+        raise RuntimeError("user lock query failed")
+
+    def fake_put_file(_path, object_key, _content_type):
+        events.append(("stored", object_key))
+
+    def fail_cleanup(_object_key, _fallback_path):
+        events.append(("cleanup_failed", None))
+        raise OSError("storage cleanup unavailable")
+
+    monkeypatch.setattr(files_router, "lock_user_for_update", fail_user_lock)
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(files_router, "delete_stored_file", fail_cleanup)
+    monkeypatch.setattr(
+        files_router,
+        "record_file_cleanup_failure",
+        lambda object_key, _path: events.append(("outbox", object_key)),
+    )
+
+    token = _register_and_login(client, "upload-lock-failure@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with pytest.raises(RuntimeError, match="user lock query failed"):
+        client.post(
+            "/files/upload",
+            files={"file": ("report.csv", b"name,value\\nalpha,1\\n", "text/csv")},
+            headers=headers,
+        )
+
+    assert [event[0] for event in events] == ["stored", "cleanup_failed", "outbox"]
+
+
 def test_upload_releases_db_before_storage_and_embedding_io(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     events = []
@@ -697,9 +735,20 @@ def test_personal_upload_cannot_orphan_object_during_account_deletion(
     def fake_delete_user_objects(_user_id):
         objects.clear()
 
+    # Account deletion now commits a durable outbox row; run the real worker
+    # synchronously in this concurrency test to verify the remote object is
+    # removed after the transaction commits.
+    from app import tasks
+    from app.services import storage as storage_service
+
     monkeypatch.setattr(files_router, "put_file", fake_put_file)
     monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
-    monkeypatch.setattr(users_router, "delete_user_objects", fake_delete_user_objects)
+    monkeypatch.setattr(storage_service, "delete_user_objects", fake_delete_user_objects)
+    monkeypatch.setattr(
+        users_router,
+        "dispatch_storage_cleanup",
+        lambda: tasks._run_storage_cleanup_outbox_batch(),
+    )
 
     def run_upload():
         try:
@@ -920,3 +969,46 @@ def test_project_upload_finalization_waits_for_project_deletion_on_postgres(
         with session_factory() as cleanup:
             cleanup.query(User).filter(User.id == user_id).delete()
             cleanup.commit()
+
+def test_upload_rechecks_file_count_quota_after_account_lock(
+    client, db_session, tmp_path, monkeypatch
+):
+    """A quota reached while storage I/O is in progress rejects and cleans the upload."""
+    from app.models.file_attachment import FileAttachment
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(app_settings, "MAX_FILES_PER_USER", 1)
+    objects = {}
+
+    def fake_put_file(path, object_key, _content_type):
+        objects[object_key] = path.read_bytes()
+
+    def fake_delete_file(object_key, fallback_path):
+        objects.pop(object_key, None)
+        fallback_path.unlink(missing_ok=True)
+
+    def acquire_lock_after_competing_upload(_db, _user_id):
+        # The initial quota check has already passed. Model a concurrent upload
+        # consuming the last slot before this request acquires the user lock.
+        monkeypatch.setattr(app_settings, "MAX_FILES_PER_USER", 0)
+        return True
+
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
+    monkeypatch.setattr(
+        files_router, "lock_user_for_update", acquire_lock_after_competing_upload
+    )
+
+    token = _register_and_login(client, "upload-quota-race@example.com")
+    response = client.post(
+        "/files/upload",
+        files={"file": ("second.txt", b"second upload", "text/plain")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "وصلت للحد الأقصى لعدد الملفات"
+    assert objects == {}
+    assert db_session.query(FileAttachment).filter(
+        FileAttachment.original_filename == "second.txt"
+    ).count() == 0

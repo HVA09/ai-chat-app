@@ -27,7 +27,10 @@ from app.models.user import User
 from app.models.user_memory import UserMemory
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.user import ChangePasswordRequest, DeleteAccountRequest, ProfileUpdate, UserOut
-from app.services.storage import StorageError, delete_user_objects
+from app.services.storage_cleanup_outbox import (
+    dispatch_storage_cleanup,
+    enqueue_user_storage_cleanup,
+)
 from app.services.project_file_retention import (
     lock_user_for_update,
     privatize_account_workspace_attachments,
@@ -362,22 +365,14 @@ def delete_account(
             detail="الحساب غير موجود",
         )
 
-    # Clean remote objects before deleting the account metadata, so a storage failure
-    # does not silently leave user-owned objects behind after the account is gone.
-    try:
-        delete_user_objects(current_user.id)
-    except StorageError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="تعذر تنظيف ملفات الحساب الآن. أعد المحاولة لاحقًا.",
-        ) from exc
-
     # Workspace/project cascades must not leave other members' uploads in a shared scope.
+    # Finish the database-side retention changes before touching external storage.
     privatize_account_workspace_attachments(db, current_user.id)
 
+    # Persist cleanup in the same transaction as account deletion. The outbox
+    # intentionally has no user FK, so this instruction survives the cascade.
+    enqueue_user_storage_cleanup(db, current_user.id)
     log_event(db, "account_deleted", f"حذف حساب: {current_user.email}", current_user.id)
-    user_upload_dir = Path(settings.UPLOAD_DIR) / str(current_user.id)
-    shutil.rmtree(user_upload_dir, ignore_errors=True)
-
     db.delete(current_user)  # cascade يحذف بيانات الحساب الوصفية تلقائيًا
     db.commit()
+    dispatch_storage_cleanup()

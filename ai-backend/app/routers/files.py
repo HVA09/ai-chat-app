@@ -3,6 +3,7 @@
 تُخزَّن الملفات على القرص (مجلد UPLOAD_DIR) والبيانات الوصفية بقاعدة البيانات
 """
 import base64
+import logging
 import uuid
 from pathlib import Path
 import tempfile
@@ -35,11 +36,14 @@ from app.services.rag import (
 )
 from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
+from app.services.storage_cleanup_outbox import record_file_cleanup_failure
 from app.services.project_access import can_edit_project
 from app.services.project_file_retention import lock_user_for_update
 from app.services.workspace_rbac import has_workspace_permission
 
 router = APIRouter(prefix="/files", tags=["Files"])
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg",
@@ -361,20 +365,59 @@ async def upload_file(
     def cleanup_unfinalized_upload() -> None:
         try:
             delete_stored_file(object_key, destination)
-        except StorageError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="تعذر تنظيف الملف الذي لم يكتمل تسجيله؛ يلزم إعادة محاولة التنظيف.",
-            ) from exc
+        except Exception:
+            # Never replace the original DB/authorization failure with a
+            # secondary cleanup error. Persist a retryable cleanup instruction.
+            logger.exception(
+                "Failed to clean up unfinalized upload object %s",
+                object_key,
+            )
+            record_file_cleanup_failure(object_key, destination)
 
     # Match account deletion's user -> workspace lock order immediately after
     # external storage I/O. Hold the user lock through extraction and finalization
     # so deletion cannot remove the local path or miss a late S3 object.
-    if not lock_user_for_update(db, current_user.id):
+    try:
+        user_locked = lock_user_for_update(db, current_user.id)
+    except Exception:
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise
+
+    if not user_locked:
+        db.rollback()
         cleanup_unfinalized_upload()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="الحساب غير موجود",
+        )
+
+    # Recheck account-wide quotas while holding the user row lock. The first
+    # check happens before storage I/O to reject obvious excess early, but
+    # concurrent uploads may have committed while this request was uploading.
+    locked_file_count = (
+        db.query(func.count(FileAttachment.id))
+        .filter(FileAttachment.user_id == current_user.id)
+        .scalar()
+        or 0
+    )
+    if locked_file_count >= settings.MAX_FILES_PER_USER:
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise HTTPException(status_code=413, detail="وصلت للحد الأقصى لعدد الملفات")
+
+    locked_storage_bytes = (
+        db.query(func.coalesce(func.sum(FileAttachment.size_bytes), 0))
+        .filter(FileAttachment.user_id == current_user.id)
+        .scalar()
+        or 0
+    )
+    if locked_storage_bytes + total > max_storage:
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise HTTPException(
+            status_code=413,
+            detail=f"تجاوزت سعة التخزين للحساب ({settings.MAX_STORAGE_PER_USER_MB} ميجابايت)",
         )
 
     extracted_text = None
@@ -382,12 +425,17 @@ async def upload_file(
         try:
             extracted_text = extract_text(destination, sniffed)
         except FileTextExtractionError as exc:
-            log_event(
-                db,
-                "file_text_extraction_failed",
-                f"فشل استخراج نص الملف: {file.filename or stored_filename} ({exc})",
-                current_user.id,
-            )
+            try:
+                log_event(
+                    db,
+                    "file_text_extraction_failed",
+                    f"فشل استخراج نص الملف: {file.filename or stored_filename} ({exc})",
+                    current_user.id,
+                )
+            except Exception:
+                db.rollback()
+                cleanup_unfinalized_upload()
+                raise
         except Exception:
             db.rollback()
             cleanup_unfinalized_upload()
@@ -395,13 +443,19 @@ async def upload_file(
 
     if workspace_id is not None:
         # Finalization locks user first, then workspace, matching account-retention order.
-        locked_workspace = (
-            db.query(Workspace.id)
-            .filter(Workspace.id == workspace_id)
-            .with_for_update()
-            .first()
-        )
+        try:
+            locked_workspace = (
+                db.query(Workspace.id)
+                .filter(Workspace.id == workspace_id)
+                .with_for_update()
+                .first()
+            )
+        except Exception:
+            db.rollback()
+            cleanup_unfinalized_upload()
+            raise
         if locked_workspace is None:
+            db.rollback()
             cleanup_unfinalized_upload()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -409,21 +463,27 @@ async def upload_file(
             )
         try:
             _get_workspace_membership(workspace_id, current_user, db)
-        except HTTPException:
+        except Exception:
             db.rollback()
             cleanup_unfinalized_upload()
             raise
         if project_id is not None:
-            current_project = (
-                db.query(WorkspaceProject)
-                .populate_existing()
-                .filter(
-                    WorkspaceProject.id == project_id,
-                    WorkspaceProject.workspace_id == workspace_id,
+            try:
+                current_project = (
+                    db.query(WorkspaceProject)
+                    .populate_existing()
+                    .filter(
+                        WorkspaceProject.id == project_id,
+                        WorkspaceProject.workspace_id == workspace_id,
+                    )
+                    .first()
                 )
-                .first()
-            )
+            except Exception:
+                db.rollback()
+                cleanup_unfinalized_upload()
+                raise
             if current_project is None:
+                db.rollback()
                 cleanup_unfinalized_upload()
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,

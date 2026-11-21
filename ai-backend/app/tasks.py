@@ -2,13 +2,17 @@
 مهام خلفية (Celery) — البريد الإلكتروني + تنفيذ مهام AI المجدولة.
 """
 import asyncio
+import shutil
 import ssl
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 
+from app.config import settings
 from app.database import SessionLocal, commit_and_release_connection
 from app.logging_config import get_logger
 from app.models.agent_job import AgentJob
@@ -20,6 +24,7 @@ from app.models.scheduled_task import (
     ScheduledTaskType,
 )
 from app.models.scheduled_task_run import ScheduledTaskRun, ScheduledTaskRunStatus
+from app.models.storage_cleanup_outbox import StorageCleanupOutbox
 from app.models.usage_log import UsageLog
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace, WorkspaceMember
@@ -1009,6 +1014,124 @@ def _run_due_scheduled_tasks() -> None:
         _execute_scheduled_task(task_id, run_id)
 
 
+def _storage_cleanup_fallback_path(relative_path: str) -> Path:
+    root = Path(settings.UPLOAD_DIR).resolve()
+    target = (root / relative_path).resolve()
+    if not target.is_relative_to(root):
+        raise RuntimeError("Storage cleanup fallback path escaped UPLOAD_DIR")
+    return target
+
+
+def _perform_storage_cleanup(operation: str, user_id, object_key, fallback_path) -> None:
+    from app.services.storage import delete_file, delete_user_objects
+
+    if operation == "delete_user_prefix":
+        if user_id is None or int(user_id) < 1:
+            raise RuntimeError("Invalid user id in storage cleanup outbox")
+        delete_user_objects(int(user_id))
+        user_dir = (Path(settings.UPLOAD_DIR).resolve() / str(int(user_id))).resolve()
+        root = Path(settings.UPLOAD_DIR).resolve()
+        if not user_dir.is_relative_to(root):
+            raise RuntimeError("User cleanup path escaped UPLOAD_DIR")
+        if user_dir.exists():
+            shutil.rmtree(user_dir)
+        return
+
+    if operation == "delete_file":
+        if not object_key or not fallback_path:
+            raise RuntimeError("Incomplete file cleanup outbox payload")
+        delete_file(object_key, _storage_cleanup_fallback_path(fallback_path))
+        return
+
+    raise RuntimeError(f"Unsupported storage cleanup operation: {operation}")
+
+
+def _run_storage_cleanup_outbox_batch(batch_size: int = 50) -> int:
+    """Claim durable cleanup work, perform idempotent I/O, and schedule retries."""
+    now = datetime.now(timezone.utc)
+    expired_lease = now - timedelta(minutes=15)
+    claim_db = SessionLocal()
+    try:
+        rows = (
+            claim_db.query(StorageCleanupOutbox)
+            .filter(
+                or_(
+                    and_(
+                        StorageCleanupOutbox.status == "pending",
+                        StorageCleanupOutbox.available_at <= now,
+                    ),
+                    and_(
+                        StorageCleanupOutbox.status == "running",
+                        StorageCleanupOutbox.locked_at.is_not(None),
+                        StorageCleanupOutbox.locked_at <= expired_lease,
+                    ),
+                )
+            )
+            .order_by(StorageCleanupOutbox.available_at.asc(), StorageCleanupOutbox.id.asc())
+            .with_for_update(skip_locked=True)
+            .limit(max(1, min(batch_size, 200)))
+            .all()
+        )
+        claimed = []
+        for row in rows:
+            row.status = "running"
+            row.locked_at = now
+            row.attempt_count += 1
+            claimed.append(
+                (row.id, row.operation, row.user_id, row.object_key, row.fallback_path, row.attempt_count)
+            )
+        claim_db.commit()
+    except Exception:
+        claim_db.rollback()
+        logger.exception("Could not claim storage cleanup outbox rows")
+        raise
+    finally:
+        claim_db.close()
+
+    for row_id, operation, user_id, object_key, fallback_path, attempt_count in claimed:
+        try:
+            _perform_storage_cleanup(operation, user_id, object_key, fallback_path)
+        except Exception as exc:
+            retry_db = SessionLocal()
+            try:
+                row = retry_db.get(StorageCleanupOutbox, row_id)
+                if row is not None and row.status == "running":
+                    row.locked_at = None
+                    row.last_error = str(exc)[:1000]
+                    if attempt_count >= 12:
+                        row.status = "failed"
+                    else:
+                        delay_seconds = min(3600, 30 * (2 ** min(attempt_count - 1, 7)))
+                        row.status = "pending"
+                        row.available_at = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
+                    retry_db.commit()
+                logger.warning(
+                    "Storage cleanup outbox item %s failed on attempt %s; retry scheduled: %s",
+                    row_id, attempt_count, exc,
+                )
+            except Exception:
+                retry_db.rollback()
+                logger.exception("Could not persist retry state for storage cleanup item %s", row_id)
+            finally:
+                retry_db.close()
+        else:
+            complete_db = SessionLocal()
+            try:
+                row = complete_db.get(StorageCleanupOutbox, row_id)
+                if row is not None and row.status == "running":
+                    row.status = "completed"
+                    row.locked_at = None
+                    row.completed_at = datetime.now(timezone.utc)
+                    row.last_error = None
+                    complete_db.commit()
+            except Exception:
+                complete_db.rollback()
+                logger.exception("Could not mark storage cleanup item %s complete", row_id)
+            finally:
+                complete_db.close()
+    return len(claimed)
+
+
 def _redis_ssl_options(redis_url: str) -> dict | None:
     """Require verified TLS only for Redis URLs that explicitly use rediss://."""
     if urlsplit(redis_url).scheme.lower() != "rediss":
@@ -1042,6 +1165,10 @@ try:
         "run-due-scheduled-tasks": {
             "task": "run_due_scheduled_tasks",
             "schedule": 60.0,
+        },
+        "process-storage-cleanup-outbox": {
+            "task": "process_storage_cleanup_outbox",
+            "schedule": 60.0,
         }
     }
 
@@ -1068,6 +1195,10 @@ try:
     def run_due_scheduled_tasks() -> None:
         _run_due_scheduled_tasks()
 
+    @celery_app.task(name="process_storage_cleanup_outbox")
+    def process_storage_cleanup_outbox() -> int:
+        return _run_storage_cleanup_outbox_batch()
+
     _CELERY_AVAILABLE = True
 except ImportError:
     celery_app = None
@@ -1075,6 +1206,7 @@ except ImportError:
     execute_scheduled_task = None
     execute_agent_job = None
     run_due_scheduled_tasks = None
+    process_storage_cleanup_outbox = None
     _CELERY_AVAILABLE = False
     logger.info("مكتبة celery غير مثبّتة — المهام الخلفية غير مفعّلة")
 
