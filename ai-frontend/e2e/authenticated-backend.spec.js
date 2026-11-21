@@ -68,6 +68,10 @@ test("authenticates against the disposable backend, loads the account, and uploa
 
   const composer = page.getByPlaceholder("اكتب رسالتك هنا...");
   await composer.fill("Run the deterministic streaming check");
-  await composer.press("Enter");
+  const streamRequest = page.waitForRequest((request) =>
+    new URL(request.url()).pathname === "/chat/stream"
+  );
+  await page.locator(".chat-send-button").click({ force: true });
+  await expect(streamRequest).resolves.toBeTruthy();
   await expect(page.getByText("Deterministic streaming response")).toBeVisible({ timeout: 10000 });
 });
