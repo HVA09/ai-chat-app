@@ -507,3 +507,16 @@ def test_webhook_pinned_request_handles_ipv6_literal():
     assert pinned_url == "https://[2606:4700:4700::1111]/hook"
     assert host_header == "[2606:4700:4700::1111]"
     assert extensions == {"sni_hostname": "2606:4700:4700::1111"}
+
+
+def test_webhook_pinned_request_rejects_malformed_dns_address(monkeypatch):
+    monkeypatch.setattr(
+        webhook_service.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [(2, 1, 6, "", ("not-an-ip-address", 0))],
+    )
+
+    with pytest.raises(WebhookValidationError):
+        webhook_service._prepare_pinned_webhook_request(
+            "https://malformed-dns.example.test/hook"
+        )
