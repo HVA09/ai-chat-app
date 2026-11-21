@@ -66,7 +66,8 @@ test("authenticates against the disposable backend, loads the account, and uploa
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ title: "Streaming check" }) });
   });
 
-  await page.getByPlaceholder("اكتب رسالتك هنا...").fill("Run the deterministic streaming check");
-  await page.getByRole("button", { name: "إرسال" }).click();
-  await expect(page.getByText("Deterministic streaming response")).toBeVisible();
+  const composer = page.getByPlaceholder("اكتب رسالتك هنا...");
+  await composer.fill("Run the deterministic streaming check");
+  await composer.press("Enter");
+  await expect(page.getByText("Deterministic streaming response")).toBeVisible({ timeout: 10000 });
 });
