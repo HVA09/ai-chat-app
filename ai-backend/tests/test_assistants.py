@@ -359,6 +359,124 @@ def test_assistant_snapshot_update_locks_shared_workspaces_first(
     assert locked == [workspace["id"]]
 
 
+def test_retention_locks_only_snapshots_referencing_target_files_on_postgres(db_session):
+    """Unrelated assistant history must remain unlocked during file retention."""
+    from uuid import uuid4
+
+    import pytest
+    from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
+    from sqlalchemy.orm import sessionmaker
+
+    from app.models.assistant_file_link import AssistantFileLink
+    from app.models.assistant_version import AssistantVersion
+    from app.models.file_attachment import FileAttachment
+    from app.models.user import User
+    from app.services import project_file_retention
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
+
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    setup = session_factory()
+    user = User(
+        email=f"retention-filter-{suffix}@example.test",
+        hashed_password="test-only-hash",
+    )
+    setup.add(user)
+    setup.flush()
+    target_assistant = Assistant(
+        user_id=user.id,
+        name=f"Target {suffix[:10]}",
+        instructions="Target assistant.",
+    )
+    unrelated_assistant = Assistant(
+        user_id=user.id,
+        name=f"Unrelated {suffix[:10]}",
+        instructions="Unrelated assistant.",
+    )
+    setup.add_all([target_assistant, unrelated_assistant])
+    setup.flush()
+    attachment = FileAttachment(
+        user_id=user.id,
+        original_filename="target.txt",
+        stored_filename=f"target-{suffix}.txt",
+        object_key=f"users/{user.id}/target-{suffix}.txt",
+        content_type="text/plain",
+        size_bytes=1,
+        extracted_text="x",
+    )
+    setup.add(attachment)
+    setup.flush()
+    target_version = AssistantVersion(
+        assistant_id=target_assistant.id,
+        version=1,
+        name=target_assistant.name,
+        instructions=target_assistant.instructions,
+        knowledge_file_ids=[attachment.id],
+        tool_policy_snapshot={},
+    )
+    unrelated_version = AssistantVersion(
+        assistant_id=unrelated_assistant.id,
+        version=1,
+        name=unrelated_assistant.name,
+        instructions=unrelated_assistant.instructions,
+        knowledge_file_ids=[999999999],
+        tool_policy_snapshot={},
+    )
+    setup.add_all([target_version, unrelated_version])
+    setup.add(AssistantFileLink(
+        assistant_id=target_assistant.id,
+        file_id=attachment.id,
+    ))
+    setup.commit()
+    user_id = user.id
+    target_version_id = target_version.id
+    unrelated_version_id = unrelated_version.id
+    file_id = attachment.id
+    setup.close()
+
+    retention = session_factory()
+    probe = session_factory()
+    try:
+        retention.begin()
+        project_file_retention._privatize_attachment_ids(retention, [file_id])
+
+        # NOWAIT succeeds only if the unrelated historical row was not locked.
+        try:
+            probe.execute(
+                text(
+                    "SELECT id FROM assistant_versions "
+                    "WHERE id = :version_id FOR UPDATE NOWAIT"
+                ),
+                {"version_id": unrelated_version_id},
+            ).one()
+        except OperationalError as exc:
+            pytest.fail(f"unrelated assistant snapshot was locked: {exc}")
+
+        target = retention.query(AssistantVersion).filter(
+            AssistantVersion.id == target_version_id
+        ).one()
+        assert target.knowledge_file_ids == []
+        unrelated = probe.query(AssistantVersion).filter(
+            AssistantVersion.id == unrelated_version_id
+        ).one()
+        assert unrelated.knowledge_file_ids == [999999999]
+    finally:
+        if retention.in_transaction():
+            retention.rollback()
+        if probe.in_transaction():
+            probe.rollback()
+        retention.close()
+        probe.close()
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
+            cleanup.commit()
+
+
 def test_retention_serializes_with_assistant_snapshot_creation_on_postgres(db_session):
     """A snapshot writer must see scrubbed links after retention owns the assistant row."""
     from threading import Event, Thread
@@ -676,3 +794,100 @@ def test_restore_revalidates_snapshot_after_project_file_retention_on_postgres(
             with session_factory() as cleanup:
                 cleanup.query(User).filter(User.id == user_id).delete()
                 cleanup.commit()
+
+
+
+def test_retention_locks_assistant_with_only_historical_file_reference_on_postgres(
+    db_session,
+):
+    """A historical snapshot without a live file link still requires its assistant lock."""
+    from uuid import uuid4
+
+    import pytest
+    from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
+    from sqlalchemy.orm import sessionmaker
+
+    from app.models.assistant_version import AssistantVersion
+    from app.models.file_attachment import FileAttachment
+    from app.models.user import User
+    from app.services import project_file_retention
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
+
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    setup = session_factory()
+    user = User(
+        email=f"retention-historical-only-{suffix}@example.test",
+        hashed_password="test-only-hash",
+    )
+    setup.add(user)
+    setup.flush()
+    assistant = Assistant(
+        user_id=user.id,
+        name=f"Historical only {suffix[:10]}",
+        instructions="No current file link.",
+    )
+    setup.add(assistant)
+    setup.flush()
+    attachment = FileAttachment(
+        user_id=user.id,
+        original_filename="historical-only.txt",
+        stored_filename=f"historical-only-{suffix}.txt",
+        object_key=f"users/{user.id}/historical-only-{suffix}.txt",
+        content_type="text/plain",
+        size_bytes=1,
+        extracted_text="x",
+    )
+    setup.add(attachment)
+    setup.flush()
+    version = AssistantVersion(
+        assistant_id=assistant.id,
+        version=1,
+        name=assistant.name,
+        instructions=assistant.instructions,
+        knowledge_file_ids=[attachment.id],
+        tool_policy_snapshot={},
+    )
+    setup.add(version)
+    setup.commit()
+    user_id, assistant_id = user.id, assistant.id
+    version_id, file_id = version.id, attachment.id
+    setup.close()
+
+    retention = session_factory()
+    probe = session_factory()
+    try:
+        retention.begin()
+        project_file_retention._privatize_attachment_ids(retention, [file_id])
+
+        # The assistant must be locked even though no live AssistantFileLink
+        # exists; otherwise a concurrent restore can race the historical scrub.
+        try:
+            probe.execute(
+                text("SELECT id FROM assistants WHERE id = :assistant_id FOR UPDATE NOWAIT"),
+                {"assistant_id": assistant_id},
+            ).one()
+        except OperationalError:
+            pass
+        else:
+            pytest.fail("assistant with a historical file reference was not locked")
+
+        scrubbed = retention.query(AssistantVersion).filter(
+            AssistantVersion.id == version_id
+        ).one()
+        assert scrubbed.knowledge_file_ids == []
+    finally:
+        if retention.in_transaction():
+            retention.rollback()
+        if probe.in_transaction():
+            probe.rollback()
+        retention.close()
+        probe.close()
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
+            cleanup.commit()
