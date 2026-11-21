@@ -72,10 +72,10 @@ if [ "${EMBEDDED_CELERY:-false}" = "true" ]; then
   echo "Embedded Celery enabled"
   echo "Celery binary: $(command -v celery)"
 
-  python -m celery -A app.tasks.celery_app worker     --loglevel=info     --concurrency=1     --hostname=free-worker@%h &
+  python -m celery -A app.tasks:celery_app worker     --loglevel=info     --concurrency=1     --hostname=free-worker@%h &
   WORKER_PID=$!
 
-  python -m celery -A app.tasks.celery_app beat     --loglevel=info     --schedule=/tmp/celerybeat-schedule &
+  python -m celery -A app.tasks:celery_app beat     --loglevel=info     --schedule=/tmp/celerybeat-schedule &
   BEAT_PID=$!
 
   sleep 3
