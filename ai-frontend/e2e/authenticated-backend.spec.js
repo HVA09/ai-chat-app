@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("authenticates against the disposable backend and loads the account", async ({ page, request }) => {
-  const email = `playwright-${Date.now()}@example.invalid`;
+  const email = `playwright-${Date.now()}@example.com`;
   const password = "StrongPass123";
 
   const registration = await request.post("http://127.0.0.1:8000/auth/register", {
