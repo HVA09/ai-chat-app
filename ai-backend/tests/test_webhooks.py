@@ -240,6 +240,10 @@ def test_delivery_sends_signed_request_and_marks_delivered(db_session, monkeypat
             return False
 
         def post(self, url, content, headers):
+            # The sending state must remain uncommitted while HTTP is in flight;
+            # this preserves the row lock against the recovery sweep.
+            assert delivery.status == "sending"
+            assert delivery in db_session.dirty
             sent["url"] = url
             sent["content"] = content
             sent["headers"] = headers
