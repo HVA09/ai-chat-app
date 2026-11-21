@@ -56,3 +56,7 @@ def test_scheduled_task_releases_db_before_provider_wait(monkeypatch):
         ("provider", "scheduled prompt", [], "test-model"),
     ]
 
+def test_celery_cli_application_target_resolves():
+    from celery.app.utils import find_app
+
+    assert find_app("app.tasks:celery_app") is celery_app
