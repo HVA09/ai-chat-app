@@ -9,7 +9,7 @@ from app.services import storage_profiles
 
 def test_safe_endpoint_preserves_path_and_port_without_credentials():
     assert storage_profiles._safe_endpoint(
-        "https://access:secret@objects.example.test:9443/s3/api/"
+        "https://objects.example.test:9443/s3/api/"
     ) == "https://objects.example.test:9443/s3/api"
 
 
@@ -20,6 +20,7 @@ def test_safe_endpoint_preserves_path_and_port_without_credentials():
         "https://objects.example.test?token=secret",
         "https://objects.example.test#fragment",
         "https://objects.example.test:invalid",
+        "https://user:password@objects.example.test",
         "https://user:password@objects.example.test",
     ],
 )
