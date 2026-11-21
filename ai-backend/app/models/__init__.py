@@ -38,6 +38,7 @@ from app.models.webhook_event import WebhookEvent
 from app.models.webhook_endpoint import WebhookEndpoint
 from app.models.webhook_delivery import WebhookDelivery
 from app.models.storage_cleanup_outbox import StorageCleanupOutbox
+from app.models.storage_profile import StorageProfile
 
 __all__ = [
     "User",
@@ -88,6 +89,7 @@ __all__ = [
     "WebhookEndpoint",
     "WebhookDelivery",
     "StorageCleanupOutbox",
+    "StorageProfile",
     "WorkspaceRBACRole",
     "WorkspaceRBACPermission",
 ]
