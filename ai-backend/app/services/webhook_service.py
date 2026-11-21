@@ -81,22 +81,39 @@ def _resolve_public_host(hostname: str) -> list[str]:
 
 
 def _prepare_pinned_webhook_request(url: str) -> tuple[str, str, dict]:
-    """Return an IP-pinned URL, original Host header, and TLS SNI extension.
-
-    The URL's network destination is the validated IP, so HTTPX cannot perform
-    a second DNS lookup between validation and TCP connect. Host routing and
-    certificate verification continue to use the original hostname.
-    """
+    """Validate a webhook URL and pin its TCP destination to a public IP."""
     value = url.strip()
+    if len(value) > 2048:
+        raise WebhookValidationError("رابط Webhook طويل جدًا.")
+
     parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"}:
+        raise WebhookValidationError("رابط Webhook يجب أن يستخدم HTTP أو HTTPS.")
+    if settings.ENVIRONMENT == "production" and parsed.scheme != "https":
+        raise WebhookValidationError("Webhooks في production يجب أن تستخدم HTTPS.")
+    if parsed.username or parsed.password:
+        raise WebhookValidationError("رابط Webhook لا يمكن أن يحتوي بيانات دخول.")
+
     host = parsed.hostname
     if not host:
         raise WebhookValidationError("رابط Webhook غير صالح.")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise WebhookValidationError("منفذ Webhook غير صالح.") from exc
+    if port is not None and not 1 <= port <= 65535:
+        raise WebhookValidationError("منفذ Webhook غير صالح.")
+
+    host = host.rstrip(".").lower()
+    if host in {"localhost", "localhost.localdomain"} or host.endswith(".localhost"):
+        raise WebhookValidationError("عناوين localhost غير مسموحة.")
+    if host.endswith(".local") or host.endswith(".internal"):
+        raise WebhookValidationError("النطاقات الداخلية غير مسموحة.")
 
     try:
         literal_ip = ipaddress.ip_address(host)
     except ValueError:
-        ascii_host = host.encode("idna").decode("ascii").lower()
+        ascii_host = host.encode("idna").decode("ascii")
         resolved = _resolve_public_host(ascii_host)
         pinned_ip = ipaddress.ip_address(resolved[0])
     else:
@@ -105,7 +122,6 @@ def _prepare_pinned_webhook_request(url: str) -> tuple[str, str, dict]:
         ascii_host = host
         pinned_ip = literal_ip
 
-    port = parsed.port
     default_port = 443 if parsed.scheme == "https" else 80
     host_for_header = f"[{ascii_host}]" if ":" in ascii_host else ascii_host
     host_header = (
@@ -125,39 +141,7 @@ def _prepare_pinned_webhook_request(url: str) -> tuple[str, str, dict]:
 
 def validate_webhook_url(url: str) -> str:
     value = url.strip()
-    if len(value) > 2048:
-        raise WebhookValidationError("رابط Webhook طويل جدًا.")
-
-    parsed = urlsplit(value)
-    if parsed.scheme not in {"http", "https"}:
-        raise WebhookValidationError("رابط Webhook يجب أن يستخدم HTTP أو HTTPS.")
-    if settings.ENVIRONMENT == "production" and parsed.scheme != "https":
-        raise WebhookValidationError("Webhooks في production يجب أن تستخدم HTTPS.")
-    if parsed.username or parsed.password:
-        raise WebhookValidationError("رابط Webhook لا يمكن أن يحتوي بيانات دخول.")
-    if not parsed.hostname:
-        raise WebhookValidationError("رابط Webhook غير صالح.")
-    try:
-        port = parsed.port
-    except ValueError as exc:
-        raise WebhookValidationError("منفذ Webhook غير صالح.") from exc
-    if port is not None and not 1 <= port <= 65535:
-        raise WebhookValidationError("منفذ Webhook غير صالح.")
-
-    host = parsed.hostname.rstrip(".").lower()
-    if host in {"localhost", "localhost.localdomain"} or host.endswith(".localhost"):
-        raise WebhookValidationError("عناوين localhost غير مسموحة.")
-    if host.endswith(".local") or host.endswith(".internal"):
-        raise WebhookValidationError("النطاقات الداخلية غير مسموحة.")
-
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        _resolve_public_host(host.encode("idna").decode("ascii"))
-    else:
-        if not ip.is_global:
-            raise WebhookValidationError("عنوان Webhook يجب أن يكون عامًا.")
-
+    _prepare_pinned_webhook_request(value)
     return value
 
 
