@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 async function openUnauthenticatedApp(page) {
-  await page.route("http://localhost:8000/**", async (route) => {
+  await page.route("http://127.0.0.1:8000/**", async (route) => {
     const url = new URL(route.request().url());
     const corsHeaders = {
       "access-control-allow-origin": "http://127.0.0.1:5173",
