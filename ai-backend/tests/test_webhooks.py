@@ -222,7 +222,11 @@ def test_delivery_sends_signed_request_and_marks_delivered(db_session, monkeypat
     db_session.add(delivery)
     db_session.commit()
 
-    monkeypatch.setattr(webhook_service, "validate_webhook_url", lambda url: url)
+    monkeypatch.setattr(
+        webhook_service,
+        "_prepare_pinned_webhook_request",
+        lambda url: ("https://93.184.216.34/hook", "example.test", {"sni_hostname": "example.test"}),
+    )
 
     sent = {}
 
@@ -239,7 +243,7 @@ def test_delivery_sends_signed_request_and_marks_delivered(db_session, monkeypat
         def __exit__(self, *args):
             return False
 
-        def post(self, url, content, headers):
+        def post(self, url, content, headers, extensions=None):
             # The sending state must remain uncommitted while HTTP is in flight;
             # this preserves the row lock against the recovery sweep.
             assert delivery.status == "sending"
@@ -247,6 +251,7 @@ def test_delivery_sends_signed_request_and_marks_delivered(db_session, monkeypat
             sent["url"] = url
             sent["content"] = content
             sent["headers"] = headers
+            sent["extensions"] = extensions
             return FakeResponse()
 
     monkeypatch.setattr(webhook_service.httpx, "Client", FakeClient)
@@ -258,6 +263,9 @@ def test_delivery_sends_signed_request_and_marks_delivered(db_session, monkeypat
     assert delivery.response_status == 200
     assert sent["headers"]["X-Webhook-Id"] == "evt_delivery"
     assert sent["headers"]["X-Webhook-Signature"].startswith("sha256=")
+    assert sent["url"] == "https://93.184.216.34/hook"
+    assert sent["headers"]["Host"] == "example.test"
+    assert sent["extensions"] == {"sni_hostname": "example.test"}
 
 
 def test_webhook_delivery_outbox_requeues_due_and_recovers_stale_sends(
@@ -403,7 +411,11 @@ def test_webhook_network_error_persists_failed_after_max_attempts(
     db_session.add(delivery)
     db_session.commit()
 
-    monkeypatch.setattr(webhook_service, "validate_webhook_url", lambda url: url)
+    monkeypatch.setattr(
+        webhook_service,
+        "_prepare_pinned_webhook_request",
+        lambda url: ("https://93.184.216.34/hook", "example.test", {"sni_hostname": "example.test"}),
+    )
 
     class FailingClient:
         def __init__(self, *args, **kwargs):
@@ -449,3 +461,49 @@ def test_webhook_network_error_persists_failed_after_max_attempts(
     monkeypatch.setattr(tasks_module, "deliver_webhook_task", FakeTask())
     assert tasks_module._run_webhook_delivery_outbox_batch() == 0
     assert queued_ids == []
+
+
+
+def test_webhook_pinned_request_uses_one_validated_dns_answer(monkeypatch):
+    calls = []
+
+    def changing_dns(hostname, *args, **kwargs):
+        calls.append(hostname)
+        address = "93.184.216.34" if len(calls) == 1 else "169.254.169.254"
+        return [(2, 1, 6, "", (address, 0))]
+
+    monkeypatch.setattr(webhook_service.socket, "getaddrinfo", changing_dns)
+    pinned_url, host_header, extensions = webhook_service._prepare_pinned_webhook_request(
+        "https://rebind.example.test:8443/hooks?event=created"
+    )
+
+    assert calls == ["rebind.example.test"]
+    assert pinned_url == "https://93.184.216.34:8443/hooks?event=created"
+    assert host_header == "rebind.example.test:8443"
+    assert extensions == {"sni_hostname": "rebind.example.test"}
+
+
+def test_webhook_pinned_request_rejects_mixed_public_and_private_dns(monkeypatch):
+    monkeypatch.setattr(
+        webhook_service.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [
+            (2, 1, 6, "", ("93.184.216.34", 0)),
+            (2, 1, 6, "", ("10.0.0.8", 0)),
+        ],
+    )
+
+    with pytest.raises(WebhookValidationError):
+        webhook_service._prepare_pinned_webhook_request(
+            "https://mixed.example.test/hook"
+        )
+
+
+def test_webhook_pinned_request_handles_ipv6_literal():
+    pinned_url, host_header, extensions = webhook_service._prepare_pinned_webhook_request(
+        "https://[2606:4700:4700::1111]/hook"
+    )
+
+    assert pinned_url == "https://[2606:4700:4700::1111]/hook"
+    assert host_header == "[2606:4700:4700::1111]"
+    assert extensions == {"sni_hostname": "2606:4700:4700::1111"}
