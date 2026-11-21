@@ -1,10 +1,32 @@
 """Tests for immutable storage-profile identity capture."""
+import os
 from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy.engine import make_url
 
 from app.config import settings
 from app.services import storage_profiles
+
+
+def _require_isolated_local_test_database():
+    """Skip concurrency writes unless pytest targets the disposable local CI DB."""
+    value = os.getenv(
+        "TEST_DATABASE_URL",
+        "postgresql://postgres:postgres@localhost:5432/ai_backend_test",
+    )
+    parsed = make_url(value)
+    if (
+        parsed.drivername.split("+", 1)[0] != "postgresql"
+        or parsed.host not in {"localhost", "127.0.0.1"}
+        or parsed.port != 5432
+        or parsed.database != "ai_backend_test"
+        or parsed.query
+    ):
+        pytest.skip(
+            "Concurrent storage-profile test requires the isolated "
+            "localhost:5432/ai_backend_test database"
+        )
 
 
 def test_safe_endpoint_preserves_path_and_port_without_credentials():
@@ -61,6 +83,7 @@ def test_concurrent_profile_creation_converges_to_one_postgres_row(
 
     from app.models.storage_profile import StorageProfile
 
+    _require_isolated_local_test_database()
     test_engine = db_session.get_bind().engine
     sessions = sessionmaker(bind=test_engine, expire_on_commit=False)
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path / "concurrent-profile"))
