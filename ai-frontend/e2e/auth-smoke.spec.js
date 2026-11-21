@@ -3,10 +3,22 @@ import { expect, test } from "@playwright/test";
 async function openUnauthenticatedApp(page) {
   await page.route("http://localhost:8000/**", async (route) => {
     const url = new URL(route.request().url());
+    const corsHeaders = {
+      "access-control-allow-origin": "http://127.0.0.1:5173",
+      "access-control-allow-credentials": "true",
+      "access-control-allow-methods": "GET, POST, OPTIONS",
+      "access-control-allow-headers": "Content-Type, Authorization",
+    };
+
+    if (route.request().method() === "OPTIONS") {
+      await route.fulfill({ status: 204, headers: corsHeaders });
+      return;
+    }
 
     if (url.pathname === "/auth/refresh") {
       await route.fulfill({
         status: 401,
+        headers: corsHeaders,
         contentType: "application/json",
         body: JSON.stringify({ detail: "No active test session" }),
       });
@@ -16,6 +28,7 @@ async function openUnauthenticatedApp(page) {
     if (url.pathname === "/auth/password-reset/request") {
       await route.fulfill({
         status: 200,
+        headers: corsHeaders,
         contentType: "application/json",
         body: JSON.stringify({ detail: "If the account exists, a reset link will be sent." }),
       });
@@ -24,6 +37,7 @@ async function openUnauthenticatedApp(page) {
 
     await route.fulfill({
       status: 404,
+      headers: corsHeaders,
       contentType: "application/json",
       body: JSON.stringify({ detail: "Unexpected API request in isolated browser test" }),
     });
