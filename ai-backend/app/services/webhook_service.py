@@ -284,7 +284,10 @@ def deliver_webhook_delivery(delivery_id: int, db: Session | None = None) -> Non
         delivery.attempt_count += 1
         delivery.status = "sending"
         delivery.last_error = None
-        db.commit()
+        # Keep the row lock and transaction open through the bounded HTTP call.
+        # The recovery sweep uses FOR UPDATE SKIP LOCKED, so it cannot reclaim
+        # this delivery while a worker is still sending it. If the worker dies,
+        # the transaction rolls back to queued and the sweep can safely retry.
 
         timestamp = int(datetime.now(timezone.utc).timestamp())
         headers = {
