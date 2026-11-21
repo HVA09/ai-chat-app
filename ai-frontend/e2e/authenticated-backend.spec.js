@@ -39,4 +39,34 @@ test("authenticates against the disposable backend, loads the account, and uploa
   });
   await expect(uploadResponse).resolves.toBeTruthy();
   await expect(page.getByText("playwright-attachment.txt")).toBeVisible();
+
+  await page.route("**/chat/stream", async (route) => {
+    expect(route.request().method()).toBe("POST");
+    const payload = route.request().postDataJSON();
+    expect(payload.message).toBe("Run the deterministic streaming check");
+
+    await route.fulfill({
+      status: 200,
+      headers: { "content-type": "text/event-stream; charset=utf-8" },
+      body: [
+        "event: conversation",
+        "data: 987654",
+        "",
+        "event: chunk",
+        "data: Deterministic streaming response",
+        "",
+        "event: done",
+        "data: [DONE]",
+        "",
+        "",
+      ].join("\\n"),
+    });
+  });
+  await page.route("**/conversations/987654/generate-title", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ title: "Streaming check" }) });
+  });
+
+  await page.getByPlaceholder("اكتب رسالتك هنا...").fill("Run the deterministic streaming check");
+  await page.getByRole("button", { name: "إرسال" }).click();
+  await expect(page.getByText("Deterministic streaming response")).toBeVisible();
 });
