@@ -27,6 +27,14 @@ test("authenticates against the disposable backend, loads the account, and uploa
   const conversationList = await conversationsResponse;
   expect(await conversationList.json()).toEqual([]);
 
+  // First-run onboarding is an overlay and can intercept composer actions.
+  const onboarding = page.getByRole("dialog");
+  if (await onboarding.isVisible().catch(() => false)) {
+    const skip = onboarding.getByRole("button", { name: /تخطي|skip/i });
+    if (await skip.isVisible().catch(() => false)) await skip.click();
+    else await onboarding.getByRole("button", { name: /إغلاق|close/i }).click();
+  }
+
   await expect(page.getByPlaceholder("اكتب رسالتك هنا...")).toBeVisible();
 
   const uploadResponse = page.waitForResponse((response) =>
