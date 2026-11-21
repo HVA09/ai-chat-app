@@ -59,16 +59,17 @@ def _is_public_ip(address: str) -> bool:
     return ip.is_global
 
 
-def _resolve_public_host(hostname: str) -> None:
+def _resolve_public_host(hostname: str) -> list[str]:
+    """Resolve once and return only a fully public DNS answer set."""
     try:
-        addresses = {
+        addresses = sorted({
             item[4][0]
             for item in socket.getaddrinfo(
                 hostname,
                 None,
                 proto=socket.IPPROTO_TCP,
             )
-        }
+        })
     except OSError as exc:
         raise WebhookValidationError("تعذر التحقق من نطاق Webhook.") from exc
 
@@ -76,6 +77,50 @@ def _resolve_public_host(hostname: str) -> None:
         raise WebhookValidationError(
             "عنوان Webhook يجب أن يشير إلى خادم عام وليس شبكة داخلية."
         )
+    return addresses
+
+
+def _prepare_pinned_webhook_request(url: str) -> tuple[str, str, dict]:
+    """Return an IP-pinned URL, original Host header, and TLS SNI extension.
+
+    The URL's network destination is the validated IP, so HTTPX cannot perform
+    a second DNS lookup between validation and TCP connect. Host routing and
+    certificate verification continue to use the original hostname.
+    """
+    value = url.strip()
+    parsed = urlsplit(value)
+    host = parsed.hostname
+    if not host:
+        raise WebhookValidationError("رابط Webhook غير صالح.")
+
+    try:
+        literal_ip = ipaddress.ip_address(host)
+    except ValueError:
+        ascii_host = host.encode("idna").decode("ascii").lower()
+        resolved = _resolve_public_host(ascii_host)
+        pinned_ip = ipaddress.ip_address(resolved[0])
+    else:
+        if not literal_ip.is_global:
+            raise WebhookValidationError("عنوان Webhook يجب أن يكون عامًا.")
+        ascii_host = host
+        pinned_ip = literal_ip
+
+    port = parsed.port
+    default_port = 443 if parsed.scheme == "https" else 80
+    host_for_header = f"[{ascii_host}]" if ":" in ascii_host else ascii_host
+    host_header = (
+        f"{host_for_header}:{port}" if port is not None and port != default_port
+        else host_for_header
+    )
+    pinned_host = f"[{pinned_ip.compressed}]" if pinned_ip.version == 6 else pinned_ip.compressed
+    pinned_netloc = f"{pinned_host}:{port}" if port is not None else pinned_host
+    pinned_url = parsed._replace(
+        netloc=pinned_netloc,
+        path=parsed.path or "/",
+        fragment="",
+    ).geturl()
+    extensions = {"sni_hostname": ascii_host} if parsed.scheme == "https" else {}
+    return pinned_url, host_header, extensions
 
 
 def validate_webhook_url(url: str) -> str:
@@ -108,7 +153,7 @@ def validate_webhook_url(url: str) -> str:
     try:
         ip = ipaddress.ip_address(host)
     except ValueError:
-        _resolve_public_host(host)
+        _resolve_public_host(host.encode("idna").decode("ascii"))
     else:
         if not ip.is_global:
             raise WebhookValidationError("عنوان Webhook يجب أن يكون عامًا.")
@@ -261,7 +306,9 @@ def deliver_webhook_delivery(delivery_id: int, db: Session | None = None) -> Non
             return
 
         try:
-            url = validate_webhook_url(endpoint.url)
+            url, host_header, request_extensions = _prepare_pinned_webhook_request(
+                endpoint.url
+            )
             secret = decrypt_webhook_secret(endpoint.secret_encrypted)
             body = serialize_payload(
                 delivery.event_type,
@@ -300,11 +347,18 @@ def deliver_webhook_delivery(delivery_id: int, db: Session | None = None) -> Non
         }
 
         try:
+            headers["Host"] = host_header
             with httpx.Client(
                 timeout=httpx.Timeout(10.0, connect=5.0),
                 follow_redirects=False,
+                trust_env=False,
             ) as client:
-                response = client.post(url, content=body, headers=headers)
+                response = client.post(
+                    url,
+                    content=body,
+                    headers=headers,
+                    extensions=request_extensions,
+                )
         except Exception as exc:
             should_retry = _schedule_retry(
                 delivery,
