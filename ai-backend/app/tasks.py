@@ -25,6 +25,7 @@ from app.models.scheduled_task import (
 )
 from app.models.scheduled_task_run import ScheduledTaskRun, ScheduledTaskRunStatus
 from app.models.storage_cleanup_outbox import StorageCleanupOutbox
+from app.models.webhook_delivery import WebhookDelivery
 from app.models.usage_log import UsageLog
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace, WorkspaceMember
@@ -1163,6 +1164,62 @@ def _run_storage_cleanup_outbox_batch(batch_size: int = 50) -> int:
                 complete_db.close()
     return len(claimed)
 
+
+def _run_webhook_delivery_outbox_batch(batch_size: int = 50) -> int:
+    """Re-enqueue due webhook deliveries and recover abandoned sends."""
+    now = datetime.now(timezone.utc)
+    stale_sending_before = now - timedelta(minutes=15)
+    db = SessionLocal()
+    try:
+        deliveries = (
+            db.query(WebhookDelivery)
+            .filter(
+                or_(
+                    and_(
+                        WebhookDelivery.status == "queued",
+                        or_(
+                            WebhookDelivery.next_attempt_at.is_(None),
+                            WebhookDelivery.next_attempt_at <= now,
+                        ),
+                    ),
+                    and_(
+                        WebhookDelivery.status == "sending",
+                        WebhookDelivery.updated_at <= stale_sending_before,
+                    ),
+                )
+            )
+            .order_by(WebhookDelivery.created_at.asc(), WebhookDelivery.id.asc())
+            .with_for_update(skip_locked=True)
+            .limit(max(1, min(batch_size, 200)))
+            .all()
+        )
+        delivery_ids = []
+        for delivery in deliveries:
+            if delivery.status == "sending":
+                # HTTP delivery has a strict 10-second client timeout. A send
+                # still marked active after 15 minutes is considered abandoned.
+                delivery.status = "queued"
+                delivery.next_attempt_at = now
+            delivery_ids.append(delivery.id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Could not claim webhook delivery outbox rows")
+        raise
+    finally:
+        db.close()
+
+    for delivery_id in delivery_ids:
+        try:
+            deliver_webhook_task.delay(delivery_id)
+        except Exception:
+            # Keep the durable row queued; the next Beat pass will retry enqueue.
+            logger.warning(
+                "Could not enqueue webhook delivery %s; it remains in the outbox",
+                delivery_id,
+            )
+    return len(delivery_ids)
+
 def _redis_ssl_options(redis_url: str) -> dict | None:
     """Require verified TLS only for Redis URLs that explicitly use rediss://."""
     if urlsplit(redis_url).scheme.lower() != "rediss":
@@ -1200,7 +1257,11 @@ try:
         "process-storage-cleanup-outbox": {
             "task": "process_storage_cleanup_outbox",
             "schedule": 60.0,
-        }
+        },
+        "recover-webhook-deliveries": {
+            "task": "recover_webhook_deliveries",
+            "schedule": 60.0,
+        },
     }
 
     @celery_app.task(name="send_email_task")
@@ -1230,6 +1291,10 @@ try:
     def process_storage_cleanup_outbox() -> int:
         return _run_storage_cleanup_outbox_batch()
 
+    @celery_app.task(name="recover_webhook_deliveries")
+    def recover_webhook_deliveries() -> int:
+        return _run_webhook_delivery_outbox_batch()
+
     _CELERY_AVAILABLE = True
 except ImportError:
     celery_app = None
@@ -1238,6 +1303,7 @@ except ImportError:
     execute_agent_job = None
     run_due_scheduled_tasks = None
     process_storage_cleanup_outbox = None
+    recover_webhook_deliveries = None
     _CELERY_AVAILABLE = False
     logger.info("مكتبة celery غير مثبّتة — المهام الخلفية غير مفعّلة")
 

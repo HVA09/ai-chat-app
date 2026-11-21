@@ -5,6 +5,7 @@ import pytest
 
 from app.models.user import User
 from app.models.webhook_delivery import WebhookDelivery
+from app import tasks as tasks_module
 from app.routers import api_keys as api_keys_router
 from app.routers import webhooks as webhooks_router
 from app.services import webhook_service
@@ -253,3 +254,194 @@ def test_delivery_sends_signed_request_and_marks_delivered(db_session, monkeypat
     assert delivery.response_status == 200
     assert sent["headers"]["X-Webhook-Id"] == "evt_delivery"
     assert sent["headers"]["X-Webhook-Signature"].startswith("sha256=")
+
+
+def test_webhook_delivery_outbox_requeues_due_and_recovers_stale_sends(
+    db_session, monkeypatch
+):
+    from datetime import datetime, timedelta, timezone
+    from app.models.webhook_endpoint import WebhookEndpoint
+
+    user = User(email="webhook-outbox@example.com", hashed_password="x")
+    db_session.add(user)
+    db_session.flush()
+    endpoint = WebhookEndpoint(
+        user_id=user.id,
+        name="Outbox",
+        url="https://example.test/hook",
+        secret_encrypted=encrypt_webhook_secret("whsec_outbox"),
+        event_types=["webhook.test"],
+        is_active=True,
+    )
+    db_session.add(endpoint)
+    db_session.flush()
+
+    due = WebhookDelivery(
+        webhook_endpoint_id=endpoint.id,
+        event_id="evt-outbox-due",
+        event_type="webhook.test",
+        payload={"kind": "due"},
+        status="queued",
+    )
+    stale = WebhookDelivery(
+        webhook_endpoint_id=endpoint.id,
+        event_id="evt-outbox-stale",
+        event_type="webhook.test",
+        payload={"kind": "stale"},
+        status="sending",
+        updated_at=datetime.now(timezone.utc) - timedelta(minutes=20),
+    )
+    future = WebhookDelivery(
+        webhook_endpoint_id=endpoint.id,
+        event_id="evt-outbox-future",
+        event_type="webhook.test",
+        payload={"kind": "future"},
+        status="queued",
+        next_attempt_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
+    db_session.add_all([due, stale, future])
+    db_session.commit()
+
+    queued_ids = []
+
+    class FakeTask:
+        def delay(self, delivery_id):
+            queued_ids.append(delivery_id)
+
+    # The outbox runner owns and closes its Session. Use an independent
+    # SAVEPOINT-backed session so it cannot close the fixture's db_session.
+    from sqlalchemy.orm import Session
+
+    worker_session = Session(
+        bind=db_session.connection(),
+        join_transaction_mode="create_savepoint",
+    )
+    monkeypatch.setattr(tasks_module, "SessionLocal", lambda: worker_session)
+    monkeypatch.setattr(tasks_module, "deliver_webhook_task", FakeTask())
+
+    due_id, stale_id = due.id, stale.id
+    assert tasks_module._run_webhook_delivery_outbox_batch() == 2
+    assert set(queued_ids) == {due_id, stale_id}
+    assert set(queued_ids) == {due.id, stale.id}
+    db_session.refresh(stale)
+    assert stale.status == "queued"
+    assert stale.next_attempt_at is not None
+    db_session.refresh(future)
+    assert future.status == "queued"
+
+
+def test_webhook_delivery_ignores_duplicate_task_while_sending(db_session, monkeypatch):
+    from app.models.webhook_endpoint import WebhookEndpoint
+
+    user = User(email="webhook-duplicate@example.com", hashed_password="x")
+    db_session.add(user)
+    db_session.flush()
+    endpoint = WebhookEndpoint(
+        user_id=user.id,
+        name="Duplicate",
+        url="https://example.test/hook",
+        secret_encrypted=encrypt_webhook_secret("whsec_duplicate"),
+        event_types=["webhook.test"],
+        is_active=True,
+    )
+    db_session.add(endpoint)
+    db_session.flush()
+    delivery = WebhookDelivery(
+        webhook_endpoint_id=endpoint.id,
+        event_id="evt-duplicate",
+        event_type="webhook.test",
+        payload={"hello": "world"},
+        status="sending",
+        attempt_count=1,
+    )
+    db_session.add(delivery)
+    db_session.commit()
+
+    def forbidden_http_client(*args, **kwargs):
+        raise AssertionError("duplicate delivery must not perform HTTP I/O")
+
+    monkeypatch.setattr(webhook_service.httpx, "Client", forbidden_http_client)
+    webhook_service.deliver_webhook_delivery(delivery.id, db=db_session)
+    db_session.refresh(delivery)
+    assert delivery.status == "sending"
+    assert delivery.attempt_count == 1
+
+
+
+def test_webhook_network_error_persists_failed_after_max_attempts(
+    db_session, monkeypatch
+):
+    from sqlalchemy.orm import Session
+    from app.models.webhook_endpoint import WebhookEndpoint
+    from app.services import webhook_service
+
+    user = User(email="webhook-max-attempts@example.com", hashed_password="x")
+    db_session.add(user)
+    db_session.flush()
+    endpoint = WebhookEndpoint(
+        user_id=user.id,
+        name="Max Attempts",
+        url="https://example.test/hook",
+        secret_encrypted=encrypt_webhook_secret("whsec_max_attempts"),
+        event_types=["webhook.test"],
+        is_active=True,
+    )
+    db_session.add(endpoint)
+    db_session.flush()
+    delivery = WebhookDelivery(
+        webhook_endpoint_id=endpoint.id,
+        event_id="evt-max-attempts",
+        event_type="webhook.test",
+        payload={"kind": "max-attempts"},
+        status="queued",
+        attempt_count=4,
+    )
+    db_session.add(delivery)
+    db_session.commit()
+
+    monkeypatch.setattr(webhook_service, "validate_webhook_url", lambda url: url)
+
+    class FailingClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def post(self, *args, **kwargs):
+            raise OSError("simulated network outage")
+
+    monkeypatch.setattr(webhook_service.httpx, "Client", FailingClient)
+
+    # Give the delivery function an owned session, then verify state using a
+    # separately opened session after the owned one has been closed.
+    connection = db_session.connection()
+    session_factory = lambda: Session(
+        bind=connection,
+        join_transaction_mode="create_savepoint",
+    )
+    monkeypatch.setattr("app.database.SessionLocal", session_factory)
+    webhook_service.deliver_webhook_delivery(delivery.id)
+
+    verification_session = session_factory()
+    try:
+        persisted = verification_session.get(WebhookDelivery, delivery.id)
+        assert persisted.status == "failed"
+        assert persisted.attempt_count == 5
+        assert persisted.next_attempt_at is None
+    finally:
+        verification_session.close()
+
+    queued_ids = []
+
+    class FakeTask:
+        def delay(self, delivery_id):
+            queued_ids.append(delivery_id)
+
+    monkeypatch.setattr(tasks_module, "SessionLocal", session_factory)
+    monkeypatch.setattr(tasks_module, "deliver_webhook_task", FakeTask())
+    assert tasks_module._run_webhook_delivery_outbox_batch() == 0
+    assert queued_ids == []

@@ -209,6 +209,9 @@ def _schedule_retry(delivery: WebhookDelivery, db: Session, *, error: str, respo
         delivery.last_error = error[:1000]
         delivery.response_status = response_status
         delivery.next_attempt_at = None
+        # Persist the terminal state even when the caller returns immediately
+        # from the network-error path and closes its owned session.
+        db.commit()
         return False
 
     delay = _retry_delay(delivery.attempt_count)
@@ -228,8 +231,18 @@ def deliver_webhook_delivery(delivery_id: int, db: Session | None = None) -> Non
         db = SessionLocal()
 
     try:
-        delivery = db.get(WebhookDelivery, delivery_id)
-        if delivery is None or delivery.status == "delivered":
+        delivery = (
+            db.query(WebhookDelivery)
+            .filter(WebhookDelivery.id == delivery_id)
+            .with_for_update()
+            .first()
+        )
+        if delivery is None or delivery.status != "queued":
+            return
+        if (
+            delivery.next_attempt_at is not None
+            and delivery.next_attempt_at > datetime.now(timezone.utc)
+        ):
             return
 
         endpoint = db.get(WebhookEndpoint, delivery.webhook_endpoint_id)
