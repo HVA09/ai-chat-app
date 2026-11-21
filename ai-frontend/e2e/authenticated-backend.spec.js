@@ -25,7 +25,7 @@ test("authenticates against the disposable backend, loads the account, and uploa
   const uploadResponse = page.waitForResponse((response) =>
     new URL(response.url()).pathname === "/files/upload" && response.status() === 201
   );
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][accept=".txt,.csv,.pdf,.docx,.xlsx,image/*"]').setInputFiles({
     name: "playwright-attachment.txt",
     mimeType: "text/plain",
     buffer: Buffer.from("Disposable Playwright attachment test content."),
