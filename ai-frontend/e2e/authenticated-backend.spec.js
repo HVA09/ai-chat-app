@@ -71,7 +71,9 @@ test("authenticates against the disposable backend, loads the account, and uploa
   const streamRequest = page.waitForRequest((request) =>
     new URL(request.url()).pathname === "/chat/stream"
   );
-  await page.locator(".chat-send-button").click({ force: true });
+  const sendButton = page.locator(".chat-send-button");
+  await expect(sendButton).toBeEnabled({ timeout: 10000 });
+  await sendButton.click();
   await expect(streamRequest).resolves.toBeTruthy();
   await expect(page.getByText("Deterministic streaming response")).toBeVisible({ timeout: 10000 });
 });
