@@ -21,7 +21,6 @@ def test_safe_endpoint_preserves_path_and_port_without_credentials():
         "https://objects.example.test#fragment",
         "https://objects.example.test:invalid",
         "https://user:password@objects.example.test",
-        "https://user:password@objects.example.test",
     ],
 )
 def test_safe_endpoint_rejects_unsafe_or_ambiguous_urls(value):
