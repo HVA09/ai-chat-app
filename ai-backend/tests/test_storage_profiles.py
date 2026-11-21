@@ -47,3 +47,57 @@ def test_get_or_create_active_profile_uses_s3_identity_without_secret_values(mon
     assert "do-not-persist-access" not in repr(params)
     assert "do-not-persist-secret" not in repr(params)
     db.get.assert_called_once()
+
+
+def test_concurrent_profile_creation_converges_to_one_postgres_row(
+    db_session, monkeypatch, tmp_path
+):
+    """Independent PostgreSQL sessions must converge on the deterministic profile."""
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from sqlalchemy import select, func
+    from sqlalchemy.orm import sessionmaker
+
+    from app.models.storage_profile import StorageProfile
+
+    test_engine = db_session.get_bind().engine
+    sessions = sessionmaker(bind=test_engine, expire_on_commit=False)
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path / "concurrent-profile"))
+    monkeypatch.setattr(storage_profiles, "_s3_enabled", lambda: False)
+
+    barrier = Barrier(2)
+
+    def create_profile():
+        with sessions() as session:
+            barrier.wait(timeout=5)
+            profile = storage_profiles.get_or_create_active_storage_profile(session)
+            profile_id = profile.id
+            session.commit()
+            return profile_id
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(create_profile)
+            second = executor.submit(create_profile)
+            first_id = first.result(timeout=15)
+            second_id = second.result(timeout=15)
+
+        assert first_id == second_id
+        with sessions() as session:
+            count = session.scalar(
+                select(func.count())
+                .select_from(StorageProfile)
+                .where(StorageProfile.id == first_id)
+            )
+            assert count == 1
+            session.query(StorageProfile).filter(
+                StorageProfile.id == first_id
+            ).delete(synchronize_session=False)
+            session.commit()
+    finally:
+        with sessions() as session:
+            session.query(StorageProfile).filter(
+                StorageProfile.root_path == str(tmp_path / "concurrent-profile")
+            ).delete(synchronize_session=False)
+            session.commit()
