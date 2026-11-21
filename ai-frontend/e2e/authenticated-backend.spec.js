@@ -17,8 +17,15 @@ test("authenticates against the disposable backend, loads the account, and uploa
   const currentUserResponse = page.waitForResponse((response) =>
     new URL(response.url()).pathname === "/users/me" && response.status() === 200
   );
+  const conversationsResponse = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === "/conversations" &&
+    response.request().method() === "GET" &&
+    response.status() === 200
+  );
   await page.getByRole("button", { name: "دخول" }).click();
   await expect(currentUserResponse).resolves.toBeTruthy();
+  const conversationList = await conversationsResponse;
+  expect(await conversationList.json()).toEqual([]);
 
   await expect(page.getByPlaceholder("اكتب رسالتك هنا...")).toBeVisible();
 
