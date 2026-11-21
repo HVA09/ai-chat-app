@@ -59,7 +59,7 @@ test("authenticates against the disposable backend, loads the account, and uploa
         "data: [DONE]",
         "",
         "",
-      ].join("\\n"),
+      ].join("\n"),
     });
   });
   await page.route("**/conversations/987654/generate-title", async (route) => {
