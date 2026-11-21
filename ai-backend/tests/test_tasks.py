@@ -17,6 +17,9 @@ def test_celery_app_has_production_scheduled_task():
     cleanup_entry = schedule["process-storage-cleanup-outbox"]
     assert cleanup_entry["task"] == "process_storage_cleanup_outbox"
     assert cleanup_entry["schedule"] == 60.0
+    webhook_entry = schedule["recover-webhook-deliveries"]
+    assert webhook_entry["task"] == "recover_webhook_deliveries"
+    assert webhook_entry["schedule"] == 60.0
 
 
 def test_celery_redis_tls_is_required_only_for_rediss_urls():
