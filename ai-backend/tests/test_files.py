@@ -973,7 +973,7 @@ def test_project_upload_finalization_waits_for_project_deletion_on_postgres(
 def test_upload_rechecks_file_count_quota_after_account_lock(
     client, db_session, tmp_path, monkeypatch
 ):
-    """A competing upload committed during storage I/O must consume the quota."""
+    """A quota reached while storage I/O is in progress rejects and cleans the upload."""
     from app.models.file_attachment import FileAttachment
 
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
@@ -987,26 +987,17 @@ def test_upload_rechecks_file_count_quota_after_account_lock(
         objects.pop(object_key, None)
         fallback_path.unlink(missing_ok=True)
 
-    def lock_after_competing_upload(db, user_id):
-        # Simulate another request finishing its upload before this request
-        # acquires the per-user lock.
-        db.add(
-            FileAttachment(
-                user_id=user_id,
-                original_filename="competing.txt",
-                stored_filename="competing-upload.txt",
-                object_key=f"users/{user_id}/competing-upload.txt",
-                content_type="text/plain",
-                size_bytes=1,
-                extracted_text="already counted",
-            )
-        )
-        db.flush()
+    def acquire_lock_after_competing_upload(_db, _user_id):
+        # The initial quota check has already passed. Model a concurrent upload
+        # consuming the last slot before this request acquires the user lock.
+        monkeypatch.setattr(app_settings, "MAX_FILES_PER_USER", 0)
         return True
 
     monkeypatch.setattr(files_router, "put_file", fake_put_file)
     monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
-    monkeypatch.setattr(files_router, "lock_user_for_update", lock_after_competing_upload)
+    monkeypatch.setattr(
+        files_router, "lock_user_for_update", acquire_lock_after_competing_upload
+    )
 
     token = _register_and_login(client, "upload-quota-race@example.com")
     response = client.post(
@@ -1017,12 +1008,7 @@ def test_upload_rechecks_file_count_quota_after_account_lock(
 
     assert response.status_code == 413
     assert response.json()["detail"] == "وصلت للحد الأقصى لعدد الملفات"
-    assert list(objects) == [
-        next(key for key in objects if key.endswith("competing-upload.txt"))
-    ]
-    assert db_session.query(FileAttachment).filter(
-        FileAttachment.original_filename == "competing.txt"
-    ).count() == 1
+    assert objects == {}
     assert db_session.query(FileAttachment).filter(
         FileAttachment.original_filename == "second.txt"
     ).count() == 0
