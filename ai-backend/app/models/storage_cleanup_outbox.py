@@ -44,6 +44,8 @@ class StorageCleanupOutbox(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Unique per claim; fences stale workers after a lease is reclaimed.
+    lease_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
