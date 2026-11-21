@@ -55,7 +55,10 @@ def decrypt_webhook_secret(secret_encrypted: str) -> str:
 
 
 def _is_public_ip(address: str) -> bool:
-    ip = ipaddress.ip_address(address)
+    try:
+        ip = ipaddress.ip_address(address)
+    except (TypeError, ValueError):
+        return False
     return ip.is_global
 
 
