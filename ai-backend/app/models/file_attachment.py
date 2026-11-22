@@ -33,11 +33,10 @@ class FileAttachment(Base):
     stored_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     object_key: Mapped[str | None] = mapped_column(String(512), unique=True, nullable=True, index=True)
     storage_profile_id: Mapped[str | None] = mapped_column(ForeignKey("storage_profiles.id", ondelete="RESTRICT"), nullable=True, index=True)
+    deletion_status: Mapped[str] = mapped_column(String(24), nullable=False, default="available", server_default="available")
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Current source and indexed vectors are tracked separately. Legacy rows
-    # remain NULL until their existing chunks are safely reindexed.
     extracted_text_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     indexed_text_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     indexed_embedding_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -59,7 +58,6 @@ class FileAttachment(Base):
     assistant_links = relationship(
         "AssistantFileLink", back_populates="file", cascade="all, delete-orphan", passive_deletes=True
     )
-
 
 
 def extracted_text_fingerprint(text: str | None) -> str | None:
