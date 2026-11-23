@@ -17,6 +17,7 @@ def log_event(
     workspace_id: int | None = None,
     *,
     commit: bool = True,
+    emit_log: bool = True,
 ) -> None:
     db.add(
         AuditLog(
@@ -28,5 +29,6 @@ def log_event(
     )
     if commit:
         db.commit()
-    scope = f" workspace={workspace_id}" if workspace_id is not None else ""
-    logger.info("[%s]%s %s", event_type, scope, description)
+    if emit_log:
+        scope = f" workspace={workspace_id}" if workspace_id is not None else ""
+        logger.info("[%s]%s %s", event_type, scope, description)
