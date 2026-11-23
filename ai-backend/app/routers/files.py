@@ -401,6 +401,8 @@ async def upload_file(
             # longer running. Persist cleanup intent before leaving the request;
             # never assume a failed multipart/object write left no remote bytes.
             db.rollback()
+            # Match the account-deletion lock order before touching lease state.
+            lock_user_for_update(db, upload_user_id)
             marked = mark_upload_lease_cleanup_pending(
                 db,
                 lease_id=upload_lease_id,
@@ -435,6 +437,10 @@ async def upload_file(
         # Persist the delete intent before touching storage. If this DB write
         # fails, propagate it and leave the object untouched for diagnosis.
         db.rollback()
+        # Match account deletion's User -> Lease lock order. A missing user
+        # means deletion already committed; the request's synchronous writer
+        # has also returned before this cleanup path is reached.
+        lock_user_for_update(db, upload_user_id)
         # This request owns the synchronous storage/extraction work. Cleanup
         # is reached only after that work has returned or raised, never from a
         # timeout-based background reclaimer.
