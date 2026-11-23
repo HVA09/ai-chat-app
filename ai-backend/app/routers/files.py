@@ -342,6 +342,10 @@ async def upload_file(
     )
     upload_lease_id = upload_lease.id
     upload_lease_generation = upload_lease.generation
+    # Preserve immutable ingress credentials: a later rollback restores this
+    # generation/token after the queued/claimed transition is rolled back.
+    ingress_lease_generation = upload_lease_generation
+    ingress_lease_token = upload_lease_token
     db.commit()
 
     # Quotas, ownership and workspace access have been checked. Do not hold a
@@ -444,11 +448,14 @@ async def upload_file(
         # This request owns the synchronous storage/extraction work. Cleanup
         # is reached only after that work has returned or raised, never from a
         # timeout-based background reclaimer.
+        # queue/claim are uncommitted until attachment finalization. The
+        # rollback above restores the durable receiving lease, so use its
+        # original fencing credentials rather than the rolled-back claim.
         marked = mark_upload_lease_cleanup_pending(
             db,
             lease_id=upload_lease_id,
-            generation=upload_lease_generation,
-            owner_token=upload_lease_token,
+            generation=ingress_lease_generation,
+            owner_token=ingress_lease_token,
         )
         if not marked:
             # A lost fencing token means this request no longer has deletion
