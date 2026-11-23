@@ -397,6 +397,27 @@ async def upload_file(
         try:
             put_file(destination, object_key, sniffed)
         except StorageError as exc:
+            # The synchronous storage call has returned, so its writer is no
+            # longer running. Persist cleanup intent before leaving the request;
+            # never assume a failed multipart/object write left no remote bytes.
+            db.rollback()
+            marked = mark_upload_lease_cleanup_pending(
+                db,
+                lease_id=upload_lease_id,
+                generation=upload_lease_generation,
+                owner_token=upload_lease_token,
+            )
+            if marked:
+                enqueue_upload_cleanup_intent(
+                    db,
+                    user_id=upload_user_id,
+                    object_key=object_key,
+                    lease_id=upload_lease_id,
+                    generation=upload_lease_generation,
+                )
+                db.commit()
+            else:
+                db.rollback()
             destination.unlink(missing_ok=True)
             raise HTTPException(status_code=503, detail="تعذر تخزين الملف بشكل دائم") from exc
     finally:
@@ -417,12 +438,17 @@ async def upload_file(
         # This request owns the synchronous storage/extraction work. Cleanup
         # is reached only after that work has returned or raised, never from a
         # timeout-based background reclaimer.
-        mark_upload_lease_cleanup_pending(
+        marked = mark_upload_lease_cleanup_pending(
             db,
             lease_id=upload_lease_id,
             generation=upload_lease_generation,
             owner_token=upload_lease_token,
         )
+        if not marked:
+            # A lost fencing token means this request no longer has deletion
+            # authority. Leave the object untouched for explicit recovery.
+            db.rollback()
+            return
         intent = enqueue_upload_cleanup_intent(
             db,
             user_id=upload_user_id,
