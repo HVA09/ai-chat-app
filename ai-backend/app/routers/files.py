@@ -39,6 +39,14 @@ from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
 from app.services.project_access import can_edit_project
 from app.services.project_file_retention import lock_user_for_update
+from app.services.upload_leases import (
+    create_upload_lease,
+    queue_upload_lease,
+    claim_upload_lease,
+    heartbeat_upload_lease,
+    mark_upload_lease_cleanup_pending,
+    finalize_upload_lease,
+)
 from app.services.upload_cleanup_intents import (
     enqueue_upload_cleanup_intent,
     record_upload_cleanup_attempt,
@@ -324,6 +332,18 @@ async def upload_file(
     object_key = f"users/{current_user.id}/{stored_filename}"
     destination = _user_upload_dir(current_user.id) / stored_filename
 
+    # Persist an ingress lease under the same User-row lock used by account
+    # deletion before receiving bytes or writing a managed object.
+    if not lock_user_for_update(db, upload_user_id):
+        db.rollback()
+        raise HTTPException(status_code=404, detail="الحساب غير موجود")
+    upload_lease, upload_lease_token = create_upload_lease(
+        db, user_id=upload_user_id, object_key=object_key
+    )
+    upload_lease_id = upload_lease.id
+    upload_lease_generation = upload_lease.generation
+    db.commit()
+
     # Quotas, ownership and workspace access have been checked. Do not hold a
     # DB checkout while awaiting upload bytes or writing the object to storage.
     commit_and_release_connection(db)
@@ -346,6 +366,21 @@ async def upload_file(
                 if len(header) < 4096:
                     header.extend(chunk[: 4096 - len(header)])
                 tmp.write(chunk)
+                # Heartbeat only after each awaited body chunk. The user lock
+                # serializes this ownership check with account deletion.
+                if not lock_user_for_update(db, upload_user_id):
+                    db.rollback()
+                    raise HTTPException(status_code=404, detail="الحساب غير موجود")
+                if not heartbeat_upload_lease(
+                    db,
+                    lease_id=upload_lease_id,
+                    generation=upload_lease_generation,
+                    owner_token=upload_lease_token,
+                    lease_seconds=300,
+                ):
+                    db.rollback()
+                    raise HTTPException(status_code=409, detail="انتهت ملكية جلسة رفع الملف")
+                db.commit()
 
         sniffed = _sniff_content_type(bytes(header), file.content_type)
         if sniffed is None or sniffed not in ALLOWED_CONTENT_TYPES:
@@ -379,10 +414,21 @@ async def upload_file(
         # Persist the delete intent before touching storage. If this DB write
         # fails, propagate it and leave the object untouched for diagnosis.
         db.rollback()
+        # This request owns the synchronous storage/extraction work. Cleanup
+        # is reached only after that work has returned or raised, never from a
+        # timeout-based background reclaimer.
+        mark_upload_lease_cleanup_pending(
+            db,
+            lease_id=upload_lease_id,
+            generation=upload_lease_generation,
+            owner_token=upload_lease_token,
+        )
         intent = enqueue_upload_cleanup_intent(
             db,
             user_id=upload_user_id,
             object_key=object_key,
+            lease_id=upload_lease_id,
+            generation=upload_lease_generation,
         )
         if intent is None:
             # A committed attachment still owns this key; fail closed.
@@ -435,6 +481,25 @@ async def upload_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="الحساب غير موجود",
         )
+
+    # Move the completed ingress to a fenced processing generation before
+    # extraction or attachment creation. A timeout alone never reclaims it.
+    if not queue_upload_lease(
+        db,
+        lease_id=upload_lease_id,
+        generation=upload_lease_generation,
+        owner_token=upload_lease_token,
+    ):
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise HTTPException(status_code=409, detail="تعذر تثبيت ملكية جلسة الرفع")
+    claimed_lease = claim_upload_lease(db, lease_id=upload_lease_id, lease_seconds=300)
+    if claimed_lease is None:
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise HTTPException(status_code=409, detail="تعذر بدء معالجة الملف")
+    upload_lease_generation, upload_lease_token = claimed_lease
+    db.commit()
 
     extracted_text = None
     if sniffed is not None:
@@ -504,6 +569,14 @@ async def upload_file(
     db.add(attachment)
     try:
         db.flush()
+        if not finalize_upload_lease(
+            db,
+            lease_id=upload_lease_id,
+            generation=upload_lease_generation,
+            owner_token=upload_lease_token,
+            attachment_id=attachment.id,
+        ):
+            raise RuntimeError("Upload lease ownership was lost before attachment commit")
     except Exception:
         db.rollback()
         cleanup_unfinalized_upload()
