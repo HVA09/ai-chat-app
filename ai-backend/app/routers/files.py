@@ -8,10 +8,12 @@ from pathlib import Path
 import tempfile
 import zipfile
 from sqlalchemy import and_, case, func
+from sqlalchemy.exc import IntegrityError
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import ObjectDeletedError, StaleDataError
 
 from app.config import settings
 from app.database import commit_and_release_connection, get_db
@@ -36,6 +38,7 @@ from app.services.rag import (
 from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
 from app.services.project_access import can_edit_project
+from app.services.project_file_retention import lock_user_for_update
 from app.services.workspace_rbac import has_workspace_permission
 
 router = APIRouter(prefix="/files", tags=["Files"])
@@ -276,6 +279,10 @@ async def upload_file(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Keep the scalar identity: the ORM User instance can be expired/deleted
+    # by a concurrent account deletion while indexing is awaiting external I/O.
+    upload_user_id = current_user.id
+    upload_user_email = current_user.email
     project = None
     if project_id is not None:
         project = _get_accessible_project(project_id, current_user, db)
@@ -357,6 +364,36 @@ async def upload_file(
         if temp_path:
             temp_path.unlink(missing_ok=True)
 
+    def cleanup_unfinalized_upload() -> None:
+        try:
+            delete_stored_file(object_key, destination)
+        except StorageError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="تعذر تنظيف الملف الذي لم يكتمل تسجيله؛ يلزم إعادة محاولة التنظيف.",
+            ) from exc
+
+    # Match account deletion's user -> workspace lock order immediately after
+    # external storage I/O. Hold the user lock through extraction and finalization
+    # so deletion cannot remove the local path or miss a late S3 object.
+    if not lock_user_for_update(db, upload_user_id):
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الحساب غير موجود",
+        )
+    # The request-scoped ORM instance may have been expired or deleted while
+    # storage I/O was in flight. Rebind only after the scalar-ID lock succeeds.
+    current_user = db.get(User, upload_user_id)
+    if current_user is None:
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الحساب غير موجود",
+        )
+
     extracted_text = None
     if sniffed is not None:
         try:
@@ -366,13 +403,16 @@ async def upload_file(
                 db,
                 "file_text_extraction_failed",
                 f"فشل استخراج نص الملف: {file.filename or stored_filename} ({exc})",
-                current_user.id,
+                upload_user_id,
+                commit=False,
             )
+        except Exception:
+            db.rollback()
+            cleanup_unfinalized_upload()
+            raise
 
     if workspace_id is not None:
-        # The upload body is read without holding a DB connection. Before the
-        # attachment row is inserted, serialize against project/account
-        # deletion and revalidate the project after acquiring the same lock.
+        # Finalization locks user first, then workspace, matching account-retention order.
         locked_workspace = (
             db.query(Workspace.id)
             .filter(Workspace.id == workspace_id)
@@ -380,12 +420,17 @@ async def upload_file(
             .first()
         )
         if locked_workspace is None:
-            delete_stored_file(object_key, destination)
+            cleanup_unfinalized_upload()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="مساحة العمل غير موجودة",
             )
-        _get_workspace_membership(workspace_id, current_user, db)
+        try:
+            _get_workspace_membership(workspace_id, current_user, db)
+        except HTTPException:
+            db.rollback()
+            cleanup_unfinalized_upload()
+            raise
         if project_id is not None:
             current_project = (
                 db.query(WorkspaceProject)
@@ -397,14 +442,14 @@ async def upload_file(
                 .first()
             )
             if current_project is None:
-                delete_stored_file(object_key, destination)
+                cleanup_unfinalized_upload()
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="المشروع غير موجود",
                 )
 
     attachment = FileAttachment(
-        user_id=current_user.id,
+        user_id=upload_user_id,
         workspace_id=workspace_id,
         project_id=project_id,
         original_filename=(file.filename or stored_filename)[:255],
@@ -415,28 +460,74 @@ async def upload_file(
         extracted_text=extracted_text,
     )
     db.add(attachment)
-    db.flush()
+    try:
+        db.flush()
+    except Exception:
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise
 
+    attachment_committed = False
     if extracted_text:
         # The file row needs an ID before chunk persistence, but the embedding
         # request is external I/O. Commit the attachment before that wait.
-        commit_and_release_connection(db)
+        try:
+            commit_and_release_connection(db)
+        except Exception:
+            db.rollback()
+            cleanup_unfinalized_upload()
+            raise
+        attachment_committed = True
         try:
             indexed_chunks = index_file_chunks(db, attachment)
+            if not lock_user_for_update(db, upload_user_id):
+                db.rollback()
+                cleanup_unfinalized_upload()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="الحساب غير موجود",
+                )
             if indexed_chunks:
                 log_event(
                     db,
                     "file_rag_indexed",
                     f"تم فهرسة {indexed_chunks} مقطعًا للملف {attachment.original_filename}",
-                    current_user.id,
+                    upload_user_id,
+                    commit=False,
                 )
         except EmbeddingServiceError as exc:
+            # The attachment was committed before external embedding I/O. The
+            # account may have been deleted while that request was in flight;
+            # never write an audit row or continue linking a deleted attachment.
+            db.rollback()
+            if not lock_user_for_update(db, upload_user_id):
+                cleanup_unfinalized_upload()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="الحساب غير موجود",
+                ) from exc
             log_event(
                 db,
                 "file_rag_index_failed",
                 f"تعذر فهرسة الملف {attachment.original_filename}: {exc}",
-                current_user.id,
+                upload_user_id,
+                commit=False,
             )
+        except (IntegrityError, ObjectDeletedError, StaleDataError) as exc:
+            # Account deletion may commit while the external embedding request
+            # is in flight. The attachment may be cascade-deleted before chunk
+            # insertion (IntegrityError), while ORM metadata is being updated
+            # (StaleDataError), or when a previously loaded User instance is
+            # expired after its row is cascade-deleted (ObjectDeletedError).
+            # Use the captured scalar ID: reading current_user.id after deletion
+            # can itself raise ObjectDeletedError. Preserve unrelated failures.
+            db.rollback()
+            if not lock_user_for_update(db, upload_user_id):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="الحساب غير موجود",
+                ) from exc
+            raise
 
     if conversation_id is not None:
         db.add(
@@ -445,20 +536,28 @@ async def upload_file(
                 file_id=attachment.id,
             )
         )
-    db.commit()
-    db.refresh(attachment)
     log_event(
         db,
         "file_uploaded",
-        f"رفع ملف: {attachment.original_filename} بواسطة {current_user.email}",
-        current_user.id,
+        f"رفع ملف: {attachment.original_filename} بواسطة {upload_user_email}",
+        upload_user_id,
+        commit=False,
     )
-    return _file_response(
+    response = _file_response(
         attachment,
         current_user,
         db,
         is_attached=conversation_id is not None,
     )
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        if not attachment_committed:
+            cleanup_unfinalized_upload()
+        raise
+    attachment_committed = True
+    return response
 
 
 @router.get("", response_model=list[FileOut])
