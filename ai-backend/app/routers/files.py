@@ -376,7 +376,18 @@ async def upload_file(
     # Match account deletion's user -> workspace lock order immediately after
     # external storage I/O. Hold the user lock through extraction and finalization
     # so deletion cannot remove the local path or miss a late S3 object.
-    if not lock_user_for_update(db, current_user.id):
+    if not lock_user_for_update(db, upload_user_id):
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الحساب غير موجود",
+        )
+    # The request-scoped ORM instance may have been expired or deleted while
+    # storage I/O was in flight. Rebind only after the scalar-ID lock succeeds.
+    current_user = db.get(User, upload_user_id)
+    if current_user is None:
+        db.rollback()
         cleanup_unfinalized_upload()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -438,7 +449,7 @@ async def upload_file(
                 )
 
     attachment = FileAttachment(
-        user_id=current_user.id,
+        user_id=upload_user_id,
         workspace_id=workspace_id,
         project_id=project_id,
         original_filename=(file.filename or stored_filename)[:255],
