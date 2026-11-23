@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy.orm.exc import StaleDataError
+from sqlalchemy.orm.exc import ObjectDeletedError, StaleDataError
 
 from app.config import settings
 from app.database import commit_and_release_connection, get_db
@@ -279,6 +279,9 @@ async def upload_file(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Keep the scalar identity: the ORM User instance can be expired/deleted
+    # by a concurrent account deletion while indexing is awaiting external I/O.
+    upload_user_id = current_user.id
     project = None
     if project_id is not None:
         project = _get_accessible_project(project_id, current_user, db)
@@ -478,14 +481,16 @@ async def upload_file(
                 f"تعذر فهرسة الملف {attachment.original_filename}: {exc}",
                 current_user.id,
             )
-        except (IntegrityError, StaleDataError) as exc:
+        except (IntegrityError, ObjectDeletedError, StaleDataError) as exc:
             # Account deletion may commit while the external embedding request
             # is in flight. The attachment may be cascade-deleted before chunk
-            # insertion (IntegrityError) or while ORM metadata is being updated
-            # (StaleDataError). Translate only a confirmed missing account into
-            # 404; preserve unrelated persistence failures.
+            # insertion (IntegrityError), while ORM metadata is being updated
+            # (StaleDataError), or when a previously loaded User instance is
+            # expired after its row is cascade-deleted (ObjectDeletedError).
+            # Use the captured scalar ID: reading current_user.id after deletion
+            # can itself raise ObjectDeletedError. Preserve unrelated failures.
             db.rollback()
-            if not lock_user_for_update(db, current_user.id):
+            if not lock_user_for_update(db, upload_user_id):
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="الحساب غير موجود",
