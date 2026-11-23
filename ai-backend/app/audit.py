@@ -15,6 +15,9 @@ def log_event(
     description: str,
     user_id: int | None = None,
     workspace_id: int | None = None,
+    *,
+    commit: bool = True,
+    emit_log: bool = True,
 ) -> None:
     db.add(
         AuditLog(
@@ -24,6 +27,10 @@ def log_event(
             description=description,
         )
     )
-    db.commit()
-    scope = f" workspace={workspace_id}" if workspace_id is not None else ""
-    logger.info("[%s]%s %s", event_type, scope, description)
+    if commit:
+        db.commit()
+    if emit_log:
+        scope = f" workspace={workspace_id}" if workspace_id is not None else ""
+        # Descriptions can contain user-controlled text. Keep the full detail
+        # in the structured audit table, but never copy it into application logs.
+        logger.info("[%s]%s", event_type, scope)

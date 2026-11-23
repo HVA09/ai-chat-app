@@ -1,6 +1,8 @@
 """
 اختبارات المرحلة السادسة: رفع الملفات وإدارتها
 """
+
+import pytest
 from app.config import settings as app_settings
 from app.routers import files as files_router
 
@@ -95,6 +97,15 @@ def test_list_files(client, tmp_path, monkeypatch):
 def test_download_file_returns_original_bytes(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     events = []
+    token = _register_and_login(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    upload_response = client.post("/files/upload", files={"file": ("note.csv", b"a,b,c\n1,2,3", "text/csv")}, headers=headers)
+    assert upload_response.status_code == 201, upload_response.text
+    file_id = upload_response.json()["id"]
+
+    # Observe only the download boundary. Upload itself must use the real
+    # commit/release helper so its attachment remains committed after an
+    # embedding-provider failure rolls back the indexing transaction.
     monkeypatch.setattr(
         files_router,
         "commit_and_release_connection",
@@ -107,10 +118,6 @@ def test_download_file_returns_original_bytes(client, tmp_path, monkeypatch):
         return original_open_file(*args, **kwargs)
 
     monkeypatch.setattr(files_router, "open_file", track_open_file)
-    token = _register_and_login(client)
-    headers = {"Authorization": f"Bearer {token}"}
-    upload_response = client.post("/files/upload", files={"file": ("note.csv", b"a,b,c\n1,2,3", "text/csv")}, headers=headers)
-    file_id = upload_response.json()["id"]
     events.clear()
     download_response = client.get(f"/files/{file_id}", headers=headers)
     assert download_response.status_code == 200
@@ -631,6 +638,590 @@ def test_upload_preserves_original_file_when_text_extraction_fails(
     assert downloaded.content == payload
 
 
+
+
+@pytest.mark.parametrize("delete_before_object_write", [True, False])
+def test_personal_upload_cannot_orphan_object_during_account_deletion(
+    db_session, tmp_path, monkeypatch, delete_before_object_write
+):
+    """Serialize personal-upload finalization with account deletion on PostgreSQL."""
+    import asyncio
+    from io import BytesIO
+    from threading import Event, Thread
+    from uuid import uuid4
+
+    import pytest
+    from sqlalchemy.orm import sessionmaker
+    from starlette.datastructures import Headers, UploadFile
+
+    from app.config import settings
+    from app.models.file_attachment import FileAttachment
+    from app.models.user import User
+    from app.routers import files as files_router
+    from app.routers import users as users_router
+    from app.schemas.user import DeleteAccountRequest
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(users_router, "verify_password", lambda *_args: True)
+    monkeypatch.setattr(files_router, "extract_text", lambda *_args, **_kwargs: None)
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    creator = session_factory()
+    user = User(
+        email=f"personal-upload-delete-{suffix}@example.test",
+        hashed_password="test-only-hash",
+    )
+    creator.add(user)
+    creator.commit()
+    user_id = user.id
+    creator.close()
+
+    objects = {}
+    put_started = Event()
+    allow_object_write = Event()
+    delete_finished = Event()
+    upload_errors = []
+    delete_errors = []
+
+    def fake_put_file(path, object_key, _content_type):
+        payload = path.read_bytes()
+        put_started.set()
+        if delete_before_object_write and not allow_object_write.wait(10):
+            raise AssertionError("account deletion did not finish before object write")
+        objects[object_key] = payload
+
+    def fake_delete_file(object_key, fallback_path):
+        objects.pop(object_key, None)
+        fallback_path.unlink(missing_ok=True)
+
+    def fake_delete_user_objects(_user_id):
+        objects.clear()
+
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
+    monkeypatch.setattr(users_router, "delete_user_objects", fake_delete_user_objects)
+
+    def run_upload():
+        try:
+            with session_factory() as upload_db:
+                upload_db.begin()
+                current_user = upload_db.get(User, user_id)
+                upload = UploadFile(
+                    filename="personal.txt",
+                    file=BytesIO(b"personal upload during account deletion"),
+                    headers=Headers({"content-type": "text/plain"}),
+                )
+                asyncio.run(
+                    files_router.upload_file(
+                        upload,
+                        current_user=current_user,
+                        db=upload_db,
+                    )
+                )
+        except BaseException as exc:
+            upload_errors.append(exc)
+
+    def run_delete():
+        try:
+            with session_factory() as delete_db:
+                delete_db.begin()
+                current_user = delete_db.get(User, user_id)
+                users_router.delete_account(
+                    DeleteAccountRequest(password="test-password"),
+                    current_user,
+                    delete_db,
+                )
+        except BaseException as exc:
+            delete_errors.append(exc)
+        finally:
+            delete_finished.set()
+
+    upload_thread = None
+    try:
+        if delete_before_object_write:
+            upload_thread = Thread(target=run_upload, daemon=True)
+            upload_thread.start()
+            assert put_started.wait(10), "personal upload did not reach storage I/O"
+
+            delete_thread = Thread(target=run_delete, daemon=True)
+            delete_thread.start()
+            assert delete_finished.wait(10), "account deletion did not finish"
+            allow_object_write.set()
+            upload_thread.join(timeout=10)
+            delete_thread.join(timeout=10)
+            assert not upload_thread.is_alive()
+            assert not delete_thread.is_alive()
+            assert len(upload_errors) == 1
+            from fastapi import HTTPException
+            assert isinstance(upload_errors[0], HTTPException)
+            assert upload_errors[0].status_code == 404
+        else:
+            run_upload()
+            assert upload_errors == []
+            assert len(objects) == 1
+            run_delete()
+            assert delete_finished.is_set()
+
+        assert delete_errors == []
+        assert objects == {}
+        with session_factory() as verify:
+            assert verify.get(User, user_id) is None
+            assert verify.query(FileAttachment).filter(
+                FileAttachment.user_id == user_id
+            ).count() == 0
+    finally:
+        allow_object_write.set()
+        if upload_thread is not None:
+            upload_thread.join(timeout=10)
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
+            cleanup.commit()
+
+
+def test_account_delete_holds_user_lock_until_audit_commit_on_postgres(
+    db_session, tmp_path, monkeypatch
+):
+    """The account lock must survive audit insertion until deletion commits."""
+    from threading import Event, Thread
+    from uuid import uuid4
+
+    import pytest
+    from sqlalchemy.orm import sessionmaker
+
+    from app.config import settings
+    from app.models.audit_log import AuditLog
+    from app.models.user import User
+    from app.routers import users as users_router
+    from app.schemas.user import DeleteAccountRequest
+    from app.services.project_file_retention import lock_user_for_update
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(users_router, "verify_password", lambda *_args: True)
+    monkeypatch.setattr(users_router, "delete_user_objects", lambda _user_id: None)
+    monkeypatch.setattr(
+        users_router, "privatize_account_workspace_attachments", lambda *_args: None
+    )
+
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    with session_factory() as creator:
+        user = User(
+            email=f"account-delete-audit-{suffix}@example.test",
+            hashed_password="test-only-hash",
+        )
+        creator.add(user)
+        creator.commit()
+        user_id = user.id
+
+    audit_inserted = Event()
+    allow_delete_commit = Event()
+    lock_attempt_started = Event()
+    lock_attempt_finished = Event()
+    delete_errors = []
+    lock_results = []
+    success_logs = []
+    original_log_event = users_router.log_event
+
+    def pause_after_audit_insert(db, event_type, description, user_id=None,
+                                 workspace_id=None, **kwargs):
+        original_log_event(
+            db, event_type, description, user_id, workspace_id, **kwargs
+        )
+        if event_type == "account_deleted":
+            audit_inserted.set()
+            if not allow_delete_commit.wait(10):
+                raise AssertionError("test did not release account deletion")
+
+    monkeypatch.setattr(users_router, "log_event", pause_after_audit_insert)
+    monkeypatch.setattr(
+        users_router.logger, "info", lambda *args, **_kwargs: success_logs.append(args)
+    )
+
+    def run_delete():
+        try:
+            with session_factory() as delete_db:
+                current_user = delete_db.get(User, user_id)
+                users_router.delete_account(
+                    DeleteAccountRequest(password="test-password"),
+                    current_user,
+                    delete_db,
+                )
+        except BaseException as exc:
+            delete_errors.append(exc)
+
+    def try_user_lock():
+        try:
+            with session_factory() as contender_db:
+                lock_attempt_started.set()
+                lock_results.append(lock_user_for_update(contender_db, user_id))
+                contender_db.rollback()
+        except BaseException as exc:
+            lock_results.append(exc)
+        finally:
+            lock_attempt_finished.set()
+
+    delete_thread = Thread(target=run_delete, daemon=True)
+    contender_thread = Thread(target=try_user_lock, daemon=True)
+    try:
+        delete_thread.start()
+        assert audit_inserted.wait(10), "account deletion did not reach audit insertion"
+
+        contender_thread.start()
+        assert lock_attempt_started.wait(10), "lock contender did not start"
+        # The contender must remain blocked while the deletion transaction is open.
+        assert not lock_attempt_finished.wait(0.5), (
+            "account row lock was released before account deletion committed"
+        )
+        assert success_logs == [], "success log was emitted before commit"
+
+        allow_delete_commit.set()
+        delete_thread.join(timeout=10)
+        contender_thread.join(timeout=10)
+        assert not delete_thread.is_alive()
+        assert not contender_thread.is_alive()
+        assert delete_errors == []
+        assert lock_results == [False]
+        assert len(success_logs) == 1
+
+        with session_factory() as verify:
+            assert verify.get(User, user_id) is None
+            audit = (
+                verify.query(AuditLog)
+                .filter(AuditLog.event_type == "account_deleted")
+                .filter(AuditLog.description == f"حذف حساب: account-delete-audit-{suffix}@example.test")
+                .one()
+            )
+            assert audit.user_id is None
+    finally:
+        allow_delete_commit.set()
+        delete_thread.join(timeout=10)
+        contender_thread.join(timeout=10)
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
+            cleanup.query(AuditLog).filter(
+                AuditLog.description == f"حذف حساب: account-delete-audit-{suffix}@example.test"
+            ).delete()
+            cleanup.commit()
+
+
+
+def test_personal_upload_indexing_cannot_outlive_account_deletion(
+    db_session, tmp_path, monkeypatch
+):
+    """A late embedding result cannot recreate chunks after account deletion."""
+    import asyncio
+    from io import BytesIO
+    from threading import Event, Thread
+    from uuid import uuid4
+
+    import pytest
+    from fastapi import HTTPException
+    from sqlalchemy.orm import sessionmaker
+    from starlette.datastructures import Headers, UploadFile
+
+    from app.config import settings
+    from app.models.file_attachment import FileAttachment
+    from app.models.file_chunk import FileChunk
+    from app.models.user import User
+    from app.routers import files as files_router
+    from app.routers import users as users_router
+    from app.schemas.user import DeleteAccountRequest
+    from app.services import rag as rag_service
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL foreign-key and transaction behavior is required")
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(users_router, "verify_password", lambda *_args: True)
+    monkeypatch.setattr(files_router, "extract_text", lambda *_args, **_kwargs: "index this personal file")
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+    suffix = uuid4().hex
+    creator = session_factory()
+    user = User(
+        email=f"personal-index-delete-{suffix}@example.test",
+        hashed_password="test-only-hash",
+    )
+    creator.add(user)
+    creator.commit()
+    user_id = user.id
+    creator.close()
+
+    objects = {}
+    indexing_started = Event()
+    allow_indexing = Event()
+    deletion_finished = Event()
+    upload_errors = []
+    deletion_errors = []
+    indexed_file_ids = []
+    original_index = files_router.index_file_chunks
+
+    def fake_put_file(path, object_key, _content_type):
+        objects[object_key] = path.read_bytes()
+
+    def fake_delete_user_objects(_user_id):
+        objects.clear()
+
+    def delayed_index(db, attachment):
+        indexed_file_ids.append(attachment.id)
+        indexing_started.set()
+        if not allow_indexing.wait(10):
+            raise AssertionError("test did not release the embedding/indexing phase")
+        return original_index(db, attachment)
+
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(users_router, "delete_user_objects", fake_delete_user_objects)
+    monkeypatch.setattr(files_router, "index_file_chunks", delayed_index)
+    monkeypatch.setattr(
+        rag_service,
+        "embed_documents_sync",
+        lambda chunks: [[0.0] * 768 for _ in chunks],
+    )
+
+    def run_upload():
+        try:
+            with session_factory() as upload_db:
+                upload_db.begin()
+                current_user = upload_db.get(User, user_id)
+                upload = UploadFile(
+                    filename="personal.txt",
+                    file=BytesIO(b"personal file with extracted text"),
+                    headers=Headers({"content-type": "text/plain"}),
+                )
+                asyncio.run(
+                    files_router.upload_file(
+                        upload,
+                        current_user=current_user,
+                        db=upload_db,
+                    )
+                )
+        except BaseException as exc:
+            upload_errors.append(exc)
+
+    def run_delete():
+        try:
+            with session_factory() as delete_db:
+                delete_db.begin()
+                current_user = delete_db.get(User, user_id)
+                users_router.delete_account(
+                    DeleteAccountRequest(password="test-password"),
+                    current_user,
+                    delete_db,
+                )
+        except BaseException as exc:
+            deletion_errors.append(exc)
+        finally:
+            deletion_finished.set()
+
+    upload_thread = Thread(target=run_upload, daemon=True)
+    deletion_thread = None
+    try:
+        upload_thread.start()
+        assert indexing_started.wait(10), "upload did not reach the indexing phase"
+
+        # The upload has committed its attachment and released the user lock
+        # before the external embedding operation. Deletion must finish first.
+        deletion_thread = Thread(target=run_delete, daemon=True)
+        deletion_thread.start()
+        assert deletion_finished.wait(10), "account deletion did not finish"
+        assert deletion_errors == []
+        allow_indexing.set()
+
+        upload_thread.join(timeout=10)
+        deletion_thread.join(timeout=10)
+        assert not upload_thread.is_alive()
+        assert not deletion_thread.is_alive()
+        assert len(upload_errors) == 1
+        assert isinstance(upload_errors[0], HTTPException)
+        assert upload_errors[0].status_code == 404
+        assert objects == {}
+
+        with session_factory() as verify:
+            assert verify.get(User, user_id) is None
+            assert verify.query(FileAttachment).filter(
+                FileAttachment.user_id == user_id
+            ).count() == 0
+            assert len(indexed_file_ids) == 1
+            assert verify.query(FileChunk).filter(
+                FileChunk.file_id == indexed_file_ids[0]
+            ).count() == 0
+    finally:
+        allow_indexing.set()
+        upload_thread.join(timeout=10)
+        if deletion_thread is not None:
+            deletion_thread.join(timeout=10)
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
+            cleanup.commit()
+
+
+
+def test_personal_upload_embedding_failure_after_account_deletion_is_clean_404(
+    db_session, tmp_path, monkeypatch
+):
+    """A provider failure after deletion must not audit or finalize a deleted upload."""
+    import asyncio
+    from io import BytesIO
+    from threading import Event, Thread
+    from uuid import uuid4
+
+    import pytest
+    from fastapi import HTTPException
+    from sqlalchemy.orm import sessionmaker
+    from starlette.datastructures import Headers, UploadFile
+
+    from app.config import settings
+    from app.models.file_attachment import FileAttachment
+    from app.models.file_chunk import FileChunk
+    from app.models.user import User
+    from app.routers import files as files_router
+    from app.routers import users as users_router
+    from app.schemas.user import DeleteAccountRequest
+    from app.services.embeddings import EmbeddingServiceError
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock and cascade behavior is required")
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(users_router, "verify_password", lambda *_args: True)
+    monkeypatch.setattr(files_router, "extract_text", lambda *_args, **_kwargs: "index this personal file")
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+    suffix = uuid4().hex
+    creator = session_factory()
+    user = User(
+        email=f"personal-embedding-error-delete-{suffix}@example.test",
+        hashed_password="test-only-hash",
+    )
+    creator.add(user)
+    creator.commit()
+    user_id = user.id
+    creator.close()
+
+    objects = {}
+    indexing_started = Event()
+    allow_indexing_failure = Event()
+    deletion_finished = Event()
+    upload_errors = []
+    deletion_errors = []
+    indexed_file_ids = []
+    upload_audit_attempts = []
+
+    def fake_put_file(path, object_key, _content_type):
+        objects[object_key] = path.read_bytes()
+
+    def fake_delete_file(object_key, fallback_path):
+        objects.pop(object_key, None)
+        fallback_path.unlink(missing_ok=True)
+
+    def fake_delete_user_objects(_user_id):
+        objects.clear()
+
+    def fail_index_after_delete(_db, attachment):
+        indexed_file_ids.append(attachment.id)
+        indexing_started.set()
+        if not allow_indexing_failure.wait(10):
+            raise AssertionError("test did not release the embedding failure")
+        raise EmbeddingServiceError("simulated provider failure after account deletion")
+
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
+    monkeypatch.setattr(users_router, "delete_user_objects", fake_delete_user_objects)
+    monkeypatch.setattr(files_router, "index_file_chunks", fail_index_after_delete)
+    monkeypatch.setattr(
+        files_router,
+        "log_event",
+        lambda *_args, **_kwargs: upload_audit_attempts.append("called"),
+    )
+
+    def run_upload():
+        try:
+            with session_factory() as upload_db:
+                upload_db.begin()
+                current_user = upload_db.get(User, user_id)
+                upload = UploadFile(
+                    filename="personal.txt",
+                    file=BytesIO(b"personal file that will fail embedding"),
+                    headers=Headers({"content-type": "text/plain"}),
+                )
+                asyncio.run(
+                    files_router.upload_file(
+                        upload,
+                        current_user=current_user,
+                        db=upload_db,
+                    )
+                )
+        except BaseException as exc:
+            upload_errors.append(exc)
+
+    def run_delete():
+        try:
+            with session_factory() as delete_db:
+                delete_db.begin()
+                current_user = delete_db.get(User, user_id)
+                users_router.delete_account(
+                    DeleteAccountRequest(password="test-password"),
+                    current_user,
+                    delete_db,
+                )
+        except BaseException as exc:
+            deletion_errors.append(exc)
+        finally:
+            deletion_finished.set()
+
+    upload_thread = Thread(target=run_upload, daemon=True)
+    deletion_thread = None
+    try:
+        upload_thread.start()
+        assert indexing_started.wait(10), "upload did not reach external embedding"
+
+        deletion_thread = Thread(target=run_delete, daemon=True)
+        deletion_thread.start()
+        assert deletion_finished.wait(10), "account deletion did not finish"
+        assert deletion_errors == []
+        allow_indexing_failure.set()
+
+        upload_thread.join(timeout=10)
+        deletion_thread.join(timeout=10)
+        assert not upload_thread.is_alive()
+        assert not deletion_thread.is_alive()
+        assert len(upload_errors) == 1
+        assert isinstance(upload_errors[0], HTTPException)
+        assert upload_errors[0].status_code == 404
+        assert upload_audit_attempts == []
+        assert objects == {}
+
+        with session_factory() as verify:
+            assert verify.get(User, user_id) is None
+            assert verify.query(FileAttachment).filter(
+                FileAttachment.user_id == user_id
+            ).count() == 0
+            assert len(indexed_file_ids) == 1
+            assert verify.query(FileChunk).filter(
+                FileChunk.file_id == indexed_file_ids[0]
+            ).count() == 0
+    finally:
+        allow_indexing_failure.set()
+        upload_thread.join(timeout=10)
+        if deletion_thread is not None:
+            deletion_thread.join(timeout=10)
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
+            cleanup.commit()
 
 
 def test_project_upload_finalization_waits_for_project_deletion_on_postgres(

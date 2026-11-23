@@ -28,9 +28,14 @@ from app.models.user_memory import UserMemory
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.user import ChangePasswordRequest, DeleteAccountRequest, ProfileUpdate, UserOut
 from app.services.storage import StorageError, delete_user_objects
-from app.services.project_file_retention import privatize_account_workspace_attachments
+from app.logging_config import get_logger
+from app.services.project_file_retention import (
+    lock_user_for_update,
+    privatize_account_workspace_attachments,
+)
 
 router = APIRouter(prefix="/users", tags=["Users"])
+logger = get_logger("users")
 
 
 @router.get("/me", response_model=UserOut)
@@ -351,6 +356,14 @@ def delete_account(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="كلمة المرور غير صحيحة"
         )
+    # Serialize account deletion with uploads before remote cleanup. Upload
+    # finalization takes this same user lock before any workspace lock.
+    if not lock_user_for_update(db, current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الحساب غير موجود",
+        )
+
     # Clean remote objects before deleting the account metadata, so a storage failure
     # does not silently leave user-owned objects behind after the account is gone.
     try:
@@ -364,9 +377,27 @@ def delete_account(
     # Workspace/project cascades must not leave other members' uploads in a shared scope.
     privatize_account_workspace_attachments(db, current_user.id)
 
-    log_event(db, "account_deleted", f"حذف حساب: {current_user.email}", current_user.id)
-    user_upload_dir = Path(settings.UPLOAD_DIR) / str(current_user.id)
-    shutil.rmtree(user_upload_dir, ignore_errors=True)
+    # Keep the user row lock until the account deletion and audit record commit
+    # together. log_event's default commit would release the lock too early.
+    user_id = current_user.id
+    user_email = current_user.email
+    description = f"حذف حساب: {user_email}"
+    try:
+        log_event(
+            db,
+            "account_deleted",
+            description,
+            user_id,
+            commit=False,
+            emit_log=False,
+        )
+        db.delete(current_user)  # cascade يحذف بيانات الحساب الوصفية تلقائيًا
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
-    db.delete(current_user)  # cascade يحذف بيانات الحساب الوصفية تلقائيًا
-    db.commit()
+    # Emit success only after the transaction has committed successfully.
+    logger.info("[account_deleted] %s", description)
+    user_upload_dir = Path(settings.UPLOAD_DIR) / str(user_id)
+    shutil.rmtree(user_upload_dir, ignore_errors=True)

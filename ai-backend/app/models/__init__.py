@@ -28,6 +28,7 @@ from app.models.scheduled_task_run import ScheduledTaskRun, ScheduledTaskRunStat
 from app.models.agent_job import AgentJob
 from app.models.agent_workflow_step import AgentWorkflowStep
 from app.models.file_attachment import FileAttachment
+from app.models.upload_cleanup_intent import UploadCleanupIntent
 from app.models.upload_lease import UploadLease
 from app.models.file_chunk import FileChunk
 from app.models.conversation_file_link import ConversationFileLink
@@ -77,6 +78,7 @@ __all__ = [
     "AgentJob",
     "AgentWorkflowStep",
     "FileAttachment",
+    "UploadCleanupIntent",
     "UploadLease",
     "FileChunk",
     "ConversationFileLink",
