@@ -499,14 +499,27 @@ def test_webhook_pinned_request_rejects_mixed_public_and_private_dns(monkeypatch
         )
 
 
-def test_webhook_pinned_request_handles_ipv6_literal():
-    pinned_url, host_header, extensions = webhook_service._prepare_pinned_webhook_request(
-        "https://[2606:4700:4700::1111]/hook"
-    )
+@pytest.mark.parametrize(
+    "url, expected_url, expected_host",
+    [
+        (
+            "https://[2606:4700:4700::1111]/hook",
+            "https://[2606:4700:4700::1111]/hook",
+            "[2606:4700:4700::1111]",
+        ),
+        (
+            "https://93.184.216.34/hook",
+            "https://93.184.216.34/hook",
+            "93.184.216.34",
+        ),
+    ],
+)
+def test_webhook_pinned_request_omits_sni_for_ip_literals(url, expected_url, expected_host):
+    pinned_url, host_header, extensions = webhook_service._prepare_pinned_webhook_request(url)
 
-    assert pinned_url == "https://[2606:4700:4700::1111]/hook"
-    assert host_header == "[2606:4700:4700::1111]"
-    assert extensions == {"sni_hostname": "2606:4700:4700::1111"}
+    assert pinned_url == expected_url
+    assert host_header == expected_host
+    assert extensions == {}
 
 
 def test_webhook_pinned_request_rejects_malformed_dns_address(monkeypatch):
