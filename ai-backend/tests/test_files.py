@@ -783,6 +783,134 @@ def test_personal_upload_cannot_orphan_object_during_account_deletion(
             cleanup.commit()
 
 
+def test_account_delete_holds_user_lock_until_audit_commit_on_postgres(
+    db_session, tmp_path, monkeypatch
+):
+    """The account lock must survive audit insertion until deletion commits."""
+    from threading import Event, Thread
+    from uuid import uuid4
+
+    import pytest
+    from sqlalchemy.orm import sessionmaker
+
+    from app.config import settings
+    from app.models.audit_log import AuditLog
+    from app.models.user import User
+    from app.routers import users as users_router
+    from app.schemas.user import DeleteAccountRequest
+    from app.services.project_file_retention import lock_user_for_update
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(users_router, "verify_password", lambda *_args: True)
+    monkeypatch.setattr(users_router, "delete_user_objects", lambda _user_id: None)
+    monkeypatch.setattr(
+        users_router, "privatize_account_workspace_attachments", lambda *_args: None
+    )
+
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    with session_factory() as creator:
+        user = User(
+            email=f"account-delete-audit-{suffix}@example.test",
+            hashed_password="test-only-hash",
+        )
+        creator.add(user)
+        creator.commit()
+        user_id = user.id
+
+    audit_inserted = Event()
+    allow_delete_commit = Event()
+    lock_attempt_finished = Event()
+    delete_errors = []
+    lock_results = []
+    success_logs = []
+    original_log_event = users_router.log_event
+
+    def pause_after_audit_insert(db, event_type, description, user_id=None,
+                                 workspace_id=None, **kwargs):
+        original_log_event(
+            db, event_type, description, user_id, workspace_id, **kwargs
+        )
+        if event_type == "account_deleted":
+            audit_inserted.set()
+            if not allow_delete_commit.wait(10):
+                raise AssertionError("test did not release account deletion")
+
+    monkeypatch.setattr(users_router, "log_event", pause_after_audit_insert)
+    monkeypatch.setattr(
+        users_router.logger, "info", lambda *args, **_kwargs: success_logs.append(args)
+    )
+
+    def run_delete():
+        try:
+            with session_factory() as delete_db:
+                current_user = delete_db.get(User, user_id)
+                users_router.delete_account(
+                    DeleteAccountRequest(password="test-password"),
+                    current_user,
+                    delete_db,
+                )
+        except BaseException as exc:
+            delete_errors.append(exc)
+
+    def try_user_lock():
+        try:
+            with session_factory() as contender_db:
+                lock_results.append(lock_user_for_update(contender_db, user_id))
+                contender_db.rollback()
+        except BaseException as exc:
+            lock_results.append(exc)
+        finally:
+            lock_attempt_finished.set()
+
+    delete_thread = Thread(target=run_delete, daemon=True)
+    contender_thread = Thread(target=try_user_lock, daemon=True)
+    try:
+        delete_thread.start()
+        assert audit_inserted.wait(10), "account deletion did not reach audit insertion"
+
+        contender_thread.start()
+        # The contender must remain blocked while the deletion transaction is open.
+        assert not lock_attempt_finished.wait(0.5), (
+            "account row lock was released before account deletion committed"
+        )
+        assert success_logs == [], "success log was emitted before commit"
+
+        allow_delete_commit.set()
+        delete_thread.join(timeout=10)
+        contender_thread.join(timeout=10)
+        assert not delete_thread.is_alive()
+        assert not contender_thread.is_alive()
+        assert delete_errors == []
+        assert lock_results == [False]
+        assert len(success_logs) == 1
+
+        with session_factory() as verify:
+            assert verify.get(User, user_id) is None
+            audit = (
+                verify.query(AuditLog)
+                .filter(AuditLog.event_type == "account_deleted")
+                .filter(AuditLog.description == f"حذف حساب: account-delete-audit-{suffix}@example.test")
+                .one()
+            )
+            assert audit.user_id is None
+    finally:
+        allow_delete_commit.set()
+        delete_thread.join(timeout=10)
+        contender_thread.join(timeout=10)
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
+            cleanup.query(AuditLog).filter(
+                AuditLog.description == f"حذف حساب: account-delete-audit-{suffix}@example.test"
+            ).delete()
+            cleanup.commit()
+
+
 
 def test_personal_upload_indexing_cannot_outlive_account_deletion(
     db_session, tmp_path, monkeypatch
