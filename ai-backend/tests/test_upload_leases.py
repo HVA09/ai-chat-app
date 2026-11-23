@@ -1,3 +1,4 @@
+import pytest
 from app.models import FileAttachment, User, UploadLease
 from app.services.upload_leases import (
     claim_upload_lease,
@@ -213,3 +214,21 @@ def test_deleted_account_lease_cannot_queue_claim_heartbeat_or_finalize(client, 
         generation=generation,
         owner_token=worker_token,
     )
+
+
+@pytest.mark.parametrize("duration", [0, -1])
+def test_claim_rejects_nonpositive_lease_duration(db_session, duration):
+    with pytest.raises(ValueError, match="lease_seconds must be positive"):
+        claim_upload_lease(db_session, lease_id="invalid-duration", lease_seconds=duration)
+
+
+@pytest.mark.parametrize("duration", [0, -1])
+def test_heartbeat_rejects_nonpositive_lease_duration(db_session, duration):
+    with pytest.raises(ValueError, match="lease_seconds must be positive"):
+        heartbeat_upload_lease(
+            db_session,
+            lease_id="invalid-duration",
+            generation=1,
+            owner_token="token",
+            lease_seconds=duration,
+        )
