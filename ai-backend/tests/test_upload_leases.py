@@ -79,6 +79,7 @@ def test_upload_lease_claim_heartbeat_and_fencing(client, db_session):
     )
     db_session.flush()
     persisted = db_session.get(UploadLease, lease_id)
+    db_session.refresh(persisted)
     assert persisted.status == "cleanup_pending"
     assert persisted.owner_token_hash is None
 
@@ -143,5 +144,6 @@ def test_upload_lease_finalize_is_compare_and_swap(client, db_session):
     )
     db_session.flush()
     persisted = db_session.get(UploadLease, lease.id)
+    db_session.refresh(persisted)
     assert persisted.status == "committed"
     assert persisted.attachment_id == attachment.id
