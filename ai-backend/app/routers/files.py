@@ -352,6 +352,63 @@ async def upload_file(
     # DB checkout while awaiting upload bytes or writing the object to storage.
     commit_and_release_connection(db)
     temp_path = None
+    storage_write_started = False
+
+    def cleanup_unwritten_upload() -> None:
+        """Close a lease when body receipt/validation fails before storage starts.
+
+        No managed-object writer has been invoked on this path. The random key
+        is still recorded as a durable cleanup intent so a failed idempotent
+        delete remains visible and retryable rather than leaving a receiving
+        lease orphaned.
+        """
+        db.rollback()
+        # Serialize with account deletion where the user row still exists.
+        # If deletion already committed, the lease remains and the writer has
+        # never started, so the unique object key is still safe to clean.
+        lock_user_for_update(db, upload_user_id)
+        marked = mark_upload_lease_cleanup_pending(
+            db,
+            lease_id=upload_lease_id,
+            generation=ingress_lease_generation,
+            owner_token=ingress_lease_token,
+        )
+        if not marked:
+            db.rollback()
+            return
+        intent = enqueue_upload_cleanup_intent(
+            db,
+            user_id=upload_user_id,
+            object_key=object_key,
+            lease_id=upload_lease_id,
+            generation=ingress_lease_generation,
+        )
+        if intent is None:
+            db.rollback()
+            return
+        if intent.status == "completed":
+            db.rollback()
+            return
+        db.commit()
+
+        try:
+            delete_stored_file(object_key, destination)
+        except StorageError:
+            record_upload_cleanup_attempt(
+                db,
+                intent_id=intent.id,
+                succeeded=False,
+                error_code="storage_delete_failed",
+            )
+            db.commit()
+            return
+
+        record_upload_cleanup_attempt(
+            db,
+            intent_id=intent.id,
+            succeeded=True,
+        )
+        db.commit()
     total = 0
     header = bytearray()
     sniffed = None
@@ -399,6 +456,7 @@ async def upload_file(
         temp_path.replace(destination)
         temp_path = None
         try:
+            storage_write_started = True
             put_file(destination, object_key, sniffed)
         except StorageError as exc:
             # The synchronous storage call has returned, so its writer is no
@@ -426,6 +484,13 @@ async def upload_file(
                 db.rollback()
             destination.unlink(missing_ok=True)
             raise HTTPException(status_code=503, detail="تعذر تخزين الملف بشكل دائم") from exc
+    except BaseException:
+        # Body read, size/type validation, and archive validation can fail
+        # before put_file is invoked. Close that ingress lease explicitly;
+        # never apply this path once a storage writer may have started.
+        if not storage_write_started:
+            cleanup_unwritten_upload()
+        raise
     finally:
         if temp_path:
             temp_path.unlink(missing_ok=True)
