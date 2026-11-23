@@ -1,6 +1,8 @@
 """
 اختبارات المرحلة السادسة: رفع الملفات وإدارتها
 """
+
+import pytest
 from app.config import settings as app_settings
 from app.routers import files as files_router
 
@@ -631,6 +633,149 @@ def test_upload_preserves_original_file_when_text_extraction_fails(
     assert downloaded.content == payload
 
 
+
+
+@pytest.mark.parametrize("delete_before_object_write", [True, False])
+def test_personal_upload_cannot_orphan_object_during_account_deletion(
+    db_session, tmp_path, monkeypatch, delete_before_object_write
+):
+    """Serialize personal-upload finalization with account deletion on PostgreSQL."""
+    import asyncio
+    from io import BytesIO
+    from threading import Event, Thread
+    from uuid import uuid4
+
+    import pytest
+    from sqlalchemy.orm import sessionmaker
+    from starlette.datastructures import Headers, UploadFile
+
+    from app.config import settings
+    from app.models.file_attachment import FileAttachment
+    from app.models.user import User
+    from app.routers import files as files_router
+    from app.routers import users as users_router
+    from app.schemas.user import DeleteAccountRequest
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(users_router, "verify_password", lambda *_args: True)
+    monkeypatch.setattr(files_router, "extract_text", lambda *_args, **_kwargs: None)
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    creator = session_factory()
+    user = User(
+        email=f"personal-upload-delete-{suffix}@example.test",
+        hashed_password="test-only-hash",
+    )
+    creator.add(user)
+    creator.commit()
+    user_id = user.id
+    creator.close()
+
+    objects = {}
+    put_started = Event()
+    allow_object_write = Event()
+    delete_finished = Event()
+    upload_errors = []
+    delete_errors = []
+
+    def fake_put_file(path, object_key, _content_type):
+        payload = path.read_bytes()
+        put_started.set()
+        if delete_before_object_write and not allow_object_write.wait(10):
+            raise AssertionError("account deletion did not finish before object write")
+        objects[object_key] = payload
+
+    def fake_delete_file(object_key, fallback_path):
+        objects.pop(object_key, None)
+        fallback_path.unlink(missing_ok=True)
+
+    def fake_delete_user_objects(_user_id):
+        objects.clear()
+
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
+    monkeypatch.setattr(users_router, "delete_user_objects", fake_delete_user_objects)
+
+    def run_upload():
+        try:
+            with session_factory() as upload_db:
+                upload_db.begin()
+                current_user = upload_db.get(User, user_id)
+                upload = UploadFile(
+                    filename="personal.txt",
+                    file=BytesIO(b"personal upload during account deletion"),
+                    headers=Headers({"content-type": "text/plain"}),
+                )
+                asyncio.run(
+                    files_router.upload_file(
+                        upload,
+                        current_user=current_user,
+                        db=upload_db,
+                    )
+                )
+        except BaseException as exc:
+            upload_errors.append(exc)
+
+    def run_delete():
+        try:
+            with session_factory() as delete_db:
+                delete_db.begin()
+                current_user = delete_db.get(User, user_id)
+                users_router.delete_account(
+                    DeleteAccountRequest(password="test-password"),
+                    current_user,
+                    delete_db,
+                )
+        except BaseException as exc:
+            delete_errors.append(exc)
+        finally:
+            delete_finished.set()
+
+    upload_thread = None
+    try:
+        if delete_before_object_write:
+            upload_thread = Thread(target=run_upload, daemon=True)
+            upload_thread.start()
+            assert put_started.wait(10), "personal upload did not reach storage I/O"
+
+            delete_thread = Thread(target=run_delete, daemon=True)
+            delete_thread.start()
+            assert delete_finished.wait(10), "account deletion did not finish"
+            allow_object_write.set()
+            upload_thread.join(timeout=10)
+            delete_thread.join(timeout=10)
+            assert not upload_thread.is_alive()
+            assert not delete_thread.is_alive()
+            assert len(upload_errors) == 1
+            from fastapi import HTTPException
+            assert isinstance(upload_errors[0], HTTPException)
+            assert upload_errors[0].status_code == 404
+        else:
+            run_upload()
+            assert upload_errors == []
+            assert len(objects) == 1
+            run_delete()
+            assert delete_finished.is_set()
+
+        assert delete_errors == []
+        assert objects == {}
+        with session_factory() as verify:
+            assert verify.get(User, user_id) is None
+            assert verify.query(FileAttachment).filter(
+                FileAttachment.user_id == user_id
+            ).count() == 0
+    finally:
+        allow_object_write.set()
+        if upload_thread is not None:
+            upload_thread.join(timeout=10)
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
+            cleanup.commit()
 
 
 def test_project_upload_finalization_waits_for_project_deletion_on_postgres(
