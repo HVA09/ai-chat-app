@@ -99,7 +99,7 @@ def test_upload_rejects_oversized_file(client, db_session, tmp_path, monkeypatch
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     monkeypatch.setattr(app_settings, "MAX_UPLOAD_SIZE_MB", 0)
     token = _register_and_login(client)
-    response = client.post("/files/upload", files={"file": ("small.png", b"\\x89PNG\\r\\n\\x1a\\n" + b"x", "image/png")}, headers={"Authorization": f"Bearer {token}"})
+    response = client.post("/files/upload", files={"file": ("small.png", b"\x89PNG\r\n\x1a\n" + b"x", "image/png")}, headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 413
 
     from app.models.upload_cleanup_intent import UploadCleanupIntent
