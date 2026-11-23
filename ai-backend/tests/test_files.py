@@ -310,6 +310,8 @@ def test_project_upload_revalidates_project_after_storage_io(
     """An upload finishing after project deletion is discarded, not left workspace-scoped."""
     from app.models.file_attachment import FileAttachment
     from app.models.project import WorkspaceProject
+    from app.models.upload_cleanup_intent import UploadCleanupIntent
+    from app.models.upload_lease import UploadLease
     from app.models.user import User
     from app.routers import files as files_router
 
@@ -358,6 +360,19 @@ def test_project_upload_revalidates_project_after_storage_io(
         FileAttachment.user_id == owner.id,
         FileAttachment.project_id == project_id,
     ).count() == 0
+
+    lease = db_session.query(UploadLease).filter_by(
+        object_key=next(iter([key for key in objects.keys()]), None)
+    ).first()
+    # The object has been deleted, but its durable lease and cleanup intent
+    # remain correlated to the exact ingress generation restored by rollback.
+    cleanup_intent = db_session.query(UploadCleanupIntent).one()
+    lease = db_session.query(UploadLease).filter_by(
+        id=cleanup_intent.lease_id
+    ).one()
+    assert lease.status == "cleanup_pending"
+    assert cleanup_intent.status == "completed"
+    assert cleanup_intent.generation == lease.generation
 
 def test_project_file_requires_project_membership(client, db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
