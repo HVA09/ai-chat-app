@@ -78,6 +78,8 @@ def claim_upload_lease(
     Expired processing leases are intentionally not reclaimable here. A
     timeout is not proof that a previous worker has stopped making side effects.
     """
+    if lease_seconds <= 0:
+        raise ValueError("lease_seconds must be positive")
     token = secrets.token_urlsafe(32)
     now = datetime.now(timezone.utc)
     result = db.execute(
@@ -119,6 +121,8 @@ def heartbeat_upload_lease(
     successful heartbeat for any subsequent external side effect. Expiry is
     never delete authority.
     """
+    if lease_seconds <= 0:
+        raise ValueError("lease_seconds must be positive")
     now = datetime.now(timezone.utc)
     result = db.execute(
         update(UploadLease)
