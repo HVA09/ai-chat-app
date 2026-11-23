@@ -1,4 +1,4 @@
-from app.models import User, UploadLease
+from app.models import FileAttachment, User, UploadLease
 from app.services.upload_leases import (
     claim_upload_lease,
     create_upload_lease,
@@ -109,10 +109,39 @@ def test_upload_lease_finalize_is_compare_and_swap(client, db_session):
         owner_token=worker_token,
         attachment_id=123,
     )
+    attachment = FileAttachment(
+        user_id=user.id,
+        original_filename="lease-test.csv",
+        stored_filename="lease-test-finalize.csv",
+        object_key=f"users/{user.id}/finalize-test.bin",
+        content_type="text/csv",
+        size_bytes=12,
+    )
+    db_session.add(attachment)
+    db_session.flush()
+
     assert not finalize_upload_lease(
         db_session,
         lease_id=lease.id,
         generation=generation,
         owner_token="not-the-owner",
-        attachment_id=123,
+        attachment_id=attachment.id,
     )
+    assert finalize_upload_lease(
+        db_session,
+        lease_id=lease.id,
+        generation=generation,
+        owner_token=worker_token,
+        attachment_id=attachment.id,
+    )
+    assert not finalize_upload_lease(
+        db_session,
+        lease_id=lease.id,
+        generation=generation,
+        owner_token=worker_token,
+        attachment_id=attachment.id,
+    )
+    db_session.flush()
+    persisted = db_session.get(UploadLease, lease.id)
+    assert persisted.status == "committed"
+    assert persisted.attachment_id == attachment.id
