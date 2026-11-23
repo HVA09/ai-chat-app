@@ -350,7 +350,6 @@ async def upload_file(
 
     # Quotas, ownership and workspace access have been checked. Do not hold a
     # DB checkout while awaiting upload bytes or writing the object to storage.
-    commit_and_release_connection(db)
     temp_path = None
     storage_write_started = False
 
@@ -413,6 +412,9 @@ async def upload_file(
     header = bytearray()
     sniffed = None
     try:
+        # Include connection release in the guarded pre-storage phase so a
+        # release failure cannot strand the durable ingress lease.
+        commit_and_release_connection(db)
         with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".upload-", delete=False) as tmp:
             temp_path = Path(tmp.name)
             while True:
