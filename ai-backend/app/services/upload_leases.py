@@ -70,6 +70,11 @@ def claim_upload_lease(
 ) -> tuple[int, str] | None:
     """Atomically claim queued work and advance its fencing generation.
 
+    The caller must first lock the lease owner's User row using the same lock
+    order as account deletion, and must revalidate/lock that owner before each
+    later external side effect. The non-NULL user_id predicate rejects leases
+    already orphaned by account deletion but is not a substitute for that lock.
+
     Expired processing leases are intentionally not reclaimable here. A
     timeout is not proof that a previous worker has stopped making side effects.
     """
@@ -108,7 +113,12 @@ def heartbeat_upload_lease(
     owner_token: str,
     lease_seconds: int,
 ) -> bool:
-    """Renew only the current processing owner; expiry is not delete authority."""
+    """Renew the current owner while holding/revalidating its User-row lock.
+
+    The caller must coordinate with account deletion before relying on a
+    successful heartbeat for any subsequent external side effect. Expiry is
+    never delete authority.
+    """
     now = datetime.now(timezone.utc)
     result = db.execute(
         update(UploadLease)
