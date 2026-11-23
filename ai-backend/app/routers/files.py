@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.config import settings
 from app.database import commit_and_release_connection, get_db
@@ -477,10 +478,12 @@ async def upload_file(
                 f"تعذر فهرسة الملف {attachment.original_filename}: {exc}",
                 current_user.id,
             )
-        except IntegrityError as exc:
+        except (IntegrityError, StaleDataError) as exc:
             # Account deletion may commit while the external embedding request
-            # is in flight. The attachment is then cascade-deleted; translate
-            # the resulting chunk FK violation into a clean not-found response.
+            # is in flight. The attachment may be cascade-deleted before chunk
+            # insertion (IntegrityError) or while ORM metadata is being updated
+            # (StaleDataError). Translate only a confirmed missing account into
+            # 404; preserve unrelated persistence failures.
             db.rollback()
             if not lock_user_for_update(db, current_user.id):
                 raise HTTPException(
