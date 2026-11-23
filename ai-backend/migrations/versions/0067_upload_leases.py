@@ -1,7 +1,7 @@
 """Create durable upload lease records.
 
-Revision ID: 0067_upload_leases
-Revises: 0066_agent_jobs
+Revision ID: 0083_upload_leases
+Revises: 0082_file_index_fingerprints
 """
 from typing import Sequence, Union
 
@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "0067_upload_leases"
-down_revision: Union[str, None] = "0066_agent_jobs"
+revision: str = "0083_upload_leases"
+down_revision: Union[str, None] = "0082_file_index_fingerprints"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
