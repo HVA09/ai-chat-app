@@ -97,6 +97,15 @@ def test_list_files(client, tmp_path, monkeypatch):
 def test_download_file_returns_original_bytes(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     events = []
+    token = _register_and_login(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    upload_response = client.post("/files/upload", files={"file": ("note.csv", b"a,b,c\n1,2,3", "text/csv")}, headers=headers)
+    assert upload_response.status_code == 201, upload_response.text
+    file_id = upload_response.json()["id"]
+
+    # Observe only the download boundary. Upload itself must use the real
+    # commit/release helper so its attachment remains committed after an
+    # embedding-provider failure rolls back the indexing transaction.
     monkeypatch.setattr(
         files_router,
         "commit_and_release_connection",
@@ -109,10 +118,6 @@ def test_download_file_returns_original_bytes(client, tmp_path, monkeypatch):
         return original_open_file(*args, **kwargs)
 
     monkeypatch.setattr(files_router, "open_file", track_open_file)
-    token = _register_and_login(client)
-    headers = {"Authorization": f"Bearer {token}"}
-    upload_response = client.post("/files/upload", files={"file": ("note.csv", b"a,b,c\n1,2,3", "text/csv")}, headers=headers)
-    file_id = upload_response.json()["id"]
     events.clear()
     download_response = client.get(f"/files/{file_id}", headers=headers)
     assert download_response.status_code == 200
