@@ -116,6 +116,7 @@ def _prepare_pinned_webhook_request(url: str) -> tuple[str, str, dict]:
     try:
         literal_ip = ipaddress.ip_address(host)
     except ValueError:
+        is_ip_literal = False
         try:
             ascii_host = host.encode("idna").decode("ascii")
         except UnicodeError as exc:
@@ -123,6 +124,7 @@ def _prepare_pinned_webhook_request(url: str) -> tuple[str, str, dict]:
         resolved = _resolve_public_host(ascii_host)
         pinned_ip = ipaddress.ip_address(resolved[0])
     else:
+        is_ip_literal = True
         if not literal_ip.is_global:
             raise WebhookValidationError("عنوان Webhook يجب أن يكون عامًا.")
         ascii_host = host
@@ -141,7 +143,12 @@ def _prepare_pinned_webhook_request(url: str) -> tuple[str, str, dict]:
         path=parsed.path or "/",
         fragment="",
     ).geturl()
-    extensions = {"sni_hostname": ascii_host} if parsed.scheme == "https" else {}
+    # TLS SNI host_name is a DNS name, never an IPv4/IPv6 literal.
+    extensions = (
+        {"sni_hostname": ascii_host}
+        if parsed.scheme == "https" and not is_ip_literal
+        else {}
+    )
     return pinned_url, host_header, extensions
 
 
