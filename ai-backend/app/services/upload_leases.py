@@ -170,6 +170,7 @@ def finalize_upload_lease(
         update(UploadLease)
         .where(
             UploadLease.id == lease_id,
+            UploadLease.user_id.is_not(None),
             UploadLease.status == "processing",
             UploadLease.generation == generation,
             UploadLease.owner_token_hash == _token_hash(owner_token),
