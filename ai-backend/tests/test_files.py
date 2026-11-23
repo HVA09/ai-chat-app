@@ -113,6 +113,36 @@ def test_upload_rejects_oversized_file(client, db_session, tmp_path, monkeypatch
     assert intent.status == "completed"
 
 
+def test_upload_body_read_failure_closes_ingress_lease(
+    client, db_session, tmp_path, monkeypatch
+):
+    from fastapi import HTTPException
+    from starlette.datastructures import UploadFile as StarletteUploadFile
+    from app.models.upload_cleanup_intent import UploadCleanupIntent
+    from app.models.upload_lease import UploadLease
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+
+    async def fail_body_read(_self, _size=-1):
+        raise HTTPException(status_code=400, detail="injected body read failure")
+
+    monkeypatch.setattr(StarletteUploadFile, "read", fail_body_read)
+    token = _register_and_login(client)
+    response = client.post(
+        "/files/upload",
+        files={"file": ("note.txt", b"body", "text/plain")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+    lease = db_session.query(UploadLease).one()
+    intent = db_session.query(UploadCleanupIntent).filter_by(lease_id=lease.id).one()
+    assert lease.status == "cleanup_pending"
+    assert lease.owner_token_hash is None
+    assert intent.generation == lease.generation
+    assert intent.status == "completed"
+
+
 def test_list_files(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client)
