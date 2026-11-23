@@ -825,6 +825,7 @@ def test_account_delete_holds_user_lock_until_audit_commit_on_postgres(
 
     audit_inserted = Event()
     allow_delete_commit = Event()
+    lock_attempt_started = Event()
     lock_attempt_finished = Event()
     delete_errors = []
     lock_results = []
@@ -861,6 +862,7 @@ def test_account_delete_holds_user_lock_until_audit_commit_on_postgres(
     def try_user_lock():
         try:
             with session_factory() as contender_db:
+                lock_attempt_started.set()
                 lock_results.append(lock_user_for_update(contender_db, user_id))
                 contender_db.rollback()
         except BaseException as exc:
@@ -875,6 +877,7 @@ def test_account_delete_holds_user_lock_until_audit_commit_on_postgres(
         assert audit_inserted.wait(10), "account deletion did not reach audit insertion"
 
         contender_thread.start()
+        assert lock_attempt_started.wait(10), "lock contender did not start"
         # The contender must remain blocked while the deletion transaction is open.
         assert not lock_attempt_finished.wait(0.5), (
             "account row lock was released before account deletion committed"
