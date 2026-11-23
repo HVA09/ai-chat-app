@@ -113,6 +113,36 @@ def test_upload_rejects_oversized_file(client, db_session, tmp_path, monkeypatch
     assert intent.status == "completed"
 
 
+def test_upload_unexpected_storage_error_persists_cleanup_intent(
+    client, db_session, tmp_path, monkeypatch
+):
+    from app.models.upload_cleanup_intent import UploadCleanupIntent
+    from app.models.upload_lease import UploadLease
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+
+    def fail_storage_write(*_args, **_kwargs):
+        raise RuntimeError("injected unexpected storage failure")
+
+    monkeypatch.setattr(files_router, "put_file", fail_storage_write)
+    token = _register_and_login(client)
+    response = client.post(
+        "/files/upload",
+        files={"file": ("note.txt", b"valid text", "text/plain")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 503
+    lease = db_session.query(UploadLease).one()
+    intent = db_session.query(UploadCleanupIntent).filter_by(lease_id=lease.id).one()
+    assert lease.status == "cleanup_pending"
+    assert lease.owner_token_hash is None
+    assert intent.generation == lease.generation
+    assert intent.status == "pending"
+    assert intent.attempt_count == 0
+
+
 def test_upload_body_read_failure_closes_ingress_lease(
     client, db_session, tmp_path, monkeypatch
 ):
