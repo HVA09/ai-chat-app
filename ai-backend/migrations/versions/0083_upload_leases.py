@@ -54,6 +54,9 @@ def upgrade() -> None:
         "upload_leases",
         ["user_id", "created_at"],
     )
+    # New application tables must preserve the repository's default-deny
+    # Supabase Data API posture. The backend uses its privileged DB role.
+    op.execute('ALTER TABLE public."upload_leases" ENABLE ROW LEVEL SECURITY')
 
 
 def downgrade() -> None:
