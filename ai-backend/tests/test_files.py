@@ -361,9 +361,6 @@ def test_project_upload_revalidates_project_after_storage_io(
         FileAttachment.project_id == project_id,
     ).count() == 0
 
-    lease = db_session.query(UploadLease).filter_by(
-        object_key=next(iter([key for key in objects.keys()]), None)
-    ).first()
     # The object has been deleted, but its durable lease and cleanup intent
     # remain correlated to the exact ingress generation restored by rollback.
     cleanup_intent = db_session.query(UploadCleanupIntent).one()
