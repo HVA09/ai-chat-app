@@ -217,7 +217,8 @@ def _require_file_reindex_permission(
         return
 
     if file.project_id is not None:
-        project = (            db.query(WorkspaceProject)
+        project = (
+            db.query(WorkspaceProject)
             .populate_existing()
             .filter(
                 WorkspaceProject.id == file.project_id,
@@ -436,7 +437,8 @@ async def upload_file(
         # Persist the delete intent before touching storage. If this DB write
         # fails, propagate it and leave the object untouched for diagnosis.
         db.rollback()
-        # Match account deletion's User -> Lease lock order. A missing user        # means deletion already committed; the request's synchronous writer
+        # Match account deletion's User -> Lease lock order. A missing user
+        # means deletion already committed; the request's synchronous writer
         # has also returned before this cleanup path is reached.
         lock_user_for_update(db, upload_user_id)
         # This request owns the synchronous storage/extraction work. Cleanup
@@ -657,7 +659,8 @@ async def upload_file(
                 "file_rag_index_failed",
                 f"تعذر فهرسة الملف {attachment.original_filename}: {exc}",
                 upload_user_id,
-                commit=False,            )
+                commit=False,
+            )
         except (IntegrityError, ObjectDeletedError, StaleDataError) as exc:
             # Account deletion may commit while the external embedding request
             # is in flight. The attachment may be cascade-deleted before chunk
@@ -876,7 +879,8 @@ def detach_file_from_conversation(
 
 
 @router.get("/{file_id}")
-def download_file(    file_id: int,
+def download_file(
+    file_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
