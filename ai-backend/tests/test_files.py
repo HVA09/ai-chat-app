@@ -143,6 +143,34 @@ def test_upload_unexpected_storage_error_persists_cleanup_intent(
     assert intent.attempt_count == 0
 
 
+def test_upload_keeps_local_file_when_cleanup_intent_persistence_fails(
+    client, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    token = _register_and_login(client, "cleanup-persist-failure@example.com")
+
+    def fail_storage_write(*_args, **_kwargs):
+        raise RuntimeError("injected storage failure")
+
+    def fail_cleanup_intent(*_args, **_kwargs):
+        raise RuntimeError("injected cleanup-intent database failure")
+
+    monkeypatch.setattr(files_router, "put_file", fail_storage_write)
+    monkeypatch.setattr(files_router, "enqueue_upload_cleanup_intent", fail_cleanup_intent)
+
+    response = client.post(
+        "/files/upload",
+        files={"file": ("recover-me.txt", b"recovery payload", "text/plain")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 503
+    assert "لم يُحذف الملف" in response.json()["detail"]
+    retained_files = [path for path in tmp_path.iterdir() if path.is_file()]
+    assert len(retained_files) == 1
+    assert retained_files[0].read_bytes() == b"recovery payload"
+
+
 def test_upload_body_read_failure_closes_ingress_lease(
     client, db_session, tmp_path, monkeypatch
 ):
