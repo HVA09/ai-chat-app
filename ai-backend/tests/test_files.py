@@ -37,8 +37,10 @@ def test_upload_file_success(client, db_session, tmp_path, monkeypatch):
     assert body["content_type"] == "image/png"
     assert body["size_bytes"] == len(b"\x89PNG\r\n\x1a\n" + b"fake")
 
+    from app.models.file_attachment import FileAttachment
     from app.models.upload_lease import UploadLease
-    lease = db_session.query(UploadLease).filter_by(object_key=body["object_key"]).one()
+    attachment = db_session.get(FileAttachment, body["id"])
+    lease = db_session.query(UploadLease).filter_by(object_key=attachment.object_key).one()
     assert lease.status == "committed"
     assert lease.attachment_id == body["id"]
     assert lease.user_id is not None
