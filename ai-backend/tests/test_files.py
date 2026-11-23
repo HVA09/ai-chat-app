@@ -26,7 +26,7 @@ def _disable_object_storage(monkeypatch):
         monkeypatch.setattr(app_settings, name, "")
 
 
-def test_upload_file_success(client, tmp_path, monkeypatch):
+def test_upload_file_success(client, db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client)
     headers = {"Authorization": f"Bearer {token}"}
@@ -36,6 +36,13 @@ def test_upload_file_success(client, tmp_path, monkeypatch):
     assert body["original_filename"] == "test.png"
     assert body["content_type"] == "image/png"
     assert body["size_bytes"] == len(b"\x89PNG\r\n\x1a\n" + b"fake")
+
+    from app.models.upload_lease import UploadLease
+    lease = db_session.query(UploadLease).filter_by(object_key=body["object_key"]).one()
+    assert lease.status == "committed"
+    assert lease.attachment_id == body["id"]
+    assert lease.user_id is not None
+    assert lease.owner_token_hash is None
 
 
 
