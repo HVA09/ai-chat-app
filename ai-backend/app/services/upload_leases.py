@@ -54,6 +54,7 @@ def queue_upload_lease(
         update(UploadLease)
         .where(
             UploadLease.id == lease_id,
+            UploadLease.user_id.is_not(None),
             UploadLease.generation == generation,
             UploadLease.owner_token_hash == _token_hash(owner_token),
             UploadLease.status == "receiving",
@@ -76,7 +77,11 @@ def claim_upload_lease(
     now = datetime.now(timezone.utc)
     result = db.execute(
         update(UploadLease)
-        .where(UploadLease.id == lease_id, UploadLease.status == "queued")
+        .where(
+            UploadLease.id == lease_id,
+            UploadLease.user_id.is_not(None),
+            UploadLease.status == "queued",
+        )
         .values(
             status="processing",
             generation=UploadLease.generation + 1,
@@ -109,6 +114,7 @@ def heartbeat_upload_lease(
         update(UploadLease)
         .where(
             UploadLease.id == lease_id,
+            UploadLease.user_id.is_not(None),
             UploadLease.status == "processing",
             UploadLease.generation == generation,
             UploadLease.owner_token_hash == _token_hash(owner_token),
