@@ -408,6 +408,45 @@ async def upload_file(
             succeeded=True,
         )
         db.commit()
+    def persist_storage_failure_cleanup_intent() -> None:
+        """Persist fenced recovery before allowing local object cleanup."""
+        db.rollback()
+        if not lock_user_for_update(db, upload_user_id):
+            db.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail="تعذر تأمين ملكية الملف لتسجيل عملية الاسترداد",
+            )
+        marked = mark_upload_lease_cleanup_pending(
+            db,
+            lease_id=upload_lease_id,
+            generation=upload_lease_generation,
+            owner_token=upload_lease_token,
+        )
+        if not marked:
+            db.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail="فُقدت ملكية جلسة الرفع؛ تُرك الملف دون حذف",
+            )
+        try:
+            intent = enqueue_upload_cleanup_intent(
+                db,
+                user_id=upload_user_id,
+                object_key=object_key,
+                lease_id=upload_lease_id,
+                generation=upload_lease_generation,
+            )
+            if intent is None:
+                raise RuntimeError("cleanup intent was not created")
+            db.commit()
+        except Exception as persistence_error:
+            db.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail="تعذر تسجيل عملية استرداد الملف؛ لم يُحذف الملف",
+            ) from persistence_error
+
     total = 0
     header = bytearray()
     sniffed = None
@@ -464,51 +503,14 @@ async def upload_file(
             # The synchronous storage call has returned, so its writer is no
             # longer running. Persist cleanup intent before leaving the request;
             # never assume a failed multipart/object write left no remote bytes.
-            db.rollback()
-            # Match the account-deletion lock order before touching lease state.
-            lock_user_for_update(db, upload_user_id)
-            marked = mark_upload_lease_cleanup_pending(
-                db,
-                lease_id=upload_lease_id,
-                generation=upload_lease_generation,
-                owner_token=upload_lease_token,
-            )
-            if marked:
-                enqueue_upload_cleanup_intent(
-                    db,
-                    user_id=upload_user_id,
-                    object_key=object_key,
-                    lease_id=upload_lease_id,
-                    generation=upload_lease_generation,
-                )
-                db.commit()
-            else:
-                db.rollback()
+            persist_storage_failure_cleanup_intent()
             destination.unlink(missing_ok=True)
             raise HTTPException(status_code=503, detail="تعذر تخزين الملف بشكل دائم") from exc
         except Exception as exc:
             # Any other exception also exits the synchronous storage call:
             # persist recovery intent, but do not assume the remote write failed
             # atomically or attempt an untracked best-effort delete.
-            db.rollback()
-            lock_user_for_update(db, upload_user_id)
-            marked = mark_upload_lease_cleanup_pending(
-                db,
-                lease_id=upload_lease_id,
-                generation=upload_lease_generation,
-                owner_token=upload_lease_token,
-            )
-            if marked:
-                enqueue_upload_cleanup_intent(
-                    db,
-                    user_id=upload_user_id,
-                    object_key=object_key,
-                    lease_id=upload_lease_id,
-                    generation=upload_lease_generation,
-                )
-                db.commit()
-            else:
-                db.rollback()
+            persist_storage_failure_cleanup_intent()
             destination.unlink(missing_ok=True)
             raise HTTPException(status_code=503, detail="تعذر تخزين الملف بشكل دائم") from exc
     except BaseException:
