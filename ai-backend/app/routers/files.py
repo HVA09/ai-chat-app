@@ -310,15 +310,15 @@ async def upload_file(
 
     max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
     max_storage = settings.MAX_STORAGE_PER_USER_MB * 1024 * 1024
-    current_files = db.query(func.count(FileAttachment.id)).filter(FileAttachment.user_id == current_user.id).scalar() or 0
+    current_files = db.query(func.count(FileAttachment.id)).filter(FileAttachment.user_id == upload_user_id).scalar() or 0
     if current_files >= settings.MAX_FILES_PER_USER:
         raise HTTPException(status_code=413, detail="وصلت للحد الأقصى لعدد الملفات")
-    current_storage = db.query(func.coalesce(func.sum(FileAttachment.size_bytes), 0)).filter(FileAttachment.user_id == current_user.id).scalar() or 0
+    current_storage = db.query(func.coalesce(func.sum(FileAttachment.size_bytes), 0)).filter(FileAttachment.user_id == upload_user_id).scalar() or 0
 
     extension = Path(file.filename or "").suffix.lower()
     stored_filename = f"{uuid.uuid4().hex}{extension}"
-    object_key = f"users/{current_user.id}/{stored_filename}"
-    destination = _user_upload_dir(current_user.id) / stored_filename
+    object_key = f"users/{upload_user_id}/{stored_filename}"
+    destination = _user_upload_dir(upload_user_id) / stored_filename
 
     # Quotas, ownership and workspace access have been checked. Do not hold a
     # DB checkout while awaiting upload bytes or writing the object to storage.
@@ -376,7 +376,17 @@ async def upload_file(
     # Match account deletion's user -> workspace lock order immediately after
     # external storage I/O. Hold the user lock through extraction and finalization
     # so deletion cannot remove the local path or miss a late S3 object.
-    if not lock_user_for_update(db, current_user.id):
+    if not lock_user_for_update(db, upload_user_id):
+        cleanup_unfinalized_upload()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الحساب غير موجود",
+        )
+    # The original ORM instance may have been expired by the transaction
+    # boundary above. Rebind it only after the scalar-ID row lock succeeds.
+    current_user = db.get(User, upload_user_id)
+    if current_user is None:
+        db.rollback()
         cleanup_unfinalized_upload()
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -438,7 +448,7 @@ async def upload_file(
                 )
 
     attachment = FileAttachment(
-        user_id=current_user.id,
+        user_id=upload_user_id,
         workspace_id=workspace_id,
         project_id=project_id,
         original_filename=(file.filename or stored_filename)[:255],
