@@ -126,7 +126,12 @@ def heartbeat_upload_lease(
 def mark_upload_lease_cleanup_pending(
     db: Session, *, lease_id: str, generation: int, owner_token: str
 ) -> bool:
-    """Persist recovery intent without deleting any local or remote object."""
+    """Persist recovery intent after the caller proves the current worker has stopped.
+
+    This transition does not itself fence an external process. Never call it
+    merely because a coroutine was cancelled or a heartbeat expired.
+    No object is deleted by this helper.
+    """
     result = db.execute(
         update(UploadLease)
         .where(
