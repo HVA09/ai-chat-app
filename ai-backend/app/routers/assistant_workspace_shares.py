@@ -12,6 +12,7 @@ from app.schemas.assistant_workspace_shares import (
     AssistantWorkspaceShareOut,
     WorkspaceSharedAssistantOut,
 )
+from app.services.project_file_retention import lock_workspaces_for_update
 
 router = APIRouter(tags=["Assistant Workspace Sharing"])
 
@@ -44,6 +45,28 @@ def _get_owned_assistant(
             Assistant.id == assistant_id,
             Assistant.user_id == current_user.id,
         )
+        .first()
+    )
+    if not assistant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="المساعد غير موجود",
+        )
+    return assistant
+
+
+def _lock_owned_assistant(
+    assistant_id: int, current_user: User, db: Session
+) -> Assistant:
+    """Refresh and lock ownership after the workspace lock has been acquired."""
+    assistant = (
+        db.query(Assistant)
+        .populate_existing()
+        .filter(
+            Assistant.id == assistant_id,
+            Assistant.user_id == current_user.id,
+        )
+        .with_for_update()
         .first()
     )
     if not assistant:
@@ -116,7 +139,14 @@ def share_assistant_with_workspace(
     db: Session = Depends(get_db),
 ):
     assistant = _get_owned_assistant(assistant_id, current_user, db)
+    # Serialize share creation with workspace deletion and file privatization.
+    lock_workspaces_for_update(db, [workspace_id])
+    # Membership and assistant ownership must both be revalidated after the
+    # workspace lock. Lock order is workspace -> assistant, matching retention
+    # and assistant snapshot mutations; this rejects a stale assistant deleted
+    # while this request was waiting for the workspace lock.
     _get_membership(workspace_id, current_user, db)
+    assistant = _lock_owned_assistant(assistant_id, current_user, db)
 
     existing = (
         db.query(AssistantWorkspaceShare)
@@ -161,7 +191,10 @@ def unshare_assistant_from_workspace(
     db: Session = Depends(get_db),
 ):
     assistant = _get_owned_assistant(assistant_id, current_user, db)
+    # Use the same lock order as share creation and retention operations.
+    lock_workspaces_for_update(db, [workspace_id])
     _get_membership(workspace_id, current_user, db)
+    assistant = _lock_owned_assistant(assistant_id, current_user, db)
     share = (
         db.query(AssistantWorkspaceShare)
         .filter(

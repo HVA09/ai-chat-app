@@ -307,3 +307,372 @@ def test_assistant_usage_analytics_is_private_to_owner(client):
         headers={"Authorization": f"Bearer {token_b}"},
     )
     assert response.status_code == 404
+
+
+def test_assistant_snapshot_update_locks_shared_workspaces_first(
+    client, db_session, monkeypatch
+):
+    from app.models.assistant_workspace_share import AssistantWorkspaceShare
+    from app.routers import assistants as assistants_router_module
+
+    token = _register_and_login(client, "assistant-snapshot-lock@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    assistant = client.post(
+        "/assistants",
+        json={"name": "Lock-aware assistant", "instructions": "Initial"},
+        headers=headers,
+    ).json()
+    workspace = client.post(
+        "/workspaces",
+        json={"name": "Snapshot lock workspace"},
+        headers=headers,
+    ).json()
+    owner = db_session.query(Assistant).filter(
+        Assistant.id == assistant["id"]
+    ).one()
+    db_session.add(
+        AssistantWorkspaceShare(
+            assistant_id=owner.id,
+            workspace_id=workspace["id"],
+            shared_by_user_id=owner.user_id,
+        )
+    )
+    db_session.commit()
+
+    locked = []
+    original_lock = assistants_router_module.lock_workspaces_for_update
+
+    def capture_lock(db, workspace_ids):
+        locked.extend(workspace_ids)
+        return original_lock(db, workspace_ids)
+
+    monkeypatch.setattr(
+        assistants_router_module, "lock_workspaces_for_update", capture_lock
+    )
+    updated = client.patch(
+        f"/assistants/{assistant['id']}",
+        json={"instructions": "Updated after acquiring lock context"},
+        headers=headers,
+    )
+
+    assert updated.status_code == 200
+    assert locked == [workspace["id"]]
+
+
+def test_retention_serializes_with_assistant_snapshot_creation_on_postgres(db_session):
+    """A snapshot writer must see scrubbed links after retention owns the assistant row."""
+    from threading import Event, Thread
+    from time import monotonic, sleep
+    from uuid import uuid4
+
+    import pytest
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+
+    from app.models.assistant_file_link import AssistantFileLink
+    from app.models.assistant_version import AssistantVersion
+    from app.models.file_attachment import FileAttachment
+    from app.models.user import User
+    from app.routers import assistants as assistants_router_module
+    from app.services import project_file_retention
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
+
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    creator = session_factory()
+    user = User(
+        email=f"snapshot-retention-{suffix}@example.test",
+        hashed_password="test-only-hash",
+    )
+    creator.add(user)
+    creator.flush()
+    assistant = Assistant(
+        user_id=user.id,
+        name=f"Snapshot {suffix[:12]}",
+        instructions="Test snapshot serialization.",
+    )
+    creator.add(assistant)
+    creator.flush()
+    attachment = FileAttachment(
+        user_id=user.id,
+        original_filename="retention-race.txt",
+        stored_filename=f"retention-race-{suffix}.txt",
+        object_key=f"users/{user.id}/retention-race-{suffix}.txt",
+        content_type="text/plain",
+        size_bytes=10,
+        extracted_text="private test content",
+    )
+    creator.add(attachment)
+    creator.flush()
+    creator.add(
+        AssistantFileLink(assistant_id=assistant.id, file_id=attachment.id)
+    )
+    creator.add(
+        AssistantVersion(
+            assistant_id=assistant.id,
+            version=1,
+            name=assistant.name,
+            instructions=assistant.instructions,
+            knowledge_file_ids=[attachment.id],
+            tool_policy_snapshot={},
+        )
+    )
+    creator.commit()
+    user_id, assistant_id, file_id = user.id, assistant.id, attachment.id
+    creator.close()
+
+    retention = session_factory()
+    writer_started = Event()
+    writer_finished = Event()
+    writer_pid = {}
+    writer_errors = []
+
+    def create_snapshot_after_retention():
+        try:
+            with session_factory() as writer:
+                writer.begin()
+                writer_pid["value"] = writer.execute(
+                    text("SELECT pg_backend_pid()")
+                ).scalar_one()
+                writer_started.set()
+                current_assistant = writer.query(Assistant).filter(
+                    Assistant.id == assistant_id
+                ).one()
+                assistants_router_module._lock_assistant_version_context(
+                    current_assistant, writer
+                )
+                assistants_router_module._create_assistant_version(
+                    current_assistant, writer
+                )
+                writer.commit()
+        except BaseException as exc:
+            writer_errors.append(exc)
+        finally:
+            writer_finished.set()
+
+    thread = Thread(target=create_snapshot_after_retention, daemon=True)
+    try:
+        retention.begin()
+        project_file_retention._privatize_attachment_ids(retention, [file_id])
+        thread.start()
+        assert writer_started.wait(5), "snapshot writer did not start"
+
+        deadline = monotonic() + 5
+        waiting_on_lock = False
+        while monotonic() < deadline:
+            with session_factory() as probe:
+                wait_type = probe.execute(
+                    text(
+                        "SELECT wait_event_type FROM pg_stat_activity "
+                        "WHERE pid = :pid"
+                    ),
+                    {"pid": writer_pid["value"]},
+                ).scalar_one_or_none()
+            if wait_type == "Lock":
+                waiting_on_lock = True
+                break
+            sleep(0.01)
+
+        assert waiting_on_lock, "snapshot writer did not wait for retention's assistant lock"
+        assert not writer_finished.is_set()
+        retention.commit()
+        assert writer_finished.wait(5), "snapshot writer did not finish after retention commit"
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+        assert writer_errors == []
+    finally:
+        if retention.in_transaction():
+            retention.rollback()
+        if thread.ident is not None:
+            thread.join(timeout=5)
+        retention.close()
+        try:
+            with session_factory() as verify:
+                versions = (
+                    verify.query(AssistantVersion)
+                    .filter(AssistantVersion.assistant_id == assistant_id)
+                    .order_by(AssistantVersion.version.asc())
+                    .all()
+                )
+                assert [item.version for item in versions] == [1, 2]
+                assert versions[0].knowledge_file_ids == []
+                assert versions[1].knowledge_file_ids == []
+                assert verify.query(AssistantFileLink).filter(
+                    AssistantFileLink.file_id == file_id
+                ).count() == 0
+        finally:
+            with session_factory() as cleanup:
+                cleanup.query(User).filter(User.id == user_id).delete()
+                cleanup.commit()
+
+
+def test_restore_revalidates_snapshot_after_project_file_retention_on_postgres(
+    db_session,
+):
+    """A route-level restore must not resurrect a file scrubbed by retention."""
+    from threading import Event, Thread
+    from time import monotonic, sleep
+    from uuid import uuid4
+
+    import pytest
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+
+    from app.models.assistant_file_link import AssistantFileLink
+    from app.models.assistant_version import AssistantVersion
+    from app.models.assistant_workspace_share import AssistantWorkspaceShare
+    from app.models.file_attachment import FileAttachment
+    from app.models.user import User
+    from app.models.workspace import Workspace
+    from app.routers.assistants import restore_assistant_version
+    from app.services.project_file_retention import _privatize_attachment_ids
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
+
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    creator = session_factory()
+    user = User(
+        email=f"restore-retention-{suffix}@example.test",
+        hashed_password="test-only-hash",
+    )
+    creator.add(user)
+    creator.flush()
+    workspace = Workspace(owner_id=user.id, name=f"Restore retention {suffix[:12]}")
+    creator.add(workspace)
+    creator.flush()
+    assistant = Assistant(
+        user_id=user.id,
+        name=f"Restore {suffix[:12]}",
+        instructions="Original instructions.",
+    )
+    creator.add(assistant)
+    creator.flush()
+    attachment = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        original_filename="restore-race.txt",
+        stored_filename=f"restore-race-{suffix}.txt",
+        object_key=f"users/{user.id}/restore-race-{suffix}.txt",
+        content_type="text/plain",
+        size_bytes=12,
+        extracted_text="private restore race",
+    )
+    creator.add(attachment)
+    creator.flush()
+    creator.add(
+        AssistantWorkspaceShare(
+            assistant_id=assistant.id,
+            workspace_id=workspace.id,
+            shared_by_user_id=user.id,
+        )
+    )
+    creator.add(AssistantFileLink(assistant_id=assistant.id, file_id=attachment.id))
+    creator.add(
+        AssistantVersion(
+            assistant_id=assistant.id,
+            version=1,
+            name=assistant.name,
+            instructions=assistant.instructions,
+            knowledge_file_ids=[attachment.id],
+            tool_policy_snapshot={},
+        )
+    )
+    creator.commit()
+    user_id, workspace_id = user.id, workspace.id
+    assistant_id, file_id = assistant.id, attachment.id
+    creator.close()
+
+    retention = session_factory()
+    restore_started = Event()
+    restore_finished = Event()
+    restore_pid = {}
+    restore_errors = []
+
+    def restore_after_retention():
+        try:
+            with session_factory() as restore_db:
+                restore_db.begin()
+                restore_pid["value"] = restore_db.execute(
+                    text("SELECT pg_backend_pid()")
+                ).scalar_one()
+                current_user = restore_db.get(User, user_id)
+                restore_started.set()
+                restore_assistant_version(
+                    assistant_id,
+                    1,
+                    current_user,
+                    restore_db,
+                )
+        except BaseException as exc:
+            restore_errors.append(exc)
+        finally:
+            restore_finished.set()
+
+    thread = Thread(target=restore_after_retention, daemon=True)
+    try:
+        retention.begin()
+        retention.query(Workspace.id).filter(
+            Workspace.id == workspace_id
+        ).with_for_update().one()
+        _privatize_attachment_ids(retention, [file_id])
+
+        thread.start()
+        assert restore_started.wait(5), "restore route did not start"
+
+        deadline = monotonic() + 5
+        waiting_on_lock = False
+        while monotonic() < deadline:
+            with session_factory() as probe:
+                wait_type = probe.execute(
+                    text(
+                        "SELECT wait_event_type FROM pg_stat_activity "
+                        "WHERE pid = :pid"
+                    ),
+                    {"pid": restore_pid["value"]},
+                ).scalar_one_or_none()
+            if wait_type == "Lock":
+                waiting_on_lock = True
+                break
+            sleep(0.01)
+
+        assert waiting_on_lock, "restore route did not wait for retention's workspace lock"
+        assert not restore_finished.is_set()
+        retention.commit()
+        assert restore_finished.wait(5), "restore route did not finish after retention commit"
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+        assert restore_errors == []
+    finally:
+        if retention.in_transaction():
+            retention.rollback()
+        if thread.ident is not None:
+            thread.join(timeout=5)
+        retention.close()
+        try:
+            with session_factory() as verify:
+                snapshot = verify.query(AssistantVersion).filter(
+                    AssistantVersion.assistant_id == assistant_id,
+                    AssistantVersion.version == 1,
+                ).one()
+                assert snapshot.knowledge_file_ids == []
+                assert verify.query(AssistantFileLink).filter(
+                    AssistantFileLink.assistant_id == assistant_id,
+                    AssistantFileLink.file_id == file_id,
+                ).count() == 0
+                restored_versions = verify.query(AssistantVersion).filter(
+                    AssistantVersion.assistant_id == assistant_id
+                ).order_by(AssistantVersion.version.asc()).all()
+                assert [item.version for item in restored_versions] == [1, 2]
+                assert restored_versions[1].knowledge_file_ids == []
+        finally:
+            with session_factory() as cleanup:
+                cleanup.query(User).filter(User.id == user_id).delete()
+                cleanup.commit()
