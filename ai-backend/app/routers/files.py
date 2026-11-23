@@ -39,6 +39,10 @@ from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
 from app.services.project_access import can_edit_project
 from app.services.project_file_retention import lock_user_for_update
+from app.services.upload_cleanup_intents import (
+    enqueue_upload_cleanup_intent,
+    record_upload_cleanup_attempt,
+)
 from app.services.workspace_rbac import has_workspace_permission
 
 router = APIRouter(prefix="/files", tags=["Files"])
@@ -364,14 +368,52 @@ async def upload_file(
         if temp_path:
             temp_path.unlink(missing_ok=True)
 
+    attachment_committed = False
+
     def cleanup_unfinalized_upload() -> None:
+        # Once the attachment transaction committed, this object is no longer
+        # an unfinalized upload. Account deletion owns any later retention work.
+        if attachment_committed:
+            return
+
+        # Persist the delete intent before touching storage. If this DB write
+        # fails, propagate it and leave the object untouched for diagnosis.
+        db.rollback()
+        intent = enqueue_upload_cleanup_intent(
+            db,
+            user_id=upload_user_id,
+            object_key=object_key,
+        )
+        if intent is None:
+            # A committed attachment still owns this key; fail closed.
+            db.rollback()
+            return
+        if intent.status == "completed":
+            db.rollback()
+            return
+        db.commit()
+
         try:
             delete_stored_file(object_key, destination)
         except StorageError as exc:
+            record_upload_cleanup_attempt(
+                db,
+                intent_id=intent.id,
+                succeeded=False,
+                error_code="storage_delete_failed",
+            )
+            db.commit()
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="تعذر تنظيف الملف الذي لم يكتمل تسجيله؛ يلزم إعادة محاولة التنظيف.",
+                detail="تعذر تنظيف الملف؛ حُفظ طلب التنظيف لإعادة المحاولة.",
             ) from exc
+
+        record_upload_cleanup_attempt(
+            db,
+            intent_id=intent.id,
+            succeeded=True,
+        )
+        db.commit()
 
     # Match account deletion's user -> workspace lock order immediately after
     # external storage I/O. Hold the user lock through extraction and finalization
@@ -467,7 +509,6 @@ async def upload_file(
         cleanup_unfinalized_upload()
         raise
 
-    attachment_committed = False
     if extracted_text:
         # The file row needs an ID before chunk persistence, but the embedding
         # request is external I/O. Commit the attachment before that wait.
