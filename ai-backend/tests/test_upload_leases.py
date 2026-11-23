@@ -147,3 +147,69 @@ def test_upload_lease_finalize_is_compare_and_swap(client, db_session):
     db_session.refresh(persisted)
     assert persisted.status == "committed"
     assert persisted.attachment_id == attachment.id
+
+
+def test_deleted_account_lease_cannot_queue_claim_heartbeat_or_finalize(client, db_session):
+    email = "upload-lease-deleted-owner@example.com"
+    _create_user(client, email)
+    user = db_session.query(User).filter(User.email == email).one()
+    user_id = user.id
+
+    ingress_lease, ingress_token = create_upload_lease(
+        db_session,
+        user_id=user_id,
+        object_key=f"users/{user_id}/deleted-ingress.bin",
+    )
+    ingress_lease.user_id = None
+    db_session.flush()
+
+    assert not queue_upload_lease(
+        db_session,
+        lease_id=ingress_lease.id,
+        generation=1,
+        owner_token=ingress_token,
+    )
+    assert claim_upload_lease(
+        db_session, lease_id=ingress_lease.id, lease_seconds=90
+    ) is None
+
+    worker_lease, worker_ingress_token = create_upload_lease(
+        db_session,
+        user_id=user_id,
+        object_key=f"users/{user_id}/deleted-worker.bin",
+    )
+    assert queue_upload_lease(
+        db_session,
+        lease_id=worker_lease.id,
+        generation=1,
+        owner_token=worker_ingress_token,
+    )
+    generation, worker_token = claim_upload_lease(
+        db_session, lease_id=worker_lease.id, lease_seconds=90
+    )
+
+    worker_lease.user_id = None
+    db_session.flush()
+
+    assert not heartbeat_upload_lease(
+        db_session,
+        lease_id=worker_lease.id,
+        generation=generation,
+        owner_token=worker_token,
+        lease_seconds=90,
+    )
+    assert not finalize_upload_lease(
+        db_session,
+        lease_id=worker_lease.id,
+        generation=generation,
+        owner_token=worker_token,
+        attachment_id=123,
+    )
+    # Recovery intent remains available after account deletion, but no object
+    # deletion is performed by this state transition.
+    assert mark_upload_lease_cleanup_pending(
+        db_session,
+        lease_id=worker_lease.id,
+        generation=generation,
+        owner_token=worker_token,
+    )
