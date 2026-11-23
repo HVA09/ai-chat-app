@@ -467,7 +467,9 @@ async def upload_file(
             user_id=upload_user_id,
             object_key=object_key,
             lease_id=upload_lease_id,
-            generation=upload_lease_generation,
+            # The rollback restored the ingress lease generation; keep the
+            # durable cleanup intent bound to that same fenced generation.
+            generation=ingress_lease_generation,
         )
         if intent is None:
             # A committed attachment still owns this key; fail closed.
