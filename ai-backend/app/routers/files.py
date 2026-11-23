@@ -36,6 +36,7 @@ from app.services.rag import (
 from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
 from app.services.project_access import can_edit_project
+from app.services.project_file_retention import lock_user_for_update
 from app.services.workspace_rbac import has_workspace_permission
 
 router = APIRouter(prefix="/files", tags=["Files"])
@@ -357,6 +358,25 @@ async def upload_file(
         if temp_path:
             temp_path.unlink(missing_ok=True)
 
+    def cleanup_unfinalized_upload() -> None:
+        try:
+            delete_stored_file(object_key, destination)
+        except StorageError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="تعذر تنظيف الملف الذي لم يكتمل تسجيله؛ يلزم إعادة محاولة التنظيف.",
+            ) from exc
+
+    # Match account deletion's user -> workspace lock order immediately after
+    # external storage I/O. Hold the user lock through extraction and finalization
+    # so deletion cannot remove the local path or miss a late S3 object.
+    if not lock_user_for_update(db, current_user.id):
+        cleanup_unfinalized_upload()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الحساب غير موجود",
+        )
+
     extracted_text = None
     if sniffed is not None:
         try:
@@ -368,11 +388,13 @@ async def upload_file(
                 f"فشل استخراج نص الملف: {file.filename or stored_filename} ({exc})",
                 current_user.id,
             )
+        except Exception:
+            db.rollback()
+            cleanup_unfinalized_upload()
+            raise
 
     if workspace_id is not None:
-        # The upload body is read without holding a DB connection. Before the
-        # attachment row is inserted, serialize against project/account
-        # deletion and revalidate the project after acquiring the same lock.
+        # Finalization locks user first, then workspace, matching account-retention order.
         locked_workspace = (
             db.query(Workspace.id)
             .filter(Workspace.id == workspace_id)
@@ -380,12 +402,17 @@ async def upload_file(
             .first()
         )
         if locked_workspace is None:
-            delete_stored_file(object_key, destination)
+            cleanup_unfinalized_upload()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="مساحة العمل غير موجودة",
             )
-        _get_workspace_membership(workspace_id, current_user, db)
+        try:
+            _get_workspace_membership(workspace_id, current_user, db)
+        except HTTPException:
+            db.rollback()
+            cleanup_unfinalized_upload()
+            raise
         if project_id is not None:
             current_project = (
                 db.query(WorkspaceProject)
@@ -397,7 +424,7 @@ async def upload_file(
                 .first()
             )
             if current_project is None:
-                delete_stored_file(object_key, destination)
+                cleanup_unfinalized_upload()
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="المشروع غير موجود",
@@ -415,12 +442,24 @@ async def upload_file(
         extracted_text=extracted_text,
     )
     db.add(attachment)
-    db.flush()
+    try:
+        db.flush()
+    except Exception:
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise
 
+    attachment_committed = False
     if extracted_text:
         # The file row needs an ID before chunk persistence, but the embedding
         # request is external I/O. Commit the attachment before that wait.
-        commit_and_release_connection(db)
+        try:
+            commit_and_release_connection(db)
+        except Exception:
+            db.rollback()
+            cleanup_unfinalized_upload()
+            raise
+        attachment_committed = True
         try:
             indexed_chunks = index_file_chunks(db, attachment)
             if indexed_chunks:
@@ -445,7 +484,14 @@ async def upload_file(
                 file_id=attachment.id,
             )
         )
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        if not attachment_committed:
+            cleanup_unfinalized_upload()
+        raise
+    attachment_committed = True
     db.refresh(attachment)
     log_event(
         db,
