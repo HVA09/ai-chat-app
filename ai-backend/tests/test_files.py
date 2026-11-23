@@ -78,19 +78,39 @@ def test_upload_releases_db_before_storage_and_embedding_io(client, tmp_path, mo
     assert events == ["release", "storage", "release", "embedding"]
 
 
-def test_upload_rejects_unsupported_type(client, tmp_path, monkeypatch):
+def test_upload_rejects_unsupported_type(client, db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client)
     response = client.post("/files/upload", files={"file": ("virus.exe", b"binary", "application/x-msdownload")}, headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 415
 
+    from app.models.upload_cleanup_intent import UploadCleanupIntent
+    from app.models.upload_lease import UploadLease
 
-def test_upload_rejects_oversized_file(client, tmp_path, monkeypatch):
+    lease = db_session.query(UploadLease).one()
+    intent = db_session.query(UploadCleanupIntent).filter_by(lease_id=lease.id).one()
+    assert lease.status == "cleanup_pending"
+    assert lease.owner_token_hash is None
+    assert intent.generation == lease.generation
+    assert intent.status == "completed"
+
+
+def test_upload_rejects_oversized_file(client, db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     monkeypatch.setattr(app_settings, "MAX_UPLOAD_SIZE_MB", 0)
     token = _register_and_login(client)
-    response = client.post("/files/upload", files={"file": ("small.png", b"\x89PNG\r\n\x1a\n" + b"x", "image/png")}, headers={"Authorization": f"Bearer {token}"})
+    response = client.post("/files/upload", files={"file": ("small.png", b"\\x89PNG\\r\\n\\x1a\\n" + b"x", "image/png")}, headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 413
+
+    from app.models.upload_cleanup_intent import UploadCleanupIntent
+    from app.models.upload_lease import UploadLease
+
+    lease = db_session.query(UploadLease).one()
+    intent = db_session.query(UploadCleanupIntent).filter_by(lease_id=lease.id).one()
+    assert lease.status == "cleanup_pending"
+    assert lease.owner_token_hash is None
+    assert intent.generation == lease.generation
+    assert intent.status == "completed"
 
 
 def test_list_files(client, tmp_path, monkeypatch):
