@@ -779,9 +779,8 @@ def test_personal_upload_cannot_orphan_object_during_account_deletion(
 
 
 
-@pytest.mark.parametrize("delete_during_indexing", [True])
 def test_personal_upload_indexing_cannot_outlive_account_deletion(
-    db_session, tmp_path, monkeypatch, delete_during_indexing
+    db_session, tmp_path, monkeypatch
 ):
     """A late embedding result cannot recreate chunks after account deletion."""
     import asyncio
@@ -830,6 +829,7 @@ def test_personal_upload_indexing_cannot_outlive_account_deletion(
     deletion_finished = Event()
     upload_errors = []
     deletion_errors = []
+    indexed_file_ids = []
     original_index = files_router.index_file_chunks
 
     def fake_put_file(path, object_key, _content_type):
@@ -839,6 +839,7 @@ def test_personal_upload_indexing_cannot_outlive_account_deletion(
         objects.clear()
 
     def delayed_index(db, attachment):
+        indexed_file_ids.append(attachment.id)
         indexing_started.set()
         if not allow_indexing.wait(10):
             raise AssertionError("test did not release the embedding/indexing phase")
@@ -916,7 +917,10 @@ def test_personal_upload_indexing_cannot_outlive_account_deletion(
             assert verify.query(FileAttachment).filter(
                 FileAttachment.user_id == user_id
             ).count() == 0
-            assert verify.query(FileChunk).count() == 0
+            assert len(indexed_file_ids) == 1
+            assert verify.query(FileChunk).filter(
+                FileChunk.file_id == indexed_file_ids[0]
+            ).count() == 0
     finally:
         allow_indexing.set()
         upload_thread.join(timeout=10)
