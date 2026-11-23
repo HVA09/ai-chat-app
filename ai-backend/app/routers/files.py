@@ -486,6 +486,31 @@ async def upload_file(
                 db.rollback()
             destination.unlink(missing_ok=True)
             raise HTTPException(status_code=503, detail="تعذر تخزين الملف بشكل دائم") from exc
+        except Exception as exc:
+            # Any other exception also exits the synchronous storage call:
+            # persist recovery intent, but do not assume the remote write failed
+            # atomically or attempt an untracked best-effort delete.
+            db.rollback()
+            lock_user_for_update(db, upload_user_id)
+            marked = mark_upload_lease_cleanup_pending(
+                db,
+                lease_id=upload_lease_id,
+                generation=upload_lease_generation,
+                owner_token=upload_lease_token,
+            )
+            if marked:
+                enqueue_upload_cleanup_intent(
+                    db,
+                    user_id=upload_user_id,
+                    object_key=object_key,
+                    lease_id=upload_lease_id,
+                    generation=upload_lease_generation,
+                )
+                db.commit()
+            else:
+                db.rollback()
+            destination.unlink(missing_ok=True)
+            raise HTTPException(status_code=503, detail="تعذر تخزين الملف بشكل دائم") from exc
     except BaseException:
         # Body read, size/type validation, and archive validation can fail
         # before put_file is invoked. Close that ingress lease explicitly;
