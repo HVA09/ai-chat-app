@@ -32,6 +32,14 @@ def test_upload_lease_claim_heartbeat_and_fencing(client, db_session):
     lease_id = lease.id
     assert lease.status == "receiving"
     assert lease.generation == 1
+    # Renew ingress ownership while request-body chunks are still arriving.
+    assert heartbeat_upload_lease(
+        db_session,
+        lease_id=lease_id,
+        generation=1,
+        owner_token=ingress_token,
+        lease_seconds=90,
+    )
     assert queue_upload_lease(
         db_session,
         lease_id=lease_id,
