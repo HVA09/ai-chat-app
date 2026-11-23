@@ -282,6 +282,7 @@ async def upload_file(
     # Keep the scalar identity: the ORM User instance can be expired/deleted
     # by a concurrent account deletion while indexing is awaiting external I/O.
     upload_user_id = current_user.id
+    upload_user_email = current_user.email
     project = None
     if project_id is not None:
         project = _get_accessible_project(project_id, current_user, db)
@@ -391,7 +392,8 @@ async def upload_file(
                 db,
                 "file_text_extraction_failed",
                 f"فشل استخراج نص الملف: {file.filename or stored_filename} ({exc})",
-                current_user.id,
+                upload_user_id,
+                commit=False,
             )
         except Exception:
             db.rollback()
@@ -467,19 +469,38 @@ async def upload_file(
         attachment_committed = True
         try:
             indexed_chunks = index_file_chunks(db, attachment)
+            if not lock_user_for_update(db, upload_user_id):
+                db.rollback()
+                cleanup_unfinalized_upload()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="الحساب غير موجود",
+                )
             if indexed_chunks:
                 log_event(
                     db,
                     "file_rag_indexed",
                     f"تم فهرسة {indexed_chunks} مقطعًا للملف {attachment.original_filename}",
-                    current_user.id,
+                    upload_user_id,
+                    commit=False,
                 )
         except EmbeddingServiceError as exc:
+            # The attachment was committed before external embedding I/O. The
+            # account may have been deleted while that request was in flight;
+            # never write an audit row or continue linking a deleted attachment.
+            db.rollback()
+            if not lock_user_for_update(db, upload_user_id):
+                cleanup_unfinalized_upload()
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="الحساب غير موجود",
+                ) from exc
             log_event(
                 db,
                 "file_rag_index_failed",
                 f"تعذر فهرسة الملف {attachment.original_filename}: {exc}",
-                current_user.id,
+                upload_user_id,
+                commit=False,
             )
         except (IntegrityError, ObjectDeletedError, StaleDataError) as exc:
             # Account deletion may commit while the external embedding request
@@ -504,6 +525,19 @@ async def upload_file(
                 file_id=attachment.id,
             )
         )
+    log_event(
+        db,
+        "file_uploaded",
+        f"رفع ملف: {attachment.original_filename} بواسطة {upload_user_email}",
+        upload_user_id,
+        commit=False,
+    )
+    response = _file_response(
+        attachment,
+        current_user,
+        db,
+        is_attached=conversation_id is not None,
+    )
     try:
         db.commit()
     except Exception:
@@ -512,19 +546,7 @@ async def upload_file(
             cleanup_unfinalized_upload()
         raise
     attachment_committed = True
-    db.refresh(attachment)
-    log_event(
-        db,
-        "file_uploaded",
-        f"رفع ملف: {attachment.original_filename} بواسطة {current_user.email}",
-        current_user.id,
-    )
-    return _file_response(
-        attachment,
-        current_user,
-        db,
-        is_attached=conversation_id is not None,
-    )
+    return response
 
 
 @router.get("", response_model=list[FileOut])

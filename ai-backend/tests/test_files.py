@@ -931,6 +931,163 @@ def test_personal_upload_indexing_cannot_outlive_account_deletion(
             cleanup.commit()
 
 
+
+def test_personal_upload_embedding_failure_after_account_deletion_is_clean_404(
+    db_session, tmp_path, monkeypatch
+):
+    """A provider failure after deletion must not audit or finalize a deleted upload."""
+    import asyncio
+    from io import BytesIO
+    from threading import Event, Thread
+    from uuid import uuid4
+
+    import pytest
+    from fastapi import HTTPException
+    from sqlalchemy.orm import sessionmaker
+    from starlette.datastructures import Headers, UploadFile
+
+    from app.config import settings
+    from app.models.file_attachment import FileAttachment
+    from app.models.file_chunk import FileChunk
+    from app.models.user import User
+    from app.routers import files as files_router
+    from app.routers import users as users_router
+    from app.schemas.user import DeleteAccountRequest
+    from app.services.embeddings import EmbeddingServiceError
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock and cascade behavior is required")
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(users_router, "verify_password", lambda *_args: True)
+    monkeypatch.setattr(files_router, "extract_text", lambda *_args, **_kwargs: "index this personal file")
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+    suffix = uuid4().hex
+    creator = session_factory()
+    user = User(
+        email=f"personal-embedding-error-delete-{suffix}@example.test",
+        hashed_password="test-only-hash",
+    )
+    creator.add(user)
+    creator.commit()
+    user_id = user.id
+    creator.close()
+
+    objects = {}
+    indexing_started = Event()
+    allow_indexing_failure = Event()
+    deletion_finished = Event()
+    upload_errors = []
+    deletion_errors = []
+    indexed_file_ids = []
+    upload_audit_attempts = []
+
+    def fake_put_file(path, object_key, _content_type):
+        objects[object_key] = path.read_bytes()
+
+    def fake_delete_file(object_key, fallback_path):
+        objects.pop(object_key, None)
+        fallback_path.unlink(missing_ok=True)
+
+    def fake_delete_user_objects(_user_id):
+        objects.clear()
+
+    def fail_index_after_delete(_db, attachment):
+        indexed_file_ids.append(attachment.id)
+        indexing_started.set()
+        if not allow_indexing_failure.wait(10):
+            raise AssertionError("test did not release the embedding failure")
+        raise EmbeddingServiceError("simulated provider failure after account deletion")
+
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
+    monkeypatch.setattr(users_router, "delete_user_objects", fake_delete_user_objects)
+    monkeypatch.setattr(files_router, "index_file_chunks", fail_index_after_delete)
+    monkeypatch.setattr(
+        files_router,
+        "log_event",
+        lambda *_args, **_kwargs: upload_audit_attempts.append("called"),
+    )
+
+    def run_upload():
+        try:
+            with session_factory() as upload_db:
+                upload_db.begin()
+                current_user = upload_db.get(User, user_id)
+                upload = UploadFile(
+                    filename="personal.txt",
+                    file=BytesIO(b"personal file that will fail embedding"),
+                    headers=Headers({"content-type": "text/plain"}),
+                )
+                asyncio.run(
+                    files_router.upload_file(
+                        upload,
+                        current_user=current_user,
+                        db=upload_db,
+                    )
+                )
+        except BaseException as exc:
+            upload_errors.append(exc)
+
+    def run_delete():
+        try:
+            with session_factory() as delete_db:
+                delete_db.begin()
+                current_user = delete_db.get(User, user_id)
+                users_router.delete_account(
+                    DeleteAccountRequest(password="test-password"),
+                    current_user,
+                    delete_db,
+                )
+        except BaseException as exc:
+            deletion_errors.append(exc)
+        finally:
+            deletion_finished.set()
+
+    upload_thread = Thread(target=run_upload, daemon=True)
+    deletion_thread = None
+    try:
+        upload_thread.start()
+        assert indexing_started.wait(10), "upload did not reach external embedding"
+
+        deletion_thread = Thread(target=run_delete, daemon=True)
+        deletion_thread.start()
+        assert deletion_finished.wait(10), "account deletion did not finish"
+        assert deletion_errors == []
+        allow_indexing_failure.set()
+
+        upload_thread.join(timeout=10)
+        deletion_thread.join(timeout=10)
+        assert not upload_thread.is_alive()
+        assert not deletion_thread.is_alive()
+        assert len(upload_errors) == 1
+        assert isinstance(upload_errors[0], HTTPException)
+        assert upload_errors[0].status_code == 404
+        assert upload_audit_attempts == []
+        assert objects == {}
+
+        with session_factory() as verify:
+            assert verify.get(User, user_id) is None
+            assert verify.query(FileAttachment).filter(
+                FileAttachment.user_id == user_id
+            ).count() == 0
+            assert len(indexed_file_ids) == 1
+            assert verify.query(FileChunk).filter(
+                FileChunk.file_id == indexed_file_ids[0]
+            ).count() == 0
+    finally:
+        allow_indexing_failure.set()
+        upload_thread.join(timeout=10)
+        if deletion_thread is not None:
+            deletion_thread.join(timeout=10)
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
+            cleanup.commit()
+
+
 def test_project_upload_finalization_waits_for_project_deletion_on_postgres(
     db_session, tmp_path, monkeypatch
 ):
