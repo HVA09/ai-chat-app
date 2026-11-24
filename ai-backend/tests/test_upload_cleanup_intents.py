@@ -3,6 +3,8 @@ from uuid import uuid4
 from app.models.file_attachment import FileAttachment
 from app.models.upload_cleanup_intent import UploadCleanupIntent
 from app.models.user import User
+from app.models.upload_lease import UploadLease
+from app.services.upload_leases import claim_upload_lease, create_upload_lease, queue_upload_lease
 from app.services.upload_cleanup_intents import (
     enqueue_upload_cleanup_intent,
     record_upload_cleanup_attempt,
@@ -108,4 +110,48 @@ def test_upload_cleanup_attempts_are_monotonic_and_completion_is_terminal(db_ses
         intent_id=intent.id,
         succeeded=False,
         error_code="late_failure",
+    )
+
+
+def test_stale_processing_generation_cannot_enqueue_cleanup_intent(db_session):
+    user = _make_user(db_session)
+    object_key = f"users/{user.id}/{uuid4().hex}.txt"
+    lease, ingress_token = create_upload_lease(
+        db_session,
+        user_id=user.id,
+        object_key=object_key,
+    )
+    assert queue_upload_lease(
+        db_session,
+        lease_id=lease.id,
+        generation=1,
+        owner_token=ingress_token,
+    )
+    generation, worker_token = claim_upload_lease(
+        db_session,
+        lease_id=lease.id,
+        lease_seconds=90,
+    )
+
+    # Model a later, authoritative generation taking ownership. The previous
+    # worker still has its old generation/token but no longer owns the lease.
+    persisted_lease = db_session.get(UploadLease, lease.id)
+    persisted_lease.generation = generation + 1
+    persisted_lease.status = "processing"
+    persisted_lease.owner_token_hash = "f" * 64
+    db_session.flush()
+
+    stale_intent = enqueue_upload_cleanup_intent(
+        db_session,
+        user_id=user.id,
+        object_key=object_key,
+        lease_id=lease.id,
+        generation=generation,
+    )
+    assert stale_intent is None
+    assert (
+        db_session.query(UploadCleanupIntent)
+        .filter(UploadCleanupIntent.object_key == object_key)
+        .count()
+        == 0
     )
