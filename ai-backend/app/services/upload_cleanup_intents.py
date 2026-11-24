@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.models.file_attachment import FileAttachment
 from app.models.upload_cleanup_intent import UploadCleanupIntent
 from app.models.user import User
+from app.models.upload_lease import UploadLease
 
 
 def _idempotency_key(object_key: str) -> str:
@@ -40,6 +41,9 @@ def enqueue_upload_cleanup_intent(
     if not object_key or len(object_key) > 512 or object_key.startswith("/"):
         raise ValueError("object_key is invalid")
 
+    if (lease_id is None) != (generation is None):
+        raise ValueError("lease_id and generation must be provided together")
+
     persisted_user_id = user_id
     if user_id is not None:
         locked_user = (
@@ -50,6 +54,25 @@ def enqueue_upload_cleanup_intent(
         )
         if locked_user is None:
             persisted_user_id = None
+
+    if lease_id is not None:
+        # A cleanup intent tied to an upload lease is valid only after the
+        # exact generation has durably transitioned to cleanup_pending.
+        # This prevents a stale processing worker from enqueueing cleanup
+        # after a newer generation has taken ownership.
+        cleanup_lease = (
+            db.query(UploadLease.id)
+            .filter(
+                UploadLease.id == lease_id,
+                UploadLease.object_key == object_key,
+                UploadLease.generation == generation,
+                UploadLease.status == "cleanup_pending",
+            )
+            .with_for_update()
+            .first()
+        )
+        if cleanup_lease is None:
+            return None
 
     committed_attachment = (
         db.query(FileAttachment.id)
