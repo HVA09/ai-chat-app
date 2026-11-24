@@ -323,3 +323,103 @@ def test_processing_job_creation_is_single_row_across_independent_postgres_sessi
                     cleanup.query(UploadLease).filter_by(id=lease_id).delete()
                 cleanup.query(User).filter_by(id=user_id).delete()
                 cleanup.commit()
+
+
+def test_account_deletion_serializes_with_concurrent_job_claim(client, db_session):
+    """A claim waiting behind account deletion must fail closed after deletion commits."""
+    import os
+    from threading import Event, Thread
+    from uuid import uuid4
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import sessionmaker
+    from app.models.upload_lease import UploadLease
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("account-deletion row-lock serialization requires PostgreSQL")
+    if "test" not in (engine.url.database or "").lower():
+        pytest.skip("database name is not clearly marked as a test database")
+    if os.getenv("ENVIRONMENT", "test").lower() != "test":
+        pytest.skip("test environment guard is not active")
+
+    email = f"upload-delete-race-{uuid4().hex}@example.com"
+    user = _user(client, db_session, email)
+    user_id = user.id
+    lease = _queued_lease(db_session, user)
+    job, _ = create_upload_processing_job(
+        db_session, lease_id=lease.id, stage="extract"
+    )
+    lease_id, job_id = lease.id, job.id
+    db_session.commit()
+
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    deletion_locked = Event()
+    allow_deletion_commit = Event()
+    claim_finished = Event()
+    claim_results, errors = [], []
+
+    def delete_account_row():
+        try:
+            with factory() as deleting:
+                locked_user = deleting.execute(
+                    select(User).where(User.id == user_id).with_for_update()
+                ).scalar_one()
+                deletion_locked.set()
+                assert allow_deletion_commit.wait(timeout=10)
+                deleting.delete(locked_user)
+                deleting.commit()
+        except BaseException as exc:
+            errors.append(exc)
+            deletion_locked.set()
+
+    def claim_job():
+        try:
+            with factory() as claiming:
+                claim_results.append(
+                    claim_upload_processing_job(claiming, job_id=job_id)
+                )
+                claiming.commit()
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            claim_finished.set()
+
+    deleter = Thread(target=delete_account_row)
+    claimant = Thread(target=claim_job)
+    try:
+        deleter.start()
+        assert deletion_locked.wait(timeout=10), "deletion did not acquire user lock"
+        claimant.start()
+        # The claim must wait for the user-row lock held by account deletion.
+        assert not claim_finished.wait(timeout=0.25), "claim bypassed deletion lock"
+        allow_deletion_commit.set()
+        deleter.join(timeout=15)
+        claimant.join(timeout=15)
+
+        assert not deleter.is_alive(), "deletion thread hung"
+        assert not claimant.is_alive(), "claim thread hung"
+        assert errors == []
+        assert claim_results == [None]
+
+        with factory() as verify:
+            persisted_lease = verify.get(UploadLease, lease_id)
+            persisted_job = verify.get(UploadProcessingJob, job_id)
+            assert verify.get(User, user_id) is None
+            assert persisted_lease is not None
+            assert persisted_lease.user_id is None
+            assert persisted_job is not None
+            assert persisted_job.status == "pending_dispatch"
+            assert persisted_job.generation == 0
+            assert persisted_job.attempt_count == 0
+    finally:
+        allow_deletion_commit.set()
+        if deleter.is_alive():
+            deleter.join(timeout=15)
+        if claimant.is_alive():
+            claimant.join(timeout=15)
+        with factory() as cleanup:
+            cleanup.query(UploadProcessingJob).filter_by(id=job_id).delete()
+            cleanup.query(UploadLease).filter_by(id=lease_id).delete()
+            cleanup.commit()
