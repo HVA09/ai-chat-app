@@ -1531,25 +1531,33 @@ def test_upload_keeps_local_file_when_cleanup_commit_fails(
     client, tmp_path, monkeypatch
 ):
     from sqlalchemy.orm import Session
-    from app.models.upload_lease import UploadLease
 
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client, "cleanup-commit-failure@example.com")
+    cleanup_intent_enqueued = False
 
     def write_then_fail(destination, *_args, **_kwargs):
         destination.write_bytes(b"commit recovery payload")
         raise RuntimeError("injected storage failure")
 
+    original_enqueue = files_router.enqueue_upload_cleanup_intent
+
+    def track_cleanup_intent(*args, **kwargs):
+        nonlocal cleanup_intent_enqueued
+        intent = original_enqueue(*args, **kwargs)
+        cleanup_intent_enqueued = intent is not None
+        return intent
+
     monkeypatch.setattr(files_router, "put_file", write_then_fail)
+    monkeypatch.setattr(
+        files_router, "enqueue_upload_cleanup_intent", track_cleanup_intent
+    )
     original_commit = Session.commit
 
     def fail_cleanup_commit(db):
-        pending = (
-            db.query(UploadLease.id)
-            .filter(UploadLease.status == "cleanup_pending")
-            .first()
-        )
-        if pending is not None:
+        nonlocal cleanup_intent_enqueued
+        if cleanup_intent_enqueued:
+            cleanup_intent_enqueued = False
             raise RuntimeError("injected cleanup transaction commit failure")
         return original_commit(db)
 
