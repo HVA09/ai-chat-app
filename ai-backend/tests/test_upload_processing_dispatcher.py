@@ -112,3 +112,113 @@ def test_dispatch_redelivers_stale_queued_message(client, db_session):
 def test_dispatch_rejects_invalid_bounds(db_session, kwargs):
     with pytest.raises(ValueError):
         dispatch_upload_processing_jobs(db_session, publish=lambda _job_id: None, **kwargs)
+
+
+
+def test_concurrent_dispatchers_skip_rows_locked_by_another_dispatcher(db_session):
+    """A second dispatcher must skip a row while its publish is in flight."""
+    import os
+    from threading import Event, Thread
+    from uuid import uuid4
+
+    from sqlalchemy.orm import sessionmaker
+    from app.models.upload_lease import UploadLease
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("dispatcher row-lock behavior requires PostgreSQL")
+    if "test" not in (engine.url.database or "").lower():
+        pytest.skip("database name is not clearly marked as a test database")
+    if os.getenv("ENVIRONMENT", "test").lower() != "test":
+        pytest.skip("test environment guard is not active")
+
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    user_id = lease_id = job_id = None
+    publish_entered = Event()
+    allow_publish_to_finish = Event()
+    first_results = []
+    errors = []
+
+    try:
+        with factory() as setup:
+            user = User(
+                email=f"pg-concurrent-dispatch-{suffix}@example.test",
+                hashed_password="test-only",
+            )
+            setup.add(user)
+            setup.flush()
+            user_id = user.id
+            lease, token = create_upload_lease(
+                setup,
+                user_id=user.id,
+                object_key=f"users/{user.id}/{suffix}.bin",
+            )
+            lease_id = lease.id
+            assert queue_upload_lease(
+                setup, lease_id=lease.id, generation=1, owner_token=token
+            )
+            job, created = create_upload_processing_job(
+                setup, lease_id=lease.id, stage="extract"
+            )
+            assert created
+            job_id = job.id
+            setup.commit()
+
+        def first_dispatcher():
+            try:
+                with factory() as session:
+                    def blocking_publish(published_job_id):
+                        assert published_job_id == job_id
+                        publish_entered.set()
+                        assert allow_publish_to_finish.wait(timeout=10), (
+                            "test did not release the in-flight publish"
+                        )
+
+                    first_results.extend(
+                        dispatch_upload_processing_jobs(
+                            session, publish=blocking_publish
+                        )
+                    )
+                    session.commit()
+            except BaseException as exc:
+                errors.append(exc)
+                publish_entered.set()
+
+        thread = Thread(target=first_dispatcher)
+        thread.start()
+        assert publish_entered.wait(timeout=10), "first dispatcher did not begin publish"
+
+        # The first dispatcher is paused inside publish while retaining its
+        # FOR UPDATE lock. SKIP LOCKED must let the second dispatcher return
+        # promptly without publishing or waiting for that same row.
+        with factory() as second:
+            second_published = []
+            second_results = dispatch_upload_processing_jobs(
+                second, publish=lambda value: second_published.append(value)
+            )
+            second.commit()
+
+        assert second_results == []
+        assert second_published == []
+        allow_publish_to_finish.set()
+        thread.join(timeout=15)
+        assert not thread.is_alive(), "first dispatcher hung"
+        assert errors == []
+        assert first_results == [job_id]
+
+        with factory() as verify:
+            persisted = verify.get(UploadProcessingJob, job_id)
+            assert persisted is not None
+            assert persisted.status == "queued"
+    finally:
+        allow_publish_to_finish.set()
+        if user_id is not None:
+            with factory() as cleanup:
+                if job_id is not None:
+                    cleanup.query(UploadProcessingJob).filter_by(id=job_id).delete()
+                if lease_id is not None:
+                    cleanup.query(UploadLease).filter_by(id=lease_id).delete()
+                cleanup.query(User).filter_by(id=user_id).delete()
+                cleanup.commit()
