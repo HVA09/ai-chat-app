@@ -149,7 +149,8 @@ def test_upload_keeps_local_file_when_cleanup_intent_persistence_fails(
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client, "cleanup-persist-failure@example.com")
 
-    def fail_storage_write(*_args, **_kwargs):
+    def fail_storage_write(destination, *_args, **_kwargs):
+        destination.write_bytes(b"recovery payload")
         raise RuntimeError("injected storage failure")
 
     def fail_cleanup_intent(*_args, **_kwargs):
@@ -166,7 +167,7 @@ def test_upload_keeps_local_file_when_cleanup_intent_persistence_fails(
 
     assert response.status_code == 503
     assert "لم يُحذف الملف" in response.json()["detail"]
-    retained_files = [path for path in tmp_path.iterdir() if path.is_file()]
+    retained_files = [path for path in tmp_path.rglob("*") if path.is_file()]
     assert len(retained_files) == 1
     assert retained_files[0].read_bytes() == b"recovery payload"
 
