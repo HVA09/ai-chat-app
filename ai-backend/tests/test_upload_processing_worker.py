@@ -1,11 +1,8 @@
 """Tests for the isolated durable upload extraction worker."""
 from contextlib import contextmanager
 
-import pytest
-
 from app.models import User
 from app.models.file_attachment import FileAttachment
-from app.models.upload_lease import UploadLease
 from app.models.upload_processing_job import UploadProcessingJob
 from app.services.file_text_extractor import FileTextExtractionError
 from app.services.upload_leases import (
