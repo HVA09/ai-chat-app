@@ -1,6 +1,6 @@
 # Durable Upload Processing Jobs — Architecture and Rollout
 
-**Status:** design baseline for PR #767; documentation only  
+**Status:** implementation in progress in PR #767; dispatcher helper and tests added, not scheduled or enabled in production  
 **Scope:** AI Chat App backend upload extraction, RAG indexing, and safe recovery  
 **Non-goals:** enabling destructive reconciliation, changing production infrastructure, or changing current API behavior in this document
 
@@ -70,7 +70,7 @@ The HTTP request must not hold a User row lock while performing extraction or wa
 
 ### B. Outbox dispatch
 
-A periodic dispatcher scans a bounded batch of due `pending_dispatch` / `retry_wait` jobs, claims each dispatch attempt using a database compare-and-swap, and publishes only the job ID plus a non-secret trace identifier.
+The implemented bounded dispatcher scans due `pending_dispatch` / `retry_wait` jobs and stale `queued` jobs, locks each row with `FOR UPDATE SKIP LOCKED`, and publishes only the job ID. It then sets the row to `queued` and updates `updated_at` in the same caller-owned transaction. Workers may claim `pending_dispatch`, `retry_wait`, or `queued` rows under the same row lock. A worker receiving a fast message waits for the dispatch transaction, then sees the committed queued state. A dispatcher crash after broker acceptance can cause duplicate publication; worker claim fencing makes duplicate deliveries harmless. Stale queued rows are republished after a bounded interval so broker acknowledgement loss does not strand the job.
 
 - Publish failure leaves the durable job eligible for retry with bounded backoff.
 - Publish success is not job completion. The worker still has to claim the database row.
@@ -215,4 +215,4 @@ Use PostgreSQL integration tests for row locks, conditional updates, unique cons
 - No automatic PR merge or bypass of branch protection/review requirements.
 - No claim that this design document itself fixes the current synchronous request path.
 
-**Acceptance for the next code change:** implement step 1 only, with migration/model/service/tests, then run the full backend suite and CI on the exact commit before proceeding to dispatch or worker execution.
+**Acceptance for the next code change:** validate the dispatcher helper with full backend CI and CodeQL on the exact commit. Only after that should it be wired to a non-production task entrypoint and tested with a real broker in an isolated environment. Worker implementation remains a separate subsequent stage.
