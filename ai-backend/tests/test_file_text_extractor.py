@@ -5,6 +5,7 @@ from docx import Document
 from openpyxl import Workbook
 from pypdf import PdfWriter
 
+from app.services import file_text_extractor
 from app.services.file_text_extractor import extract_text
 
 
@@ -118,3 +119,36 @@ def test_text_and_csv_read_only_bounded_source_prefixes(tmp_path: Path, monkeypa
     extract_text(csv_path, "text/csv", max_chars=16)
 
     assert read_sizes == [64, 128]
+
+
+
+def test_xlsx_extraction_bounds_sheet_dimensions_and_total_cells(tmp_path: Path, monkeypatch):
+    calls = []
+
+    class Worksheet:
+        title = "Large"
+
+        def iter_rows(self, **kwargs):
+            calls.append(kwargs)
+            yield ("Linux", "Cloud")
+
+    class WorkbookStub:
+        worksheets = [Worksheet()]
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(file_text_extractor, "load_workbook", lambda **_kwargs: WorkbookStub())
+
+    text = extract_text(
+        tmp_path / "stub.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+    assert "[ورقة: Large]" in text
+    assert "Linux | Cloud" in text
+    assert calls == [{
+        "max_row": file_text_extractor.MAX_XLSX_ROWS_PER_SHEET,
+        "max_col": file_text_extractor.MAX_XLSX_COLUMNS_PER_ROW,
+        "values_only": True,
+    }]
