@@ -196,3 +196,49 @@ def test_delete_user_objects_is_noop_without_s3(monkeypatch):
     monkeypatch.setattr(storage, "_client", unexpected_client)
 
     storage.delete_user_objects(42)
+
+
+def test_materialize_file_preserves_temp_when_supervisor_cannot_confirm_stop(
+    monkeypatch, tmp_path
+):
+    import io
+    import pytest
+
+    _enable_s3(monkeypatch)
+    fallback = tmp_path / "example.csv"
+    body = io.BytesIO(b"remote source")
+    monkeypatch.setattr(storage, "open_file", lambda key, path: body)
+
+    retained = None
+    with pytest.raises(storage.PreserveMaterializedFile) as raised:
+        with storage.materialize_file("users/1/example.csv", fallback) as materialized:
+            retained = materialized
+            raise storage.PreserveMaterializedFile(materialized)
+
+    assert raised.value.path == retained
+    assert retained is not None and retained.exists()
+    assert retained.read_bytes() == b"remote source"
+    assert body.closed
+
+    # The test owns this deliberately retained file; production recovery must
+    # use an explicit, separately authorized cleanup path after child-stop proof.
+    retained.unlink()
+
+
+def test_materialize_file_does_not_preserve_a_different_path(
+    monkeypatch, tmp_path
+):
+    import io
+    import pytest
+
+    _enable_s3(monkeypatch)
+    fallback = tmp_path / "example.csv"
+    body = io.BytesIO(b"remote source")
+    monkeypatch.setattr(storage, "open_file", lambda key, path: body)
+
+    with pytest.raises(storage.PreserveMaterializedFile):
+        with storage.materialize_file("users/1/example.csv", fallback) as materialized:
+            raise storage.PreserveMaterializedFile(tmp_path / "unrelated.csv")
+
+    assert body.closed
+    assert not list(tmp_path.glob("ai-chat-storage-*"))
