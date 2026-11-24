@@ -34,13 +34,17 @@ def _limit(text: str, max_chars: int) -> str:
 
 
 def _read_text_file(path: Path, max_chars: int) -> str:
-    raw = path.read_bytes()[: max_chars * 4]
+    # Read only a bounded prefix; Path.read_bytes() would load the entire upload.
+    with path.open("rb") as source:
+        raw = source.read(max_chars * 4)
     text = raw.decode("utf-8-sig", errors="replace")
     return _limit(text, max_chars)
 
 
 def _read_csv_file(path: Path, max_chars: int) -> str:
-    raw = path.read_bytes()[: max_chars * 8]
+    # Keep the CSV input buffer bounded before handing it to csv.reader.
+    with path.open("rb") as source:
+        raw = source.read(max_chars * 8)
     text = raw.decode("utf-8-sig", errors="replace")
     rows = csv.reader(StringIO(text))
     rendered = []
