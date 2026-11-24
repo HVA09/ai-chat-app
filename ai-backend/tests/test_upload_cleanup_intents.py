@@ -167,3 +167,42 @@ def test_stale_processing_generation_cannot_enqueue_cleanup_intent(db_session):
         .count()
         == 0
     )
+
+
+def test_current_cleanup_pending_generation_can_enqueue_intent(db_session):
+    user = _make_user(db_session)
+    object_key = f"users/{user.id}/{uuid4().hex}.txt"
+    lease, ingress_token = create_upload_lease(
+        db_session,
+        user_id=user.id,
+        object_key=object_key,
+    )
+    assert queue_upload_lease(
+        db_session,
+        lease_id=lease.id,
+        generation=1,
+        owner_token=ingress_token,
+    )
+    generation, worker_token = claim_upload_lease(
+        db_session,
+        lease_id=lease.id,
+        lease_seconds=90,
+    )
+    assert mark_upload_lease_cleanup_pending(
+        db_session,
+        lease_id=lease.id,
+        generation=generation,
+        owner_token=worker_token,
+    )
+
+    intent = enqueue_upload_cleanup_intent(
+        db_session,
+        user_id=user.id,
+        object_key=object_key,
+        lease_id=lease.id,
+        generation=generation,
+    )
+    assert intent is not None
+    assert intent.lease_id == lease.id
+    assert intent.generation == generation
+    assert intent.status == "pending"
