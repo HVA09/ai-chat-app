@@ -1,0 +1,218 @@
+# Durable Upload Processing Jobs — Architecture and Rollout
+
+**Status:** design baseline for PR #767; documentation only  
+**Scope:** AI Chat App backend upload extraction, RAG indexing, and safe recovery  
+**Non-goals:** enabling destructive reconciliation, changing production infrastructure, or changing current API behavior in this document
+
+## 1. Executive decision
+
+Use the existing PostgreSQL database as the source of truth for upload-processing state. Reuse the existing Celery integration only as a delivery/execution mechanism. Treat Redis messages as at-least-once notifications, never as the durable job record.
+
+The upload lease remains the ownership/fencing record for the managed object. Introduce a durable processing-job record (which also acts as the transactional outbox) so the upload transaction can commit both the lease transition and the work that must eventually run. A periodic dispatcher republishes eligible jobs until a worker claims them. Duplicate messages must be harmless.
+
+Do not enable a cleanup reconciler, age-based deletion, or lease-expiry deletion as part of this change. A timeout or expired heartbeat is not proof that a worker has stopped.
+
+## 2. Verified current-state constraints
+
+The current branch already has:
+
+- `UploadLease` with an immutable managed `object_key`, optional `staging_key`, status, monotonically increasing `generation`, owner-token hash, heartbeat/expiry timestamps, and optional attachment ID.
+- Cleanup-intent persistence with lease identity and generation checks.
+- Celery configured with Redis broker/result backend and existing email, scheduled-task, agent-job, and webhook tasks.
+- Render's current backend startup script can embed a single-concurrency Celery worker and Beat in the web process.
+- The upload route still performs extraction in the HTTP request. RAG embedding generation and index persistence are also invoked synchronously from that request path.
+- Render's web filesystem is not a durable cross-service work volume. Managed uploads must be read from configured object storage by a future worker; a local path must not be assumed shared or persistent.
+
+Consequently, the existing `queued` lease state is not proof that a Celery message exists, and adding a task wrapper around the current synchronous functions would not by itself provide durable processing.
+
+## 3. Target data model
+
+Add an `upload_processing_jobs` table through a new Alembic migration. Keep the schema deliberately small and database-portable where practical.
+
+| Field | Purpose |
+|---|---|
+| `id` | UUID primary key |
+| `lease_id` | FK to `upload_leases.id`; retain referential integrity |
+| `stage` | `extract` or `index` |
+| `stage_revision` | Explicit revision for deliberate reprocessing |
+| `status` | `pending_dispatch`, `queued`, `processing`, `retry_wait`, `succeeded`, `failed_terminal`, `cancelled` |
+| `generation` | Monotonic fencing generation for this job claim |
+| `owner_token_hash` | Hash of random claim token; never persist the raw token |
+| `attempt_count` | Bounded delivery/processing attempts |
+| `available_at` | Earliest eligible retry/dispatch time |
+| `heartbeat_at`, `expires_at` | Observability and advisory liveness only |
+| `started_at`, `completed_at` | Stage lifecycle timestamps |
+| `last_error_code` | Safe, bounded error classification; no secrets or raw provider payloads |
+| `created_at`, `updated_at` | Audit timestamps |
+
+Required constraints/indexes:
+
+- Unique idempotency key over `(lease_id, stage, stage_revision)`.
+- Index eligible jobs by `(status, available_at, created_at)`.
+- Index active jobs by `(lease_id, status)`.
+- Foreign-key behavior must preserve recovery/audit metadata if a user is deleted. Do not cascade-delete the job or lease with the user.
+- The attachment identity is resolved and revalidated at finalization; do not trust an attachment ID carried only in a broker message.
+
+The job row doubles as the outbox. This avoids a dual-write between a job table and a separate outbox table. If later event fan-out requires a general outbox, that should be a separate design.
+
+## 4. Upload and processing lifecycle
+
+### A. Ingress (HTTP request)
+
+1. Authenticate and validate request metadata.
+2. Lock the user row and create the upload lease before writing managed bytes, preserving the established User → Lease lock order.
+3. Stream the body to a bounded temporary file and durable object storage. Heartbeat the ingress lease during awaited body reads.
+4. Once the storage writer has returned, create the initial extraction job and transition the lease to its accepted/queued state in one database transaction. The unique job key makes request retries idempotent.
+5. Commit the transaction. A best-effort immediate dispatch may reduce latency, but the request must not depend on Redis availability for durability.
+6. Return a truthful processing state. API/UI compatibility must be handled explicitly: do not claim extracted text or completed indexing before those stages succeed.
+
+The HTTP request must not hold a User row lock while performing extraction or waiting on an embedding provider.
+
+### B. Outbox dispatch
+
+A periodic dispatcher scans a bounded batch of due `pending_dispatch` / `retry_wait` jobs, claims each dispatch attempt using a database compare-and-swap, and publishes only the job ID plus a non-secret trace identifier.
+
+- Publish failure leaves the durable job eligible for retry with bounded backoff.
+- Publish success is not job completion. The worker still has to claim the database row.
+- A crash between publish and recording dispatch may publish a duplicate; this is expected and must be safe.
+- The dispatcher never deletes objects and never infers that a worker has stopped.
+
+A Beat-triggered dispatcher is acceptable only as a trigger. The database row remains authoritative, and an independently supervised process must ensure dispatch resumes after Beat or broker interruption.
+
+### C. Worker claim and fencing
+
+A worker receives a job ID, opens a short DB transaction, locks/conditionally updates the job, and claims it only if:
+
+- the job is in an eligible state and is due;
+- the associated lease is in the expected state and generation;
+- the owner user still exists and is authorized for this operation;
+- the attempt budget has not been exhausted.
+
+Claim increments the job generation and stores only a hash of a fresh random owner token. Every heartbeat, state transition, and result commit must compare the job ID, generation, and token hash. A stale worker must be unable to commit even if it resumes after a newer generation has claimed the job.
+
+Broker messages are at-least-once. Duplicate deliveries that cannot claim the current generation must exit without side effects.
+
+### D. Extraction stage
+
+- Fetch source bytes from managed object storage into a per-task isolated temporary directory.
+- Enforce explicit byte, archive expansion, page/row/paragraph, output-character, and wall-clock limits.
+- Run parsing in a killable process boundary, not a thread whose timeout merely stops waiting.
+- Do not hold a user-row lock while parsing.
+- After parsing, open a short transaction, lock User → Lease → Job in the documented order, revalidate user existence and all fencing generations, and persist extracted text plus the next-stage job atomically.
+- If the user has been deleted or the generation is stale, do not create/update an attachment or schedule indexing. Leave cleanup to the fenced recovery protocol after worker termination is established.
+
+Extraction output must be bounded before it is materialized in memory. Existing parser paths that call `Path.read_bytes()` before slicing or traverse all DOCX paragraphs/tables before applying an output limit need separate bounded-reader work.
+
+### E. Index stage
+
+- Load the committed attachment and its extracted-text fingerprint from the database.
+- Generate embeddings outside a DB write transaction and outside a user-row lock.
+- Persist the complete replacement index atomically only after rechecking attachment ownership, text fingerprint, job generation, and current user/lease state.
+- Use the existing `prepare_file_index` / `persist_file_index` split in `rag.py` as the starting point.
+- A provider failure must not delete or partially replace a previously valid index.
+- On retry, reusing the same `(lease_id, stage, stage_revision)` must not create duplicate chunks or multiple successful terminal outcomes.
+
+### F. Completion
+
+Mark the job stage succeeded only in the same transaction that persists its durable result. Mark the lease/attachment processing state consistently with the completed stages. A successful extraction is not equivalent to successful indexing; expose the distinction rather than overloading one status.
+
+## 5. Worker runtime and termination proof
+
+The production target should be a separately supervised Render Background Worker using the same immutable backend image and environment contract as the web service. It must use the same durable database and object-storage bucket, but it must not depend on a shared local filesystem.
+
+Do not treat the current embedded worker in the web process as the final production topology. It couples API availability, Beat, and worker lifecycle and gives no independent worker health boundary.
+
+Celery configuration to evaluate and test explicitly:
+
+- prefork pool and bounded concurrency;
+- task soft and hard time limits derived from measured parser/provider budgets;
+- late acknowledgement and reject-on-worker-lost semantics where appropriate;
+- worker prefetch bounded to avoid claiming work far ahead of available execution slots;
+- bounded retries with exponential backoff and jitter;
+- task result expiry is not a substitute for job-state retention;
+- graceful shutdown followed by a bounded hard-stop policy.
+
+A hard time limit is necessary but not sufficient. Tests and runtime evidence must show that the task child process is terminated and reaped, that it cannot continue reading/writing after fencing, and that redelivery cannot overlap with an old live execution. If the platform cannot establish this, leave the job in an explicit uncertain/recovery state and do not authorize destructive cleanup.
+
+## 6. Account deletion and lock ordering
+
+Preserve the existing lock-order contract:
+
+1. User row
+2. UploadLease row
+3. UploadProcessingJob row
+4. FileAttachment / workspace rows as required by the operation
+
+Account deletion must coordinate with active leases and jobs. It must prevent new claims for the deleted user, fence active generations, and retain the minimal lease/job recovery metadata needed to handle stored objects. A worker that finishes after deletion must fail its user-existence/fencing check and must not recreate user-owned records.
+
+Never hold a user-row lock across object-storage I/O, document parsing, or embedding-provider requests. Use short transactions around authorization and durable state transitions.
+
+## 7. Retry and terminal-state policy
+
+- Retry only classified transient failures (broker unavailable, temporary storage read failure, provider timeout/rate limit, transient DB disconnect).
+- Do not retry invalid file types, archive-policy violations, unsupported formats, or deterministic parser failures without a code/configuration change.
+- Use bounded exponential backoff with jitter and a finite attempt budget.
+- Persist safe error codes and attempt timestamps; never log owner tokens, credentials, extracted contents, or raw provider payloads.
+- Terminal failure remains visible and recoverable by an explicit user/admin action; it must not silently delete the source object.
+- A duplicate task or repeated dispatcher pass must be idempotent.
+
+## 8. Cleanup safety boundary
+
+This design does **not** authorize automatic object deletion.
+
+Cleanup may be considered only after all of the following are implemented and independently tested:
+
+- A durable cleanup intent bound to immutable object key, lease ID, and generation.
+- A verified terminal state for the exact worker execution, including child termination/reaping.
+- A current database check proving no committed attachment references the object.
+- A fenced lease transition to cleanup-pending that cannot be performed by an older generation.
+- Account-deletion race coverage and explicit handling of user-row absence.
+- Bounded retries/backoff, dry-run, bounded batches, safe logs/metrics, and persisted progress.
+- Fail-closed behavior for DB errors, partial object listings, ambiguous metadata, stale generations, or uncertain worker liveness.
+
+Lease expiry, missing heartbeat, Redis visibility timeout, request cancellation, or a coroutine/thread timeout is never sufficient deletion authority.
+
+## 9. Required test matrix
+
+All tests must use isolated test databases and fake/local object storage. No hosted database, Render service, production bucket, or real user data.
+
+| Scenario | Required assertion |
+|---|---|
+| DB commit succeeds, broker publish fails | Job remains durable and is dispatched later |
+| Publish succeeds, dispatcher crashes before recording | Duplicate delivery is harmless |
+| Worker receives duplicate message | Only one current generation can claim |
+| Worker dies before claim | Job remains dispatchable |
+| Worker dies after claim | Redelivery cannot overlap an unproven live child |
+| Hard task timeout | Child is terminated/reaped; no later writes occur |
+| Old worker resumes after a newer claim | Fencing rejects heartbeat, result commit, and state transition |
+| Extraction succeeds, index provider fails | Extracted source remains durable; index job retries safely |
+| Index generation repeats | No duplicate chunks or partial replacement |
+| Account deletion during extraction | No attachment/index resurrection; cleanup remains fenced |
+| Account deletion during embedding | No chunk/audit write for deleted user |
+| Object-storage read/list partial failure | No destructive action |
+| DB unavailable during dispatch/recovery | Fail closed; no object deletion |
+| Terminal deterministic parser error | No infinite retry; source object preserved |
+| Retry budget exhausted | Visible terminal state; no automatic deletion |
+| Legacy attachment with null object_key | Existing attachment remains preserved |
+
+Use PostgreSQL integration tests for row locks, conditional updates, unique constraints, and account-deletion races. SQLite-only tests are not sufficient evidence for those semantics.
+
+## 10. Safe implementation sequence
+
+1. **Schema and service layer:** add the job model/migration, state-transition service, idempotency constraints, and unit/PostgreSQL tests. No worker is enabled yet.
+2. **Outbox dispatcher:** add bounded dispatch and duplicate-publication tests. Keep it disabled in production until explicitly configured.
+3. **Extraction worker:** add storage-backed input, isolated bounded parsing, child-termination tests, and atomic extraction completion.
+4. **Index worker:** use the existing prepare/persist RAG split with generation checks and idempotency tests.
+5. **API/UI contract:** add truthful processing status and preserve existing upload/list/download behavior; test mobile and web clients.
+6. **Worker deployment definition:** add a separate Render worker definition as a reviewed configuration change only. Do not apply it or change production environment variables in this implementation branch.
+7. **Operational verification:** staging-only isolated test bucket/database, worker-loss drills, metrics, bounded retries, and rollback plan.
+8. **Cleanup design review:** only after the preceding evidence exists; cleanup remains disabled until independent review and destructive-path acceptance tests pass.
+
+## 11. Explicit non-changes for this PR step
+
+- No production deployment, environment-variable change, migration against hosted DB, or object-storage operation.
+- No bucket-wide scan, age-only deletion, lease-expiry deletion, or active cleanup reconciler.
+- No automatic PR merge or bypass of branch protection/review requirements.
+- No claim that this design document itself fixes the current synchronous request path.
+
+**Acceptance for the next code change:** implement step 1 only, with migration/model/service/tests, then run the full backend suite and CI on the exact commit before proceeding to dispatch or worker execution.
