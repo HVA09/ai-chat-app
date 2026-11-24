@@ -325,7 +325,7 @@ def test_processing_job_creation_is_single_row_across_independent_postgres_sessi
                 cleanup.commit()
 
 
-def test_account_deletion_serializes_with_concurrent_job_claim(client, db_session):
+def test_account_deletion_serializes_with_concurrent_job_claim(db_session):
     """A claim waiting behind account deletion must fail closed after deletion commits."""
     import os
     from threading import Event, Thread
@@ -344,17 +344,25 @@ def test_account_deletion_serializes_with_concurrent_job_claim(client, db_sessio
     if os.getenv("ENVIRONMENT", "test").lower() != "test":
         pytest.skip("test environment guard is not active")
 
-    email = f"upload-delete-race-{uuid4().hex}@example.com"
-    user = _user(client, db_session, email)
-    user_id = user.id
-    lease = _queued_lease(db_session, user)
-    job, _ = create_upload_processing_job(
-        db_session, lease_id=lease.id, stage="extract"
-    )
-    lease_id, job_id = lease.id, job.id
-    db_session.commit()
-
+    # Seed through an independent session and commit the rows so the worker
+    # threads can observe the same committed PostgreSQL state.
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    with factory() as setup:
+        user = User(
+            email=f"upload-delete-race-{suffix}@example.test",
+            hashed_password="test-only",
+        )
+        setup.add(user)
+        setup.flush()
+        user_id = user.id
+        lease = _queued_lease(setup, user)
+        job, _ = create_upload_processing_job(
+            setup, lease_id=lease.id, stage="extract"
+        )
+        lease_id, job_id = lease.id, job.id
+        setup.commit()
+
     deletion_locked = Event()
     allow_deletion_commit = Event()
     claim_started = Event()
@@ -436,4 +444,5 @@ def test_account_deletion_serializes_with_concurrent_job_claim(client, db_sessio
         with factory() as cleanup:
             cleanup.query(UploadProcessingJob).filter_by(id=job_id).delete()
             cleanup.query(UploadLease).filter_by(id=lease_id).delete()
+            cleanup.query(User).filter_by(id=user_id).delete()
             cleanup.commit()
