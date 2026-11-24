@@ -161,3 +161,31 @@ def test_extraction_worker_marks_invalid_document_terminal(
     assert job.last_error_code == "document_extraction_invalid"
     assert "sensitive" not in (job.last_error_code or "")
     assert attachment.extracted_text is None
+
+
+
+def test_extraction_worker_retries_transient_storage_failure(
+    client, db_session, monkeypatch
+):
+    from app.services import upload_processing_worker as worker
+
+    _, _, attachment, job = _committed_attachment(
+        client, db_session, "worker-storage-retry@example.com"
+    )
+
+    def storage_unavailable(*_args, **_kwargs):
+        raise worker.StorageError("sensitive storage backend details")
+
+    monkeypatch.setattr(worker, "materialize_file", storage_unavailable)
+
+    assert process_upload_extraction_job(db_session, job_id=job.id) is False
+
+    db_session.refresh(job)
+    db_session.refresh(attachment)
+    assert job.status == "retry_wait"
+    assert job.attempt_count == 1
+    assert job.last_error_code == "storage_read_failed"
+    assert job.owner_token_hash is None
+    assert job.expires_at is None
+    assert attachment.extracted_text is None
+    assert "sensitive" not in (job.last_error_code or "")
