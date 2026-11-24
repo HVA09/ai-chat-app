@@ -149,7 +149,7 @@ def _read_xlsx_file(path: Path, max_chars: int) -> str:
                     parts.append(line)
                     used += len(line) + 1
                 if used >= max_chars:
-                    return _limit("\\n".join(parts), max_chars)
+                    return _limit("\n".join(parts), max_chars)
                 if cells_scanned >= MAX_XLSX_CELLS_TOTAL:
                     truncated = True
                     break
@@ -157,7 +157,7 @@ def _read_xlsx_file(path: Path, max_chars: int) -> str:
                 break
         if truncated:
             parts.append("[تم اختصار جداول البيانات بسبب حدود المعالجة]")
-        return _limit("\\n".join(parts), max_chars)
+        return _limit("\n".join(parts), max_chars)
     finally:
         workbook.close()
 
