@@ -30,6 +30,7 @@ from app.models.agent_workflow_step import AgentWorkflowStep
 from app.models.file_attachment import FileAttachment
 from app.models.upload_cleanup_intent import UploadCleanupIntent
 from app.models.upload_lease import UploadLease
+from app.models.upload_processing_job import UploadProcessingJob
 from app.models.file_chunk import FileChunk
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.audit_log import AuditLog
@@ -80,6 +81,7 @@ __all__ = [
     "FileAttachment",
     "UploadCleanupIntent",
     "UploadLease",
+    "UploadProcessingJob",
     "FileChunk",
     "ConversationFileLink",
     "AuditLog",
