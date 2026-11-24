@@ -1,6 +1,8 @@
 """Tests for the isolated durable upload extraction worker."""
 from contextlib import contextmanager
 
+from sqlalchemy import select
+
 from app.models import User
 from app.models.file_attachment import FileAttachment
 from app.models.upload_processing_job import UploadProcessingJob
@@ -103,13 +105,19 @@ def test_extraction_worker_duplicate_delivery_is_noop(
     _, _, attachment, job = _committed_attachment(
         client, db_session, "worker-duplicate@example.com"
     )
+    attachment_id = attachment.id
     monkeypatch.setattr(worker, "materialize_file", _fake_materialize)
     monkeypatch.setattr(worker, "extract_text", lambda *_args: "extracted")
 
     assert process_upload_extraction_job(db_session, job_id=job.id) is True
     assert process_upload_extraction_job(db_session, job_id=job.id) is False
-    db_session.refresh(attachment)
-    assert attachment.extracted_text == "extracted"
+    # The worker deliberately commits and releases its connection around I/O;
+    # assert against a fresh scalar read rather than refreshing the pre-worker
+    # ORM instance retained by the test helper.
+    extracted_text = db_session.execute(
+        select(FileAttachment.extracted_text).where(FileAttachment.id == attachment_id)
+    ).scalar_one()
+    assert extracted_text == "extracted"
 
 
 def test_extraction_worker_marks_invalid_document_terminal(
