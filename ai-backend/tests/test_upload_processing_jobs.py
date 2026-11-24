@@ -357,6 +357,7 @@ def test_account_deletion_serializes_with_concurrent_job_claim(client, db_sessio
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     deletion_locked = Event()
     allow_deletion_commit = Event()
+    claim_started = Event()
     claim_finished = Event()
     claim_results, errors = [], []
 
@@ -377,6 +378,7 @@ def test_account_deletion_serializes_with_concurrent_job_claim(client, db_sessio
     def claim_job():
         try:
             with factory() as claiming:
+                claim_started.set()
                 claim_results.append(
                     claim_upload_processing_job(claiming, job_id=job_id)
                 )
@@ -392,8 +394,16 @@ def test_account_deletion_serializes_with_concurrent_job_claim(client, db_sessio
         deleter.start()
         assert deletion_locked.wait(timeout=10), "deletion did not acquire user lock"
         claimant.start()
-        # The claim must wait for the user-row lock held by account deletion.
-        assert not claim_finished.wait(timeout=0.25), "claim bypassed deletion lock"
+        assert claim_started.wait(timeout=10), "claim thread did not start"
+        # If the worker exits early, surface its exception/result before
+        # reporting a lock-order failure; this distinguishes infrastructure
+        # errors from a genuine lock bypass.
+        if claim_finished.wait(timeout=0.25):
+            assert errors == [], f"claim thread failed before lock assertion: {errors!r}"
+            pytest.fail(
+                "claim completed before deletion committed; "
+                f"claim_results={claim_results!r}"
+            )
         allow_deletion_commit.set()
         deleter.join(timeout=15)
         claimant.join(timeout=15)
