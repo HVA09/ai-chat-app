@@ -1496,3 +1496,73 @@ def test_project_upload_finalization_waits_for_project_deletion_on_postgres(
         with session_factory() as cleanup:
             cleanup.query(User).filter(User.id == user_id).delete()
             cleanup.commit()
+
+
+
+def test_upload_keeps_local_file_when_cleanup_lease_fencing_is_lost(
+    client, tmp_path, monkeypatch
+):
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    token = _register_and_login(client, "cleanup-fencing-loss@example.com")
+
+    def write_then_fail(destination, *_args, **_kwargs):
+        destination.write_bytes(b"fenced recovery payload")
+        raise RuntimeError("injected storage failure")
+
+    monkeypatch.setattr(files_router, "put_file", write_then_fail)
+    monkeypatch.setattr(
+        files_router, "mark_upload_lease_cleanup_pending", lambda *_a, **_k: False
+    )
+
+    response = client.post(
+        "/files/upload",
+        files={"file": ("fenced.txt", b"fenced recovery payload", "text/plain")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 503
+    assert "فُقدت ملكية جلسة الرفع" in response.json()["detail"]
+    retained_files = [path for path in tmp_path.rglob("*") if path.is_file()]
+    assert len(retained_files) == 1
+    assert retained_files[0].read_bytes() == b"fenced recovery payload"
+
+
+def test_upload_keeps_local_file_when_cleanup_commit_fails(
+    client, tmp_path, monkeypatch
+):
+    from sqlalchemy.orm import Session
+    from app.models.upload_lease import UploadLease
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    token = _register_and_login(client, "cleanup-commit-failure@example.com")
+
+    def write_then_fail(destination, *_args, **_kwargs):
+        destination.write_bytes(b"commit recovery payload")
+        raise RuntimeError("injected storage failure")
+
+    monkeypatch.setattr(files_router, "put_file", write_then_fail)
+    original_commit = Session.commit
+
+    def fail_cleanup_commit(db):
+        pending = (
+            db.query(UploadLease.id)
+            .filter(UploadLease.status == "cleanup_pending")
+            .first()
+        )
+        if pending is not None:
+            raise RuntimeError("injected cleanup transaction commit failure")
+        return original_commit(db)
+
+    monkeypatch.setattr(Session, "commit", fail_cleanup_commit)
+
+    response = client.post(
+        "/files/upload",
+        files={"file": ("commit.txt", b"commit recovery payload", "text/plain")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 503
+    assert "لم يُحذف الملف" in response.json()["detail"]
+    retained_files = [path for path in tmp_path.rglob("*") if path.is_file()]
+    assert len(retained_files) == 1
+    assert retained_files[0].read_bytes() == b"commit recovery payload"
