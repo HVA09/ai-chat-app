@@ -1,6 +1,7 @@
-"""Tests for the isolated durable upload extraction worker."""
+"Tests for the isolated durable upload extraction worker."""
 from contextlib import contextmanager
 
+import pytest
 from sqlalchemy import select
 
 from app.models import User
@@ -14,7 +15,10 @@ from app.services.upload_leases import (
     queue_upload_lease,
 )
 from app.services.upload_processing_jobs import create_upload_processing_job
-from app.services.upload_processing_worker import process_upload_extraction_job
+from app.services.upload_processing_worker import (
+    UploadProcessingWorkerError,
+    process_upload_extraction_job,
+)
 
 
 def _committed_attachment(client, db_session, email):
@@ -118,6 +122,21 @@ def test_extraction_worker_duplicate_delivery_is_noop(
         select(FileAttachment.extracted_text).where(FileAttachment.id == attachment_id)
     ).scalar_one()
     assert extracted_text == "extracted"
+
+
+def test_extraction_worker_rejects_pending_caller_changes(
+    client, db_session
+):
+    _, _, attachment, job = _committed_attachment(
+        client, db_session, "worker-dirty-session@example.com"
+    )
+    attachment.extracted_text = "caller-owned pending value"
+
+    with pytest.raises(UploadProcessingWorkerError, match="clean session"):
+        process_upload_extraction_job(db_session, job_id=job.id)
+
+    assert attachment.extracted_text == "caller-owned pending value"
+    assert attachment in db_session.dirty
 
 
 def test_extraction_worker_marks_invalid_document_terminal(
