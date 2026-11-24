@@ -52,7 +52,10 @@ def process_upload_extraction_job(db: Session, *, job_id: str) -> bool:
         db, job_id=job_id, lease_seconds=PROCESSING_LEASE_SECONDS
     )
     if claim is None:
-        db.rollback()
+        # A failed claim is either a duplicate/no-op or a max-attempts
+        # transition to failed_terminal. Commit the helper's bounded state
+        # transition without rolling back an enclosing caller transaction.
+        db.commit()
         return False
     generation, owner_token = claim
     db.commit()
