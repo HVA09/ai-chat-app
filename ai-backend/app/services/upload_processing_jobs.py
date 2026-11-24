@@ -132,7 +132,7 @@ def claim_upload_processing_job(
         return None
     job = _lock_job(db, job_id)
     now = datetime.now(timezone.utc)
-    if job is None or job.status not in {"pending_dispatch", "retry_wait"} or job.available_at > now:
+    if job is None or job.status not in {"pending_dispatch", "queued", "retry_wait"} or job.available_at > now:
         return None
     if job.attempt_count >= job.max_attempts:
         job.status = "failed_terminal"
