@@ -18,6 +18,20 @@ class StorageError(RuntimeError):
     pass
 
 
+class PreserveMaterializedFile(RuntimeError):
+    """Signal that ownership of a materialized temporary file must be retained.
+
+    A parser supervisor may raise this only after it cannot prove that its
+    child process has stopped. The caller receives the path and becomes
+    responsible for a separately controlled, non-destructive recovery path.
+    This signal never authorizes deletion or lease reclamation.
+    """
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        super().__init__("materialized source ownership retained")
+
+
 def _s3_enabled() -> bool:
     """Enable remote storage only when all required connection settings exist."""
     return all(
@@ -136,6 +150,7 @@ def materialize_file(object_key: str | None, fallback_path: Path) -> Iterator[Pa
         raise FileNotFoundError(str(fallback_path))
 
     temp_path: Path | None = None
+    preserve_temp = False
     try:
         with NamedTemporaryFile(
             prefix="ai-chat-storage-",
@@ -144,10 +159,17 @@ def materialize_file(object_key: str | None, fallback_path: Path) -> Iterator[Pa
         ) as temporary:
             temp_path = Path(temporary.name)
             copyfileobj(source, temporary)
-        yield temp_path
+        try:
+            yield temp_path
+        except PreserveMaterializedFile as exc:
+            # Retain only the exact temporary file created by this context.
+            # A mismatched path must not turn this context into a leak primitive.
+            if temp_path is not None and exc.path == temp_path:
+                preserve_temp = True
+            raise
     finally:
         source.close()
-        if temp_path is not None:
+        if temp_path is not None and not preserve_temp:
             temp_path.unlink(missing_ok=True)
 
 
