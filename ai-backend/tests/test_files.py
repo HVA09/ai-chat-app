@@ -1574,3 +1574,40 @@ def test_upload_keeps_local_file_when_cleanup_commit_fails(
     retained_files = [path for path in tmp_path.rglob("*") if path.is_file()]
     assert len(retained_files) == 1
     assert retained_files[0].read_bytes() == b"commit recovery payload"
+
+
+def test_cleanup_intent_refuses_object_owned_by_committed_attachment(
+    client, db_session
+):
+    from app.models.file_attachment import FileAttachment
+    from app.models.upload_cleanup_intent import UploadCleanupIntent
+    from app.models.user import User
+    from app.services.upload_cleanup_intents import enqueue_upload_cleanup_intent
+
+    _register_and_login(client, "committed-cleanup-guard@example.com")
+    user = db_session.query(User).filter_by(
+        email="committed-cleanup-guard@example.com"
+    ).one()
+    object_key = f"users/{user.id}/already-committed.txt"
+    attachment = FileAttachment(
+        user_id=user.id,
+        original_filename="already-committed.txt",
+        stored_filename="already-committed.txt",
+        object_key=object_key,
+        content_type="text/plain",
+        size_bytes=12,
+    )
+    db_session.add(attachment)
+    db_session.flush()
+
+    intent = enqueue_upload_cleanup_intent(
+        db_session,
+        user_id=user.id,
+        object_key=object_key,
+        generation=1,
+    )
+
+    assert intent is None
+    assert db_session.query(UploadCleanupIntent).filter_by(
+        object_key=object_key
+    ).count() == 0
