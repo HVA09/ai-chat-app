@@ -36,11 +36,17 @@ class UploadProcessingWorkerError(RuntimeError):
 def process_upload_extraction_job(db: Session, *, job_id: str) -> bool:
     """Claim and execute one extraction job; return False for duplicate delivery.
 
-    The claim is committed before object storage or extraction. Persisting the
-    extracted text, creating its idempotent index job, and completing this job
-    share one fenced transaction. No storage deletion or lease reclamation is
-    performed here.
+    This function owns its Session transaction boundaries: it commits the
+    durable claim before external I/O and commits the final result atomically.
+    Callers must supply a clean, dedicated Session with no pending ORM writes;
+    this prevents worker commits/rollbacks from affecting unrelated work.
+    No storage deletion or lease reclamation is performed here.
     """
+    if db.new or db.dirty or db.deleted:
+        raise UploadProcessingWorkerError(
+            "worker requires a clean session with no pending ORM changes"
+        )
+
     locator = db.execute(
         select(UploadProcessingJob.stage).where(UploadProcessingJob.id == job_id)
     ).scalar_one_or_none()
@@ -53,8 +59,8 @@ def process_upload_extraction_job(db: Session, *, job_id: str) -> bool:
     )
     if claim is None:
         # A failed claim is either a duplicate/no-op or a max-attempts
-        # transition to failed_terminal. Commit the helper's bounded state
-        # transition without rolling back an enclosing caller transaction.
+        # transition to failed_terminal. The clean-session precondition makes
+        # this commit safe: there can be no unrelated pending ORM writes.
         db.commit()
         return False
     generation, owner_token = claim
