@@ -26,6 +26,9 @@ MAX_XLSX_SHEETS = 20
 MAX_XLSX_ROWS_PER_SHEET = 1_000
 MAX_XLSX_COLUMNS_PER_ROW = 50
 MAX_XLSX_CELLS_TOTAL = 50_000
+MAX_PDF_PAGES = 100
+MAX_DOCX_PARAGRAPHS = 2_000
+MAX_DOCX_TABLE_ROWS = 1_000
 
 
 class FileTextExtractionError(Exception):
@@ -70,7 +73,10 @@ def _read_pdf_file(path: Path, max_chars: int) -> str:
     reader = PdfReader(str(path))
     parts: list[str] = []
     used = 0
-    for page in reader.pages:
+    for page_number, page in enumerate(reader.pages):
+        if page_number >= MAX_PDF_PAGES:
+            parts.append("[تم اختصار ملف PDF بسبب حد عدد الصفحات]")
+            break
         page_text = (page.extract_text() or "").strip()
         if not page_text:
             continue
@@ -84,18 +90,36 @@ def _read_pdf_file(path: Path, max_chars: int) -> str:
 def _read_docx_file(path: Path, max_chars: int) -> str:
     document = Document(str(path))
     parts: list[str] = []
+    used = 0
+    rows_scanned = 0
+    truncated = len(document.paragraphs) > MAX_DOCX_PARAGRAPHS
 
-    for paragraph in document.paragraphs:
+    for paragraph in document.paragraphs[:MAX_DOCX_PARAGRAPHS]:
         text = paragraph.text.strip()
         if text:
             parts.append(text)
+            used += len(text) + 1
+        if used >= max_chars:
+            return _limit("\n".join(parts), max_chars)
 
     for table in document.tables:
         for row in table.rows:
+            if rows_scanned >= MAX_DOCX_TABLE_ROWS:
+                truncated = True
+                break
+            rows_scanned += 1
             cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
             if any(cells):
-                parts.append(" | ".join(cells))
+                line = " | ".join(cells)
+                parts.append(line)
+                used += len(line) + 1
+            if used >= max_chars:
+                return _limit("\n".join(parts), max_chars)
+        if rows_scanned >= MAX_DOCX_TABLE_ROWS:
+            break
 
+    if truncated:
+        parts.append("[تم اختصار مستند Word بسبب حدود المعالجة]")
     return _limit("\n".join(parts), max_chars)
 
 
