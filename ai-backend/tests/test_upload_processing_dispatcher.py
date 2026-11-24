@@ -63,7 +63,6 @@ def test_dispatch_marks_job_queued_and_worker_can_claim(client, db_session):
 
 def test_dispatch_publish_failure_leaves_job_retryable(client, db_session):
     job = _make_job(client, db_session, "upload-dispatch-failure@example.com")
-    job_id = job.id
     db_session.commit()
 
     def fail_publish(_job_id):
