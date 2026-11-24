@@ -248,3 +248,55 @@ def test_heartbeat_rejects_nonpositive_lease_duration(db_session, duration):
             owner_token="token",
             lease_seconds=duration,
         )
+
+
+def test_stale_processing_generation_cannot_finalize_attachment(client, db_session):
+    email = "upload-lease-stale-finalize@example.com"
+    _create_user(client, email)
+    user = db_session.query(User).filter(User.email == email).one()
+    object_key = f"users/{user.id}/stale-finalize.bin"
+    lease, ingress_token = create_upload_lease(
+        db_session,
+        user_id=user.id,
+        object_key=object_key,
+    )
+    assert queue_upload_lease(
+        db_session,
+        lease_id=lease.id,
+        generation=1,
+        owner_token=ingress_token,
+    )
+    generation, worker_token = claim_upload_lease(
+        db_session,
+        lease_id=lease.id,
+        lease_seconds=90,
+    )
+
+    # Simulate a newer authoritative generation taking ownership. The old
+    # worker retains its credentials but must no longer finalize the object.
+    lease.generation = generation + 1
+    lease.owner_token_hash = "e" * 64
+    db_session.flush()
+
+    attachment = FileAttachment(
+        user_id=user.id,
+        original_filename="stale-finalize.bin",
+        stored_filename="stale-finalize.bin",
+        object_key=object_key,
+        content_type="application/octet-stream",
+        size_bytes=1,
+    )
+    db_session.add(attachment)
+    db_session.flush()
+
+    assert not finalize_upload_lease(
+        db_session,
+        lease_id=lease.id,
+        generation=generation,
+        owner_token=worker_token,
+        attachment_id=attachment.id,
+    )
+    db_session.refresh(lease)
+    assert lease.status == "processing"
+    assert lease.generation == generation + 1
+    assert lease.attachment_id is None
