@@ -420,8 +420,10 @@ async def upload_file(
         marked = mark_upload_lease_cleanup_pending(
             db,
             lease_id=upload_lease_id,
-            generation=upload_lease_generation,
-            owner_token=upload_lease_token,
+            # The preceding rollback restores the immutable ingress lease
+            # credentials; the processing claim credentials are no longer valid.
+            generation=ingress_lease_generation,
+            owner_token=ingress_lease_token,
         )
         if not marked:
             db.rollback()
