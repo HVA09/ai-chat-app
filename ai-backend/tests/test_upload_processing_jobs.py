@@ -378,6 +378,8 @@ def test_account_deletion_serializes_with_concurrent_job_claim(client, db_sessio
             deletion_locked.set()
 
     def claim_job():
+        import traceback
+
         try:
             with factory() as claiming:
                 claim_started.set()
@@ -386,7 +388,7 @@ def test_account_deletion_serializes_with_concurrent_job_claim(client, db_sessio
                 )
                 claiming.commit()
         except BaseException as exc:
-            errors.append(exc)
+            errors.append((exc, traceback.format_exc()))
         finally:
             claim_finished.set()
 
