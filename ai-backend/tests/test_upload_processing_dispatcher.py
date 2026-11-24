@@ -72,8 +72,9 @@ def test_dispatch_publish_failure_leaves_job_retryable(client, db_session):
     with pytest.raises(RuntimeError, match="broker unavailable"):
         dispatch_upload_processing_jobs(db_session, publish=fail_publish)
 
-    db_session.rollback()
-    job = db_session.query(UploadProcessingJob).filter(UploadProcessingJob.id == job_id).one()
+    # A failed publish occurs before the dispatcher mutates/flushed the row.
+    # Avoid rolling back the test fixture savepoint, which would discard setup data.
+    db_session.refresh(job)
     assert job.status == "pending_dispatch"
     assert job.generation == 0
     assert job.attempt_count == 0
