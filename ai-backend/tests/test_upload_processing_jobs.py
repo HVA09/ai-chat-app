@@ -362,6 +362,8 @@ def test_account_deletion_serializes_with_concurrent_job_claim(client, db_sessio
     claim_results, errors = [], []
 
     def delete_account_row():
+        import traceback
+
         try:
             with factory() as deleting:
                 locked_user = deleting.execute(
@@ -372,7 +374,7 @@ def test_account_deletion_serializes_with_concurrent_job_claim(client, db_sessio
                 deleting.delete(locked_user)
                 deleting.commit()
         except BaseException as exc:
-            errors.append(exc)
+            errors.append((exc, traceback.format_exc()))
             deletion_locked.set()
 
     def claim_job():
