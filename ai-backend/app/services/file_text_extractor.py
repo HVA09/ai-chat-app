@@ -21,6 +21,12 @@ SUPPORTED_TEXT_TYPES = {
 
 DEFAULT_MAX_CHARS = 20_000
 
+# Spreadsheet traversal limits are independent of rendered output size.
+MAX_XLSX_SHEETS = 20
+MAX_XLSX_ROWS_PER_SHEET = 1_000
+MAX_XLSX_COLUMNS_PER_ROW = 50
+MAX_XLSX_CELLS_TOTAL = 50_000
+
 
 class FileTextExtractionError(Exception):
     """فشل في قراءة محتوى الملف."""
@@ -97,24 +103,37 @@ def _read_xlsx_file(path: Path, max_chars: int) -> str:
     workbook = load_workbook(filename=str(path), read_only=True, data_only=True)
     parts: list[str] = []
     used = 0
+    cells_scanned = 0
+    truncated = len(workbook.worksheets) > MAX_XLSX_SHEETS
     try:
-        for worksheet in workbook.worksheets:
+        for worksheet in workbook.worksheets[:MAX_XLSX_SHEETS]:
             parts.append(f"[ورقة: {worksheet.title}]")
             used += len(parts[-1]) + 1
-            for row in worksheet.iter_rows(values_only=True):
+            for row in worksheet.iter_rows(
+                max_row=MAX_XLSX_ROWS_PER_SHEET,
+                max_col=MAX_XLSX_COLUMNS_PER_ROW,
+                values_only=True,
+            ):
+                cells_scanned += len(row)
                 values = [
                     str(value).strip()
                     for value in row
                     if value is not None and str(value).strip()
                 ]
-                if not values:
-                    continue
-                line = " | ".join(values)
-                parts.append(line)
-                used += len(line) + 1
+                if values:
+                    line = " | ".join(values)
+                    parts.append(line)
+                    used += len(line) + 1
                 if used >= max_chars:
-                    return _limit("\n".join(parts), max_chars)
-        return _limit("\n".join(parts), max_chars)
+                    return _limit("\\n".join(parts), max_chars)
+                if cells_scanned >= MAX_XLSX_CELLS_TOTAL:
+                    truncated = True
+                    break
+            if cells_scanned >= MAX_XLSX_CELLS_TOTAL:
+                break
+        if truncated:
+            parts.append("[تم اختصار جداول البيانات بسبب حدود المعالجة]")
+        return _limit("\\n".join(parts), max_chars)
     finally:
         workbook.close()
 
