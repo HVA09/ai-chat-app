@@ -136,3 +136,102 @@ def test_expired_processing_job_is_not_reclaimed(client, db_session):
     assert job.status == "processing"
     assert job.generation == generation
     assert job.owner_token_hash is not None
+
+
+
+def test_processing_job_claim_is_single_winner_across_independent_postgres_sessions(
+    db_session,
+):
+    """Concurrent claims on committed data from independent PostgreSQL sessions."""
+    import os
+    from threading import Barrier, Thread
+    from uuid import uuid4
+
+    from sqlalchemy.orm import sessionmaker
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("independent-session locking behavior requires PostgreSQL")
+
+    # Fail closed if the test URL points at a database whose name does not
+    # clearly identify it as a test database. Never run this against production.
+    database_name = engine.url.database or ""
+    if "test" not in database_name.lower():
+        pytest.skip("database name is not clearly marked as a test database")
+    if os.getenv("ENVIRONMENT", "test").lower() != "test":
+        pytest.skip("test environment guard is not active")
+
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    user_id = None
+    lease_id = None
+    job_id = None
+    try:
+        with factory() as setup:
+            user = User(
+                email=f"pg-concurrent-claim-{suffix}@example.test",
+                hashed_password="test-only",
+            )
+            setup.add(user)
+            setup.flush()
+            user_id = user.id
+            lease, token = create_upload_lease(
+                setup,
+                user_id=user.id,
+                object_key=f"users/{user.id}/{suffix}.bin",
+            )
+            lease_id = lease.id
+            assert queue_upload_lease(
+                setup, lease_id=lease.id, generation=1, owner_token=token
+            )
+            job, _ = create_upload_processing_job(
+                setup, lease_id=lease.id, stage="extract"
+            )
+            job_id = job.id
+            setup.commit()
+
+        barrier = Barrier(2)
+        results = []
+        errors = []
+
+        def claimant():
+            try:
+                with factory() as session:
+                    barrier.wait(timeout=10)
+                    results.append(
+                        claim_upload_processing_job(session, job_id=job_id)
+                    )
+                    session.commit()
+            except BaseException as exc:
+                errors.append(exc)
+
+        threads = [Thread(target=claimant), Thread(target=claimant)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=15)
+
+        assert all(not thread.is_alive() for thread in threads), "claim thread hung"
+        assert errors == []
+        assert len(results) == 2
+        assert sum(result is not None for result in results) == 1, results
+
+        with factory() as verify:
+            persisted = verify.get(UploadProcessingJob, job_id)
+            assert persisted is not None
+            assert persisted.status == "processing"
+            assert persisted.generation == 1
+            assert persisted.attempt_count == 1
+            assert persisted.owner_token_hash is not None
+    finally:
+        # Cleanup only the committed test records created by this test.
+        if user_id is not None:
+            with factory() as cleanup:
+                if job_id is not None:
+                    cleanup.query(UploadProcessingJob).filter_by(id=job_id).delete()
+                if lease_id is not None:
+                    from app.models.upload_lease import UploadLease
+                    cleanup.query(UploadLease).filter_by(id=lease_id).delete()
+                cleanup.query(User).filter_by(id=user_id).delete()
+                cleanup.commit()
