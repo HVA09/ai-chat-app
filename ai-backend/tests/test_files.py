@@ -1747,3 +1747,42 @@ def test_slow_live_upload_extraction_holds_account_deletion_lock_on_postgres(
         with session_factory() as cleanup:
             cleanup.query(User).filter(User.id == user_id).delete()
             cleanup.commit()
+
+def test_upload_aborts_before_storage_when_ingress_heartbeat_is_lost(
+    client, db_session, tmp_path, monkeypatch
+):
+    """A failed chunk heartbeat must stop the upload before managed storage I/O."""
+    from app.models.upload_lease import UploadLease
+    from app.models.user import User
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    _disable_object_storage(monkeypatch)
+    token = _register_and_login(client, "upload-heartbeat-loss@example.com")
+    storage_writes = []
+
+    monkeypatch.setattr(
+        files_router,
+        "heartbeat_upload_lease",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        files_router,
+        "put_file",
+        lambda *_args, **_kwargs: storage_writes.append("called"),
+    )
+
+    response = client.post(
+        "/files/upload",
+        files={"file": ("heartbeat.txt", b"heartbeat must be durable", "text/plain")},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 409
+    assert storage_writes == []
+    db_session.expire_all()
+    user = db_session.query(User).filter_by(
+        email="upload-heartbeat-loss@example.com"
+    ).one()
+    lease = db_session.query(UploadLease).filter_by(user_id=user.id).one()
+    assert lease.status == "cleanup_pending"
+    assert lease.owner_token_hash is None
