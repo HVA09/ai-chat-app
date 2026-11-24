@@ -208,6 +208,34 @@ Use PostgreSQL integration tests for row locks, conditional updates, unique cons
 7. **Operational verification:** staging-only isolated test bucket/database, worker-loss drills, metrics, bounded retries, and rollback plan.
 8. **Cleanup design review:** only after the preceding evidence exists; cleanup remains disabled until independent review and destructive-path acceptance tests pass.
 
+## 10A. Enforceable parser supervision — implementation gate
+
+The isolated extraction worker currently calls the parser in its own execution context. Its 300-second job lease is **not** a parser deadline, and a failed post-parse heartbeat only prevents persistence; it does not stop a parser that is still running. Do not wire this worker to a broker or change the upload route until a killable parser boundary is implemented and tested.
+
+### Required parent/child contract
+
+1. Keep object materialization, job ownership, heartbeats, and all database access in the supervised parent. The parser child receives only a local read-only source path, a validated MIME type, and bounded parser options. It must not receive DB credentials, owner tokens, object-storage write credentials, or authority to update job state.
+2. Launch the parser in a dedicated spawned process (not a thread and not a fork of a live SQLAlchemy/Celery process). Give it a private per-job temporary directory and enforce input-byte, archive-expansion, page/row/paragraph, output-character, and wall-clock budgets before returning a result.
+3. The parent waits only until the configured monotonic deadline. On timeout or cancellation, request graceful termination, wait for a short bounded grace interval, then force-kill the child if it remains alive.
+4. After force-kill, call join/wait and verify the child is no longer alive and has an exit status. A timeout, terminate request, kill request, or elapsed lease alone is **not** termination proof.
+5. If the parent cannot confirm child exit/reaping, it must fail closed: do not persist extraction output, do not mark the job safely stopped, do not reclaim its generation, and do not delete the source object or temporary directory. Keep durable state for operator investigation.
+6. Only after child exit is confirmed may the parent discard partial output, close IPC handles, and remove the per-job temporary directory. The normal result path still requires a fresh generation/token fence before persistence.
+7. Heartbeat renewal must run in the parent using short independent DB transactions while the child parses. A failed heartbeat cancels the child and prohibits all later result writes; the parent must still confirm child termination before reporting that execution has stopped.
+8. The child result channel must be bounded and validated. Do not allow unbounded pickle payloads, arbitrary object deserialization, or parser exceptions containing document text/secrets to enter durable job error fields.
+
+### Required tests before broker/runtime wiring
+
+- A parser that completes before the deadline returns a bounded result and is reaped.
+- A parser that exceeds the deadline is terminated, joined, and proven not alive before the parent returns.
+- A parser that ignores graceful termination is force-killed and reaped.
+- A simulated failure to confirm child exit fails closed and does not persist, reclaim, or delete anything.
+- Heartbeat loss during parsing cancels the child; a late child result cannot be persisted.
+- Parent crash / worker loss during parsing leaves durable state untouched; no expiry-based cleanup or automatic reclaim follows.
+- Child IPC failure, malformed result, oversized result, and parser exception are sanitized and bounded.
+- Account deletion racing with extraction cannot permit a child result to recreate or mutate attachment/index state.
+
+A process supervisor can prove only that its parser child has exited; it does not prove that unrelated external provider or storage operations have stopped. Keep parser execution separate from embedding/provider calls and object-storage mutation. The existing worker must remain unregistered and the synchronous route unchanged until these tests and the later integration review pass.
+
 ## 11. Explicit non-changes for this PR step
 
 - No production deployment, environment-variable change, migration against hosted DB, or object-storage operation.
@@ -215,4 +243,4 @@ Use PostgreSQL integration tests for row locks, conditional updates, unique cons
 - No automatic PR merge or bypass of branch protection/review requirements.
 - No claim that this design document itself fixes the current synchronous request path.
 
-**Acceptance for the next code change:** validate the dispatcher helper with full backend CI and CodeQL on the exact commit. Only after that should it be wired to a non-production task entrypoint and tested with a real broker in an isolated environment. Worker implementation remains a separate subsequent stage.
+**Acceptance for the next code change:** implement the isolated parser supervisor and its kill/reap, heartbeat-loss, bounded-output, and fail-closed tests without registering a Celery task or changing the HTTP upload route. Run the full backend suite and CodeQL on the exact commit. Broker wiring, index-worker implementation, API/UI state changes, and any deployment remain later separately reviewed stages.
