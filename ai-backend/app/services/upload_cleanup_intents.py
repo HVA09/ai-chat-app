@@ -34,9 +34,10 @@ def enqueue_upload_cleanup_intent(
     """Persist a cleanup request, returning None if a committed attachment owns the key.
 
     The caller owns the transaction and must commit before attempting storage
-    deletion. Lock order is User -> FileAttachment, matching upload/account
-    retention serialization. If the user was already deleted, the intent
-    remains ownerless and the attachment ownership check still fails closed.
+    deletion. Lock order is User -> UploadLease -> FileAttachment, matching
+    upload/account-retention serialization. If the user was already deleted,
+    the intent remains ownerless and the attachment ownership check still
+    fails closed.
     """
     if not object_key or len(object_key) > 512 or object_key.startswith("/"):
         raise ValueError("object_key is invalid")
