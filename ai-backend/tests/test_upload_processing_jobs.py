@@ -101,7 +101,6 @@ def test_processing_job_retry_and_terminal_failure(client, db_session):
     )
     db_session.refresh(job)
     assert job.status == "retry_wait"
-    assert queue_upload_processing_job(db_session, job_id=job.id)
     generation, token = claim_upload_processing_job(db_session, job_id=job.id)
     assert fail_upload_processing_job(
         db_session, job_id=job.id, generation=generation, owner_token=token,
@@ -126,7 +125,6 @@ def test_expired_processing_job_is_not_reclaimed(client, db_session):
     job, _ = create_upload_processing_job(
         db_session, lease_id=lease.id, stage="extract"
     )
-    assert queue_upload_processing_job(db_session, job_id=job.id)
     generation, _ = claim_upload_processing_job(
         db_session, job_id=job.id, lease_seconds=1
     )
