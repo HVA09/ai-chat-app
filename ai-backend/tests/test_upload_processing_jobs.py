@@ -1,7 +1,7 @@
 """Unit/integration coverage for durable upload-processing job transitions."""
 import pytest
 
-from app.models import User, UploadLease
+from app.models import User
 from app.models.upload_processing_job import UploadProcessingJob
 from app.services.upload_leases import create_upload_lease, queue_upload_lease
 from app.services.upload_processing_jobs import (
@@ -10,7 +10,7 @@ from app.services.upload_processing_jobs import (
     create_upload_processing_job,
     fail_upload_processing_job,
     heartbeat_upload_processing_job,
-    queue_upload_processing_job,
+    mark_upload_processing_job_dispatched,
     retry_upload_processing_job,
 )
 
@@ -60,7 +60,7 @@ def test_processing_job_claim_fencing_and_completion(client, db_session):
         db_session, lease_id=lease.id, stage="extract"
     )
     assert created
-    assert queue_upload_processing_job(db_session, job_id=job.id)
+    assert mark_upload_processing_job_dispatched(db_session, job_id=job.id)
 
     claim = claim_upload_processing_job(db_session, job_id=job.id, lease_seconds=60)
     assert claim is not None
@@ -130,7 +130,7 @@ def test_expired_processing_job_is_not_reclaimed(client, db_session):
         db_session, lease_id=lease.id, stage="extract"
     )
     assert queue_upload_processing_job(db_session, job_id=job.id)
-    generation, token = claim_upload_processing_job(
+    generation, _ = claim_upload_processing_job(
         db_session, job_id=job.id, lease_seconds=1
     )
     # Expiry is advisory only: claim requires status='queued', not a timestamp.

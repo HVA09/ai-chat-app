@@ -119,8 +119,14 @@ def create_upload_processing_job(
     return job, True
 
 
-def queue_upload_processing_job(db: Session, *, job_id: str) -> bool:
-    """Promote a due outbox/retry row for broker delivery; no broker I/O here."""
+def mark_upload_processing_job_dispatched(db: Session, *, job_id: str) -> bool:
+    """Record a successful broker publish for a due outbox/retry row.
+
+    The caller publishes the job ID first, then calls this helper. If the
+    process crashes between publish and this state update, the durable row
+    remains dispatchable and a duplicate message is expected and harmless.
+    Never call this helper when broker publication failed.
+    """
     locator = db.execute(
         select(UploadProcessingJob.lease_id).where(UploadProcessingJob.id == job_id)
     ).scalar_one_or_none()
