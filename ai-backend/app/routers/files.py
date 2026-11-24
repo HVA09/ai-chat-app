@@ -437,7 +437,7 @@ async def upload_file(
                 user_id=upload_user_id,
                 object_key=object_key,
                 lease_id=upload_lease_id,
-                generation=upload_lease_generation,
+                generation=ingress_lease_generation,
             )
             if intent is None:
                 raise RuntimeError("cleanup intent was not created")
