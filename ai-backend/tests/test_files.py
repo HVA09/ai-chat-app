@@ -1604,7 +1604,6 @@ def test_cleanup_intent_refuses_object_owned_by_committed_attachment(
         db_session,
         user_id=user.id,
         object_key=object_key,
-        generation=1,
     )
 
     assert intent is None
