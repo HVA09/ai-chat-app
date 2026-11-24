@@ -59,6 +59,14 @@ def test_upload_lease_claim_heartbeat_and_fencing(client, db_session):
     assert generation == 2
     assert claim_upload_lease(db_session, lease_id=lease_id, lease_seconds=90) is None
 
+    # A stale ingress owner must not revoke the newer processing generation
+    # or authorize cleanup after ownership has advanced.
+    assert not mark_upload_lease_cleanup_pending(
+        db_session,
+        lease_id=lease_id,
+        generation=1,
+        owner_token=ingress_token,
+    )
     assert not heartbeat_upload_lease(
         db_session,
         lease_id=lease_id,
