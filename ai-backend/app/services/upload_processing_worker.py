@@ -45,6 +45,7 @@ def process_upload_extraction_job(db: Session, *, job_id: str) -> bool:
         select(UploadProcessingJob.stage).where(UploadProcessingJob.id == job_id)
     ).scalar_one_or_none()
     if locator != "extract":
+        db.rollback()
         return False
 
     claim = claim_upload_processing_job(
