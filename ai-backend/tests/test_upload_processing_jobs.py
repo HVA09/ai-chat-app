@@ -94,7 +94,6 @@ def test_processing_job_retry_and_terminal_failure(client, db_session):
     job, _ = create_upload_processing_job(
         db_session, lease_id=lease.id, stage="index", max_attempts=2
     )
-    assert queue_upload_processing_job(db_session, job_id=job.id)
     generation, token = claim_upload_processing_job(db_session, job_id=job.id)
     assert retry_upload_processing_job(
         db_session, job_id=job.id, generation=generation, owner_token=token,
@@ -131,7 +130,7 @@ def test_expired_processing_job_is_not_reclaimed(client, db_session):
     generation, _ = claim_upload_processing_job(
         db_session, job_id=job.id, lease_seconds=1
     )
-    # Expiry is advisory only: claim requires status='queued', not a timestamp.
+    # Expiry is advisory only: claim requires an undispatched outbox state, not a timestamp.
     job.expires_at = job.created_at
     db_session.flush()
     assert claim_upload_processing_job(db_session, job_id=job.id) is None

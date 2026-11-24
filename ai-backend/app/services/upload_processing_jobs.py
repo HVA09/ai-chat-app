@@ -41,7 +41,7 @@ def _lock_owner_and_lease(db: Session, lease_id: str) -> tuple[User, UploadLease
     if user is None:
         return None
     lease = db.execute(
-        select(UploadLease).where(UploadLease.id == lease_id).with_for_update()
+        select(UploadLease).where(UploadLease.id == lease_id).with_for_update().execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if lease is None or lease.user_id != user.id:
         return None
