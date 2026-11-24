@@ -235,3 +235,91 @@ def test_processing_job_claim_is_single_winner_across_independent_postgres_sessi
                     cleanup.query(UploadLease).filter_by(id=lease_id).delete()
                 cleanup.query(User).filter_by(id=user_id).delete()
                 cleanup.commit()
+
+
+def test_processing_job_creation_is_single_row_across_independent_postgres_sessions(
+    db_session,
+):
+    """Concurrent idempotent outbox creation yields one durable row."""
+    import os
+    from threading import Barrier, Thread
+    from uuid import uuid4
+
+    from sqlalchemy.orm import sessionmaker
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("independent-session locking behavior requires PostgreSQL")
+    database_name = engine.url.database or ""
+    if "test" not in database_name.lower():
+        pytest.skip("database name is not clearly marked as a test database")
+    if os.getenv("ENVIRONMENT", "test").lower() != "test":
+        pytest.skip("test environment guard is not active")
+
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    user_id = lease_id = None
+    results, errors = [], []
+    try:
+        with factory() as setup:
+            user = User(email=f"pg-concurrent-create-{suffix}@example.test",
+                        hashed_password="test-only")
+            setup.add(user)
+            setup.flush()
+            user_id = user.id
+            lease, token = create_upload_lease(
+                setup, user_id=user.id,
+                object_key=f"users/{user.id}/{suffix}.bin",
+            )
+            lease_id = lease.id
+            assert queue_upload_lease(
+                setup, lease_id=lease.id, generation=1, owner_token=token
+            )
+            setup.commit()
+
+        barrier = Barrier(2)
+
+        def creator():
+            try:
+                with factory() as session:
+                    barrier.wait(timeout=10)
+                    job, created = create_upload_processing_job(
+                        session, lease_id=lease_id, stage="extract"
+                    )
+                    results.append((job.id, created))
+                    session.commit()
+            except BaseException as exc:
+                errors.append(exc)
+
+        threads = [Thread(target=creator), Thread(target=creator)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=15)
+
+        assert all(not thread.is_alive() for thread in threads), "creation thread hung"
+        assert errors == []
+        assert len(results) == 2
+        assert results[0][0] == results[1][0]
+        assert sum(created for _, created in results) == 1
+
+        with factory() as verify:
+            rows = verify.query(UploadProcessingJob).filter_by(
+                lease_id=lease_id, stage="extract", stage_revision=1
+            ).all()
+            assert len(rows) == 1
+            assert rows[0].status == "pending_dispatch"
+            assert rows[0].generation == 0
+            assert rows[0].attempt_count == 0
+    finally:
+        if user_id is not None:
+            with factory() as cleanup:
+                if lease_id is not None:
+                    cleanup.query(UploadProcessingJob).filter_by(
+                        lease_id=lease_id
+                    ).delete()
+                    from app.models.upload_lease import UploadLease
+                    cleanup.query(UploadLease).filter_by(id=lease_id).delete()
+                cleanup.query(User).filter_by(id=user_id).delete()
+                cleanup.commit()
