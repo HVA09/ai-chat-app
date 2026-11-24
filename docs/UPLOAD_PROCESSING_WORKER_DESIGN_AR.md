@@ -9,7 +9,7 @@ Status: design only. This document does not enable a worker, broker consumer, sc
 - Job claim/heartbeat/completion use a generation plus a hashed owner token.
 - Job state helpers acquire locks in `User -> UploadLease -> UploadProcessingJob` order.
 - A processing lease expiry is advisory. It is not proof that the previous process stopped and must never authorize reclaim or deletion.
-- CI on commit `abb5c4fe67700f3234441d18e3443161cd3bfee3` passed: 728 backend tests, including the PostgreSQL concurrent-dispatcher test; frontend, SDK, production-compose, preview-builder and CodeQL passed.
+- Latest verified PR head: `05dade382eb589769cca50f1bf4eefdabb31a07b` (CI evaluated the PR merge commit `03725d71300f6a968f8be419bf3e49e1df1a4959`). CI run `45510018020` passed all five jobs; backend reported 738 passed and one Starlette deprecation warning. Frontend tests/build, Python and JavaScript SDK tests, preview-builder, production-compose, and CodeQL run `45510018173` all passed. This verifies the current test baseline only; it does not close the worker isolation or activation gates.
 
 ## Existing upload path that must be preserved during the transition
 
@@ -29,6 +29,10 @@ The durable job model is not yet wired into this request path. Do not create job
 8. Classify transient provider/storage failures into bounded retry delays; sanitize persisted error codes. Permanent validation/unsupported-file failures become terminal. Never persist raw exception text, secrets, or file contents in job error fields.
 9. Indexing must prepare embeddings outside the write transaction, then atomically replace chunks using `persist_file_index` after rechecking the source fingerprint and job fence.
 10. No automatic lease reclaim, object deletion, local-file deletion, expiry-based cleanup, or production activation is part of this worker phase.
+
+## Explicit implementation blocker: temporary-source ownership
+
+The current `app/services/storage.py::materialize_file` context manager unconditionally unlinks its downloaded temporary file in `finally`. That behavior is safe only while extraction is guaranteed to have stopped before the context exits. A future parser supervisor must not be integrated until the storage API can preserve the materialized source when child termination cannot be proven, while still cleaning it after confirmed child exit on both success and ordinary failure. The preservation signal must be narrow and explicit; ordinary storage/parser errors must not silently leak temporary files. Add tests for both confirmed-stop cleanup and unconfirmed-stop preservation before connecting the supervisor to the worker.
 
 ## Stage boundaries
 
