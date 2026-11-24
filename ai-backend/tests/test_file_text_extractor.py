@@ -68,3 +68,18 @@ def test_extract_pdf_file(tmp_path: Path):
         writer.write(file)
 
     assert extract_text(path, "application/pdf") == ""
+
+
+def test_text_and_csv_extraction_respect_output_limit(tmp_path: Path):
+    text_path = tmp_path / "large.txt"
+    text_path.write_text("0123456789" * 100, encoding="utf-8")
+    csv_path = tmp_path / "large.csv"
+    csv_path.write_text("value\n" + ("abcdefghij\n" * 100), encoding="utf-8")
+
+    text = extract_text(text_path, "text/plain", max_chars=12)
+    csv = extract_text(csv_path, "text/csv", max_chars=12)
+
+    assert text.startswith("0123456789")
+    assert text.endswith("[تم اختصار المحتوى بسبب الحد المسموح]")
+    assert csv.startswith("value")
+    assert csv.endswith("[تم اختصار المحتوى بسبب الحد المسموح]")
