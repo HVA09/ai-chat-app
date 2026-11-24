@@ -63,6 +63,8 @@ def test_dispatch_marks_job_queued_and_worker_can_claim(client, db_session):
 
 def test_dispatch_publish_failure_leaves_job_retryable(client, db_session):
     job = _make_job(client, db_session, "upload-dispatch-failure@example.com")
+    job_id = job.id
+    db_session.commit()
 
     def fail_publish(_job_id):
         raise RuntimeError("broker unavailable")
@@ -71,7 +73,7 @@ def test_dispatch_publish_failure_leaves_job_retryable(client, db_session):
         dispatch_upload_processing_jobs(db_session, publish=fail_publish)
 
     db_session.rollback()
-    db_session.refresh(job)
+    job = db_session.query(UploadProcessingJob).filter(UploadProcessingJob.id == job_id).one()
     assert job.status == "pending_dispatch"
     assert job.generation == 0
     assert job.attempt_count == 0
