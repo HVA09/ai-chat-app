@@ -4,7 +4,12 @@ from app.models.file_attachment import FileAttachment
 from app.models.upload_cleanup_intent import UploadCleanupIntent
 from app.models.user import User
 from app.models.upload_lease import UploadLease
-from app.services.upload_leases import claim_upload_lease, create_upload_lease, queue_upload_lease
+from app.services.upload_leases import (
+    claim_upload_lease,
+    create_upload_lease,
+    mark_upload_lease_cleanup_pending,
+    queue_upload_lease,
+)
 from app.services.upload_cleanup_intents import (
     enqueue_upload_cleanup_intent,
     record_upload_cleanup_attempt,
@@ -140,6 +145,13 @@ def test_stale_processing_generation_cannot_enqueue_cleanup_intent(db_session):
     persisted_lease.status = "processing"
     persisted_lease.owner_token_hash = "f" * 64
     db_session.flush()
+
+    assert not mark_upload_lease_cleanup_pending(
+        db_session,
+        lease_id=lease.id,
+        generation=generation,
+        owner_token=worker_token,
+    )
 
     stale_intent = enqueue_upload_cleanup_intent(
         db_session,
