@@ -1611,3 +1611,139 @@ def test_cleanup_intent_refuses_object_owned_by_committed_attachment(
     assert db_session.query(UploadCleanupIntent).filter_by(
         object_key=object_key
     ).count() == 0
+
+
+
+def test_slow_live_upload_extraction_holds_account_deletion_lock_on_postgres(
+    db_session, tmp_path, monkeypatch
+):
+    """A live extraction cannot be mistaken for an abandoned upload during account deletion."""
+    import asyncio
+    from io import BytesIO
+    from threading import Event, Thread
+    from uuid import uuid4
+
+    import pytest
+    from sqlalchemy.orm import sessionmaker
+    from starlette.datastructures import Headers, UploadFile
+
+    from app.config import settings
+    from app.models.file_attachment import FileAttachment
+    from app.models.user import User
+    from app.routers import files as files_router
+    from app.routers import users as users_router
+    from app.schemas.user import DeleteAccountRequest
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(users_router, "verify_password", lambda *_args: True)
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    with session_factory() as creator:
+        user = User(
+            email=f"slow-upload-extraction-{suffix}@example.test",
+            hashed_password="test-only-hash",
+        )
+        creator.add(user)
+        creator.commit()
+        user_id = user.id
+
+    objects = {}
+    extraction_started = Event()
+    allow_extraction = Event()
+    delete_finished = Event()
+    upload_errors = []
+    delete_errors = []
+
+    def fake_put_file(path, object_key, _content_type):
+        objects[object_key] = path.read_bytes()
+
+    def slow_extract(_path, _content_type):
+        extraction_started.set()
+        if not allow_extraction.wait(10):
+            raise AssertionError("test did not release the live extraction")
+        return None
+
+    def fake_delete_user_objects(_user_id):
+        objects.clear()
+
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(files_router, "extract_text", slow_extract)
+    monkeypatch.setattr(
+        files_router, "delete_stored_file",
+        lambda object_key, fallback_path: (
+            objects.pop(object_key, None), fallback_path.unlink(missing_ok=True)
+        ),
+    )
+    monkeypatch.setattr(users_router, "delete_user_objects", fake_delete_user_objects)
+
+    def run_upload():
+        try:
+            with session_factory() as upload_db:
+                current_user = upload_db.get(User, user_id)
+                upload = UploadFile(
+                    filename="slow-live-extraction.txt",
+                    file=BytesIO(b"live upload during extraction"),
+                    headers=Headers({"content-type": "text/plain"}),
+                )
+                asyncio.run(
+                    files_router.upload_file(
+                        upload, current_user=current_user, db=upload_db
+                    )
+                )
+        except BaseException as exc:
+            upload_errors.append(exc)
+
+    def run_delete():
+        try:
+            with session_factory() as delete_db:
+                current_user = delete_db.get(User, user_id)
+                users_router.delete_account(
+                    DeleteAccountRequest(password="test-password"),
+                    current_user,
+                    delete_db,
+                )
+        except BaseException as exc:
+            delete_errors.append(exc)
+        finally:
+            delete_finished.set()
+
+    upload_thread = Thread(target=run_upload, daemon=True)
+    delete_thread = None
+    try:
+        upload_thread.start()
+        assert extraction_started.wait(10), "upload did not reach extraction"
+
+        delete_thread = Thread(target=run_delete, daemon=True)
+        delete_thread.start()
+        assert not delete_finished.wait(0.5), (
+            "account deletion bypassed the User-row lock held during live extraction"
+        )
+
+        allow_extraction.set()
+        upload_thread.join(timeout=10)
+        delete_thread.join(timeout=10)
+        assert not upload_thread.is_alive()
+        assert not delete_thread.is_alive()
+        assert upload_errors == []
+        assert delete_errors == []
+        assert delete_finished.is_set()
+        assert objects == {}
+
+        with session_factory() as verify:
+            assert verify.get(User, user_id) is None
+            assert verify.query(FileAttachment).filter(
+                FileAttachment.user_id == user_id
+            ).count() == 0
+    finally:
+        allow_extraction.set()
+        upload_thread.join(timeout=10)
+        if delete_thread is not None:
+            delete_thread.join(timeout=10)
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
+            cleanup.commit()
