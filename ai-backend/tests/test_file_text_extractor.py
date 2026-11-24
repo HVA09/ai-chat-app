@@ -152,3 +152,27 @@ def test_xlsx_extraction_bounds_sheet_dimensions_and_total_cells(tmp_path: Path,
         "max_col": file_text_extractor.MAX_XLSX_COLUMNS_PER_ROW,
         "values_only": True,
     }]
+
+
+
+def test_pdf_extraction_stops_at_page_limit(tmp_path: Path, monkeypatch):
+    extracted = []
+
+    class Page:
+        def __init__(self, number):
+            self.number = number
+
+        def extract_text(self):
+            extracted.append(self.number)
+            return f"page {self.number}"
+
+    class Reader:
+        pages = [Page(number) for number in range(file_text_extractor.MAX_PDF_PAGES + 5)]
+
+    monkeypatch.setattr(file_text_extractor, "PdfReader", lambda _path: Reader())
+
+    text = extract_text(tmp_path / "stub.pdf", "application/pdf")
+
+    assert len(extracted) == file_text_extractor.MAX_PDF_PAGES
+    assert "page 99" in text
+    assert "page 100" not in text
