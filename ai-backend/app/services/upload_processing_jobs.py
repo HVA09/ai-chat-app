@@ -119,37 +119,10 @@ def create_upload_processing_job(
     return job, True
 
 
-def mark_upload_processing_job_dispatched(db: Session, *, job_id: str) -> bool:
-    """Record a successful broker publish for a due outbox/retry row.
-
-    The caller publishes the job ID first, then calls this helper. If the
-    process crashes between publish and this state update, the durable row
-    remains dispatchable and a duplicate message is expected and harmless.
-    Never call this helper when broker publication failed.
-    """
-    locator = db.execute(
-        select(UploadProcessingJob.lease_id).where(UploadProcessingJob.id == job_id)
-    ).scalar_one_or_none()
-    if locator is None or _lock_owner_and_lease(db, locator) is None:
-        return False
-    job = _lock_job(db, job_id)
-    now = datetime.now(timezone.utc)
-    if (
-        job is None
-        or job.status not in {"pending_dispatch", "retry_wait"}
-        or job.available_at > now
-    ):
-        return False
-    job.status = "queued"
-    job.updated_at = now
-    db.flush()
-    return True
-
-
 def claim_upload_processing_job(
     db: Session, *, job_id: str, lease_seconds: int = 120
 ) -> tuple[int, str] | None:
-    """Claim a queued job with a fresh fencing generation and secret token."""
+    """Claim a delivered outbox row with a fresh fencing generation and secret token."""
     if lease_seconds <= 0:
         raise ValueError("lease_seconds must be positive")
     locator = db.execute(
@@ -159,7 +132,7 @@ def claim_upload_processing_job(
         return None
     job = _lock_job(db, job_id)
     now = datetime.now(timezone.utc)
-    if job is None or job.status != "queued" or job.available_at > now:
+    if job is None or job.status not in {"pending_dispatch", "retry_wait"} or job.available_at > now:
         return None
     if job.attempt_count >= job.max_attempts:
         job.status = "failed_terminal"

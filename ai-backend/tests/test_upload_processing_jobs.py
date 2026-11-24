@@ -10,7 +10,6 @@ from app.services.upload_processing_jobs import (
     create_upload_processing_job,
     fail_upload_processing_job,
     heartbeat_upload_processing_job,
-    mark_upload_processing_job_dispatched,
     retry_upload_processing_job,
 )
 
@@ -60,7 +59,6 @@ def test_processing_job_claim_fencing_and_completion(client, db_session):
         db_session, lease_id=lease.id, stage="extract"
     )
     assert created
-    assert mark_upload_processing_job_dispatched(db_session, job_id=job.id)
 
     claim = claim_upload_processing_job(db_session, job_id=job.id, lease_seconds=60)
     assert claim is not None
