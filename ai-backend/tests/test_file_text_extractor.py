@@ -83,3 +83,38 @@ def test_text_and_csv_extraction_respect_output_limit(tmp_path: Path):
     assert text.endswith("[تم اختصار المحتوى بسبب الحد المسموح]")
     assert csv.startswith("value")
     assert csv.endswith("[تم اختصار المحتوى بسبب الحد المسموح]")
+
+
+
+def test_text_and_csv_read_only_bounded_source_prefixes(tmp_path: Path, monkeypatch):
+    text_path = tmp_path / "bounded.txt"
+    text_path.write_text("x" * 1000, encoding="utf-8")
+    csv_path = tmp_path / "bounded.csv"
+    csv_path.write_text("x\n" * 1000, encoding="utf-8")
+
+    real_open = Path.open
+    read_sizes = []
+
+    class ReadSpy:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            self.stream.close()
+
+        def read(self, size=-1):
+            read_sizes.append(size)
+            return self.stream.read(size)
+
+    def tracked_open(path, *args, **kwargs):
+        return ReadSpy(real_open(path, *args, **kwargs))
+
+    monkeypatch.setattr(Path, "open", tracked_open)
+
+    extract_text(text_path, "text/plain", max_chars=16)
+    extract_text(csv_path, "text/csv", max_chars=16)
+
+    assert read_sizes == [64, 128]
