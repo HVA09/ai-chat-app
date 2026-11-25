@@ -206,3 +206,47 @@ def test_current_cleanup_pending_generation_can_enqueue_intent(db_session):
     assert intent.lease_id == lease.id
     assert intent.generation == generation
     assert intent.status == "pending"
+
+
+def test_cleanup_intent_insert_conflict_preserves_outer_transaction(
+    db_session, monkeypatch
+):
+    """A savepoint-local insert failure must not roll back caller-owned work."""
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+
+    user = _make_user(db_session)
+    object_key = f"users/{user.id}/{uuid4().hex}.txt"
+    unrelated_user = User(
+        email=f"unrelated-pending-{uuid4().hex}@example.test",
+        hashed_password="test-only-hash",
+    )
+    db_session.add(unrelated_user)
+
+    original_flush = db_session.flush
+    flush_calls = 0
+
+    def fail_intent_insert(*args, **kwargs):
+        nonlocal flush_calls
+        flush_calls += 1
+        # begin_nested() performs its own pre-savepoint flush. Fail only the
+        # explicit intent flush inside the savepoint.
+        if flush_calls == 2:
+            raise IntegrityError("INSERT cleanup intent", {}, Exception("duplicate"))
+        return original_flush(*args, **kwargs)
+
+    monkeypatch.setattr(db_session, "flush", fail_intent_insert)
+
+    with pytest.raises(IntegrityError):
+        enqueue_upload_cleanup_intent(
+            db_session, user_id=user.id, object_key=object_key
+        )
+
+    assert db_session.in_transaction()
+    assert db_session.get(User, unrelated_user.id) is not None
+    assert (
+        db_session.query(UploadCleanupIntent)
+        .filter(UploadCleanupIntent.object_key == object_key)
+        .count()
+        == 0
+    )
