@@ -142,6 +142,7 @@ def test_xlsx_extraction_bounds_sheet_dimensions_and_total_cells(tmp_path: Path,
             pass
 
     monkeypatch.setattr(file_text_extractor, "load_workbook", lambda **_kwargs: WorkbookStub())
+    monkeypatch.setattr(file_text_extractor, "_validate_ooxml_archive", lambda _path: None)
 
     text = extract_text(
         tmp_path / "stub.xlsx",
@@ -227,5 +228,17 @@ def test_ooxml_archive_rejects_invalid_zip_container(tmp_path: Path):
     path.write_bytes(b"not a zip archive")
 
     with pytest.raises(file_text_extractor.FileTextExtractionError, match="archive is invalid"):
+        file_text_extractor._validate_ooxml_archive(path)
+
+def test_ooxml_archive_rejects_total_expansion_limit(tmp_path: Path, monkeypatch):
+    path = tmp_path / "total-expanded.docx"
+    _write_ooxml_archive(path, {"one.xml": b"a" * 20, "two.xml": b"b" * 20})
+    monkeypatch.setattr(file_text_extractor, "MAX_OOXML_MEMBER_UNCOMPRESSED_BYTES", 32)
+    monkeypatch.setattr(file_text_extractor, "MAX_OOXML_TOTAL_UNCOMPRESSED_BYTES", 32)
+
+    with pytest.raises(
+        file_text_extractor.FileTextExtractionError,
+        match="archive expansion exceeds",
+    ):
         file_text_extractor._validate_ooxml_archive(path)
 
