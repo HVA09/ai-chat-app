@@ -161,9 +161,15 @@ def _get_valid_share(token: str, db: Session) -> ConversationShare:
             detail="رابط المشاركة غير صالح",
         )
 
-    share = db.query(ConversationShare).filter(
-        ConversationShare.token_hash == _hash_token(token)
-    ).first()
+    share = (
+        db.query(ConversationShare)
+        .join(Conversation, Conversation.id == ConversationShare.conversation_id)
+        .filter(
+            ConversationShare.token_hash == _hash_token(token),
+            Conversation.deleted_at.is_(None),
+        )
+        .first()
+    )
 
     if not share:
         raise HTTPException(
