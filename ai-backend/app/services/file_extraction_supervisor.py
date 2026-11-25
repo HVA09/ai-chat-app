@@ -1,9 +1,8 @@
 """Spawn-based parser isolation primitives.
 
 This module is deliberately not wired into the upload worker. It bounds one
-parser child and verifies its exit before returning. It does not establish
-host-level parent-death guarantees; production integration remains blocked
-until the process supervisor/runtime provides and tests that guarantee.
+parser child, installs Linux parent-death containment before parsing, and
+verifies child exit before returning. Unsupported platforms fail closed.
 """
 from __future__ import annotations
 
