@@ -80,6 +80,13 @@ def test_revoke_other_session(client):
     assert len(remaining) == 1
     assert remaining[0]["is_current"] is True
 
+    # Revoking one session immediately invalidates its access token, while the
+    # independently authenticated session remains usable.
+    revoked_session_access = client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    active_session_access = client.get("/users/me", headers={"Authorization": f"Bearer {current_token}"})
+    assert revoked_session_access.status_code == 401
+    assert active_session_access.status_code == 200
+
 
 def test_revoke_current_session_prevents_refresh(client):
     token = _register_and_login(client, "sessions-current@example.com")
@@ -101,6 +108,8 @@ def test_revoke_current_session_prevents_refresh(client):
     client.cookies.set("refresh_token", current_refresh)
     refresh_response = client.post("/auth/refresh")
     assert refresh_response.status_code == 401
+    protected = client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    assert protected.status_code == 401
 
 
 def test_revoke_all_sessions_invalidates_current_access_token(client):
@@ -119,22 +128,30 @@ def test_revoke_all_sessions_invalidates_current_access_token(client):
 
 
 def test_expired_sessions_are_not_listed(client, db_session):
-    token = _register_and_login(client, "sessions-expired@example.com")
+    _register_and_login(client, "sessions-expired@example.com")
+    second_login = client.post(
+        "/auth/login",
+        json={"email": "sessions-expired@example.com", "password": "StrongPass123"},
+    )
+    assert second_login.status_code == 200
+    current_token = client.cookies.get("access_token")
+
     response = client.get(
         "/auth/sessions",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {current_token}"},
     )
     assert response.status_code == 200
-    session_id = response.json()[0]["id"]
+    expired_session = next(item for item in response.json() if not item["is_current"])
 
     from app.models.user_session import UserSession
 
-    db_session.get(UserSession, session_id).expires_at = datetime.now(timezone.utc)
+    db_session.get(UserSession, expired_session["id"]).expires_at = datetime.now(timezone.utc)
     db_session.flush()
 
     listed = client.get(
         "/auth/sessions",
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {current_token}"},
     )
     assert listed.status_code == 200
-    assert listed.json() == []
+    assert len(listed.json()) == 1
+    assert listed.json()[0]["is_current"] is True

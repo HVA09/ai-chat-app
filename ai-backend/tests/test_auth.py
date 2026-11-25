@@ -165,11 +165,12 @@ def test_login_normalizes_email_case(client):
 
 
 def test_jwt_round_trip_uses_configured_algorithm():
-    token = create_access_token(123, token_version=7)
+    token = create_access_token(123, token_version=7, session_jti="test-session-jti")
     payload = decode_token(token, expected_type="access")
     assert payload["sub"] == "123"
     assert payload["type"] == "access"
     assert payload["ver"] == 7
+    assert payload["jti"] == "test-session-jti"
 
 
 def test_initial_admin_is_promoted_only_after_email_verification(
