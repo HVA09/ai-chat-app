@@ -105,13 +105,15 @@ def enqueue_upload_cleanup_intent(
         attempt_count=0,
         next_attempt_at=datetime.now(timezone.utc),
     )
-    db.add(intent)
+    # Isolate the insert so a uniqueness race cannot roll back unrelated
+    # work owned by the caller's outer transaction.
     try:
-        db.flush()
+        with db.begin_nested():
+            db.add(intent)
+            db.flush()
     except IntegrityError:
         # A concurrent ownerless enqueue can race when account deletion has
         # already removed the User row (and therefore its serialization lock).
-        db.rollback()
         existing = (
             db.query(UploadCleanupIntent)
             .filter(UploadCleanupIntent.idempotency_key == key)
