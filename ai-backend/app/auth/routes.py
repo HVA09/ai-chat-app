@@ -85,9 +85,13 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="البريد مسجل مسبقًا")
-    initial_admin = (settings.INITIAL_ADMIN_EMAIL or "").strip().lower()
-    is_initial_admin = bool(initial_admin and payload.email.lower() == initial_admin)
-    user = User(email=payload.email, hashed_password=hash_password(payload.password), role=UserRole.admin if is_initial_admin else UserRole.user)
+    # Public registration never grants privileged roles. The configured bootstrap
+    # administrator is promoted only after proving control of the email address.
+    user = User(
+        email=payload.email,
+        hashed_password=hash_password(payload.password),
+        role=UserRole.user,
+    )
     db.add(user)
     db.flush()
 
@@ -367,6 +371,9 @@ def confirm_email_verification(payload: EmailVerificationConfirm, db: Session = 
     if user is None:
         raise invalid
     user.is_email_verified = True
+    initial_admin = (settings.INITIAL_ADMIN_EMAIL or "").strip().lower()
+    if initial_admin and user.email.strip().lower() == initial_admin:
+        user.role = UserRole.admin
     db.commit()
     log_event(db, "email_verified", f"تم تأكيد بريد: {user.email}", user.id)
     return {"detail": "تم تأكيد البريد الإلكتروني بنجاح"}

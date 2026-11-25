@@ -36,7 +36,7 @@ def test_initial_admin_is_explicitly_configured(client, monkeypatch):
     response = client.post(
         "/auth/register", json={"email": "first@example.com", "password": "StrongPass123"}
     )
-    assert response.json()["role"] == "admin"
+    assert response.json()["role"] == "user"
 
 
 def test_second_user_is_regular(client, monkeypatch):
@@ -148,3 +148,36 @@ def test_jwt_round_trip_uses_configured_algorithm():
     assert payload["sub"] == "123"
     assert payload["type"] == "access"
     assert payload["ver"] == 7
+
+
+def test_initial_admin_is_promoted_only_after_email_verification(
+    client, db_session, monkeypatch
+):
+    from app.auth import routes as auth_routes
+
+    monkeypatch.setattr(app_settings, "INITIAL_ADMIN_EMAIL", "first@example.com")
+    monkeypatch.setattr(auth_routes, "remember_email_verification_token", lambda *_: True)
+    captured = {}
+    monkeypatch.setattr(
+        auth_routes,
+        "send_verification_email",
+        lambda email, token: captured.update(email=email, token=token),
+    )
+    response = client.post(
+        "/auth/register",
+        json={"email": "first@example.com", "password": "StrongPass123"},
+    )
+    assert response.status_code == 201
+    user = db_session.query(User).filter_by(email="first@example.com").one()
+    assert user.role == "user"
+    assert user.is_email_verified is False
+
+    monkeypatch.setattr(auth_routes, "consume_email_verification_token", lambda _jti: True)
+    confirmed = client.post(
+        "/auth/verify-email/confirm",
+        json={"token": captured["token"]},
+    )
+    assert confirmed.status_code == 200
+    db_session.refresh(user)
+    assert user.is_email_verified is True
+    assert user.role == "admin"
