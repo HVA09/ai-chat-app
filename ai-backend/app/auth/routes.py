@@ -161,7 +161,7 @@ def login(
         raise HTTPException(status_code=503, detail="خدمة الجلسات غير متاحة مؤقتًا")
     _create_session_record(db=db, user=user, refresh_token=refresh_token, request=request, now=now)
     db.commit()
-    access_token = create_access_token(user.id, user.token_version, session_jti=jti)
+    access_token = create_access_token(user.id, user.token_version)
     _set_session_cookies(response, access_token, refresh_token)
     log_event(db, "login", f"تسجيل دخول ناجح: {user.email}", user.id)
     return _token_response(access_token, refresh_token)
@@ -215,7 +215,7 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
         old_session.revoked_at = now
     _create_session_record(db=db, user=user, refresh_token=new_refresh_token, request=request, now=now)
     db.commit()
-    new_access_token = create_access_token(user.id, user.token_version, session_jti=new_jti)
+    new_access_token = create_access_token(user.id, user.token_version)
     _set_session_cookies(response, new_access_token, new_refresh_token)
     return _token_response(new_access_token, new_refresh_token)
 

@@ -2,7 +2,6 @@
 Dependencies مشتركة بين المسارات: المستخدم الحالي، صلاحية admin، والحد اليومي لطلبات AI
 """
 from datetime import datetime, timedelta, timezone
-import hashlib
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
@@ -18,7 +17,6 @@ from app.logging_config import get_logger
 from app.models.subscription import Subscription, SubscriptionStatus
 from app.models.usage_log import UsageLog
 from app.models.user import User, UserRole
-from app.models.user_session import UserSession
 from app.models.workspace import Workspace, WorkspaceMember
 
 logger = get_logger("dependencies")
@@ -45,27 +43,11 @@ def get_current_user(
             raise credentials_error
         user_id = int(payload.get("sub"))
         token_version = int(payload.get("ver", -1))
-        session_jti = payload.get("jti")
-        if not session_jti:
-            raise ValueError("missing session identifier")
     except (InvalidTokenError, TypeError, ValueError):
         raise credentials_error
 
     user = db.get(User, user_id)
     if user is None or not user.is_active or token_version != user.token_version:
-        raise credentials_error
-
-    session = (
-        db.query(UserSession)
-        .filter(
-            UserSession.user_id == user.id,
-            UserSession.jti_hash == hashlib.sha256(session_jti.encode("utf-8")).hexdigest(),
-            UserSession.revoked_at.is_(None),
-            UserSession.expires_at > datetime.now(timezone.utc),
-        )
-        .first()
-    )
-    if session is None:
         raise credentials_error
     return user
 
