@@ -413,3 +413,45 @@ def test_parser_child_is_killed_when_supervising_parent_dies():
         time.sleep(0.05)
 
     pytest.fail("parser child remained executable after its parent was terminated")
+
+
+
+def test_parent_death_signal_fails_closed_on_unsupported_platform(monkeypatch):
+    from app.services import file_extraction_supervisor as supervisor
+
+    monkeypatch.setattr(supervisor.sys, "platform", "darwin")
+    with pytest.raises(RuntimeError, match="parent_death_containment_unavailable"):
+        supervisor._configure_parent_death_signal(os.getpid())
+
+
+def test_parent_death_signal_fails_closed_when_prctl_fails(monkeypatch):
+    from app.services import file_extraction_supervisor as supervisor
+
+    class _LibC:
+        @staticmethod
+        def prctl(*_args):
+            return -1
+
+    monkeypatch.setattr(supervisor.sys, "platform", "linux")
+    monkeypatch.setattr(supervisor.ctypes, "CDLL", lambda *_args, **_kwargs: _LibC())
+    monkeypatch.setattr(supervisor.ctypes, "get_errno", lambda: 1)
+    with pytest.raises(OSError):
+        supervisor._configure_parent_death_signal(os.getpid())
+
+
+def test_parent_death_signal_detects_parent_pid_race(monkeypatch):
+    from app.services import file_extraction_supervisor as supervisor
+
+    class _LibC:
+        @staticmethod
+        def prctl(*_args):
+            return 0
+
+    killed = []
+    monkeypatch.setattr(supervisor.sys, "platform", "linux")
+    monkeypatch.setattr(supervisor.ctypes, "CDLL", lambda *_args, **_kwargs: _LibC())
+    monkeypatch.setattr(supervisor.os, "getppid", lambda: 999999)
+    monkeypatch.setattr(supervisor.os, "kill", lambda pid, sig: killed.append((pid, sig)))
+
+    supervisor._configure_parent_death_signal(os.getpid())
+    assert killed == [(os.getpid(), supervisor.signal.SIGKILL)]
