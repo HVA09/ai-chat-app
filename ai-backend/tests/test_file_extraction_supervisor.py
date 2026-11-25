@@ -314,11 +314,18 @@ def test_process_start_failure_closes_both_pipe_ends(monkeypatch, tmp_path: Path
         def start(self):
             raise OSError("process creation failed")
 
+    class _TrackedConnection(_FakeConnection):
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
     class _TrackedContext(_FakeSpawnContext):
         def Pipe(self, duplex=False):
             assert duplex is False
-            self.receive = _FakeConnection()
-            self.send = _FakeConnection()
+            self.receive = _TrackedConnection()
+            self.send = _TrackedConnection()
             return self.receive, self.send
 
     source = tmp_path / "source.txt"
@@ -337,8 +344,6 @@ def test_process_start_failure_closes_both_pipe_ends(monkeypatch, tmp_path: Path
             heartbeat_interval_seconds=1,
         )
 
-    # The production Connection.close() calls are the contract under test;
-    # this fake records them without requiring a real subprocess.
-    assert context.receive is not None
-    assert context.send is not None
+    assert context.receive.closed is True
+    assert context.send.closed is True
 
