@@ -37,8 +37,10 @@ def _create_token(subject: str, expires_delta: timedelta, token_type: str, jti: 
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-def create_access_token(user_id: int, token_version: int = 0) -> str:
-    return _create_token(str(user_id), timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES), "access", token_version=token_version)
+def create_access_token(user_id: int, token_version: int = 0, session_jti: str | None = None) -> str:
+    if not session_jti:
+        raise ValueError("session_jti is required for access tokens")
+    return _create_token(str(user_id), timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES), "access", jti=session_jti, token_version=token_version)
 
 
 def create_refresh_token(user_id: int, token_version: int = 0) -> str:
