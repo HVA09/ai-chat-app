@@ -31,12 +31,34 @@ def test_register_rejects_short_password(client):
     assert response.status_code == 422
 
 
-def test_initial_admin_is_explicitly_configured(client, monkeypatch):
+def test_initial_admin_is_promoted_only_after_email_verification(client, monkeypatch, db_session):
+    from app.auth import routes as auth_routes_module
+    from app.models.user import UserRole
+
     monkeypatch.setattr(app_settings, "INITIAL_ADMIN_EMAIL", "first@example.com")
+    verification_tokens = []
+    monkeypatch.setattr(
+        auth_routes_module,
+        "send_verification_email",
+        lambda recipient, token: verification_tokens.append(token),
+    )
     response = client.post(
         "/auth/register", json={"email": "first@example.com", "password": "StrongPass123"}
     )
+    assert response.status_code == 201
     assert response.json()["role"] == "user"
+    user = db_session.query(User).filter(User.email == "first@example.com").one()
+    assert user.role == UserRole.user
+    assert len(verification_tokens) == 1
+
+    verified = client.post(
+        "/auth/verify-email/confirm",
+        json={"token": verification_tokens[0]},
+    )
+    assert verified.status_code == 200
+    db_session.refresh(user)
+    assert user.is_email_verified is True
+    assert user.role == UserRole.admin
 
 
 def test_second_user_is_regular(client, monkeypatch):
