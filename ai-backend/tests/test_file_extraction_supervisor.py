@@ -1,4 +1,8 @@
 """Tests for the spawned parser supervisor primitive."""
+import multiprocessing
+import os
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -347,3 +351,65 @@ def test_process_start_failure_closes_both_pipe_ends(monkeypatch, tmp_path: Path
     assert context.receive.closed is True
     assert context.send.closed is True
 
+
+
+
+def _parent_death_test_child(expected_parent_pid: int, ready_connection):
+    from app.services.file_extraction_supervisor import _configure_parent_death_signal
+
+    _configure_parent_death_signal(expected_parent_pid)
+    ready_connection.send(os.getpid())
+    ready_connection.close()
+    while True:
+        time.sleep(1)
+
+
+def _parent_death_test_parent(result_connection):
+    context = multiprocessing.get_context("spawn")
+    receive_connection, send_connection = context.Pipe(duplex=False)
+    child = context.Process(
+        target=_parent_death_test_child,
+        args=(os.getpid(), send_connection),
+    )
+    child.start()
+    send_connection.close()
+    child_pid = receive_connection.recv()
+    receive_connection.close()
+    result_connection.send(child_pid)
+    result_connection.close()
+    child.join()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux PR_SET_PDEATHSIG only")
+def test_parser_child_is_killed_when_supervising_parent_dies():
+    context = multiprocessing.get_context("spawn")
+    receive_connection, send_connection = context.Pipe(duplex=False)
+    parent = context.Process(
+        target=_parent_death_test_parent,
+        args=(send_connection,),
+    )
+    parent.start()
+    send_connection.close()
+
+    child_pid = receive_connection.recv()
+    receive_connection.close()
+    parent.terminate()
+    parent.join(timeout=5)
+    assert not parent.is_alive()
+
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        proc_stat = Path(f"/proc/{child_pid}/stat")
+        if not proc_stat.exists():
+            return
+        try:
+            # A killed orphan may remain briefly as a zombie until reaped by
+            # its new parent; state Z still proves it can no longer execute.
+            state = proc_stat.read_text(encoding="ascii").split(")", 1)[1].split()[0]
+        except (FileNotFoundError, IndexError):
+            return
+        if state == "Z":
+            return
+        time.sleep(0.05)
+
+    pytest.fail("parser child remained executable after its parent was terminated")
