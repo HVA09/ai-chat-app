@@ -1114,3 +1114,44 @@ def test_account_deletion_user_lock_serializes_project_creation_on_postgres(
         with session_factory() as cleanup:
             cleanup.query(User).filter(User.id == user_id).delete()
             cleanup.commit()
+
+
+
+def test_workspace_member_without_projects_manage_cannot_create_or_import_project(
+    client, db_session
+):
+    from app.models.user import User
+    from app.models.workspace import WorkspaceMember, WorkspaceRole
+
+    owner_token = _register_and_login(client, "project-rbac-owner@example.com")
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+    workspace = _create_workspace(client, owner_headers, "Project RBAC")
+
+    member_token = _register_and_login(client, "project-rbac-member@example.com")
+    member_headers = {"Authorization": f"Bearer {member_token}"}
+    member = db_session.query(User).filter_by(
+        email="project-rbac-member@example.com"
+    ).one()
+    db_session.add(
+        WorkspaceMember(
+            workspace_id=workspace["id"],
+            user_id=member.id,
+            role=WorkspaceRole.member,
+        )
+    )
+    db_session.commit()
+
+    create_response = client.post(
+        "/projects",
+        json={"workspace_id": workspace["id"], "name": "Unauthorized"},
+        headers=member_headers,
+    )
+    assert create_response.status_code == 403
+
+    import_response = client.post(
+        "/projects/import",
+        data={"workspace_id": str(workspace["id"]), "on_conflict": "fail"},
+        files={"archive": ("invalid.zip", b"not a zip archive", "application/zip")},
+        headers=member_headers,
+    )
+    assert import_response.status_code == 403
