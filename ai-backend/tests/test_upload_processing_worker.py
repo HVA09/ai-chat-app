@@ -1,5 +1,6 @@
 "Tests for the isolated durable upload extraction worker."""
 from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 from sqlalchemy import select
@@ -8,6 +9,7 @@ from app.models import User
 from app.models.file_attachment import FileAttachment
 from app.models.upload_processing_job import UploadProcessingJob
 from app.services.file_text_extractor import FileTextExtractionError
+from app.services.storage import PreserveMaterializedFile
 from app.services.upload_leases import (
     claim_upload_lease,
     create_upload_lease,
@@ -70,7 +72,7 @@ def _committed_attachment(client, db_session, email):
 def _fake_materialize(*_args, **_kwargs):
     @contextmanager
     def materialized():
-        yield __import__("pathlib").Path("/tmp/worker-test-source.txt")
+        yield Path("/tmp/worker-test-source.txt")
     return materialized()
 
 
@@ -163,7 +165,6 @@ def test_extraction_worker_marks_invalid_document_terminal(
     assert attachment.extracted_text is None
 
 
-
 def test_extraction_worker_retries_transient_storage_failure(
     client, db_session, monkeypatch
 ):
@@ -211,3 +212,45 @@ def test_extraction_worker_discards_result_when_fence_is_lost(
     assert job.status == "processing"
     assert job.owner_token_hash is not None
     assert job.completed_at is None
+
+
+def test_extraction_worker_fails_closed_when_parser_cannot_confirm_stop(
+    client, db_session, monkeypatch
+):
+    from app.services import upload_processing_worker as worker
+
+    _, lease, attachment, job = _committed_attachment(
+        client, db_session, "worker-parser-stop-unknown@example.com"
+    )
+    source_path = Path("/tmp/retained-parser-source.txt")
+    heartbeat_calls = []
+
+    @contextmanager
+    def parser_source(*_args, **_kwargs):
+        yield source_path
+        raise PreserveMaterializedFile(source_path)
+
+    def unexpected_heartbeat(*_args, **_kwargs):
+        heartbeat_calls.append(True)
+        return True
+
+    monkeypatch.setattr(worker, "materialize_file", parser_source)
+    monkeypatch.setattr(worker, "extract_text", lambda *_args: "must not persist")
+    monkeypatch.setattr(worker, "heartbeat_upload_processing_job", unexpected_heartbeat)
+
+    with pytest.raises(PreserveMaterializedFile):
+        process_upload_extraction_job(db_session, job_id=job.id)
+
+    db_session.expire_all()
+    stored_text = db_session.execute(
+        select(FileAttachment.extracted_text).where(FileAttachment.id == attachment.id)
+    ).scalar_one()
+    stored_job = db_session.get(UploadProcessingJob, job.id)
+    stored_lease = db_session.get(type(lease), lease.id)
+
+    assert stored_text is None
+    assert stored_job.status == "processing"
+    assert stored_job.owner_token_hash is not None
+    assert stored_job.completed_at is None
+    assert stored_lease.status == "committed"
+    assert heartbeat_calls == []
