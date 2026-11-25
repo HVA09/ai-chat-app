@@ -120,8 +120,29 @@ def test_chat_stream_error_message_localizes_temporary_provider_failures():
         ) == "The AI provider is temporarily unavailable. Please try again later."
 
 
-def _register_and_login(client, email="chat@example.com", password="StrongPass123"):
-    client.post("/auth/register", json={"email": email, "password": password})
+def _register_and_login(client, email="chat@example.com", password="StrongPass123", admin=False):
+    verification_tokens = []
+    if admin:
+        from app.auth import routes as auth_routes_module
+
+        app_settings.INITIAL_ADMIN_EMAIL = email
+        original_sender = auth_routes_module.send_verification_email
+        auth_routes_module.send_verification_email = (
+            lambda recipient, token: verification_tokens.append(token)
+        )
+        try:
+            client.post("/auth/register", json={"email": email, "password": password})
+        finally:
+            auth_routes_module.send_verification_email = original_sender
+        assert len(verification_tokens) == 1
+        verified = client.post(
+            "/auth/verify-email/confirm",
+            json={"token": verification_tokens[0]},
+        )
+        assert verified.status_code == 200
+    else:
+        client.post("/auth/register", json={"email": email, "password": password})
+
     login_response = client.post("/auth/login", json={"email": email, "password": password})
     assert login_response.status_code == 200
     return client.cookies.get("access_token")
@@ -764,7 +785,7 @@ def test_admin_bypasses_daily_limit(client, monkeypatch):
     monkeypatch.setattr(chat_router_module, "get_ai_reply", AsyncMock(return_value=AIReply(text="رد")))
     monkeypatch.setattr(app_settings, "DAILY_AI_REQUEST_LIMIT", 1)
     app_settings.INITIAL_ADMIN_EMAIL = "admin_by_default@example.com"
-    token = _register_and_login(client, "admin_by_default@example.com")
+    token = _register_and_login(client, "admin_by_default@example.com", admin=True)
     headers = {"Authorization": f"Bearer {token}"}
     for _ in range(3):
         response = client.post("/chat", json={"message": "رسالة"}, headers=headers)
