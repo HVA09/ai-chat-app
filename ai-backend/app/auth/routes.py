@@ -108,7 +108,7 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
 
     db.commit()
     db.refresh(user)
-    log_event(db, "register", f"مستخدم جديد: {user.email} (admin={is_initial_admin})", user.id)
+    log_event(db, "register", f"مستخدم جديد: {user.email}", user.id)
     token = create_email_verification_token(user.id)
     jti = decode_token(token).get("jti")
     if not jti or not remember_email_verification_token(jti, 24 * 3600):
