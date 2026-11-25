@@ -7,8 +7,12 @@ until the process supervisor/runtime provides and tests that guarantee.
 """
 from __future__ import annotations
 
+import ctypes
 import json
 import multiprocessing
+import os
+import signal
+import sys
 import time
 from pathlib import Path
 from typing import Callable
@@ -35,14 +39,37 @@ class ExtractionSupervisorError(RuntimeError):
         super().__init__(code)
 
 
+def _configure_parent_death_signal(expected_parent_pid: int) -> None:
+    """Require Linux parent-death SIGKILL and close the setup race.
+
+    PR_SET_PDEATHSIG is Linux-specific. Unsupported platforms fail closed:
+    the child must never begin parsing without this containment guarantee.
+    """
+    if sys.platform != "linux":
+        raise RuntimeError("parent_death_containment_unavailable")
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    pr_set_pdeathsig = 1
+    if libc.prctl(pr_set_pdeathsig, signal.SIGKILL, 0, 0, 0) != 0:
+        error_number = ctypes.get_errno()
+        raise OSError(error_number, "unable to configure parent-death signal")
+
+    # If the parent died before prctl() was installed, the signal would have
+    # been missed. Detect reparenting after installation and kill this child.
+    if os.getppid() != expected_parent_pid:
+        os.kill(os.getpid(), signal.SIGKILL)
+
+
 def _parser_child(
     source_path: str,
     content_type: str,
     max_chars: int,
+    expected_parent_pid: int,
     send_connection,
 ) -> None:
-    """Spawn target: receives only a path, validated metadata, and one pipe."""
+    """Spawn target: receives only a path, metadata, parent PID, and one pipe."""
     try:
+        _configure_parent_death_signal(expected_parent_pid)
         result = extract_text(source_path, content_type, max_chars=max_chars)
         payload = json.dumps(
             {"ok": True, "text": result},
@@ -85,8 +112,9 @@ def extract_text_isolated(
 
     If child termination cannot be proven, preserve the materialized source
     and raise. A caller must not persist, reclaim, or delete after that signal.
-    The caller remains responsible for a hard job deadline and parent-death
-    containment supplied by its external runtime.
+    Linux PR_SET_PDEATHSIG containment is installed in the child before parsing;
+    unsupported platforms fail closed. The caller remains responsible for a
+    hard job deadline supplied by its external runtime.
     """
     path = Path(source_path)
     if not path.is_file():
@@ -109,7 +137,7 @@ def extract_text_isolated(
     receive_connection, send_connection = context.Pipe(duplex=False)
     process = context.Process(
         target=_parser_child,
-        args=(str(path), content_type, max_chars, send_connection),
+        args=(str(path), content_type, max_chars, os.getpid(), send_connection),
         daemon=True,
         name="ai-chat-file-parser",
     )
