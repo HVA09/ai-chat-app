@@ -250,3 +250,79 @@ def test_cleanup_intent_insert_conflict_preserves_outer_transaction(
         .count()
         == 0
     )
+
+
+def test_ownerless_cleanup_intent_insert_race_is_idempotent_on_postgres(db_session):
+    """Two independent transactions racing on the unique key converge on one intent."""
+    import os
+    from threading import Barrier, Thread
+
+    import pytest
+    from sqlalchemy import event
+    from sqlalchemy.orm import Session, sessionmaker
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("unique-index race behavior requires PostgreSQL")
+    if "test" not in (engine.url.database or "").lower():
+        pytest.skip("database name is not clearly marked as a test database")
+    if os.getenv("ENVIRONMENT", "test").lower() != "test":
+        pytest.skip("test environment guard is not active")
+
+    object_key = f"users/orphaned/{uuid4().hex}.txt"
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    insert_barrier = Barrier(2)
+    start_barrier = Barrier(2)
+    results = []
+    errors = []
+
+    def synchronize_intent_insert(session, flush_context, instances):
+        if any(
+            isinstance(item, UploadCleanupIntent) and item.object_key == object_key
+            for item in session.new
+        ):
+            insert_barrier.wait(timeout=15)
+
+    event.listen(Session, "before_flush", synchronize_intent_insert)
+    try:
+        def enqueue():
+            try:
+                with factory() as session:
+                    start_barrier.wait(timeout=15)
+                    intent = enqueue_upload_cleanup_intent(
+                        session, user_id=None, object_key=object_key
+                    )
+                    assert intent is not None
+                    results.append(intent.id)
+                    session.commit()
+            except BaseException as exc:
+                errors.append(exc)
+
+        threads = [Thread(target=enqueue), Thread(target=enqueue)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=30)
+
+        assert all(not thread.is_alive() for thread in threads), "enqueue thread hung"
+        assert errors == []
+        assert len(results) == 2
+        assert results[0] == results[1]
+
+        with factory() as verify:
+            rows = (
+                verify.query(UploadCleanupIntent)
+                .filter(UploadCleanupIntent.object_key == object_key)
+                .all()
+            )
+            assert len(rows) == 1
+            assert rows[0].status == "pending"
+            assert rows[0].attempt_count == 0
+    finally:
+        event.remove(Session, "before_flush", synchronize_intent_insert)
+        with factory() as cleanup:
+            cleanup.query(UploadCleanupIntent).filter(
+                UploadCleanupIntent.object_key == object_key
+            ).delete(synchronize_session=False)
+            cleanup.commit()
