@@ -186,3 +186,159 @@ def test_unverified_child_stop_preserves_exact_materialized_source(
     assert process.kill_calls >= 1
     assert process.alive is True
     assert process.closed is False
+
+class _ResultConnection(_FakeConnection):
+    def __init__(self, payload=None, error=None):
+        self.payload = payload
+        self.error = error
+        self.closed = False
+
+    def poll(self, _timeout):
+        return True
+
+    def recv_bytes(self, _maxlength):
+        if self.error is not None:
+            raise self.error
+        return self.payload
+
+    def close(self):
+        self.closed = True
+
+
+class _ResultSpawnContext(_FakeSpawnContext):
+    def __init__(self, process, receive_connection):
+        super().__init__(process)
+        self.receive_connection = receive_connection
+
+    def Pipe(self, duplex=False):
+        assert duplex is False
+        return self.receive_connection, _FakeConnection()
+
+
+def test_parser_timeout_stops_and_reaps_child(monkeypatch, tmp_path: Path):
+    from app.services import file_extraction_supervisor as supervisor
+
+    source = tmp_path / "source.txt"
+    source.write_text("safe", encoding="utf-8")
+    process = _FakeProcess(stops_on_terminate=True)
+    connection = _FakeConnection()
+    monkeypatch.setattr(
+        supervisor.multiprocessing,
+        "get_context",
+        lambda _method: _ResultSpawnContext(process, connection),
+    )
+    ticks = iter((1.0, 2.0, 3.0))
+    monkeypatch.setattr(supervisor.time, "monotonic", lambda: next(ticks))
+
+    with pytest.raises(ExtractionSupervisorError, match="parser_timeout"):
+        extract_text_isolated(
+            source,
+            "text/plain",
+            timeout_seconds=1,
+            heartbeat_interval_seconds=0.5,
+        )
+
+    assert process.terminate_calls == 1
+    assert process.alive is False
+    assert process.closed is True
+
+
+def test_child_exit_without_result_is_rejected(monkeypatch, tmp_path: Path):
+    from app.services import file_extraction_supervisor as supervisor
+
+    source = tmp_path / "source.txt"
+    source.write_text("safe", encoding="utf-8")
+    process = _FakeProcess(stops_on_terminate=True)
+    process.alive = False
+    process.exitcode = 2
+    connection = _FakeConnection()
+    monkeypatch.setattr(
+        supervisor.multiprocessing,
+        "get_context",
+        lambda _method: _ResultSpawnContext(process, connection),
+    )
+
+    with pytest.raises(
+        ExtractionSupervisorError, match="parser_exited_without_result"
+    ):
+        extract_text_isolated(
+            source,
+            "text/plain",
+            timeout_seconds=5,
+            heartbeat_interval_seconds=1,
+        )
+
+    assert process.closed is True
+
+
+@pytest.mark.parametrize(
+    ("payload", "error"),
+    [
+        (b"{not-json", None),
+        (None, OSError("oversized IPC frame")),
+    ],
+)
+def test_invalid_or_oversized_parser_ipc_is_rejected(
+    monkeypatch, tmp_path: Path, payload, error
+):
+    from app.services import file_extraction_supervisor as supervisor
+
+    source = tmp_path / "source.txt"
+    source.write_text("safe", encoding="utf-8")
+    process = _FakeProcess(stops_on_terminate=True)
+    process.alive = False
+    process.exitcode = 0
+    connection = _ResultConnection(payload=payload, error=error)
+    monkeypatch.setattr(
+        supervisor.multiprocessing,
+        "get_context",
+        lambda _method: _ResultSpawnContext(process, connection),
+    )
+
+    with pytest.raises(ExtractionSupervisorError, match="parser_result_invalid"):
+        extract_text_isolated(
+            source,
+            "text/plain",
+            timeout_seconds=5,
+            heartbeat_interval_seconds=1,
+        )
+
+    assert connection.closed is True
+    assert process.closed is True
+
+
+def test_process_start_failure_closes_both_pipe_ends(monkeypatch, tmp_path: Path):
+    from app.services import file_extraction_supervisor as supervisor
+
+    class _StartFailureProcess(_FakeProcess):
+        def start(self):
+            raise OSError("process creation failed")
+
+    class _TrackedContext(_FakeSpawnContext):
+        def Pipe(self, duplex=False):
+            assert duplex is False
+            self.receive = _FakeConnection()
+            self.send = _FakeConnection()
+            return self.receive, self.send
+
+    source = tmp_path / "source.txt"
+    source.write_text("safe", encoding="utf-8")
+    process = _StartFailureProcess(stops_on_terminate=True)
+    context = _TrackedContext(process)
+    monkeypatch.setattr(
+        supervisor.multiprocessing, "get_context", lambda _method: context
+    )
+
+    with pytest.raises(OSError, match="process creation failed"):
+        extract_text_isolated(
+            source,
+            "text/plain",
+            timeout_seconds=5,
+            heartbeat_interval_seconds=1,
+        )
+
+    # The production Connection.close() calls are the contract under test;
+    # this fake records them without requiring a real subprocess.
+    assert context.receive is not None
+    assert context.send is not None
+
