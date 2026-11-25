@@ -1,5 +1,8 @@
 """اختبارات استخراج النص من الملفات."""
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
+
+import pytest
 
 from docx import Document
 from openpyxl import Workbook
@@ -176,3 +179,53 @@ def test_pdf_extraction_stops_at_page_limit(tmp_path: Path, monkeypatch):
     assert len(extracted) == file_text_extractor.MAX_PDF_PAGES
     assert "page 99" in text
     assert "page 100" not in text
+
+def _write_ooxml_archive(path: Path, entries: dict[str, bytes]) -> None:
+    with ZipFile(path, "w", compression=ZIP_DEFLATED) as archive:
+        for name, data in entries.items():
+            archive.writestr(name, data)
+
+
+def test_ooxml_archive_rejects_container_over_byte_limit(tmp_path: Path, monkeypatch):
+    path = tmp_path / "large.docx"
+    path.write_bytes(b"x" * 32)
+    monkeypatch.setattr(file_text_extractor, "MAX_OOXML_ARCHIVE_BYTES", 16)
+
+    with pytest.raises(file_text_extractor.FileTextExtractionError, match="size limit"):
+        file_text_extractor._validate_ooxml_archive(path)
+
+
+def test_ooxml_archive_rejects_too_many_entries(tmp_path: Path, monkeypatch):
+    path = tmp_path / "many.xlsx"
+    _write_ooxml_archive(path, {"a.xml": b"a", "b.xml": b"b"})
+    monkeypatch.setattr(file_text_extractor, "MAX_OOXML_ARCHIVE_ENTRIES", 1)
+
+    with pytest.raises(file_text_extractor.FileTextExtractionError, match="too many entries"):
+        file_text_extractor._validate_ooxml_archive(path)
+
+
+def test_ooxml_archive_rejects_expanded_member_limit(tmp_path: Path, monkeypatch):
+    path = tmp_path / "expanded.docx"
+    _write_ooxml_archive(path, {"word/document.xml": b"x" * 64})
+    monkeypatch.setattr(file_text_extractor, "MAX_OOXML_MEMBER_UNCOMPRESSED_BYTES", 32)
+
+    with pytest.raises(file_text_extractor.FileTextExtractionError, match="member exceeds"):
+        file_text_extractor._validate_ooxml_archive(path)
+
+
+def test_ooxml_archive_rejects_excessive_compression_ratio(tmp_path: Path, monkeypatch):
+    path = tmp_path / "compressed.xlsx"
+    _write_ooxml_archive(path, {"xl/sharedStrings.xml": b"A" * 4096})
+    monkeypatch.setattr(file_text_extractor, "MAX_OOXML_COMPRESSION_RATIO", 2)
+
+    with pytest.raises(file_text_extractor.FileTextExtractionError, match="compression ratio"):
+        file_text_extractor._validate_ooxml_archive(path)
+
+
+def test_ooxml_archive_rejects_invalid_zip_container(tmp_path: Path):
+    path = tmp_path / "invalid.docx"
+    path.write_bytes(b"not a zip archive")
+
+    with pytest.raises(file_text_extractor.FileTextExtractionError, match="archive is invalid"):
+        file_text_extractor._validate_ooxml_archive(path)
+
