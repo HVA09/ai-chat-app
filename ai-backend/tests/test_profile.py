@@ -120,3 +120,16 @@ def test_export_account_data_contains_user_and_conversations_without_secrets(cli
     assert payload["conversations"][0]["messages"][0]["content"] == "رسالة خاصة"
     assert "hashed_password" not in payload["user"]
     assert "totp_secret" not in payload["user"]
+
+
+
+def test_account_export_rejects_data_over_preflight_record_limit(client, monkeypatch):
+    from app.routers import users as users_router_module
+
+    token = _register_and_login(client, "export-limit@example.com")
+    monkeypatch.setattr(users_router_module, "MAX_ACCOUNT_EXPORT_RECORDS", 0)
+    response = client.get(
+        "/users/me/export",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 413
