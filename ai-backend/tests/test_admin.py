@@ -4,14 +4,32 @@
 from unittest.mock import AsyncMock
 
 from app.config import settings as app_settings
+from app.auth import routes as auth_routes_module
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
 
 
 def _register_and_login(client, email, password="StrongPass123", admin=False):
+    verification_tokens = []
+    original_sender = auth_routes_module.send_verification_email
+    auth_routes_module.send_verification_email = (
+        lambda recipient, token: verification_tokens.append(token)
+    )
+    try:
+        if admin:
+            app_settings.INITIAL_ADMIN_EMAIL = email
+        client.post("/auth/register", json={"email": email, "password": password})
+    finally:
+        auth_routes_module.send_verification_email = original_sender
+
     if admin:
-        app_settings.INITIAL_ADMIN_EMAIL = email
-    client.post("/auth/register", json={"email": email, "password": password})
+        assert len(verification_tokens) == 1
+        verified = client.post(
+            "/auth/verify-email/confirm",
+            json={"token": verification_tokens[0]},
+        )
+        assert verified.status_code == 200
+
     login_response = client.post("/auth/login", json={"email": email, "password": password})
     assert login_response.status_code == 200
     return client.cookies.get("access_token")
