@@ -122,3 +122,38 @@ def test_expired_share_is_marked_expired_in_management_list(client, monkeypatch,
     )
     assert listed.status_code == 200
     assert listed.json()[0]["is_expired"] is True
+
+
+def test_trashed_conversation_share_is_not_accessible(client, monkeypatch, db_session):
+    from datetime import datetime, timezone
+
+    from app.models.conversation import Conversation
+
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد")),
+    )
+    token = _register_and_login(client, "share-trash@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    conversation_id = client.post(
+        "/chat",
+        json={"message": "محادثة ستُنقل إلى سلة المحذوفات"},
+        headers=headers,
+    ).json()["conversation_id"]
+    created = client.post(
+        f"/conversations/{conversation_id}/share",
+        json={"expires_in_days": 7},
+        headers=headers,
+    )
+    assert created.status_code == 200
+    share_url = created.json()["url"]
+    share_token = share_url.rsplit("/", 1)[-1]
+
+    conversation = db_session.query(Conversation).filter(
+        Conversation.id == conversation_id
+    ).one()
+    conversation.deleted_at = datetime.now(timezone.utc)
+    db_session.commit()
+
+    assert client.get(f"/shared-conversations/{share_token}").status_code == 404
