@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 from io import StringIO
 from pathlib import Path
+from zipfile import BadZipFile, ZipFile
 
 from docx import Document
 from openpyxl import load_workbook
@@ -29,6 +30,13 @@ MAX_XLSX_CELLS_TOTAL = 50_000
 MAX_PDF_PAGES = 100
 MAX_DOCX_PARAGRAPHS = 2_000
 MAX_DOCX_TABLE_ROWS = 1_000
+
+# OOXML files are ZIP containers; bound both the central directory and expansion.
+MAX_OOXML_ARCHIVE_BYTES = 64 * 1024 * 1024
+MAX_OOXML_ARCHIVE_ENTRIES = 4_096
+MAX_OOXML_TOTAL_UNCOMPRESSED_BYTES = 128 * 1024 * 1024
+MAX_OOXML_MEMBER_UNCOMPRESSED_BYTES = 32 * 1024 * 1024
+MAX_OOXML_COMPRESSION_RATIO = 200
 
 
 class FileTextExtractionError(Exception):
@@ -87,7 +95,37 @@ def _read_pdf_file(path: Path, max_chars: int) -> str:
     return _limit("\n\n".join(parts), max_chars)
 
 
+
+def _validate_ooxml_archive(path: Path) -> None:
+    """Reject oversized OOXML ZIP containers before document libraries parse them."""
+    try:
+        archive_size = path.stat().st_size
+        if archive_size > MAX_OOXML_ARCHIVE_BYTES:
+            raise FileTextExtractionError("document archive exceeds size limit")
+
+        with ZipFile(path) as archive:
+            members = archive.infolist()
+            if len(members) > MAX_OOXML_ARCHIVE_ENTRIES:
+                raise FileTextExtractionError("document archive has too many entries")
+
+            total_uncompressed = 0
+            for member in members:
+                if member.file_size > MAX_OOXML_MEMBER_UNCOMPRESSED_BYTES:
+                    raise FileTextExtractionError("document archive member exceeds size limit")
+                total_uncompressed += member.file_size
+                if total_uncompressed > MAX_OOXML_TOTAL_UNCOMPRESSED_BYTES:
+                    raise FileTextExtractionError("document archive expansion exceeds size limit")
+                if member.file_size and (
+                    member.compress_size == 0
+                    or member.file_size / member.compress_size > MAX_OOXML_COMPRESSION_RATIO
+                ):
+                    raise FileTextExtractionError("document archive compression ratio exceeds limit")
+    except BadZipFile as exc:
+        raise FileTextExtractionError("document archive is invalid") from exc
+
+
 def _read_docx_file(path: Path, max_chars: int) -> str:
+    _validate_ooxml_archive(path)
     document = Document(str(path))
     parts: list[str] = []
     used = 0
@@ -124,6 +162,7 @@ def _read_docx_file(path: Path, max_chars: int) -> str:
 
 
 def _read_xlsx_file(path: Path, max_chars: int) -> str:
+    _validate_ooxml_archive(path)
     workbook = load_workbook(filename=str(path), read_only=True, data_only=True)
     parts: list[str] = []
     used = 0
