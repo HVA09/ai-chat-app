@@ -7,6 +7,7 @@ import shutil
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth.security import hash_password, verify_password
@@ -16,7 +17,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.api_key import APIKey
 from app.models.assistant import Assistant
-from app.models.conversation import Conversation
+from app.models.conversation import Conversation, Message
 from app.models.conversation_folder import ConversationFolder
 from app.models.conversation_tag import ConversationTag
 from app.models.file_attachment import FileAttachment
@@ -38,6 +39,10 @@ from app.services.project_file_retention import (
 router = APIRouter(prefix="/users", tags=["Users"])
 logger = get_logger("users")
 
+# Preflight bounds keep account exports from materializing unbounded user data.
+MAX_ACCOUNT_EXPORT_RECORDS = 10_000
+MAX_ACCOUNT_EXPORT_TEXT_CHARS = 2_000_000
+
 
 @router.get("/me", response_model=UserOut)
 def get_me(current_user: User = Depends(get_current_user)):
@@ -52,6 +57,53 @@ def export_account_data(
     """Export the user's core application data without secrets or credentials."""
     def dt(value):
         return value.astimezone(timezone.utc).isoformat() if value else None
+
+    user_id = current_user.id
+    record_count = sum((
+        db.query(Conversation.id).filter(Conversation.user_id == user_id).count(),
+        db.query(Message.id).join(Conversation, Message.conversation_id == Conversation.id)
+        .filter(Conversation.user_id == user_id).count(),
+        db.query(ConversationFolder.id).filter(ConversationFolder.user_id == user_id).count(),
+        db.query(WorkspaceProject.id).filter(WorkspaceProject.owner_id == user_id).count(),
+        db.query(Assistant.id).filter(Assistant.user_id == user_id).count(),
+        db.query(SavedPrompt.id).filter(SavedPrompt.user_id == user_id).count(),
+        db.query(UserMemory.id).filter(UserMemory.user_id == user_id).count(),
+        db.query(ProjectMemory.id).filter(ProjectMemory.created_by_user_id == user_id).count(),
+        db.query(ConversationTag.id).filter(ConversationTag.user_id == user_id).count(),
+        db.query(APIKey.id).filter(APIKey.user_id == user_id).count(),
+        db.query(FileAttachment.id).filter(FileAttachment.user_id == user_id).count(),
+        db.query(WorkspaceMember.id).filter(WorkspaceMember.user_id == user_id).count(),
+        db.query(Workspace.id).filter(Workspace.owner_id == user_id).count(),
+    ))
+
+    def text_size(query):
+        return int(query.scalar() or 0)
+
+    text_chars = sum((
+        text_size(db.query(func.coalesce(func.sum(func.length(Message.content)), 0))
+                  .join(Conversation, Message.conversation_id == Conversation.id)
+                  .filter(Conversation.user_id == user_id)),
+        text_size(db.query(func.coalesce(func.sum(func.length(func.coalesce(Conversation.title, '')) + func.length(func.coalesce(Conversation.summary, ''))), 0))
+                  .filter(Conversation.user_id == user_id)),
+        text_size(db.query(func.coalesce(func.sum(func.length(func.coalesce(WorkspaceProject.description, '')) + func.length(func.coalesce(WorkspaceProject.instructions, ''))), 0))
+                  .filter(WorkspaceProject.owner_id == user_id)),
+        text_size(db.query(func.coalesce(func.sum(func.length(func.coalesce(Assistant.description, '')) + func.length(func.coalesce(Assistant.instructions, ''))), 0))
+                  .filter(Assistant.user_id == user_id)),
+        text_size(db.query(func.coalesce(func.sum(func.length(SavedPrompt.content)), 0))
+                  .filter(SavedPrompt.user_id == user_id)),
+        text_size(db.query(func.coalesce(func.sum(func.length(UserMemory.content)), 0))
+                  .filter(UserMemory.user_id == user_id)),
+        text_size(db.query(func.coalesce(func.sum(func.length(ProjectMemory.content)), 0))
+                  .filter(ProjectMemory.created_by_user_id == user_id)),
+        text_size(db.query(func.coalesce(func.sum(func.length(FileAttachment.extracted_text)), 0))
+                  .filter(FileAttachment.user_id == user_id)),
+    ))
+
+    if record_count > MAX_ACCOUNT_EXPORT_RECORDS or text_chars > MAX_ACCOUNT_EXPORT_TEXT_CHARS:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="بيانات الحساب تتجاوز الحد الآمن للتصدير دفعة واحدة. يرجى تقليل البيانات أو طلب تصدير مجزأ.",
+        )
 
     conversations = (
         db.query(Conversation)
