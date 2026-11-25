@@ -24,6 +24,7 @@ from app.models.project import WorkspaceProject
 from app.models.project_memory import ProjectMemory
 from app.models.saved_prompt import SavedPrompt
 from app.models.user import User
+from app.models.user_session import UserSession
 from app.models.user_memory import UserMemory
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.user import ChangePasswordRequest, DeleteAccountRequest, ProfileUpdate, UserOut
@@ -341,6 +342,12 @@ def change_password(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="كلمة المرور الحالية غير صحيحة"
         )
     current_user.hashed_password = hash_password(payload.new_password)
+    current_user.token_version += 1
+    now = datetime.now(timezone.utc)
+    db.query(UserSession).filter(
+        UserSession.user_id == current_user.id,
+        UserSession.revoked_at.is_(None),
+    ).update({UserSession.revoked_at: now}, synchronize_session=False)
     db.commit()
     log_event(db, "password_changed", f"تغيير كلمة مرور: {current_user.email}", current_user.id)
     return {"detail": "تم تغيير كلمة المرور بنجاح"}

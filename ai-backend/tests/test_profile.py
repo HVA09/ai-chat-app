@@ -42,10 +42,27 @@ def test_change_password_requires_correct_current_password(client):
     assert response.status_code == 401
 
 
-def test_change_password_success_allows_login_with_new_password(client):
+def test_change_password_success_revokes_existing_sessions_and_allows_new_login(client, db_session):
+    from app.models.user import User
+    from app.models.user_session import UserSession
+
     token = _register_and_login(client, "changepw@example.com", "OldPass123")
     response = client.post("/users/me/change-password", json={"current_password": "OldPass123", "new_password": "NewPass123"}, headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
+
+    # The access token issued before the password change must stop working.
+    stale_access = client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    assert stale_access.status_code == 401
+    # The refresh token from the same session must also be rejected.
+    stale_refresh = client.post("/auth/refresh")
+    assert stale_refresh.status_code == 401
+
+    user = db_session.query(User).filter(User.email == "changepw@example.com").first()
+    assert user.token_version == 1
+    sessions = db_session.query(UserSession).filter(UserSession.user_id == user.id).all()
+    assert sessions
+    assert all(session.revoked_at is not None for session in sessions)
+
     old_login = client.post("/auth/login", json={"email": "changepw@example.com", "password": "OldPass123"})
     assert old_login.status_code == 401
     new_login = client.post("/auth/login", json={"email": "changepw@example.com", "password": "NewPass123"})
