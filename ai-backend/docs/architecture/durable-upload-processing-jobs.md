@@ -210,7 +210,9 @@ Use PostgreSQL integration tests for row locks, conditional updates, unique cons
 
 ## 10A. Enforceable parser supervision — implementation gate
 
-The isolated extraction worker currently calls the parser in its own execution context. Its 300-second job lease is **not** a parser deadline, and a failed post-parse heartbeat only prevents persistence; it does not stop a parser that is still running. Do not wire this worker to a broker or change the upload route until a killable parser boundary is implemented and tested.
+The current upload worker still calls `extract_text(...)` in-process; the standalone supervisor primitive is **not wired into that worker**. Its 300-second job lease is **not** a parser deadline, and a failed post-parse heartbeat only prevents persistence; it does not stop a parser that is still running.
+
+The standalone supervisor now installs Linux `PR_SET_PDEATHSIG(SIGKILL)` in the spawned parser child before parsing and checks the expected parent PID after installation to close the setup race. Unsupported platforms and a failed `prctl` setup fail closed before parser execution. A Linux process-level regression test terminates the supervising parent and verifies the child is no longer executable. This guarantee is scoped to the direct parser child; it does not establish a hard overall job lifetime, worker-runtime supervision, descendant-process containment, or the complete no-persist/no-reclaim/no-delete matrix. Do not wire this primitive into the worker or change the upload route until the remaining gates are implemented and verified.
 
 ### Required parent/child contract
 
