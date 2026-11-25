@@ -80,6 +80,13 @@ def test_revoke_other_session(client):
     assert len(remaining) == 1
     assert remaining[0]["is_current"] is True
 
+    # Revoking one session immediately invalidates its access token, while the
+    # independently authenticated session remains usable.
+    revoked_session_access = client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    active_session_access = client.get("/users/me", headers={"Authorization": f"Bearer {current_token}"})
+    assert revoked_session_access.status_code == 401
+    assert active_session_access.status_code == 200
+
 
 def test_revoke_current_session_prevents_refresh(client):
     token = _register_and_login(client, "sessions-current@example.com")
@@ -101,6 +108,8 @@ def test_revoke_current_session_prevents_refresh(client):
     client.cookies.set("refresh_token", current_refresh)
     refresh_response = client.post("/auth/refresh")
     assert refresh_response.status_code == 401
+    protected = client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    assert protected.status_code == 401
 
 
 def test_revoke_all_sessions_invalidates_current_access_token(client):
