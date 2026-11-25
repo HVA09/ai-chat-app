@@ -512,3 +512,42 @@ def test_non_admin_cannot_manage_plans(client):
         "/admin/plans",
         headers={"Authorization": f"Bearer {token}"},
     ).status_code == 403
+
+
+
+def test_admin_disable_and_reactivate_invalidates_old_access_tokens(client):
+    admin_token = _register_and_login(client, "state-admin@example.com", admin=True)
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    target_token = _register_and_login(client, "state-target@example.com")
+    target = client.get(
+        "/users/me", headers={"Authorization": f"Bearer {target_token}"}
+    ).json()
+
+    disabled = client.patch(
+        f"/admin/users/{target['id']}",
+        json={"is_active": False},
+        headers=admin_headers,
+    )
+    assert disabled.status_code == 200
+    assert disabled.json()["is_active"] is False
+    assert client.get(
+        "/users/me", headers={"Authorization": f"Bearer {target_token}"}
+    ).status_code == 401
+
+    reactivated = client.patch(
+        f"/admin/users/{target['id']}",
+        json={"is_active": True},
+        headers=admin_headers,
+    )
+    assert reactivated.status_code == 200
+    assert reactivated.json()["is_active"] is True
+    # Reactivation must not revive the token issued before the account was disabled.
+    assert client.get(
+        "/users/me", headers={"Authorization": f"Bearer {target_token}"}
+    ).status_code == 401
+
+    fresh_login = client.post(
+        "/auth/login",
+        json={"email": "state-target@example.com", "password": "StrongPass123"},
+    )
+    assert fresh_login.status_code == 200

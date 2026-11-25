@@ -24,6 +24,7 @@ from app.models.conversation import Conversation, Message
 from app.models.file_attachment import FileAttachment
 from app.models.usage_log import UsageLog
 from app.models.user import User
+from app.models.user_session import UserSession
 from app.services.storage import StorageError, delete_user_objects
 from app.services.project_file_retention import privatize_account_workspace_attachments
 from app.schemas.admin import (
@@ -551,6 +552,23 @@ def update_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المستخدم غير موجود")
 
     data = payload.model_dump(exclude_unset=True)
+    active_state_changed = (
+        "is_active" in data and data["is_active"] is not None
+        and data["is_active"] != user.is_active
+    )
+    if active_state_changed:
+        # Invalidate every access JWT on both disable and reactivation so a
+        # previously issued token can never become valid again.
+        user.token_version += 1
+        if data["is_active"] is False:
+            now = datetime.now(timezone.utc)
+            db.query(UserSession).filter(
+                UserSession.user_id == user.id,
+                UserSession.revoked_at.is_(None),
+            ).update(
+                {UserSession.revoked_at: now},
+                synchronize_session=False,
+            )
     for field, value in data.items():
         setattr(user, field, value)
     db.commit()
