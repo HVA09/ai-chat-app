@@ -39,14 +39,6 @@ from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
 from app.services.project_access import can_edit_project
 from app.services.project_file_retention import lock_user_for_update
-from app.services.upload_leases import (
-    create_upload_lease,
-    queue_upload_lease,
-    claim_upload_lease,
-    heartbeat_upload_lease,
-    mark_upload_lease_cleanup_pending,
-    finalize_upload_lease,
-)
 from app.services.upload_cleanup_intents import (
     enqueue_upload_cleanup_intent,
     record_upload_cleanup_attempt,
@@ -332,130 +324,14 @@ async def upload_file(
     object_key = f"users/{current_user.id}/{stored_filename}"
     destination = _user_upload_dir(current_user.id) / stored_filename
 
-    # Persist an ingress lease under the same User-row lock used by account
-    # deletion before receiving bytes or writing a managed object.
-    if not lock_user_for_update(db, upload_user_id):
-        db.rollback()
-        raise HTTPException(status_code=404, detail="الحساب غير موجود")
-    upload_lease, upload_lease_token = create_upload_lease(
-        db, user_id=upload_user_id, object_key=object_key
-    )
-    upload_lease_id = upload_lease.id
-    upload_lease_generation = upload_lease.generation
-    # Preserve immutable ingress credentials: a later rollback restores this
-    # generation/token after the queued/claimed transition is rolled back.
-    ingress_lease_generation = upload_lease_generation
-    ingress_lease_token = upload_lease_token
-    db.commit()
-
     # Quotas, ownership and workspace access have been checked. Do not hold a
     # DB checkout while awaiting upload bytes or writing the object to storage.
+    commit_and_release_connection(db)
     temp_path = None
-    storage_write_started = False
-
-    def cleanup_unwritten_upload() -> None:
-        """Close a lease when body receipt/validation fails before storage starts.
-
-        No managed-object writer has been invoked on this path. The random key
-        is still recorded as a durable cleanup intent so a failed idempotent
-        delete remains visible and retryable rather than leaving a receiving
-        lease orphaned.
-        """
-        db.rollback()
-        # Serialize with account deletion where the user row still exists.
-        # If deletion already committed, the lease remains and the writer has
-        # never started, so the unique object key is still safe to clean.
-        lock_user_for_update(db, upload_user_id)
-        marked = mark_upload_lease_cleanup_pending(
-            db,
-            lease_id=upload_lease_id,
-            generation=ingress_lease_generation,
-            owner_token=ingress_lease_token,
-        )
-        if not marked:
-            db.rollback()
-            return
-        intent = enqueue_upload_cleanup_intent(
-            db,
-            user_id=upload_user_id,
-            object_key=object_key,
-            lease_id=upload_lease_id,
-            generation=ingress_lease_generation,
-        )
-        if intent is None:
-            db.rollback()
-            return
-        if intent.status == "completed":
-            db.rollback()
-            return
-        db.commit()
-
-        try:
-            delete_stored_file(object_key, destination)
-        except StorageError:
-            record_upload_cleanup_attempt(
-                db,
-                intent_id=intent.id,
-                succeeded=False,
-                error_code="storage_delete_failed",
-            )
-            db.commit()
-            return
-
-        record_upload_cleanup_attempt(
-            db,
-            intent_id=intent.id,
-            succeeded=True,
-        )
-        db.commit()
-    def persist_storage_failure_cleanup_intent() -> None:
-        """Persist fenced recovery before allowing local object cleanup."""
-        db.rollback()
-        if not lock_user_for_update(db, upload_user_id):
-            db.rollback()
-            raise HTTPException(
-                status_code=503,
-                detail="تعذر تأمين ملكية الملف لتسجيل عملية الاسترداد",
-            )
-        marked = mark_upload_lease_cleanup_pending(
-            db,
-            lease_id=upload_lease_id,
-            # The preceding rollback restores the immutable ingress lease
-            # credentials; the processing claim credentials are no longer valid.
-            generation=ingress_lease_generation,
-            owner_token=ingress_lease_token,
-        )
-        if not marked:
-            db.rollback()
-            raise HTTPException(
-                status_code=503,
-                detail="فُقدت ملكية جلسة الرفع؛ تُرك الملف دون حذف",
-            )
-        try:
-            intent = enqueue_upload_cleanup_intent(
-                db,
-                user_id=upload_user_id,
-                object_key=object_key,
-                lease_id=upload_lease_id,
-                generation=ingress_lease_generation,
-            )
-            if intent is None:
-                raise RuntimeError("cleanup intent was not created")
-            db.commit()
-        except Exception as persistence_error:
-            db.rollback()
-            raise HTTPException(
-                status_code=503,
-                detail="تعذر تسجيل عملية استرداد الملف؛ لم يُحذف الملف",
-            ) from persistence_error
-
     total = 0
     header = bytearray()
     sniffed = None
     try:
-        # Include connection release in the guarded pre-storage phase so a
-        # release failure cannot strand the durable ingress lease.
-        commit_and_release_connection(db)
         with tempfile.NamedTemporaryFile(dir=destination.parent, prefix=".upload-", delete=False) as tmp:
             temp_path = Path(tmp.name)
             while True:
@@ -470,21 +346,6 @@ async def upload_file(
                 if len(header) < 4096:
                     header.extend(chunk[: 4096 - len(header)])
                 tmp.write(chunk)
-                # Heartbeat only after each awaited body chunk. The user lock
-                # serializes this ownership check with account deletion.
-                if not lock_user_for_update(db, upload_user_id):
-                    db.rollback()
-                    raise HTTPException(status_code=404, detail="الحساب غير موجود")
-                if not heartbeat_upload_lease(
-                    db,
-                    lease_id=upload_lease_id,
-                    generation=upload_lease_generation,
-                    owner_token=upload_lease_token,
-                    lease_seconds=300,
-                ):
-                    db.rollback()
-                    raise HTTPException(status_code=409, detail="انتهت ملكية جلسة رفع الملف")
-                db.commit()
 
         sniffed = _sniff_content_type(bytes(header), file.content_type)
         if sniffed is None or sniffed not in ALLOWED_CONTENT_TYPES:
@@ -499,29 +360,10 @@ async def upload_file(
         temp_path.replace(destination)
         temp_path = None
         try:
-            storage_write_started = True
             put_file(destination, object_key, sniffed)
         except StorageError as exc:
-            # The synchronous storage call has returned, so its writer is no
-            # longer running. Persist cleanup intent before leaving the request;
-            # never assume a failed multipart/object write left no remote bytes.
-            persist_storage_failure_cleanup_intent()
             destination.unlink(missing_ok=True)
             raise HTTPException(status_code=503, detail="تعذر تخزين الملف بشكل دائم") from exc
-        except Exception as exc:
-            # Any other exception also exits the synchronous storage call:
-            # persist recovery intent, but do not assume the remote write failed
-            # atomically or attempt an untracked best-effort delete.
-            persist_storage_failure_cleanup_intent()
-            destination.unlink(missing_ok=True)
-            raise HTTPException(status_code=503, detail="تعذر تخزين الملف بشكل دائم") from exc
-    except BaseException:
-        # Body read, size/type validation, and archive validation can fail
-        # before put_file is invoked. Close that ingress lease explicitly;
-        # never apply this path once a storage writer may have started.
-        if not storage_write_started:
-            cleanup_unwritten_upload()
-        raise
     finally:
         if temp_path:
             temp_path.unlink(missing_ok=True)
@@ -537,35 +379,10 @@ async def upload_file(
         # Persist the delete intent before touching storage. If this DB write
         # fails, propagate it and leave the object untouched for diagnosis.
         db.rollback()
-        # Match account deletion's User -> Lease lock order. A missing user
-        # means deletion already committed; the request's synchronous writer
-        # has also returned before this cleanup path is reached.
-        lock_user_for_update(db, upload_user_id)
-        # This request owns the synchronous storage/extraction work. Cleanup
-        # is reached only after that work has returned or raised, never from a
-        # timeout-based background reclaimer.
-        # queue/claim are uncommitted until attachment finalization. The
-        # rollback above restores the durable receiving lease, so use its
-        # original fencing credentials rather than the rolled-back claim.
-        marked = mark_upload_lease_cleanup_pending(
-            db,
-            lease_id=upload_lease_id,
-            generation=ingress_lease_generation,
-            owner_token=ingress_lease_token,
-        )
-        if not marked:
-            # A lost fencing token means this request no longer has deletion
-            # authority. Leave the object untouched for explicit recovery.
-            db.rollback()
-            return
         intent = enqueue_upload_cleanup_intent(
             db,
             user_id=upload_user_id,
             object_key=object_key,
-            lease_id=upload_lease_id,
-            # The rollback restored the ingress lease generation; keep the
-            # durable cleanup intent bound to that same fenced generation.
-            generation=ingress_lease_generation,
         )
         if intent is None:
             # A committed attachment still owns this key; fail closed.
@@ -618,27 +435,6 @@ async def upload_file(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="الحساب غير موجود",
         )
-
-    # Move the completed ingress to a fenced processing generation before
-    # extraction or attachment creation. A timeout alone never reclaims it.
-    if not queue_upload_lease(
-        db,
-        lease_id=upload_lease_id,
-        generation=upload_lease_generation,
-        owner_token=upload_lease_token,
-    ):
-        db.rollback()
-        cleanup_unfinalized_upload()
-        raise HTTPException(status_code=409, detail="تعذر تثبيت ملكية جلسة الرفع")
-    claimed_lease = claim_upload_lease(db, lease_id=upload_lease_id, lease_seconds=300)
-    if claimed_lease is None:
-        db.rollback()
-        cleanup_unfinalized_upload()
-        raise HTTPException(status_code=409, detail="تعذر بدء معالجة الملف")
-    upload_lease_generation, upload_lease_token = claimed_lease
-    # Keep the User-row lock through local extraction and the atomic
-    # FileAttachment + committed-lease transaction. Releasing it here would
-    # let account deletion race with reads from the local upload path.
 
     extracted_text = None
     if sniffed is not None:
@@ -708,14 +504,6 @@ async def upload_file(
     db.add(attachment)
     try:
         db.flush()
-        if not finalize_upload_lease(
-            db,
-            lease_id=upload_lease_id,
-            generation=upload_lease_generation,
-            owner_token=upload_lease_token,
-            attachment_id=attachment.id,
-        ):
-            raise RuntimeError("Upload lease ownership was lost before attachment commit")
     except Exception:
         db.rollback()
         cleanup_unfinalized_upload()
