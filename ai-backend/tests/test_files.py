@@ -26,7 +26,7 @@ def _disable_object_storage(monkeypatch):
         monkeypatch.setattr(app_settings, name, "")
 
 
-def test_upload_file_success(client, db_session, tmp_path, monkeypatch):
+def test_upload_file_success(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client)
     headers = {"Authorization": f"Bearer {token}"}
@@ -36,15 +36,6 @@ def test_upload_file_success(client, db_session, tmp_path, monkeypatch):
     assert body["original_filename"] == "test.png"
     assert body["content_type"] == "image/png"
     assert body["size_bytes"] == len(b"\x89PNG\r\n\x1a\n" + b"fake")
-
-    from app.models.file_attachment import FileAttachment
-    from app.models.upload_lease import UploadLease
-    attachment = db_session.get(FileAttachment, body["id"])
-    lease = db_session.query(UploadLease).filter_by(object_key=attachment.object_key).one()
-    assert lease.status == "committed"
-    assert lease.attachment_id == body["id"]
-    assert lease.user_id is not None
-    assert lease.owner_token_hash is None
 
 
 
@@ -78,128 +69,19 @@ def test_upload_releases_db_before_storage_and_embedding_io(client, tmp_path, mo
     assert events == ["release", "storage", "release", "embedding"]
 
 
-def test_upload_rejects_unsupported_type(client, db_session, tmp_path, monkeypatch):
+def test_upload_rejects_unsupported_type(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     token = _register_and_login(client)
     response = client.post("/files/upload", files={"file": ("virus.exe", b"binary", "application/x-msdownload")}, headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 415
 
-    from app.models.upload_cleanup_intent import UploadCleanupIntent
-    from app.models.upload_lease import UploadLease
 
-    lease = db_session.query(UploadLease).one()
-    intent = db_session.query(UploadCleanupIntent).filter_by(lease_id=lease.id).one()
-    assert lease.status == "cleanup_pending"
-    assert lease.owner_token_hash is None
-    assert intent.generation == lease.generation
-    assert intent.status == "completed"
-
-
-def test_upload_rejects_oversized_file(client, db_session, tmp_path, monkeypatch):
+def test_upload_rejects_oversized_file(client, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
     monkeypatch.setattr(app_settings, "MAX_UPLOAD_SIZE_MB", 0)
     token = _register_and_login(client)
     response = client.post("/files/upload", files={"file": ("small.png", b"\x89PNG\r\n\x1a\n" + b"x", "image/png")}, headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 413
-
-    from app.models.upload_cleanup_intent import UploadCleanupIntent
-    from app.models.upload_lease import UploadLease
-
-    lease = db_session.query(UploadLease).one()
-    intent = db_session.query(UploadCleanupIntent).filter_by(lease_id=lease.id).one()
-    assert lease.status == "cleanup_pending"
-    assert lease.owner_token_hash is None
-    assert intent.generation == lease.generation
-    assert intent.status == "completed"
-
-
-def test_upload_unexpected_storage_error_persists_cleanup_intent(
-    client, db_session, tmp_path, monkeypatch
-):
-    from app.models.upload_cleanup_intent import UploadCleanupIntent
-    from app.models.upload_lease import UploadLease
-    from app.routers import files as files_router
-
-    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
-
-    def fail_storage_write(*_args, **_kwargs):
-        raise RuntimeError("injected unexpected storage failure")
-
-    monkeypatch.setattr(files_router, "put_file", fail_storage_write)
-    token = _register_and_login(client)
-    response = client.post(
-        "/files/upload",
-        files={"file": ("note.txt", b"valid text", "text/plain")},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-
-    assert response.status_code == 503
-    lease = db_session.query(UploadLease).one()
-    intent = db_session.query(UploadCleanupIntent).filter_by(lease_id=lease.id).one()
-    assert lease.status == "cleanup_pending"
-    assert lease.owner_token_hash is None
-    assert intent.generation == lease.generation
-    assert intent.status == "pending"
-    assert intent.attempt_count == 0
-
-
-def test_upload_keeps_local_file_when_cleanup_intent_persistence_fails(
-    client, tmp_path, monkeypatch
-):
-    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
-    token = _register_and_login(client, "cleanup-persist-failure@example.com")
-
-    def fail_storage_write(destination, *_args, **_kwargs):
-        destination.write_bytes(b"recovery payload")
-        raise RuntimeError("injected storage failure")
-
-    def fail_cleanup_intent(*_args, **_kwargs):
-        raise RuntimeError("injected cleanup-intent database failure")
-
-    monkeypatch.setattr(files_router, "put_file", fail_storage_write)
-    monkeypatch.setattr(files_router, "enqueue_upload_cleanup_intent", fail_cleanup_intent)
-
-    response = client.post(
-        "/files/upload",
-        files={"file": ("recover-me.txt", b"recovery payload", "text/plain")},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-
-    assert response.status_code == 503
-    assert "لم يُحذف الملف" in response.json()["detail"]
-    retained_files = [path for path in tmp_path.rglob("*") if path.is_file()]
-    assert len(retained_files) == 1
-    assert retained_files[0].read_bytes() == b"recovery payload"
-
-
-def test_upload_body_read_failure_closes_ingress_lease(
-    client, db_session, tmp_path, monkeypatch
-):
-    from fastapi import HTTPException
-    from starlette.datastructures import UploadFile as StarletteUploadFile
-    from app.models.upload_cleanup_intent import UploadCleanupIntent
-    from app.models.upload_lease import UploadLease
-
-    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
-
-    async def fail_body_read(_self, _size=-1):
-        raise HTTPException(status_code=400, detail="injected body read failure")
-
-    monkeypatch.setattr(StarletteUploadFile, "read", fail_body_read)
-    token = _register_and_login(client)
-    response = client.post(
-        "/files/upload",
-        files={"file": ("note.txt", b"body", "text/plain")},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-
-    assert response.status_code == 400
-    lease = db_session.query(UploadLease).one()
-    intent = db_session.query(UploadCleanupIntent).filter_by(lease_id=lease.id).one()
-    assert lease.status == "cleanup_pending"
-    assert lease.owner_token_hash is None
-    assert intent.generation == lease.generation
-    assert intent.status == "completed"
 
 
 def test_list_files(client, tmp_path, monkeypatch):
@@ -419,8 +301,6 @@ def test_project_upload_revalidates_project_after_storage_io(
     """An upload finishing after project deletion is discarded, not left workspace-scoped."""
     from app.models.file_attachment import FileAttachment
     from app.models.project import WorkspaceProject
-    from app.models.upload_cleanup_intent import UploadCleanupIntent
-    from app.models.upload_lease import UploadLease
     from app.models.user import User
     from app.routers import files as files_router
 
@@ -469,16 +349,6 @@ def test_project_upload_revalidates_project_after_storage_io(
         FileAttachment.user_id == owner.id,
         FileAttachment.project_id == project_id,
     ).count() == 0
-
-    # The object has been deleted, but its durable lease and cleanup intent
-    # remain correlated to the exact ingress generation restored by rollback.
-    cleanup_intent = db_session.query(UploadCleanupIntent).one()
-    lease = db_session.query(UploadLease).filter_by(
-        id=cleanup_intent.lease_id
-    ).one()
-    assert lease.status == "cleanup_pending"
-    assert cleanup_intent.status == "completed"
-    assert cleanup_intent.generation == lease.generation
 
 def test_project_file_requires_project_membership(client, db_session, tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
@@ -1496,292 +1366,3 @@ def test_project_upload_finalization_waits_for_project_deletion_on_postgres(
         with session_factory() as cleanup:
             cleanup.query(User).filter(User.id == user_id).delete()
             cleanup.commit()
-
-
-
-def test_upload_keeps_local_file_when_cleanup_lease_fencing_is_lost(
-    client, tmp_path, monkeypatch
-):
-    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
-    token = _register_and_login(client, "cleanup-fencing-loss@example.com")
-
-    def write_then_fail(destination, *_args, **_kwargs):
-        destination.write_bytes(b"fenced recovery payload")
-        raise RuntimeError("injected storage failure")
-
-    monkeypatch.setattr(files_router, "put_file", write_then_fail)
-    monkeypatch.setattr(
-        files_router, "mark_upload_lease_cleanup_pending", lambda *_a, **_k: False
-    )
-
-    response = client.post(
-        "/files/upload",
-        files={"file": ("fenced.txt", b"fenced recovery payload", "text/plain")},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-
-    assert response.status_code == 503
-    assert "فُقدت ملكية جلسة الرفع" in response.json()["detail"]
-    retained_files = [path for path in tmp_path.rglob("*") if path.is_file()]
-    assert len(retained_files) == 1
-    assert retained_files[0].read_bytes() == b"fenced recovery payload"
-
-
-def test_upload_keeps_local_file_when_cleanup_commit_fails(
-    client, tmp_path, monkeypatch
-):
-    from sqlalchemy.orm import Session
-
-    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
-    token = _register_and_login(client, "cleanup-commit-failure@example.com")
-    cleanup_intent_enqueued = False
-
-    def write_then_fail(destination, *_args, **_kwargs):
-        destination.write_bytes(b"commit recovery payload")
-        raise RuntimeError("injected storage failure")
-
-    original_enqueue = files_router.enqueue_upload_cleanup_intent
-
-    def track_cleanup_intent(*args, **kwargs):
-        nonlocal cleanup_intent_enqueued
-        intent = original_enqueue(*args, **kwargs)
-        cleanup_intent_enqueued = intent is not None
-        return intent
-
-    monkeypatch.setattr(files_router, "put_file", write_then_fail)
-    monkeypatch.setattr(
-        files_router, "enqueue_upload_cleanup_intent", track_cleanup_intent
-    )
-    original_commit = Session.commit
-
-    def fail_cleanup_commit(db):
-        nonlocal cleanup_intent_enqueued
-        if cleanup_intent_enqueued:
-            cleanup_intent_enqueued = False
-            raise RuntimeError("injected cleanup transaction commit failure")
-        return original_commit(db)
-
-    monkeypatch.setattr(Session, "commit", fail_cleanup_commit)
-
-    response = client.post(
-        "/files/upload",
-        files={"file": ("commit.txt", b"commit recovery payload", "text/plain")},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-
-    assert response.status_code == 503
-    assert "لم يُحذف الملف" in response.json()["detail"]
-    retained_files = [path for path in tmp_path.rglob("*") if path.is_file()]
-    assert len(retained_files) == 1
-    assert retained_files[0].read_bytes() == b"commit recovery payload"
-
-
-def test_cleanup_intent_refuses_object_owned_by_committed_attachment(
-    client, db_session
-):
-    from app.models.file_attachment import FileAttachment
-    from app.models.upload_cleanup_intent import UploadCleanupIntent
-    from app.models.user import User
-    from app.services.upload_cleanup_intents import enqueue_upload_cleanup_intent
-
-    _register_and_login(client, "committed-cleanup-guard@example.com")
-    user = db_session.query(User).filter_by(
-        email="committed-cleanup-guard@example.com"
-    ).one()
-    object_key = f"users/{user.id}/already-committed.txt"
-    attachment = FileAttachment(
-        user_id=user.id,
-        original_filename="already-committed.txt",
-        stored_filename="already-committed.txt",
-        object_key=object_key,
-        content_type="text/plain",
-        size_bytes=12,
-    )
-    db_session.add(attachment)
-    db_session.flush()
-
-    intent = enqueue_upload_cleanup_intent(
-        db_session,
-        user_id=user.id,
-        object_key=object_key,
-    )
-
-    assert intent is None
-    assert db_session.query(UploadCleanupIntent).filter_by(
-        object_key=object_key
-    ).count() == 0
-
-
-
-def test_slow_live_upload_extraction_holds_account_deletion_lock_on_postgres(
-    db_session, tmp_path, monkeypatch
-):
-    """A live extraction cannot be mistaken for an abandoned upload during account deletion."""
-    import asyncio
-    from io import BytesIO
-    from threading import Event, Thread
-    from uuid import uuid4
-
-    import pytest
-    from sqlalchemy.orm import sessionmaker
-    from starlette.datastructures import Headers, UploadFile
-
-    from app.config import settings
-    from app.models.file_attachment import FileAttachment
-    from app.models.user import User
-    from app.routers import files as files_router
-    from app.routers import users as users_router
-    from app.schemas.user import DeleteAccountRequest
-
-    bind = db_session.get_bind()
-    engine = bind.engine if hasattr(bind, "engine") else bind
-    if engine.dialect.name != "postgresql":
-        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
-
-    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
-    monkeypatch.setattr(users_router, "verify_password", lambda *_args: True)
-    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    suffix = uuid4().hex
-    with session_factory() as creator:
-        user = User(
-            email=f"slow-upload-extraction-{suffix}@example.test",
-            hashed_password="test-only-hash",
-        )
-        creator.add(user)
-        creator.commit()
-        user_id = user.id
-
-    objects = {}
-    extraction_started = Event()
-    allow_extraction = Event()
-    delete_finished = Event()
-    upload_errors = []
-    delete_errors = []
-
-    def fake_put_file(path, object_key, _content_type):
-        objects[object_key] = path.read_bytes()
-
-    def slow_extract(_path, _content_type):
-        extraction_started.set()
-        if not allow_extraction.wait(10):
-            raise AssertionError("test did not release the live extraction")
-        return None
-
-    def fake_delete_user_objects(_user_id):
-        objects.clear()
-
-    monkeypatch.setattr(files_router, "put_file", fake_put_file)
-    monkeypatch.setattr(files_router, "extract_text", slow_extract)
-    monkeypatch.setattr(
-        files_router, "delete_stored_file",
-        lambda object_key, fallback_path: (
-            objects.pop(object_key, None), fallback_path.unlink(missing_ok=True)
-        ),
-    )
-    monkeypatch.setattr(users_router, "delete_user_objects", fake_delete_user_objects)
-
-    def run_upload():
-        try:
-            with session_factory() as upload_db:
-                current_user = upload_db.get(User, user_id)
-                upload = UploadFile(
-                    filename="slow-live-extraction.txt",
-                    file=BytesIO(b"live upload during extraction"),
-                    headers=Headers({"content-type": "text/plain"}),
-                )
-                asyncio.run(
-                    files_router.upload_file(
-                        upload, current_user=current_user, db=upload_db
-                    )
-                )
-        except BaseException as exc:
-            upload_errors.append(exc)
-
-    def run_delete():
-        try:
-            with session_factory() as delete_db:
-                current_user = delete_db.get(User, user_id)
-                users_router.delete_account(
-                    DeleteAccountRequest(password="test-password"),
-                    current_user,
-                    delete_db,
-                )
-        except BaseException as exc:
-            delete_errors.append(exc)
-        finally:
-            delete_finished.set()
-
-    upload_thread = Thread(target=run_upload, daemon=True)
-    delete_thread = None
-    try:
-        upload_thread.start()
-        assert extraction_started.wait(10), "upload did not reach extraction"
-
-        delete_thread = Thread(target=run_delete, daemon=True)
-        delete_thread.start()
-        assert not delete_finished.wait(0.5), (
-            "account deletion bypassed the User-row lock held during live extraction"
-        )
-
-        allow_extraction.set()
-        upload_thread.join(timeout=10)
-        delete_thread.join(timeout=10)
-        assert not upload_thread.is_alive()
-        assert not delete_thread.is_alive()
-        assert upload_errors == []
-        assert delete_errors == []
-        assert delete_finished.is_set()
-        assert objects == {}
-
-        with session_factory() as verify:
-            assert verify.get(User, user_id) is None
-            assert verify.query(FileAttachment).filter(
-                FileAttachment.user_id == user_id
-            ).count() == 0
-    finally:
-        allow_extraction.set()
-        upload_thread.join(timeout=10)
-        if delete_thread is not None:
-            delete_thread.join(timeout=10)
-        with session_factory() as cleanup:
-            cleanup.query(User).filter(User.id == user_id).delete()
-            cleanup.commit()
-
-def test_upload_aborts_before_storage_when_ingress_heartbeat_is_lost(
-    client, db_session, tmp_path, monkeypatch
-):
-    """A failed chunk heartbeat must stop the upload before managed storage I/O."""
-    from app.models.upload_lease import UploadLease
-    from app.models.user import User
-
-    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
-    _disable_object_storage(monkeypatch)
-    token = _register_and_login(client, "upload-heartbeat-loss@example.com")
-    storage_writes = []
-
-    monkeypatch.setattr(
-        files_router,
-        "heartbeat_upload_lease",
-        lambda *_args, **_kwargs: False,
-    )
-    monkeypatch.setattr(
-        files_router,
-        "put_file",
-        lambda *_args, **_kwargs: storage_writes.append("called"),
-    )
-
-    response = client.post(
-        "/files/upload",
-        files={"file": ("heartbeat.txt", b"heartbeat must be durable", "text/plain")},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-
-    assert response.status_code == 409
-    assert storage_writes == []
-    db_session.expire_all()
-    user = db_session.query(User).filter_by(
-        email="upload-heartbeat-loss@example.com"
-    ).one()
-    lease = db_session.query(UploadLease).filter_by(user_id=user.id).one()
-    assert lease.status == "cleanup_pending"
-    assert lease.owner_token_hash is None
