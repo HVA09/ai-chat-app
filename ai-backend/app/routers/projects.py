@@ -173,7 +173,14 @@ async def import_project(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _get_membership(workspace_id, current_user, db)
+    from app.services.workspace_rbac import has_workspace_permission
+
+    membership = _get_membership(workspace_id, current_user, db)
+    if not has_workspace_permission(db, membership, "projects.manage"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="هذه العملية تتطلب صلاحية إدارة المشاريع.",
+        )
     try:
         imported = parse_project_import(archive.file)
     except ProjectArchiveError as exc:
@@ -184,7 +191,12 @@ async def import_project(
 
     lock_user_for_update(db, current_user.id)
     lock_workspaces_for_update(db, [workspace_id])
-    _get_membership(workspace_id, current_user, db)
+    membership = _get_membership(workspace_id, current_user, db)
+    if not has_workspace_permission(db, membership, "projects.manage"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="هذه العملية تتطلب صلاحية إدارة المشاريع.",
+        )
 
     requested_name = imported.manifest.project["name"]
     name = requested_name
@@ -268,12 +280,24 @@ def create_project(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    _get_membership(payload.workspace_id, current_user, db)
+    from app.services.workspace_rbac import has_workspace_permission
+
+    membership = _get_membership(payload.workspace_id, current_user, db)
+    if not has_workspace_permission(db, membership, "projects.manage"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="هذه العملية تتطلب صلاحية إدارة المشاريع.",
+        )
     lock_user_for_update(db, current_user.id)
     # Account retention locks workspace rows before inventorying owned projects.
     # Project creation must use the same lock so it cannot appear after that inventory.
     lock_workspaces_for_update(db, [payload.workspace_id])
-    _get_membership(payload.workspace_id, current_user, db)
+    membership = _get_membership(payload.workspace_id, current_user, db)
+    if not has_workspace_permission(db, membership, "projects.manage"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="هذه العملية تتطلب صلاحية إدارة المشاريع.",
+        )
     _ensure_unique_name(payload.workspace_id, payload.name, db)
 
     project = WorkspaceProject(
