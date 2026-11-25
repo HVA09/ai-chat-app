@@ -1,8 +1,10 @@
-"""Isolated execution primitives for durable upload extraction jobs.
+"""Durable upload extraction worker logic (not process-isolated).
 
 This module is intentionally not wired to an API route, scheduler, broker
-consumer, or application startup. A later cutover must create the job in the
-same transaction as attachment finalization before invoking this worker.
+consumer, or application startup. Parsing still runs in-process; the standalone
+parser supervisor is not integrated. A later cutover must first close the
+isolation and failure-matrix gates, then create the job atomically with
+attachment finalization before invoking this worker.
 """
 from pathlib import Path
 
