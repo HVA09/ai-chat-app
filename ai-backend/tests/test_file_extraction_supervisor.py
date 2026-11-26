@@ -455,3 +455,42 @@ def test_parent_death_signal_detects_parent_pid_race(monkeypatch):
 
     supervisor._configure_parent_death_signal(os.getpid())
     assert killed == [(os.getpid(), supervisor.signal.SIGKILL)]
+
+
+def _ignore_terminate_until_killed(ready_connection):
+    import signal
+
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    ready_connection.send(True)
+    ready_connection.close()
+    while True:
+        time.sleep(1)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="SIGTERM/SIGKILL process semantics")
+def test_force_kill_path_terminates_and_reaps_real_child():
+    from app.services.file_extraction_supervisor import _stop_child
+
+    context = multiprocessing.get_context("spawn")
+    receive_connection, send_connection = context.Pipe(duplex=False)
+    child = context.Process(
+        target=_ignore_terminate_until_killed,
+        args=(send_connection,),
+    )
+    child.start()
+    send_connection.close()
+    try:
+        assert receive_connection.poll(5), "child did not become ready"
+        assert receive_connection.recv() is True
+        assert child.is_alive()
+
+        assert _stop_child(child) is True
+        assert not child.is_alive()
+        assert child.exitcode is not None
+    finally:
+        receive_connection.close()
+        if child.is_alive():
+            child.kill()
+            child.join(timeout=5)
+        if child.exitcode is not None:
+            child.close()
