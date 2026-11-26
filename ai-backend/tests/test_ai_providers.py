@@ -178,6 +178,38 @@ def test_non_stream_ai_request_uses_configured_timeout(monkeypatch):
     assert seen["timeout"] == 17.0
 
 
+def _install_fake_provider_client(monkeypatch, provider_module, response_data):
+    """Capture outgoing provider payloads without making network requests."""
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return response_data
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            captured["timeout"] = kwargs.get("timeout")
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, *args, **kwargs):
+            captured["url"] = url
+            captured["payload"] = kwargs.get("json")
+            return FakeResponse()
+
+    monkeypatch.setattr(provider_module.httpx, "AsyncClient", FakeClient)
+    return captured
+
+
 def test_openai_compatible_provider_sends_system_prompt_before_user_history(monkeypatch):
     import asyncio
     from app.services.ai_providers import openai_provider
