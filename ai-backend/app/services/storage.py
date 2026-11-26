@@ -24,9 +24,9 @@ def _validate_object_key(object_key: str) -> None:
     if (
         not isinstance(object_key, str)
         or not object_key
-        or object_key.startswith(("/", "\\\\"))
-        or "\\0" in object_key
-        or "\\" in object_key
+        or object_key.startswith("/")
+        or chr(92) in object_key
+        or chr(0) in object_key
         or any(part in {"", ".", ".."} for part in object_key.split("/"))
     ):
         raise StorageError("مسار التخزين غير صالح")
