@@ -2083,3 +2083,28 @@
 - PR #787 Draft مفتوح وmergeable=true في آخر فحص. CI وCodeQL بدآ العمل على HEAD، ولم تظهر النتائج النهائية بعد. لم تُشغّل اختبارات محلية.
 - هذا PR دفاع إضافي فقط؛ لا يزعم إغلاق فجوات prompt delimiter أو tool-output wrapper. تبقى تلك الأعمال منفصلة كما في القسم 61.
 
+## 63. حالة دفعة الاستخراج الحالية — 2026-11-26
+
+### PR #786 — Tool-call history consistency
+- CI كامل ناجح على HEAD dd62fc110ba2111332c638163c87000f5c07458b: backend وfrontend وSDK وproduction-compose وpreview-builder كلها success.
+- CodeQL ناجح على HEAD نفسه.
+- PR ما زال Draft ومفتوحًا وغير مدمج؛ لم تُسجل مراجعة مستقلة بعد. أبقه Draft إلى حين المراجعة، ولا تخلط نجاح CI مع الموافقة على الدمج.
+
+### PR #787 — Shared provider system instructions
+- CodeQL ناجح على HEAD 8976b788ca6dd13faa5f7b8ac6eaed175a709c48.
+- CI: backend ما زال in_progress في آخر فحص، بينما preview-builder وSDK وproduction-compose وfrontend اكتملت بنجاح.
+- PR Draft ومفتوح وmergeable=true؛ لا دمج حتى يكتمل backend CI وتتم مراجعة payloads.
+
+### PR #788 — Prompt context boundary sanitization
+- PR منفصل: https://github.com/HVA09/ai-chat-app/pull/788
+- الفرع fix/prompt-context-boundary-sanitization-20261126؛ آخر HEAD 155dc4581d901e50f87ab0478d627dd9e4213c72.
+- تسعة ملفات: prompt_context helper، chat/RAG/AgentRuntime/tool output، وأربعة ملفات اختبارات.
+- أضيف أيضًا تحييد رسالة /chat/vision بعد مراجعة diff واكتشاف أن أول patch لم يغط هذا المسار.
+- CI وCodeQL في قائمة الانتظار على HEAD الأخير؛ بعض jobs بدأت، والـbackend ما زال قيد التنفيذ. لم تُشغّل اختبارات محلية.
+- PR Draft ومفتوح وmergeable=true في آخر فحص. لا دمج قبل اكتمال CI ومراجعة اختبارات السياق والـvision.
+
+### قرار الدفعة
+- لا دمج لأي من #786 أو #787 أو #788 الآن. #786 فقط اجتاز CI وCodeQL، لكن لا توجد مراجعة مستقلة بعد.
+- PR #785 نفسه ما زال Draft توثيقيًا، ويحتاج CI على آخر HEAD ومراجعة قبل الدمج.
+- PR #665 يبقى مرجعًا تاريخيًا غير قابل للدمج كحزمة واحدة؛ استمر في استخراج التغييرات الصغيرة مع فصل كل مجال أمني/سلوكي في PR مستقل.
+
