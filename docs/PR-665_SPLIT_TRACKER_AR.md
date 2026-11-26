@@ -2113,7 +2113,7 @@
 - PR #786 أصبح Ready for review بعد نجاح CI وCodeQL ومراجعة نطاقه. لا توجد مراجعة مستقلة مسجلة، ولذلك لم يُدمج.
 - محاولة تفعيل auto-merge على #786 رُفضت من GitHub لأن auto-merge غير مفعّل في إعدادات المستودع HVA09/ai-chat-app. لم نتجاوز هذا القيد بدمج يدوي.
 - PR #787: CodeQL success، وCI لا يزال in_progress على HEAD 8976b788ca6dd13faa5f7b8ac6eaed175a709c48.
-- PR #788: CodeQL success، وCI لا يزال in_progress على HEAD 155dc4581d901e50f87ab0478d627dd9e4213c72.
+- PR #788: CI وCodeQL success على HEAD c8d95c3516ef7f014088d1e1d99085ec34963919؛ Ready for review.
 - PR #785 التوثيقي نفسه: CI وCodeQL قيد التنفيذ على HEAD 1fa84534e0e1e853821a9b1479cd3fc0063c6158.
 - لا توجد تغييرات على main حتى هذه اللحظة من هذه الدفعة؛ جميع PRs المذكورة ما زالت مفتوحة وغير مدمجة.
 
@@ -2143,7 +2143,7 @@
 ### حالة جميع PRs بعد الجولة
 - #786: CI + CodeQL success؛ Ready for review، لا مراجعة مستقلة بعد، auto-merge غير مفعّل في المستودع.
 - #787: CodeQL success؛ CI على HEAD 990a479f4aa2e9f45509652cf0b9963a97c1a540 ما زال in_progress بعد إصلاح helper الاختبارات.
-- #788: CodeQL success؛ CI على HEAD c8d95c3516ef7f014088d1e1d99085ec34963919 ما زال in_progress.
+- #788: CI وCodeQL success؛ Ready for review وينتظر مراجعة مستقلة.
 - #789: CI وCodeQL قيد التنفيذ على HEAD f88493dfd18dfb18000c8e6659f1bda353437eb7.
 - #785: CodeQL success؛ CI على HEAD 39cfe1c648858dc9395a1b996c01ebdbf0404ef8 ما زال in_progress.
 
