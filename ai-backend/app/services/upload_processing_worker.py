@@ -143,6 +143,23 @@ def process_upload_extraction_job(db: Session, *, job_id: str) -> bool:
         else:
             db.rollback()
         return False
+    except PreserveMaterializedFile:
+        # The parser may still own/read the materialized source. Preserve the
+        # durable processing claim and let the explicit recovery protocol decide.
+        db.rollback()
+        raise
+    except Exception:
+        # Do not strand a job in processing for an unclassified local failure.
+        # Keep the source and record only a bounded, non-sensitive error code.
+        db.rollback()
+        if fail_upload_processing_job(
+            db, job_id=job_id, generation=generation,
+            owner_token=owner_token, error_code="extraction_internal_error",
+        ):
+            db.commit()
+        else:
+            db.rollback()
+        return False
 
     # Revalidate the worker fence before any result write. The helper acquires
     # User -> Lease -> Job locks; the attachment row is then locked in that
