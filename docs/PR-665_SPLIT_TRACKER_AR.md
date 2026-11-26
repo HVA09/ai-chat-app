@@ -1999,3 +1999,48 @@
 - أولوية متوسطة/منخفضة: offline citation evaluator وRAG evaluator وAI specialist benchmark.
 - مؤجل: Memory Suggestions إلى حين اعتماد الخصوصية.
 - خارج التنفيذ الحالي: migrations #665 القديمة، و`files.py` و`test_files.py`، وعمليات DB/production/provider/live evaluation.
+
+## 60. مراجعة تكامل السياق ومزودي AI وإصلاح Agent Runtime — 2026-11-26
+
+### 60.1 إصلاح اتساق سجل استدعاءات الأدوات — مستخرج في PR #786
+
+- في main، يحد AgentRuntime.run() التنفيذ إلى max_tool_calls_per_round عبر calls = reply.tool_calls[:limit]، لكنه كان يضيف رسالة المساعد باستخدام جميع reply.tool_calls بدل القائمة المنفذة.
+- عندما يعيد النموذج 4 استدعاءات والحد 2، يسجل السجل أربعة call IDs بينما لا توجد إلا نتيجتان للأدوات. هذا يترك استدعاءات يتيمة في الطلب التالي إلى المزود، وقد يسبب رفض صيغة المحادثة أو سلوكًا غير متوقع.
+- فرع #665 يحتوي إصلاحًا صغيرًا: تمرير calls إلى _assistant_tool_message()، مع اختبار يثبت أن call IDs المسجلة تطابق تمامًا tool-result IDs.
+- تم استخراج الإصلاح فقط إلى PR منفصل: https://github.com/HVA09/ai-chat-app/pull/786
+- الفرع: fix/agent-tool-call-history-budget-20261126؛ HEAD: dd62fc110ba2111332c638163c87000f5c07458b.
+- ملفان فقط: agent_runtime.py وtest_agent_runtime.py. Draft مفتوح، وmergeable=true في آخر فحص.
+- لا status contexts ولا Workflow Runs ظهرت على HEAD في آخر تحقق؛ لذلك لا يوجد إثبات نجاح CI بعد. لم تُشغّل اختبارات محلية.
+- لا يدمج قبل ظهور الفحوص المطلوبة ومراجعة التغيير.
+
+### 60.2 خريطة مسارات SYSTEM_PROMPT — التغيير غير موجود في main
+
+- OpenAI-compatible: _messages() يغطي الرد العادي والبث؛ وget_vision_reply() وget_reply_with_tools() يحتاج كل منهما إضافة التعليمات صراحة.
+- Anthropic: يجب دمج التعليمات في حقل system لكل من الرد العادي والبث، مع إخراج رسائل system من مصفوفة messages.
+- Gemini native: يجب استخدام systemInstruction في الرد العادي والبث، وعدم تحويل system messages إلى contents.
+- ملاحظة مهمة: factory في main يوجّه AI_PROVIDER=gemini الحالي إلى OpenAICompatibleProvider باستخدام Gemini OpenAI-compatible endpoint؛ لذلك تعديل GeminiProvider الأصلي لا يمر عبر factory الحالي، رغم أنه يستحق اختبارات مستقلة إذا بقي مسارًا مدعومًا.
+- مسارات الخدمة المركزية get_ai_reply وstream_ai_reply وget_ai_vision_reply تستخدم هذه provider methods. Model compare وAPI keys وscheduled tasks تستخدم get_ai_reply، بينما Agent mode يستخدم OpenAI-compatible get_reply_with_tools.
+- اختبارات #665 تغطي OpenAI-compatible standard/stream/vision/tool-calls، وAnthropic standard/stream، وGemini native standard/stream، والحفاظ على system instructions الحالية وعدم تعديل history الأصلي.
+- main لا يحتوي instructions.py أو SYSTEM_PROMPT المشترك، ولا اختبارات provider المقابلة.
+- القرار: استخراج SYSTEM_PROMPT مفيد، لكن يجب أن يبقى دفاعًا إضافيًا لا بديلًا عن فصل بيانات السياق عن تعليمات النظام وعن صلاحيات الأدوات. لا تعتبر التغطية مكتملة حتى تغطي كل provider method المستخدم فعليًا، بما في ذلك fallback.
+
+### 60.3 Prompt delimiter sanitizer — لا تنقل chat.py أو rag.py من #665 ككتلة واحدة
+
+- prompt_context.py غير موجود في main. الوحدة في #665 تحيّد علامات التطبيق المعروفة مثل SOURCE/context delimiters وUSER REQUEST وtranscript wrappers، مع مطابقة Unicode normalization دون تغيير النص الأصلي المخزن.
+- نقاط الدمج المقترحة في #665 تشمل history/task داخل AgentRuntime، ورسائل المستخدم والسجل والذاكرة وملخص المحادثة وتعليمات المشروع والمساعد ومقتطفات الملفات وأسماء المصادر في chat/RAG.
+- البحث في main يؤكد أن بناء prompt لا يحدث في نقطة واحدة فقط: توجد مسارات عبر chat helpers، ويعيد api_keys.py استخدام _augment_message و_build_history، كما توجد استدعاءات مباشرة أخرى لـget_ai_reply. لذلك يلزم تتبع كل مصدر سياق غير موثوق قبل إعلان التغطية مكتملة.
+- تغييرات #665 في chat.py وrag.py تتضمن أيضًا تعديلات ACL وRAG indexing/fingerprints وfallback ranking وغيرها؛ لا تنقل الملفين أو الـpatch الكاملين.
+- يمكن استخراج sanitizer عبر PR محدود، لكن يجب أن يثبت الاختبار أن كل source text وfilename وmemory/project/assistant instruction لا يستطيع تزوير app delimiters، وأن بيانات المستخدم المخزنة لا تتغير.
+- راجع أيضًا قرار تطبيق sanitizer على نص المستخدم نفسه: لا ينبغي إفساد النص الذي يريد المستخدم مناقشة delimiters فيه إلا إذا كان ذلك ضروريًا لمنع التباس boundary موثقًا باختبار.
+- لا تدّعِ أن sanitizer يمنع كل prompt injection؛ هو تحييد لعلامات معروفة فقط، وليس حدًا أمنيًا بديلًا.
+
+### 60.4 قائمة الاستخراج بعد هذه الجولة
+
+1. PR #786: إصلاح اتساق سجل استدعاءات الأدوات — مفتوح وينتظر CI/review.
+2. SYSTEM_PROMPT + sanitizer: إعداد patch محدود بعد توثيق جميع مسارات السياق ومراجعة حدود المستخدم/المصدر.
+3. تحسينات file_text_extractor: تبقى مرشحًا منفصلًا منخفض النطاق.
+4. JSON Schema validation وMCP hardening: تبقى مستقلة، مع بوابة SSRF قبل أي تفعيل خارجي.
+5. Offline evaluators/benchmarks: لا تشغيل live/provider calls.
+6. Memory Suggestions: مؤجلة لمراجعة الخصوصية.
+7. الملفات المحمية وmigrations القديمة وعمليات DB/production: خارج التنفيذ الحالي.
+
