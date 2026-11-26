@@ -2147,3 +2147,28 @@
 - #789: CI وCodeQL قيد التنفيذ على HEAD f88493dfd18dfb18000c8e6659f1bda353437eb7.
 - #785: CodeQL success؛ CI على HEAD 39cfe1c648858dc9395a1b996c01ebdbf0404ef8 ما زال in_progress.
 
+## 67. مراجعة MCP وJSON Schema — بوابات قبل أي تفعيل خارجي
+
+### 67.1 تغييرات MCP المقترحة في #665
+- main يحصر MCP خلف MCP_ENABLED، ويطبق allowlist للأدوات على مستوى الخادم، ويضع حدودًا لعدد الخوادم والأدوات. يجب إبقاؤه معطلاً افتراضيًا.
+- #665 يصلح تحويل enabled إلى bool مباشرة؛ لأن النص "false" يتحول في Python إلى True. النسخة المقترحة ترفض أي قيمة ليست JSON boolean.
+- #665 يحسن تحليل URL ويرفض userinfo/password/fragment والمنافذ غير الصالحة وhost المفقود، ويشترط HTTPS في production.
+- #665 يخفي URL ونص exception من سجلات MCP، وينظف descriptions/title في schema، ويرفض schema المفقود أو malformed بدل السماح العام، ويتخطى tool-name collisions بعد sanitization.
+- لا تسد هذه التغييرات SSRF: لا يوجد منع مؤكد لـloopback/private/link-local IP أو DNS rebinding أو redirects إلى عناوين داخلية. لا يكفي فحص hostname مرة واحدة؛ يلزم egress policy وإعادة تحقق destination على مستوى الاتصال.
+- لا تفعّل MCP الخارجي ولا تضف servers حقيقية حتى توجد بوابة SSRF مستقلة واختبارات DNS/redirect/private-address. MCP يبقى disabled.
+
+### 67.2 توافق schemas
+- validator المقترح في #665 يدعم مجموعة معلنة من JSON Schema keywords ويرفض الباقي fail-closed، بما في ذلك pattern وformat وoneOf/anyOf و$ref بحسب المراجعة الحالية.
+- هذا دفاع مفيد، لكنه قد يرفض schemas صحيحة لخوادم MCP بعيدة؛ لم نثبت توافق كل schemas التي قد يستخدمها المستخدم.
+- حالة schema فارغ {} تظل واسعة جدًا إذا مررت كما هي: root schema بلا type/properties/constraints يسمح عمليًا بأي object arguments. ينبغي رفض empty root schema أو اشتراط type=object قبل اعتبار أداة MCP قابلة للتنفيذ.
+- عند غياب schema، fallback المقترح object + additionalProperties=false جيد؛ لكن يجب أيضًا رفض schema dict فارغ أو غير محدد كـobject، وعدم عرض tool للموديل قبل اجتياز التحقق.
+- قبل استخراج JSON Schema validator: أضف compatibility tests لكل built-in ToolSpec، ومجموعة schemas MCP representative/offline، وتوثيق supported keywords ورفض unsupported keywords. لا تضع live MCP calls في CI.
+
+### 67.3 Arabic injection signals
+- #665 يضيف أنماطًا عربية ويطبع Unicode في نسخة الكشف فقط، بينما يظل النص الأصلي دون تعديل.
+- هذا يحسن إشارة الاشتباه فقط؛ لا يغير untrusted status ولا يمثل classifier كاملًا، ولا ينبغي استخدامه كبديل عن allowlist أو authorization.
+
+### 67.4 القرار
+- MCP hardening وJSON Schema validation يبقيان backlog مستقلًا بعد دفعة #786–#789.
+- لا دمج كود MCP ولا تفعيل إعداداته ضمن هذه الجولة، ولا SSRF exception مؤقتة.
+
