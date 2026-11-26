@@ -205,7 +205,13 @@ class AgentRuntime:
         return list(messages or [])[-limit:]
 
     @staticmethod
-    def _assistant_tool_message(reply: AIToolReply) -> dict:
+    def _assistant_tool_message(
+        reply: AIToolReply,
+        tool_calls: list[Any] | None = None,
+    ) -> dict:
+        # Preserve only calls that will execute so the next provider request
+        # contains no orphaned tool-call IDs without matching tool results.
+        selected_calls = reply.tool_calls if tool_calls is None else tool_calls
         return {
             "role": "assistant",
             "content": reply.text or None,
@@ -218,7 +224,7 @@ class AgentRuntime:
                         "arguments": json.dumps(call.arguments, ensure_ascii=False),
                     },
                 }
-                for call in reply.tool_calls
+                for call in selected_calls
             ],
         }
 
@@ -431,7 +437,7 @@ class AgentRuntime:
                 )
 
             calls = reply.tool_calls[: self.limits.max_tool_calls_per_round]
-            messages.append(self._assistant_tool_message(reply))
+            messages.append(self._assistant_tool_message(reply, calls))
 
             if len(reply.tool_calls) > len(calls):
                 await self._emit(

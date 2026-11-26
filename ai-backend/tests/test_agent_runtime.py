@@ -556,3 +556,78 @@ def test_runtime_keeps_mcp_discovery_available_for_application_admins(monkeypatc
     assert result.status == "completed"
     assert discovery_calls == 1
 
+
+class OverBudgetToolProvider:
+    def __init__(self):
+        self.calls = 0
+        self.messages_seen = []
+
+    async def get_reply_with_tools(self, messages, tools, tool_choice="auto"):
+        self.calls += 1
+        self.messages_seen.append([dict(message) for message in messages])
+        assert tool_choice == "auto"
+        assert tools[0]["function"]["name"] == "demo"
+        if self.calls == 1:
+            return AIToolReply(
+                tool_calls=[
+                    AIToolCall(
+                        id=f"call-{index}",
+                        name="demo",
+                        arguments={"value": str(index)},
+                    )
+                    for index in range(1, 5)
+                ]
+            )
+        return AIToolReply(text="done")
+
+
+def test_runtime_truncates_tool_call_history_to_executed_budget():
+    provider = OverBudgetToolProvider()
+    events = []
+
+    async def emit(event):
+        events.append(event)
+
+    runtime = AgentRuntime(
+        provider=provider,
+        limits=AgentRuntimeLimits(max_tool_calls_per_round=2),
+        registry_factory=lambda: _registry(_demo_tool),
+        mcp_discoverer=_empty_discovery,
+        event_sink=emit,
+    )
+
+    result = asyncio.run(
+        runtime.run(
+            task="run a bounded set of demo calls",
+            history=[],
+            conversation=object(),
+            current_user=object(),
+            db=_NoopSession(),
+        )
+    )
+
+    assert result.status == "completed"
+    assert result.text == "done"
+    assert result.tool_calls == 2
+    assert provider.calls == 2
+
+    second_request_messages = provider.messages_seen[1]
+    assistant_tool_message = next(
+        message for message in second_request_messages if message.get("tool_calls")
+    )
+    retained_call_ids = [
+        call["id"] for call in assistant_tool_message["tool_calls"]
+    ]
+    returned_tool_ids = [
+        message["tool_call_id"]
+        for message in second_request_messages
+        if message.get("role") == "tool"
+    ]
+    assert retained_call_ids == ["call-1", "call-2"]
+    assert returned_tool_ids == retained_call_ids
+    assert any(
+        event["type"] == "runtime_budget"
+        and event["dropped_tool_calls"] == 2
+        for event in events
+    )
+
