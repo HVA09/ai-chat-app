@@ -9,6 +9,7 @@ import httpx
 
 from app.config import settings
 from app.services.ai_providers.base import AIProvider, AIReply, AIToolCall, AIToolReply
+from app.services.ai_providers.instructions import with_system_prompt
 
 
 class OpenAICompatibleProvider(AIProvider):
@@ -23,7 +24,8 @@ class OpenAICompatibleProvider(AIProvider):
     def _messages(
         self, message: str, history: list[dict[str, str]] | None
     ) -> list[dict[str, str]]:
-        return (history or []) + [{"role": "user", "content": message}]
+        messages = (history or []) + [{"role": "user", "content": message}]
+        return with_system_prompt(messages)
 
 
 
@@ -40,7 +42,7 @@ class OpenAICompatibleProvider(AIProvider):
                 {"type": "image_url", "image_url": {"url": image_data_url}},
             ],
         }
-        messages = (history or []) + [multimodal_message]
+        messages = with_system_prompt((history or []) + [multimodal_message])
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
@@ -86,7 +88,7 @@ class OpenAICompatibleProvider(AIProvider):
                 headers=self._headers(),
                 json={
                     "model": self.model,
-                    "messages": messages,
+                    "messages": with_system_prompt(messages),
                     "tools": tools,
                     "tool_choice": tool_choice,
                 },
