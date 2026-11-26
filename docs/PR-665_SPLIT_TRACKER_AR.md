@@ -2044,3 +2044,30 @@
 6. Memory Suggestions: مؤجلة لمراجعة الخصوصية.
 7. الملفات المحمية وmigrations القديمة وعمليات DB/production: خارج التنفيذ الحالي.
 
+## 61. فحص حدود مخرجات الأدوات ومصادر RAG — فجوة دمج إضافية
+
+### 61.1 مخرجات الأدوات غير الموثوقة
+
+- main يلف نتيجة الأداة غير الموثوقة داخل [BEGIN UNTRUSTED TOOL DATA] و[END UNTRUSTED TOOL DATA] عبر wrap_untrusted_tool_output().
+- المحتوى الخارجي نفسه لا يُحيّد قبل إدخاله بين العلامتين. إذا احتوى النص على علامة الإغلاق نفسها، يمكنه تقليد حد التطبيق وإنهاء كتلة البيانات مبكرًا.
+- prompt_context.py في #665 يتضمن تحييد العلامتين، لكن AgentRuntime._tool_message_content() في diff #665 لا يستدعي safe_context_text() قبل wrap_untrusted_tool_output(). لذلك وجود helper وحده لا يسد هذه الفجوة.
+- الإجراء المطلوب في PR sanitizer: تحييد النص غير الموثوق أولًا، ثم تغليفه، مع اختبار يحوي علامة END مزيفة وعلامة BEGIN متداخلة ومحاولات Unicode-obfuscated. يجب أن تبقى قيمة المصدر المخزنة دون تعديل.
+
+### 61.2 مقتطفات RAG وأسماء الملفات
+
+- main يبني labels من original_filename ويمرر chunk.content أو extracted_text إلى سياق النموذج كما هي، دون استدعاء sanitizer في build_retrieval_context() وbuild_fallback_file_context().
+- patch #665 يضيف safe_source_filename() وsafe_context_text() إلى بناء السياق، لكنه يدمج ذلك داخل diff rag.py الأوسع الذي يتضمن fingerprints وACL وindex replacement وfallback ranking.
+- القرار: استخرج فقط معالجة filename/snippet بعد اختبار marker spoofing؛ لا تنقل تغييرات indexing أو migrations أو ACL ضمن PR sanitizer.
+
+### 61.3 تغطية memory وassistant/project metadata
+
+- main يتحقق بالفعل من can_read_project قبل تحميل ProjectMemory في _build_memory_context()؛ لا تسجل هذا كفجوة ACL جديدة.
+- لكن محتوى UserMemory وProjectMemory وAssistant description/name/instructions وProject name/instructions يُركب في prompt دون neutralization لعلامات التطبيق. هذه نقاط إدخال لازمة في patch sanitizer.
+- _build_history() في main يعيد نصوص الرسائل كما هي؛ يلزم تحييد نسخة prompt فقط، مع اختبار أن النص المخزن في قاعدة البيانات لا يتغير.
+
+### 61.4 الحكم النهائي على sanitizer
+
+- لا يكفي نسخ prompt_context.py فقط. يلزم ربطه في chat context builders، وRAG source builders، وAgentRuntime history/task/tool outputs، مع tests لكل boundary.
+- يجب أن تكون اختبارات التحقق سلبية/إيجابية: markers المعروفة تُحيّد، النص العادي والعربية والرموز التقنية تبقى كما هي، ولا تتغير البيانات المخزنة.
+- هذه حماية من تزوير delimiters المعروفة فقط؛ لا تمنع كل prompt injection ولا تستبدل authorization أو tool allowlists.
+
