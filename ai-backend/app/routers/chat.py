@@ -1194,12 +1194,13 @@ async def analyze_attached_image(
     assistant_context = _build_assistant_context(conversation, db)
     project_context = _build_project_context(conversation, db)
     memory_context = _build_memory_context(conversation.user_id, conversation.project_id, db)
-    prompt = payload.message
+    safe_user_message = safe_context_text(payload.message)
+    prompt = safe_user_message
     context_parts = [
         part for part in (memory_context, project_context, assistant_context) if part
     ]
     if context_parts:
-        prompt = "\n\n".join(context_parts) + f"\n\nUSER REQUEST:\n{payload.message}"
+        prompt = "\n\n".join(context_parts) + f"\n\nUSER REQUEST:\n{safe_user_message}"
 
     # The conversation, history, file metadata and prompt are in memory.
     # Release the DB checkout before object storage and the remote vision provider.
