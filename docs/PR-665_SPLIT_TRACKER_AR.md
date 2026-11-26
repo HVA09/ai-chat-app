@@ -2071,3 +2071,15 @@
 - يجب أن تكون اختبارات التحقق سلبية/إيجابية: markers المعروفة تُحيّد، النص العادي والعربية والرموز التقنية تبقى كما هي، ولا تتغير البيانات المخزنة.
 - هذه حماية من تزوير delimiters المعروفة فقط؛ لا تمنع كل prompt injection ولا تستبدل authorization أو tool allowlists.
 
+## 62. استخراج تعليمات النظام المشتركة للمزودين — PR #787
+
+- تم فصل طبقة تعليمات النظام المشتركة من #665 إلى PR مستقل: https://github.com/HVA09/ai-chat-app/pull/787.
+- الفرع: fix/shared-provider-system-instructions-20261126؛ HEAD: 8976b788ca6dd13faa5f7b8ac6eaed175a709c48.
+- خمسة ملفات فقط: instructions.py، مزود OpenAI-compatible وAnthropic وGemini، واختبارات test_ai_providers.py.
+- OpenAI-compatible: النظام المشترك يمر عبر الرد العادي والبث والرؤية واستدعاء الأدوات.
+- Anthropic: system field أصلي للرد العادي والبث؛ ورسائل system القديمة تُحفظ في الحقل الأصلي لا داخل messages.
+- Gemini native: systemInstruction أصلي للرد العادي والبث. ملاحظة: factory الحالي يوجه AI_PROVIDER=gemini إلى OpenAICompatibleProvider، لذا مسار Gemini native لا يستخدمه factory الحالي.
+- الاختبارات تستخدم fake HTTP clients ولا تنفذ provider calls حقيقية، وتتحقق من عدم تعديل history الأصلي وحفظ تعليمات المهام.
+- PR #787 Draft مفتوح وmergeable=true في آخر فحص. CI وCodeQL بدآ العمل على HEAD، ولم تظهر النتائج النهائية بعد. لم تُشغّل اختبارات محلية.
+- هذا PR دفاع إضافي فقط؛ لا يزعم إغلاق فجوات prompt delimiter أو tool-output wrapper. تبقى تلك الأعمال منفصلة كما في القسم 61.
+
