@@ -2206,3 +2206,19 @@
 ### بوابة الدمج
 - auto-merge معطل على مستوى المستودع؛ الدمج المباشر لن يستخدم إلا بعد نجاح جميع الفحوص ومراجعة النطاق، وبشرط ألا تتجاوز حماية الفرع.
 
+## 70. نتائج دمج دفعة استخراج #665 — 2026-11-26
+
+- PR #789 merged: bounded text extraction، commit `4c163f03201d70d92ce15473a08363b26b07aa26` (قبل الدمج سجل PR merge SHA `f62ad884...` ثم تحقق main أحدث في المصالحة). يحد TXT/CSV reads، early-stop لـPDF/DOCX/XLSX، ويغلق workbook. الملفات المحمية ومسار upload لم تتغير.
+- PR #790 merged: prompt-context boundary neutralization، commit `94e1d96bbc3b095fd9b1dc48ab9fc03246ab7fc8`. أعيد تركيبها بعد #786، واحتفظت بإصلاح tool-call history budget من #786. CI وCodeQL نجحا على رأس PR قبل الدمج.
+- PR #791 merged: shared provider system safety instructions، commit `cdaebef260c1b6b706c68795c79c54fad12f5e12`. CI وCodeQL نجحا قبل الدمج، وغطت اختبارات fake clients طلبات provider المختلفة.
+- PR #788 و#787 stale-base أغلقت بعد إعادة تركيب التغييرات في #790 و#791. لا تغييرات من الفروع القديمة دمجت مباشرة.
+- هذه الأدوات دفاعية وليست ضمانًا ضد كل prompt injection أو سلامة استخراج الملفات. لا live provider calls.
+
+### 70.1 ما تبقى من #665
+1. MCP hardening وSSRF gate (القسم 67)، دون تفعيل MCP.
+2. JSON Schema validation وتوافق MCP/builtin tool schemas.
+3. RAG retrieval evaluator offline فقط، وcitation evaluator offline، ثم benchmark specialists.
+4. Memory Suggestions privacy review.
+5. ACL files/project: backlog منفصل بسبب حماية files.py وtest_files.py.
+6. Migration #665 القديمة لا تنقل: fingerprints موجودة بالفعل في main عبر migrations مستقلة.
+
