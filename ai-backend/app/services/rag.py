@@ -27,11 +27,23 @@ from app.services.embeddings import (
     get_embedding_index_identity,
 )
 from app.services.project_access import can_read_project
+from app.services.prompt_context import safe_context_text
 
 CHUNK_SIZE = 1400
 CHUNK_OVERLAP = 200
 TOP_K = 6
 MAX_RETRIEVAL_CONTEXT_CHARS = 18_000
+
+
+def safe_source_filename(filename: str | None) -> str:
+    """Render user-controlled filenames safely inside prompt source labels."""
+    normalized = " ".join((filename or "").split())
+    normalized = normalized.replace("[", "(").replace("]", ")").replace("`", "'")
+    normalized = "".join(
+        character for character in normalized
+        if ord(character) >= 32 and ord(character) != 127
+    )
+    return safe_context_text(normalized[:255]) or "unnamed file"
 
 
 @dataclass(frozen=True)
@@ -415,7 +427,7 @@ def build_retrieval_context(
                 "snippet": chunk.content[:220].strip(),
             }
         )
-        parts.append(f"[SOURCE {source_id}: {file.original_filename} | CHUNK: {chunk.chunk_index + 1}]\n{snippet}")
+        parts.append(f"[SOURCE {source_id}: {safe_source_filename(file.original_filename)} | CHUNK: {chunk.chunk_index + 1}]\n{safe_context_text(snippet)}")
         total += len(snippet)
 
     return (
@@ -455,7 +467,7 @@ def build_fallback_file_context(
                 "snippet": " ".join(text.split())[:220].strip(),
             }
         )
-        parts.append(f"[SOURCE {source_id}: {file.original_filename}]\n{snippet}")
+        parts.append(f"[SOURCE {source_id}: {safe_source_filename(file.original_filename)}]\n{safe_context_text(snippet)}")
         total += len(snippet)
 
     if not parts:
