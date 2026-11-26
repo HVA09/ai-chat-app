@@ -255,6 +255,30 @@ def test_extraction_worker_fails_closed_when_parser_cannot_confirm_stop(
     assert stored_lease.status == "committed"
     assert heartbeat_calls == []
 
+def test_extraction_worker_classifies_unexpected_materialization_failure(
+    client, db_session, monkeypatch
+):
+    from app.services import upload_processing_worker as worker
+
+    _, _, attachment, job = _committed_attachment(
+        client, db_session, "worker-unexpected-materialization@example.com"
+    )
+
+    def unexpected_materialization_failure(*_args, **_kwargs):
+        raise RuntimeError("private storage path and backend details")
+
+    monkeypatch.setattr(worker, "materialize_file", unexpected_materialization_failure)
+
+    assert process_upload_extraction_job(db_session, job_id=job.id) is False
+
+    db_session.refresh(job)
+    db_session.refresh(attachment)
+    assert job.status == "failed_terminal"
+    assert job.last_error_code == "extraction_internal_error"
+    assert "private" not in (job.last_error_code or "")
+    assert attachment.extracted_text is None
+
+
 def test_extraction_worker_classifies_unexpected_parser_failure(
     client, db_session, monkeypatch
 ):
