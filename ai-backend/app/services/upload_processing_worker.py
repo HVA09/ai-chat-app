@@ -17,7 +17,7 @@ from app.models.file_attachment import FileAttachment
 from app.models.upload_lease import UploadLease
 from app.models.upload_processing_job import UploadProcessingJob
 from app.services.file_text_extractor import FileTextExtractionError, extract_text
-from app.services.storage import StorageError, materialize_file
+from app.services.storage import PreserveMaterializedFile, StorageError, materialize_file
 from app.services.upload_processing_jobs import (
     claim_upload_processing_job,
     complete_upload_processing_job,
