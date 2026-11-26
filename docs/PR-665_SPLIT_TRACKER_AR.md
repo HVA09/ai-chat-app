@@ -2130,3 +2130,20 @@
 - CodeQL بدأ على هذا الرأس، وCI في progress؛ jobs frontend/SDK/production-compose/preview-builder اكتملت بنجاح، والـbackend ما زال in_progress.
 - المحاولة السابقة للـCI على الرأس السابق ألغيت أثناء وصول commit الجديد، لذلك اعتمد فقط نتيجة الرأس الحالي.
 
+## 66. استخراج تحسينات file_text_extractor — PR #789
+
+- تم إنشاء PR مستقل لتحسين حدود قراءة الملفات واستهلاك الذاكرة: https://github.com/HVA09/ai-chat-app/pull/789.
+- الفرع perf/bounded-file-text-extraction-20261126؛ HEAD f88493dfd18dfb18000c8e6659f1bda353437eb7.
+- ملفان فقط: file_text_extractor.py وtest_file_text_extractor.py. لا تعديل على files.py أو test_files.py أو مسار الرفع.
+- TXT/CSV يقرآن prefix محدودًا من file handle بدل تحميل الملف كله، وPDF يتوقف بعد حد الأحرف، وDOCX يعالج Paragraph/Table بالترتيب عبر iter_inner_content، وXLSX يحد الصفوف/الخلايا ويغلق workbook في finally.
+- تمت إضافة clamp لحد الأحرف السالب/الصفر في _limit.
+- CI وCodeQL بدآ على HEAD الحالي؛ لا نتائج نهائية بعد. PR Draft ومفتوح وmergeable=true. لم تُشغّل اختبارات محلية.
+- ملاحظة حدود: مكتبات PDF/DOCX قد تستخرج صفحة أو فقرة واحدة كوحدة كاملة قبل اقتطاعها؛ التغيير يحد التراكم والتحميل الكامل للبايتات، ولا يضمن streaming داخليًا داخل كل صفحة/فقرة.
+
+### حالة جميع PRs بعد الجولة
+- #786: CI + CodeQL success؛ Ready for review، لا مراجعة مستقلة بعد، auto-merge غير مفعّل في المستودع.
+- #787: CodeQL success؛ CI على HEAD 990a479f4aa2e9f45509652cf0b9963a97c1a540 ما زال in_progress بعد إصلاح helper الاختبارات.
+- #788: CodeQL success؛ CI على HEAD c8d95c3516ef7f014088d1e1d99085ec34963919 ما زال in_progress.
+- #789: CI وCodeQL قيد التنفيذ على HEAD f88493dfd18dfb18000c8e6659f1bda353437eb7.
+- #785: CodeQL success؛ CI على HEAD 39cfe1c648858dc9395a1b996c01ebdbf0404ef8 ما زال in_progress.
+
