@@ -7,6 +7,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from app.services.prompt_context import safe_context_text
+
 
 class ToolArgumentSecurityError(ValueError):
     """Raised when tool arguments violate the runtime security envelope."""
@@ -173,7 +175,7 @@ def wrap_untrusted_tool_output(
     return (
         "[BEGIN UNTRUSTED TOOL DATA]\n"
         f"{note}\n"
-        f"{content}\n"
+        f"{safe_context_text(content)}\n"
         "[END UNTRUSTED TOOL DATA]"
     )
 
