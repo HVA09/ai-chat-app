@@ -2250,9 +2250,13 @@ def test_vision_neutralizes_prompt_delimiters_before_provider_call(
     client, db_session, monkeypatch, tmp_path
 ):
     from contextlib import nullcontext
-    from pathlib import Path
     from types import SimpleNamespace
 
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="start")),
+    )
     token = _register_and_login(client, "vision-prompt-boundary@example.com")
     headers = {"Authorization": f"Bearer {token}"}
     created = client.post(
