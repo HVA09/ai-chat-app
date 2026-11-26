@@ -17,7 +17,7 @@ class StorageError(RuntimeError):
     pass
 
 
-MAX_MATERIALIZED_BYTES = 256 * 1024 * 1024
+MAX_MATERIALIZED_BYTES = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
 
 def _validate_object_key(object_key: str) -> None:
