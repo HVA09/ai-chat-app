@@ -2172,3 +2172,10 @@
 - MCP hardening وJSON Schema validation يبقيان backlog مستقلًا بعد دفعة #786–#789.
 - لا دمج كود MCP ولا تفعيل إعداداته ضمن هذه الجولة، ولا SSRF exception مؤقتة.
 
+## 68. بوابة PR #788 بعد نجاح CI — 2026-11-26
+
+- PR #788 أصبح Ready for review بعد نجاح جميع CI jobs وCodeQL على HEAD c8d95c3516ef7f014088d1e1d99085ec34963919.
+- CI jobs الناجحة: backend وfrontend وSDK وproduction-compose وpreview-builder.
+- تمت مراجعة diff مرة أخرى بعد اكتشاف أن أول patch لم يحيّد نص /chat/vision؛ أضيفت معالجة vision واختبارها، كما تم منع الاختبار من استدعاء provider حقيقي عبر fake reply.
+- لا مراجعة GitHub مستقلة بعد، ولم يُدمج. auto-merge معطل في المستودع، ولا نتجاوز هذا القيد.
+
