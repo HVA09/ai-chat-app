@@ -294,7 +294,8 @@ def test_materialize_file_enforces_streaming_byte_limit(monkeypatch, tmp_path):
 
     _enable_s3(monkeypatch)
     fallback = tmp_path / "file.bin"
-    body = io.BytesIO(b"x" * (storage.MAX_MATERIALIZED_BYTES + 1))
+    monkeypatch.setattr(storage, "MAX_MATERIALIZED_BYTES", 3)
+    body = io.BytesIO(b"xxxx")
     monkeypatch.setattr(storage, "open_file", lambda key, path: body)
     with pytest.raises(storage.StorageError):
         with storage.materialize_file("users/1/file.bin", fallback):
