@@ -242,3 +242,62 @@ def test_materialize_file_does_not_preserve_a_different_path(
 
     assert body.closed
     assert not list(tmp_path.glob("ai-chat-storage-*"))
+
+
+
+def test_object_key_validation_rejects_traversal_and_backslash(monkeypatch, tmp_path):
+    import pytest
+
+    for name in ("S3_BUCKET", "S3_ENDPOINT_URL", "S3_REGION", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"):
+        monkeypatch.setattr(storage.settings, name, "")
+    for key in ("", "/absolute", "../escape", "users/../escape", r"users\\1\\file", "bad\\x00key"):
+        with pytest.raises(storage.StorageError):
+            storage.put_bytes(b"x", key, "text/plain")
+
+
+def test_open_file_does_not_fallback_on_remote_service_error(monkeypatch, tmp_path):
+    from botocore.exceptions import ClientError
+    import pytest
+
+    _enable_s3(monkeypatch)
+    fallback = tmp_path / "fallback.txt"
+    fallback.write_bytes(b"stale bytes")
+    error = ClientError({"Error": {"Code": "InternalError", "Message": "failed"}}, "GetObject")
+    class FakeClient:
+        def get_object(self, **kwargs):
+            raise error
+    monkeypatch.setattr(storage, "_client", lambda: FakeClient())
+    with pytest.raises(storage.StorageError):
+        storage.open_file("users/1/file.txt", fallback)
+
+
+def test_open_file_fallback_only_on_missing_key(monkeypatch, tmp_path):
+    from botocore.exceptions import ClientError
+
+    _enable_s3(monkeypatch)
+    fallback = tmp_path / "fallback.txt"
+    fallback.write_bytes(b"migration bytes")
+    class FakeClient:
+        def get_object(self, **kwargs):
+            raise ClientError({"Error": {"Code": "NoSuchKey", "Message": "missing"}}, "GetObject")
+    monkeypatch.setattr(storage, "_client", lambda: FakeClient())
+    body = storage.open_file("users/1/file.txt", fallback)
+    try:
+        assert body.read() == b"migration bytes"
+    finally:
+        body.close()
+
+
+def test_materialize_file_enforces_streaming_byte_limit(monkeypatch, tmp_path):
+    import io
+    import pytest
+
+    _enable_s3(monkeypatch)
+    fallback = tmp_path / "file.bin"
+    body = io.BytesIO(b"x" * (storage.MAX_MATERIALIZED_BYTES + 1))
+    monkeypatch.setattr(storage, "open_file", lambda key, path: body)
+    with pytest.raises(storage.StorageError):
+        with storage.materialize_file("users/1/file.bin", fallback):
+            pytest.fail("oversized object must not be materialized")
+    assert body.closed
+    assert not list(tmp_path.glob("ai-chat-storage-*"))
