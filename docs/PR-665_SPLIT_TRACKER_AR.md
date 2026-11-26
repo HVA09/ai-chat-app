@@ -1886,3 +1886,60 @@
 - تحسينات extractor في #665 صغيرة نسبيًا ومناسبة للاستخراج كـPR مستقل من أحدث main، مع إبقاء تغييرات `files.py` و`test_files.py` خارج النطاق.
 - قبل اعتمادها، أضف اختبارات للـPDF ذي الصفحة الواحدة الضخمة/المعطوبة، حد صفحات/زمن مناسب إذا أمكن دون تغيير upload flow، وميزانيات صغيرة/صفرية، وCSV متعدد البايتات.
 - لا تشغّل extraction workers أو عمليات رفع فعلية، ولا تغيّر upload sync path، ولا تعِد فهرسة ملفات.
+
+
+## 56. مراجعة Prompt Context وMCP وTool Schema — 2026-11-26
+
+### 56.1 تحييد علامات السياق — فجوة مؤكدة في main، ومعالجة مرشحة للاستخراج
+
+**في main عند SHA `0ef6148c9d86874c9262cae7930f5cf9b3b52379`:**
+- `chat.py` يبني سياق الذاكرة/تعليمات المشروع/تعليمات المساعد/الملفات ثم يضيف الفاصل الحرفي `USER REQUEST:`، لكن نص المستخدم وسياقات كثيرة لا تمر عبر neutralizer موحد.
+- `agent_runtime.py` يمرر history وtask كما هما.
+- `tool_security.py` يكتشف أنماط إنجليزية شائعة فقط، ولا يطبع Unicode أو يحيّد علامات السياق داخل النص الذي يغلّفه.
+- توجد تعليمات بأن الملفات غير موثوقة في RAG، لكنها لا تمنع وحدها تقليد delimiters التطبيقية.
+
+**في فرع #665:**
+- يضيف `prompt_context.py` دالة `safe_context_text` لتحييد source IDs وcontext markers وUSER REQUEST delimiters وtranscript wrappers.
+- يستخدم نسخة Unicode مطبّعة لأغراض المطابقة، مع إبقاء النص الأصلي خارج spans العلامات؛ لا يغير النص المخزن.
+- يغطي محاولات obfuscation بعلامات تنسيق/تشكيل/تطويل ومحارف توافق Unicode، مع اختبارات عربية وإنجليزية.
+- يضيف الاستدعاء في chat history وuser prompt وassistant/project instructions وmemories وsummaries وfile snippets وsource filenames وagent history/task وtool output.
+- القرار: **أولوية استخراج عالية**، لكن يجب فصل الوحدة واختبار نقاط الإدخال الفعلية في مسار chat وRAG/agent، مع عدم نقل التغييرات الأخرى في `chat.py` دفعة واحدة. لا تدّعِ أن هذا يمنع كل prompt injection؛ هو تحييد delimiters معروفة فقط.
+
+### 56.2 كشف Prompt Injection
+
+- main يكتشف أنماطًا إنجليزية محدودة، ويضع نتيجة `injection_suspected` في بيانات الأداة غير الموثوقة.
+- فرع #665 يضيف أنماطًا عربية، ويطبع محارف Unicode format/combining/tatweel في نسخة الكشف فقط.
+- الاختبارات تغطي أمثلة عربية/إنجليزية، النص الطبيعي، التشكيل والتطويل والمحارف الخفية.
+- الكشف heuristic وليس قرار صلاحية أو حاجزًا شاملاً. سياسة منع tool follow-up بعد مخرجات غير موثوقة موجودة بالفعل في Agent Runtime؛ لا تخلط بين إشارة الكشف وبين هذا الحاجز.
+- القرار: استخراج اختبارات/تطبيع الإشارة مع `safe_context_text` كوحدة أمن سياق واحدة بعد مراجعة false positives؛ لا ترفع مستوى الادعاء إلى "مناعة ضد الحقن".
+
+### 56.3 Tool argument schema validation
+
+- main يتحقق من الحجم والعمق وبعض الأنواع والحقول المطلوبة و`additionalProperties=false`، لكنه لا يطبق قيود JSON Schema الرقمية/الحجمية الكاملة ولا يرفض تعريفات schema malformed بصورة شاملة.
+- فرع #665 يضيف تحققًا مسبقًا من تعريف schema، وقيود minimum/maximum/exclusive bounds وmin/max length/items/properties، وadditionalProperties schema، ومقارنة enum تراعي الفرق بين bool وint، ورفض القيود/الأنواع غير الصالحة.
+- توجد اختبارات regression واسعة لهذه الحالات في `test_tool_security.py`.
+- القرار: **تحسين دفاعي مفيد** يستخرج منفصلاً بعد التحقق من توافق schemas الأدوات الحالية؛ يجب ألا يؤدي strict validation إلى تعطيل أدوات سليمة تستخدم مخططات MCP/JSON Schema جزئية. حافظ على دعم الكلمات المحددة فقط، ورفض غير المدعوم fail-closed بصورة موثقة.
+
+### 56.4 MCP — تحسينات أمان محددة وليست إعادة بناء
+
+**ما هو موجود في main:** MCP معطل افتراضيًا في إعداد النشر، حد للخوادم والأدوات، allowlist على مستوى الخادم، HTTPS في production، وتصريح الاكتشاف/التنفيذ للمسؤول فقط في Agent Runtime.
+
+**فجوات مثبتة في main ومقابلها تحسينات #665:**
+- `enabled` يتحول إلى bool مباشرة؛ قيمة نصية مثل `"false"` قد تُفسر True. #665 يرفض الأنواع غير boolean.
+- URL يتحقق بتعبير regex وHTTPS في production فقط؛ #665 يتحقق من hostname/authority/port ويرفض userinfo وfragment. لا تزال هذه الخطوة وحدها لا تمنع SSRF إلى loopback/private/link-local IP أو DNS rebinding؛ يلزم ضابط شبكة/وجهات مسموحة وإعادة تحقق DNS عند الاتصال إذا تقرر تفعيل MCP خارجيًا.
+- main يسجل URL/نص الاستثناء عند فشل الاكتشاف أو استدعاء الأداة؛ قد يكشف ذلك query tokens أو بيانات حساسة من upstream exception. #665 يسجل نوع الاستثناء فقط ويضيف اختبارات تمنع تسرب URL token ورسالة الخطأ.
+- main يمرر remote schema/description كما هي، ويعطي schema افتراضيًا متساهلًا عند غياب schema. #665 يزيل annotations غير اللازمة، يحيّد الوصف، يرفض schema العميق/غير الصالح، ويجعل schema المفقود fail-closed (لا يسمح بخصائص غير معرفة).
+- main لا يتتبع تصادم أسماء الأدوات بعد sanitization؛ #665 يتخطى الاسم المتصادم بدلاً من السماح بفشل التسجيل أو التباس أسماء الأدوات.
+- اختبارات #665 تغطي URL credentials/fragments/invalid ports، عدم تسريب الرموز في logs، تصادم الأسماء، metadata injection وschema sanitation.
+
+**القرار:** استخراج MCP في PR مستقل محدود، مع إبقاء MCP معطلاً افتراضيًا، وعدم تغيير إعدادات الخوادم أو تفعيل الاتصال. إضافة SSRF hardening كمتطلب منفصل قبل أي استخدام حقيقي؛ لا تعتبر تحقق URL في #665 كافيًا وحده.
+
+### 56.5 نطاق PRs الصغيرة المقترح — لا تنفيذ تلقائي بعد
+
+1. PR-A: `prompt_context.py` + `test_prompt_context.py` + نقاط الإدخال اللازمة في chat/RAG/agent/tool output، واختبارات end-to-end على delimiters فقط.
+2. PR-B: توسيع `tool_security.py` مع اختبارات schema وUnicode/Arabic injection، بعد اختبار توافق schemas الأدوات.
+3. PR-C: `mcp_client.py` مع اختبارات الأنواع والـURL والـlogs/schema/name collisions، دون تفعيل MCP؛ يتضمن SSRF design gate قبل أي نشر/استخدام.
+4. PR-D: تقييم RAG offline-only، مستقل عن تغييرات runtime.
+5. Memory Suggestions تبقى مؤجلة إلى حين مراجعة خصوصية منفصلة.
+
+لا تنقل `chat.py` أو `agent_runtime.py` كملفات كاملة من #665؛ اعتمد تغييرات محددة مبنية على أحدث main مع regression tests. لا تشغيل محلي/worker/runtime/provider، لا DB/production/Render، ولا تعديل ملفات الرفع المحمية.
