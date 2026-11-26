@@ -1,10 +1,14 @@
 """اختبارات استخراج النص من الملفات."""
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
+
+import pytest
 
 from docx import Document
 from openpyxl import Workbook
 from pypdf import PdfWriter
 
+from app.services import file_text_extractor
 from app.services.file_text_extractor import extract_text
 
 
@@ -68,3 +72,173 @@ def test_extract_pdf_file(tmp_path: Path):
         writer.write(file)
 
     assert extract_text(path, "application/pdf") == ""
+
+
+def test_text_and_csv_extraction_respect_output_limit(tmp_path: Path):
+    text_path = tmp_path / "large.txt"
+    text_path.write_text("0123456789" * 100, encoding="utf-8")
+    csv_path = tmp_path / "large.csv"
+    csv_path.write_text("value\n" + ("abcdefghij\n" * 100), encoding="utf-8")
+
+    text = extract_text(text_path, "text/plain", max_chars=12)
+    csv = extract_text(csv_path, "text/csv", max_chars=12)
+
+    assert text.startswith("0123456789")
+    assert text.endswith("[تم اختصار المحتوى بسبب الحد المسموح]")
+    assert csv.startswith("value")
+    assert csv.endswith("[تم اختصار المحتوى بسبب الحد المسموح]")
+
+
+
+def test_text_and_csv_read_only_bounded_source_prefixes(tmp_path: Path, monkeypatch):
+    text_path = tmp_path / "bounded.txt"
+    text_path.write_text("x" * 1000, encoding="utf-8")
+    csv_path = tmp_path / "bounded.csv"
+    csv_path.write_text("x\n" * 1000, encoding="utf-8")
+
+    real_open = Path.open
+    read_sizes = []
+
+    class ReadSpy:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            self.stream.close()
+
+        def read(self, size=-1):
+            read_sizes.append(size)
+            return self.stream.read(size)
+
+    def tracked_open(path, *args, **kwargs):
+        return ReadSpy(real_open(path, *args, **kwargs))
+
+    monkeypatch.setattr(Path, "open", tracked_open)
+
+    extract_text(text_path, "text/plain", max_chars=16)
+    extract_text(csv_path, "text/csv", max_chars=16)
+
+    assert read_sizes == [64, 128]
+
+
+
+def test_xlsx_extraction_bounds_sheet_dimensions_and_total_cells(tmp_path: Path, monkeypatch):
+    calls = []
+
+    class Worksheet:
+        title = "Large"
+
+        def iter_rows(self, **kwargs):
+            calls.append(kwargs)
+            yield ("Linux", "Cloud")
+
+    class WorkbookStub:
+        worksheets = [Worksheet()]
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(file_text_extractor, "load_workbook", lambda **_kwargs: WorkbookStub())
+    monkeypatch.setattr(file_text_extractor, "_validate_ooxml_archive", lambda _path: None)
+
+    text = extract_text(
+        tmp_path / "stub.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+    assert "[ورقة: Large]" in text
+    assert "Linux | Cloud" in text
+    assert calls == [{
+        "max_row": file_text_extractor.MAX_XLSX_ROWS_PER_SHEET,
+        "max_col": file_text_extractor.MAX_XLSX_COLUMNS_PER_ROW,
+        "values_only": True,
+    }]
+
+
+
+def test_pdf_extraction_stops_at_page_limit(tmp_path: Path, monkeypatch):
+    extracted = []
+
+    class Page:
+        def __init__(self, number):
+            self.number = number
+
+        def extract_text(self):
+            extracted.append(self.number)
+            return f"page {self.number}"
+
+    class Reader:
+        pages = [Page(number) for number in range(file_text_extractor.MAX_PDF_PAGES + 5)]
+
+    monkeypatch.setattr(file_text_extractor, "PdfReader", lambda _path: Reader())
+
+    text = extract_text(tmp_path / "stub.pdf", "application/pdf")
+
+    assert len(extracted) == file_text_extractor.MAX_PDF_PAGES
+    assert "page 99" in text
+    assert "page 100" not in text
+
+def _write_ooxml_archive(path: Path, entries: dict[str, bytes]) -> None:
+    with ZipFile(path, "w", compression=ZIP_DEFLATED) as archive:
+        for name, data in entries.items():
+            archive.writestr(name, data)
+
+
+def test_ooxml_archive_rejects_container_over_byte_limit(tmp_path: Path, monkeypatch):
+    path = tmp_path / "large.docx"
+    path.write_bytes(b"x" * 32)
+    monkeypatch.setattr(file_text_extractor, "MAX_OOXML_ARCHIVE_BYTES", 16)
+
+    with pytest.raises(file_text_extractor.FileTextExtractionError, match="size limit"):
+        file_text_extractor._validate_ooxml_archive(path)
+
+
+def test_ooxml_archive_rejects_too_many_entries(tmp_path: Path, monkeypatch):
+    path = tmp_path / "many.xlsx"
+    _write_ooxml_archive(path, {"a.xml": b"a", "b.xml": b"b"})
+    monkeypatch.setattr(file_text_extractor, "MAX_OOXML_ARCHIVE_ENTRIES", 1)
+
+    with pytest.raises(file_text_extractor.FileTextExtractionError, match="too many entries"):
+        file_text_extractor._validate_ooxml_archive(path)
+
+
+def test_ooxml_archive_rejects_expanded_member_limit(tmp_path: Path, monkeypatch):
+    path = tmp_path / "expanded.docx"
+    _write_ooxml_archive(path, {"word/document.xml": b"x" * 64})
+    monkeypatch.setattr(file_text_extractor, "MAX_OOXML_MEMBER_UNCOMPRESSED_BYTES", 32)
+
+    with pytest.raises(file_text_extractor.FileTextExtractionError, match="member exceeds"):
+        file_text_extractor._validate_ooxml_archive(path)
+
+
+def test_ooxml_archive_rejects_excessive_compression_ratio(tmp_path: Path, monkeypatch):
+    path = tmp_path / "compressed.xlsx"
+    _write_ooxml_archive(path, {"xl/sharedStrings.xml": b"A" * 4096})
+    monkeypatch.setattr(file_text_extractor, "MAX_OOXML_COMPRESSION_RATIO", 2)
+
+    with pytest.raises(file_text_extractor.FileTextExtractionError, match="compression ratio"):
+        file_text_extractor._validate_ooxml_archive(path)
+
+
+def test_ooxml_archive_rejects_invalid_zip_container(tmp_path: Path):
+    path = tmp_path / "invalid.docx"
+    path.write_bytes(b"not a zip archive")
+
+    with pytest.raises(file_text_extractor.FileTextExtractionError, match="archive is invalid"):
+        file_text_extractor._validate_ooxml_archive(path)
+
+def test_ooxml_archive_rejects_total_expansion_limit(tmp_path: Path, monkeypatch):
+    path = tmp_path / "total-expanded.docx"
+    _write_ooxml_archive(path, {"one.xml": b"a" * 20, "two.xml": b"b" * 20})
+    monkeypatch.setattr(file_text_extractor, "MAX_OOXML_MEMBER_UNCOMPRESSED_BYTES", 32)
+    monkeypatch.setattr(file_text_extractor, "MAX_OOXML_TOTAL_UNCOMPRESSED_BYTES", 32)
+
+    with pytest.raises(
+        file_text_extractor.FileTextExtractionError,
+        match="archive expansion exceeds",
+    ):
+        file_text_extractor._validate_ooxml_archive(path)
+

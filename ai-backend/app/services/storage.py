@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path
-from shutil import copyfileobj
 from tempfile import NamedTemporaryFile
 from typing import BinaryIO, Iterator
 
@@ -16,6 +15,35 @@ from app.config import settings
 
 class StorageError(RuntimeError):
     pass
+
+
+MAX_MATERIALIZED_BYTES = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
+
+def _validate_object_key(object_key: str) -> None:
+    if (
+        not isinstance(object_key, str)
+        or not object_key
+        or object_key.startswith("/")
+        or chr(92) in object_key
+        or chr(0) in object_key
+        or any(part in {"", ".", ".."} for part in object_key.split("/"))
+    ):
+        raise StorageError("مسار التخزين غير صالح")
+
+
+class PreserveMaterializedFile(RuntimeError):
+    """Signal that ownership of a materialized temporary file must be retained.
+
+    A parser supervisor may raise this only after it cannot prove that its
+    child process has stopped. The caller receives the path and becomes
+    responsible for a separately controlled, non-destructive recovery path.
+    This signal never authorizes deletion or lease reclamation.
+    """
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        super().__init__("materialized source ownership retained")
 
 
 def _s3_enabled() -> bool:
@@ -53,6 +81,7 @@ def check_connection() -> None:
 
 
 def put_file(path: Path, object_key: str, content_type: str) -> None:
+    _validate_object_key(object_key)
     if not _s3_enabled():
         return
     try:
@@ -69,8 +98,7 @@ def put_file(path: Path, object_key: str, content_type: str) -> None:
 
 def put_bytes(content: bytes, object_key: str, content_type: str) -> None:
     """Store small generated artifacts in object storage, with local fallback."""
-    if not object_key or object_key.startswith("/") or ".." in Path(object_key).parts:
-        raise StorageError("مسار التخزين غير صالح")
+    _validate_object_key(object_key)
     if not _s3_enabled():
         target = Path(settings.UPLOAD_DIR) / object_key
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -92,8 +120,7 @@ def put_bytes(content: bytes, object_key: str, content_type: str) -> None:
 
 def get_bytes(object_key: str) -> bytes:
     """Read generated artifacts from object storage or the local fallback."""
-    if not object_key or object_key.startswith("/") or ".." in Path(object_key).parts:
-        raise StorageError("مسار التخزين غير صالح")
+    _validate_object_key(object_key)
     if not _s3_enabled():
         try:
             return (Path(settings.UPLOAD_DIR) / object_key).read_bytes()
@@ -101,21 +128,30 @@ def get_bytes(object_key: str) -> bytes:
             raise StorageError("تعذر قراءة الملف المولد") from exc
     try:
         response = _client().get_object(Bucket=settings.S3_BUCKET, Key=object_key)
-        return response["Body"].read()
+        body = response["Body"]
+        try:
+            return body.read()
+        finally:
+            body.close()
     except (BotoCoreError, ClientError) as exc:
         raise StorageError("تعذر قراءة الملف المولد من Object Storage") from exc
 
 
 def open_file(object_key: str, fallback_path: Path) -> BinaryIO:
+    _validate_object_key(object_key)
     if not _s3_enabled():
         return fallback_path.open("rb")
     try:
         response = _client().get_object(Bucket=settings.S3_BUCKET, Key=object_key)
         return response["Body"]
-    except (BotoCoreError, ClientError) as exc:
-        # Keep existing local uploads readable during migration.
-        if fallback_path.exists():
+    except ClientError as exc:
+        # Local fallback is permitted only for explicit missing-object responses,
+        # never for transient, permission, or service failures.
+        code = str(exc.response.get("Error", {}).get("Code", ""))
+        if code in {"NoSuchKey", "NotFound", "404"} and fallback_path.exists():
             return fallback_path.open("rb")
+        raise StorageError("فشل قراءة الملف من Object Storage") from exc
+    except BotoCoreError as exc:
         raise StorageError("فشل قراءة الملف من Object Storage") from exc
 
 
@@ -136,6 +172,7 @@ def materialize_file(object_key: str | None, fallback_path: Path) -> Iterator[Pa
         raise FileNotFoundError(str(fallback_path))
 
     temp_path: Path | None = None
+    preserve_temp = False
     try:
         with NamedTemporaryFile(
             prefix="ai-chat-storage-",
@@ -143,11 +180,26 @@ def materialize_file(object_key: str | None, fallback_path: Path) -> Iterator[Pa
             delete=False,
         ) as temporary:
             temp_path = Path(temporary.name)
-            copyfileobj(source, temporary)
-        yield temp_path
+            total = 0
+            while True:
+                chunk = source.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_MATERIALIZED_BYTES:
+                    raise StorageError("حجم الملف يتجاوز حد materialization")
+                temporary.write(chunk)
+        try:
+            yield temp_path
+        except PreserveMaterializedFile as exc:
+            # Retain only the exact temporary file created by this context.
+            # A mismatched path must not turn this context into a leak primitive.
+            if temp_path is not None and exc.path == temp_path:
+                preserve_temp = True
+            raise
     finally:
         source.close()
-        if temp_path is not None:
+        if temp_path is not None and not preserve_temp:
             temp_path.unlink(missing_ok=True)
 
 
@@ -182,6 +234,7 @@ def delete_user_objects(user_id: int) -> None:
 
 
 def delete_file(object_key: str, fallback_path: Path) -> None:
+    _validate_object_key(object_key)
     if _s3_enabled():
         try:
             _client().delete_object(Bucket=settings.S3_BUCKET, Key=object_key)

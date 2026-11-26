@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.models.file_attachment import FileAttachment
 from app.models.upload_cleanup_intent import UploadCleanupIntent
 from app.models.user import User
+from app.models.upload_lease import UploadLease
 
 
 def _idempotency_key(object_key: str) -> str:
@@ -33,12 +34,16 @@ def enqueue_upload_cleanup_intent(
     """Persist a cleanup request, returning None if a committed attachment owns the key.
 
     The caller owns the transaction and must commit before attempting storage
-    deletion. Lock order is User -> FileAttachment, matching upload/account
-    retention serialization. If the user was already deleted, the intent
-    remains ownerless and the attachment ownership check still fails closed.
+    deletion. Lock order is User -> UploadLease -> FileAttachment, matching
+    upload/account-retention serialization. If the user was already deleted,
+    the intent remains ownerless and the attachment ownership check still
+    fails closed.
     """
     if not object_key or len(object_key) > 512 or object_key.startswith("/"):
         raise ValueError("object_key is invalid")
+
+    if (lease_id is None) != (generation is None):
+        raise ValueError("lease_id and generation must be provided together")
 
     persisted_user_id = user_id
     if user_id is not None:
@@ -50,6 +55,25 @@ def enqueue_upload_cleanup_intent(
         )
         if locked_user is None:
             persisted_user_id = None
+
+    if lease_id is not None:
+        # A cleanup intent tied to an upload lease is valid only after the
+        # exact generation has durably transitioned to cleanup_pending.
+        # This prevents a stale processing worker from enqueueing cleanup
+        # after a newer generation has taken ownership.
+        cleanup_lease = (
+            db.query(UploadLease.id)
+            .filter(
+                UploadLease.id == lease_id,
+                UploadLease.object_key == object_key,
+                UploadLease.generation == generation,
+                UploadLease.status == "cleanup_pending",
+            )
+            .with_for_update()
+            .first()
+        )
+        if cleanup_lease is None:
+            return None
 
     committed_attachment = (
         db.query(FileAttachment.id)
@@ -81,13 +105,15 @@ def enqueue_upload_cleanup_intent(
         attempt_count=0,
         next_attempt_at=datetime.now(timezone.utc),
     )
-    db.add(intent)
+    # Isolate the insert so a uniqueness race cannot roll back unrelated
+    # work owned by the caller's outer transaction.
     try:
-        db.flush()
+        with db.begin_nested():
+            db.add(intent)
+            db.flush()
     except IntegrityError:
         # A concurrent ownerless enqueue can race when account deletion has
         # already removed the User row (and therefore its serialization lock).
-        db.rollback()
         existing = (
             db.query(UploadCleanupIntent)
             .filter(UploadCleanupIntent.idempotency_key == key)
