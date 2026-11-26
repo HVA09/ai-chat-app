@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from pathlib import Path
-from shutil import copyfileobj
 from tempfile import NamedTemporaryFile
 from typing import BinaryIO, Iterator
 
@@ -26,8 +25,8 @@ def _validate_object_key(object_key: str) -> None:
         not isinstance(object_key, str)
         or not object_key
         or object_key.startswith(("/", "\\\\"))
-        or "\\x00" in object_key
-        or "\\\\" in object_key
+        or "\\0" in object_key
+        or "\\" in object_key
         or any(part in {"", ".", ".."} for part in object_key.split("/"))
     ):
         raise StorageError("مسار التخزين غير صالح")
@@ -121,8 +120,7 @@ def put_bytes(content: bytes, object_key: str, content_type: str) -> None:
 
 def get_bytes(object_key: str) -> bytes:
     """Read generated artifacts from object storage or the local fallback."""
-    if not object_key or object_key.startswith("/") or ".." in Path(object_key).parts:
-        raise StorageError("مسار التخزين غير صالح")
+    _validate_object_key(object_key)
     if not _s3_enabled():
         try:
             return (Path(settings.UPLOAD_DIR) / object_key).read_bytes()
