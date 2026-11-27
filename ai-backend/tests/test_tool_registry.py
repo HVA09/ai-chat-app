@@ -766,3 +766,84 @@ def test_registry_accepts_valid_empty_object_schema():
     )
 
     assert result.succeeded is True
+
+
+@pytest.mark.parametrize(
+    ("schema", "expected"),
+    [
+        (
+            {
+                "type": "object",
+                "properties": {
+                    f"field_{index}": {"type": "string"}
+                    for index in range(257)
+                },
+            },
+            "too many properties",
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {"choice": {"enum": list(range(257))}},
+            },
+            "enum contains too many values",
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {"choice": {"enum": [float("nan")]}},
+            },
+            "finite",
+        ),
+    ],
+)
+def test_registry_rejects_resource_exhaustion_or_non_json_schemas(schema, expected):
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            name="bounded_schema",
+            description="Bounded schema",
+            parameters=schema,
+            handler=_ok_handler,
+        )
+    )
+
+    result = asyncio.run(
+        registry.execute(
+            "bounded_schema",
+            {},
+            ToolContext(conversation=None, current_user=None, db=None),
+        )
+    )
+
+    assert result.succeeded is False
+    assert expected in result.content
+
+
+def test_registry_rejects_deeply_nested_enum_values():
+    nested = "leaf"
+    for _ in range(70):
+        nested = [nested]
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            name="deep_enum",
+            description="Deep enum",
+            parameters={
+                "type": "object",
+                "properties": {"choice": {"enum": [nested]}},
+            },
+            handler=_ok_handler,
+        )
+    )
+
+    result = asyncio.run(
+        registry.execute(
+            "deep_enum",
+            {"choice": nested},
+            ToolContext(conversation=None, current_user=None, db=None),
+        )
+    )
+
+    assert result.succeeded is False
+    assert "nesting is too deep" in result.content
