@@ -5,14 +5,18 @@ from __future__ import annotations
 import json
 import logging
 import re
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 from typing import Any
 
+import httpx2
 from mcp import Client
+from mcp.client.streamable_http import streamable_http_client
 from mcp.types import TextContent
 
 from app.config import settings
+from app.services.mcp_ssrf_transport import SSRFGuardTransport
 from app.services.tools.registry import ToolContext, ToolResult, ToolSpec
 
 logger = logging.getLogger(__name__)
@@ -28,6 +32,22 @@ class MCPServerConfig:
     url: str
     enabled: bool = True
     allowed_tools: tuple[str, ...] = ()
+
+
+
+@asynccontextmanager
+async def _open_mcp_client(url: str):
+    """Open MCP through the DNS-pinning transport; never use the SDK default client."""
+    async with httpx2.AsyncClient(
+        transport=SSRFGuardTransport(),
+        trust_env=False,
+        proxy=None,
+        follow_redirects=False,
+    ) as http_client:
+        async with Client(
+            streamable_http_client(url, http_client=http_client)
+        ) as client:
+            yield client
 
 
 def _load_server_configs() -> list[MCPServerConfig]:
@@ -134,7 +154,7 @@ async def _call_remote_tool(
     arguments: dict[str, Any],
 ) -> ToolResult:
     try:
-        async with Client(server.url) as client:
+        async with _open_mcp_client(server.url) as client:
             result = await client.call_tool(remote_name, arguments)
     except Exception as exc:
         logger.warning(
@@ -167,7 +187,7 @@ async def discover_mcp_tools() -> list[ToolSpec]:
     registered_names: set[str] = set()
     for server in _load_server_configs():
         try:
-            async with Client(server.url) as client:
+            async with _open_mcp_client(server.url) as client:
                 result = await client.list_tools()
         except Exception as exc:
             logger.warning(
