@@ -157,6 +157,10 @@ def _validate_schema_definition(
     if items is not None:
         _validate_schema_definition(items, f"{path}.items", depth=depth + 1)
 
+    description = schema.get("description")
+    if description is not None and not isinstance(description, str):
+        raise _schema_error(path, "description must be a string")
+
     enum = schema.get("enum")
     if enum is not None and not isinstance(enum, list):
         raise _schema_error(path, "enum must be a list")
@@ -173,7 +177,7 @@ def _validate_schema_definition(
         if bound is not None and (
             not isinstance(bound, (int, float))
             or isinstance(bound, bool)
-            or not math.isfinite(bound)
+            or (isinstance(bound, float) and not math.isfinite(bound))
         ):
             raise _schema_error(path, f"{keyword} must be a finite number")
 
@@ -206,6 +210,18 @@ def _same_json_value(left: Any, right: Any) -> bool:
             isinstance(right, (int, float))
             and not isinstance(right, bool)
             and left == right
+        )
+    if isinstance(left, list):
+        return (
+            isinstance(right, list)
+            and len(left) == len(right)
+            and all(_same_json_value(a, b) for a, b in zip(left, right))
+        )
+    if isinstance(left, dict):
+        return (
+            isinstance(right, dict)
+            and left.keys() == right.keys()
+            and all(_same_json_value(left[key], right[key]) for key in left)
         )
     if type(left) is not type(right):
         return False
