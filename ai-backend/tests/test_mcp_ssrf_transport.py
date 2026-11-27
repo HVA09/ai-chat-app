@@ -126,7 +126,7 @@ class FakeStream:
 
 def test_peer_verification_uses_anyio_typed_socket_attributes():
     class TypedExtraStream:
-        def extra(self, attribute):
+        def extra(self, attribute, default=None):
             import anyio
 
             assert attribute is anyio.abc.SocketAttribute.remote_address
