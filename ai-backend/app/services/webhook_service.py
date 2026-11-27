@@ -55,30 +55,36 @@ def decrypt_webhook_secret(secret_encrypted: str) -> str:
 
 
 def _is_public_ip(address: str) -> bool:
-    ip = ipaddress.ip_address(address)
-    return ip.is_global
-
-
-def _resolve_public_host(hostname: str) -> None:
     try:
-        addresses = {
+        return ipaddress.ip_address(address).is_global
+    except (TypeError, ValueError):
+        return False
+
+
+def _resolve_public_host(hostname: str) -> list[str]:
+    """Resolve once and reject the entire DNS answer set if any address is unsafe."""
+    try:
+        addresses = sorted({
             item[4][0]
             for item in socket.getaddrinfo(
                 hostname,
                 None,
                 proto=socket.IPPROTO_TCP,
             )
-        }
-    except OSError as exc:
+        })
+    except (OSError, IndexError, TypeError, ValueError) as exc:
         raise WebhookValidationError("تعذر التحقق من نطاق Webhook.") from exc
 
     if not addresses or any(not _is_public_ip(address) for address in addresses):
         raise WebhookValidationError(
             "عنوان Webhook يجب أن يشير إلى خادم عام وليس شبكة داخلية."
         )
+    return addresses
 
 
-def validate_webhook_url(url: str) -> str:
+def _prepare_pinned_webhook_request(url: str) -> tuple[str, str, dict]:
+    """Validate URL and pin the connection to a vetted public IP address."""
+
     value = url.strip()
     if len(value) > 2048:
         raise WebhookValidationError("رابط Webhook طويل جدًا.")
@@ -90,7 +96,8 @@ def validate_webhook_url(url: str) -> str:
         raise WebhookValidationError("Webhooks في production يجب أن تستخدم HTTPS.")
     if parsed.username or parsed.password:
         raise WebhookValidationError("رابط Webhook لا يمكن أن يحتوي بيانات دخول.")
-    if not parsed.hostname:
+    host = parsed.hostname
+    if not host:
         raise WebhookValidationError("رابط Webhook غير صالح.")
     try:
         port = parsed.port
@@ -99,20 +106,58 @@ def validate_webhook_url(url: str) -> str:
     if port is not None and not 1 <= port <= 65535:
         raise WebhookValidationError("منفذ Webhook غير صالح.")
 
-    host = parsed.hostname.rstrip(".").lower()
+    host = host.rstrip(".").lower()
     if host in {"localhost", "localhost.localdomain"} or host.endswith(".localhost"):
         raise WebhookValidationError("عناوين localhost غير مسموحة.")
     if host.endswith(".local") or host.endswith(".internal"):
         raise WebhookValidationError("النطاقات الداخلية غير مسموحة.")
 
     try:
-        ip = ipaddress.ip_address(host)
+        literal_ip = ipaddress.ip_address(host)
     except ValueError:
-        _resolve_public_host(host)
+        is_ip_literal = False
+        try:
+            ascii_host = host.encode("idna").decode("ascii")
+        except UnicodeError as exc:
+            raise WebhookValidationError("اسم نطاق Webhook غير صالح.") from exc
+        resolved = _resolve_public_host(ascii_host)
+        pinned_ip = ipaddress.ip_address(resolved[0])
     else:
-        if not ip.is_global:
+        is_ip_literal = True
+        if not literal_ip.is_global:
             raise WebhookValidationError("عنوان Webhook يجب أن يكون عامًا.")
+        ascii_host = host
+        pinned_ip = literal_ip
 
+    default_port = 443 if parsed.scheme == "https" else 80
+    host_for_header = f"[{ascii_host}]" if ":" in ascii_host else ascii_host
+    host_header = (
+        f"{host_for_header}:{port}"
+        if port is not None and port != default_port
+        else host_for_header
+    )
+    pinned_host = (
+        f"[{pinned_ip.compressed}]"
+        if pinned_ip.version == 6
+        else pinned_ip.compressed
+    )
+    pinned_netloc = f"{pinned_host}:{port}" if port is not None else pinned_host
+    pinned_url = parsed._replace(
+        netloc=pinned_netloc,
+        path=parsed.path or "/",
+        fragment="",
+    ).geturl()
+    extensions = (
+        {"sni_hostname": ascii_host}
+        if parsed.scheme == "https" and not is_ip_literal
+        else {}
+    )
+    return pinned_url, host_header, extensions
+
+
+def validate_webhook_url(url: str) -> str:
+    value = url.strip()
+    _prepare_pinned_webhook_request(value)
     return value
 
 
@@ -248,7 +293,9 @@ def deliver_webhook_delivery(delivery_id: int, db: Session | None = None) -> Non
             return
 
         try:
-            url = validate_webhook_url(endpoint.url)
+            url, host_header, request_extensions = _prepare_pinned_webhook_request(
+                endpoint.url
+            )
             secret = decrypt_webhook_secret(endpoint.secret_encrypted)
             body = serialize_payload(
                 delivery.event_type,
@@ -287,8 +334,15 @@ def deliver_webhook_delivery(delivery_id: int, db: Session | None = None) -> Non
             with httpx.Client(
                 timeout=httpx.Timeout(10.0, connect=5.0),
                 follow_redirects=False,
+                trust_env=False,
             ) as client:
-                response = client.post(url, content=body, headers=headers)
+                headers["Host"] = host_header
+                response = client.post(
+                    url,
+                    content=body,
+                    headers=headers,
+                    extensions=request_extensions,
+                )
         except Exception as exc:
             should_retry = _schedule_retry(
                 delivery,
