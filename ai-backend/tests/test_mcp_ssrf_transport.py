@@ -74,6 +74,15 @@ def test_dns_accepts_only_public_ipv4_and_ipv6(monkeypatch):
     assert {str(item) for item in result} == {"8.8.8.8", "2606:4700:4700::1111"}
 
 
+def test_dns_answer_count_is_bounded(monkeypatch):
+    async def fake_getaddrinfo(*_args, **_kwargs):
+        return _dns_records(*(["8.8.8.8"] * 17))
+
+    monkeypatch.setattr("app.services.mcp_ssrf_transport.anyio.getaddrinfo", fake_getaddrinfo)
+    with pytest.raises(SSRFProtectionError, match="too many"):
+        asyncio.run(_resolve_public_addresses("large.example", 443))
+
+
 def test_nonstandard_numeric_hostname_is_rejected_after_resolution(monkeypatch):
     async def fake_getaddrinfo(*_args, **_kwargs):
         return _dns_records("127.0.0.1")
