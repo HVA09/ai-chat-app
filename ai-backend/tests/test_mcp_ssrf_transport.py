@@ -7,6 +7,7 @@ from app.services.mcp_ssrf_transport import (
     SSRFProtectionError,
     _GuardedNetworkBackend,
     _VerifiedNetworkStream,
+    SSRFGuardTransport,
     _public_ip,
     _resolve_public_addresses,
 )
@@ -242,6 +243,36 @@ def test_tls_handshake_failure_closes_raw_stream(monkeypatch):
     with pytest.raises(OSError, match="TLS handshake failure"):
         asyncio.run(wrapped.start_tls(object(), "mcp.example", 5))
     assert original.closed is True
+
+
+def test_transport_enters_and_closes_guarded_connection_pool(monkeypatch):
+    captured = {}
+
+    class FakePool:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            self.entered = False
+            self.closed = False
+
+        async def __aenter__(self):
+            self.entered = True
+
+        async def aclose(self):
+            self.closed = True
+
+    monkeypatch.setattr(
+        "app.services.mcp_ssrf_transport.httpcore2.AsyncConnectionPool", FakePool
+    )
+    monkeypatch.setattr(
+        "app.services.mcp_ssrf_transport.httpx2.create_ssl_context",
+        lambda **_kwargs: object(),
+    )
+    transport = SSRFGuardTransport()
+    assert isinstance(captured["network_backend"], _GuardedNetworkBackend)
+    asyncio.run(transport.__aenter__())
+    assert transport._pool.entered is True
+    asyncio.run(transport.aclose())
+    assert transport._pool.closed is True
 
 
 def test_unix_socket_transport_is_rejected():
