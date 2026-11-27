@@ -305,6 +305,71 @@ def _validate_schema(value: Any, schema: dict[str, Any], path: str) -> None:
                 _validate_schema(value[key], property_schema, f"{path}.{key}")
 
 
+_MAX_SCHEMA_CHARS = 65_536
+_MAX_SCHEMA_NODES = 10_000
+_MAX_SCHEMA_DEPTH = 64
+_MAX_SCHEMA_PROPERTIES = 256
+_MAX_SCHEMA_ENUM_VALUES = 256
+_MAX_SCHEMA_DESCRIPTION_CHARS = 4_096
+_MAX_SCHEMA_STRING_CHARS = 8_192
+
+
+def _validate_schema_resource_limits(parameters: Any) -> None:
+    """Bound untrusted remote schemas before recursive validation or enum comparison."""
+    pending: list[tuple[Any, int]] = [(parameters, 0)]
+    nodes = 0
+    while pending:
+        value, depth = pending.pop()
+        nodes += 1
+        if nodes > _MAX_SCHEMA_NODES:
+            raise _schema_error("$", "schema contains too many values")
+        if depth > _MAX_SCHEMA_DEPTH:
+            raise _schema_error("$", "schema data nesting is too deep")
+
+        if isinstance(value, dict):
+            if len(value) > _MAX_SCHEMA_PROPERTIES:
+                raise _schema_error("$", "schema object contains too many properties")
+            for key, child in value.items():
+                if not isinstance(key, str):
+                    raise _schema_error("$", "schema object keys must be strings")
+                if key == "description" and (
+                    not isinstance(child, str)
+                    or len(child) > _MAX_SCHEMA_DESCRIPTION_CHARS
+                ):
+                    raise _schema_error("$", "description is too long or invalid")
+                if key == "enum" and (
+                    not isinstance(child, list)
+                    or len(child) > _MAX_SCHEMA_ENUM_VALUES
+                ):
+                    raise _schema_error("$", "enum contains too many values")
+                pending.append((child, depth + 1))
+        elif isinstance(value, list):
+            if len(value) > _MAX_SCHEMA_ENUM_VALUES and depth > 0:
+                raise _schema_error("$", "schema array contains too many values")
+            pending.extend((item, depth + 1) for item in value)
+        elif isinstance(value, str):
+            if len(value) > _MAX_SCHEMA_STRING_CHARS:
+                raise _schema_error("$", "schema string is too long")
+        elif isinstance(value, float) and not math.isfinite(value):
+            raise _schema_error("$", "schema numbers must be finite")
+        elif value is None or isinstance(value, (bool, int, float)):
+            continue
+        else:
+            raise _schema_error("$", "schema must contain only JSON values")
+
+    try:
+        serialized = json.dumps(
+            parameters,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise _schema_error("$", "schema must be valid JSON") from exc
+    if len(serialized) > _MAX_SCHEMA_CHARS:
+        raise _schema_error("$", "schema is too large")
+
+
 def validate_tool_arguments(
     parameters: dict[str, Any],
     arguments: dict[str, Any],
@@ -329,6 +394,7 @@ def validate_tool_arguments(
         raise ToolArgumentSecurityError("Tool arguments are too large.")
 
     _walk_depth(arguments, 1, max_depth)
+    _validate_schema_resource_limits(parameters)
     _validate_schema_definition(parameters, "$", root=True)
     _validate_schema(arguments, parameters, "$")
 
