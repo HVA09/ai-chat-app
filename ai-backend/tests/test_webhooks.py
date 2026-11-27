@@ -3,6 +3,8 @@ import hmac
 
 import pytest
 
+from app import tasks as tasks_module
+
 from app.models.user import User
 from app.models.webhook_delivery import WebhookDelivery
 from app.routers import api_keys as api_keys_router
