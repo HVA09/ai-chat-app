@@ -21,6 +21,16 @@ class SSRFProtectionError(OSError):
 
 
 IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
+_SPECIAL_NETWORKS = tuple(
+    ipaddress.ip_network(network)
+    for network in (
+        "192.0.0.0/24",       # IETF protocol assignments (includes globally-reachable exceptions)
+        "192.88.99.0/24",     # Deprecated 6to4 relay anycast
+        "2001:20::/28",       # ORCHIDv2
+        "64:ff9b::/96",       # Well-known NAT64 translation prefix
+        "64:ff9b:1::/48",     # Local-use NAT64 translation prefix
+    )
+)
 
 
 def _public_ip(value: str) -> IPAddress:
@@ -33,7 +43,11 @@ def _public_ip(value: str) -> IPAddress:
 
     if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
         address = address.ipv4_mapped
-    if not address.is_global:
+    if (
+        not address.is_global
+        or address.is_reserved
+        or any(address.version == network.version and address in network for network in _SPECIAL_NETWORKS)
+    ):
         raise SSRFProtectionError("MCP destination resolves to a non-public IP address.")
     return address
 
@@ -55,9 +69,13 @@ async def _resolve_public_addresses(host: str, port: int) -> tuple[IPAddress, ..
     if literal is not None:
         return (_public_ip(host),)
 
+    normalized_host = host.rstrip(".")
+    if not normalized_host:
+        raise SSRFProtectionError("MCP destination hostname is invalid.")
+
     try:
         records = await anyio.getaddrinfo(
-            host.rstrip("."),
+            normalized_host,
             port,
             family=socket.AF_UNSPEC,
             type=socket.SOCK_STREAM,
@@ -125,7 +143,11 @@ class _VerifiedNetworkStream(httpcore2.AsyncNetworkStream):
             standard_compatible=True,
             handshake_timeout=timeout,
         )
-        return _VerifiedNetworkStream(tls_stream, self._expected_peer)
+        try:
+            return _VerifiedNetworkStream(tls_stream, self._expected_peer)
+        except Exception:
+            await tls_stream.aclose()
+            raise
 
     def get_extra_info(self, info: str) -> Any:
         return self._stream.get_extra_info(info)
