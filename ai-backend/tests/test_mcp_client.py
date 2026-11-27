@@ -108,6 +108,24 @@ def test_mcp_tools_are_denied_without_server_allowlist(monkeypatch):
     assert asyncio.run(discover_mcp_tools()) == []
 
 
+def test_mcp_discovery_skips_tools_without_object_schema(monkeypatch):
+    class MissingSchemaClient(FakeClient):
+        async def list_tools(self):
+            return SimpleNamespace(
+                tools=[SimpleNamespace(name="broken", description="No schema")]
+            )
+
+    monkeypatch.setattr(mcp_client.settings, "MCP_ENABLED", True)
+    monkeypatch.setattr(
+        mcp_client.settings,
+        "MCP_SERVERS_JSON",
+        '[{"name":"demo","url":"https://example.test/mcp","allowed_tools":["broken"]}]',
+    )
+    monkeypatch.setattr(mcp_client, "Client", MissingSchemaClient)
+
+    assert asyncio.run(discover_mcp_tools()) == []
+
+
 def test_mcp_server_config_parses_allowed_tools(monkeypatch):
     monkeypatch.setattr(
         mcp_client.settings,
