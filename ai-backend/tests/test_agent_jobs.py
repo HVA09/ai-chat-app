@@ -764,7 +764,7 @@ def test_agent_job_stops_and_discards_output_when_membership_is_revoked_during_p
                 .one()
             )
             db_session.delete(membership)
-            db_session.commit()
+            db_session.flush()
             await self.event_sink({"type": "provider_response_received"})
             return FakeResult()
 
