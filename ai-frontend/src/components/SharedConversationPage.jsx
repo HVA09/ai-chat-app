@@ -172,6 +172,13 @@ export default function SharedConversationPage() {
             sources={message.sources || []}
           />
         ))}
+        {data.truncated ? (
+          <p className="pb-2 text-center text-xs text-amber-700 dark:text-amber-300">
+            {i18n.language === "ar"
+              ? "تم اختصار المحادثة لحماية حجم المشاركة. المعروض أحدث 100 رسالة ضمن حدود الحجم."
+              : "This share is shortened to keep its response bounded. It shows up to the latest 100 messages within the size limit."}
+          </p>
+        ) : null}
         <p className="pb-8 text-center text-xs text-slate-400">
           {t("sharing.readOnly")}
         </p>

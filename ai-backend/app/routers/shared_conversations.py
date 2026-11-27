@@ -2,10 +2,11 @@
 from datetime import datetime, timezone
 import hashlib
 import secrets
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import update
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import func, update
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
@@ -13,10 +14,9 @@ from app.auth.security import hash_password, verify_password
 from app.cache import check_rate_limit
 from app.middleware import _client_ip
 from app.dependencies import get_current_user
-from app.models.conversation import Conversation
+from app.models.conversation import Conversation, Message
 from app.models.conversation_share import ConversationShare
 from app.models.user import User
-from app.schemas.chat import ConversationDetail
 from app.schemas.shares import (
     ConversationShareCreate,
     ConversationShareManageOut,
@@ -27,6 +27,12 @@ from app.schemas.shares import (
 )
 
 router = APIRouter(tags=["Conversation Sharing"])
+
+MAX_SHARED_MESSAGES = 100
+MAX_SHARED_MESSAGE_CHARS = 20_000
+MAX_SHARED_TOTAL_CHARS = 100_000
+MAX_SHARED_SOURCES_PER_MESSAGE = 10
+MAX_SHARED_SOURCE_SNIPPET_CHARS = 500
 
 
 def _hash_token(token: str) -> str:
@@ -187,23 +193,95 @@ def _get_valid_share(token: str, db: Session) -> ConversationShare:
     return share
 
 
-def _serialize_shared_conversation(share: ConversationShare) -> SharedConversationOut:
+def _safe_shared_sources(sources: list[dict] | None) -> list[dict]:
+    """Project source metadata onto the small public schema used by ChatMessage."""
+    if not isinstance(sources, list):
+        return []
+    safe_sources = []
+    for source in (sources or [])[:MAX_SHARED_SOURCES_PER_MESSAGE]:
+        if not isinstance(source, dict):
+            continue
+
+        item = {}
+        source_id = source.get("id")
+        if isinstance(source_id, str) and source_id.strip():
+            item["id"] = source_id.strip()[:32]
+
+        for key, limit in (("filename", 255), ("title", 255), ("snippet", MAX_SHARED_SOURCE_SNIPPET_CHARS)):
+            value = source.get(key)
+            if isinstance(value, str) and value:
+                item[key] = value[:limit]
+
+        url = source.get("url")
+        if isinstance(url, str) and len(url) <= 2048:
+            try:
+                parsed = urlsplit(url)
+            except ValueError:
+                parsed = None
+            if parsed is not None and parsed.scheme in {"http", "https"} and parsed.netloc:
+                item["url"] = url
+
+        chunk = source.get("chunk")
+        if isinstance(chunk, int) and not isinstance(chunk, bool) and chunk >= 0:
+            item["chunk"] = chunk
+
+        if item:
+            safe_sources.append(item)
+    return safe_sources
+
+
+def _serialize_shared_conversation(
+    share: ConversationShare, db: Session
+) -> SharedConversationOut:
     conversation = share.conversation
+    message_count = (
+        db.query(func.count(Message.id))
+        .filter(Message.conversation_id == conversation.id)
+        .scalar()
+        or 0
+    )
+    messages = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation.id)
+        .order_by(Message.created_at.desc(), Message.id.desc())
+        .limit(MAX_SHARED_MESSAGES)
+        .all()
+    )
+    messages.reverse()
+
+    truncated = message_count > MAX_SHARED_MESSAGES
+    total_chars = 0
+    output_messages = []
+    for message in reversed(messages):
+        remaining = MAX_SHARED_TOTAL_CHARS - total_chars
+        if remaining <= 0:
+            truncated = True
+            break
+
+        content = message.content[: min(MAX_SHARED_MESSAGE_CHARS, remaining)]
+        if len(content) < len(message.content):
+            truncated = True
+        total_chars += len(content)
+        output_messages.append(
+            SharedMessageOut(
+                role=message.role.value,
+                content=content,
+                created_at=message.created_at,
+                sources=_safe_shared_sources(message.sources),
+            )
+        )
+
+    output_messages.reverse()
+    if len(output_messages) < len(messages):
+        truncated = True
+
     return SharedConversationOut(
         title=conversation.title,
         created_at=conversation.created_at,
         expires_at=share.expires_at,
-        messages=[
-            SharedMessageOut(
-                role=message.role.value,
-                content=message.content,
-                created_at=message.created_at,
-                sources=message.sources,
-            )
-            for message in conversation.messages
-        ],
+        messages=output_messages,
+        truncated=truncated,
     )
-
 
 
 def _record_share_access(share_id: int, db: Session) -> None:
@@ -235,13 +313,8 @@ def get_shared_conversation(
         )
 
     _record_share_access(share.id, db)
-    share = (
-        db.query(ConversationShare)
-        .options(selectinload(ConversationShare.conversation).selectinload(Conversation.messages))
-        .filter(ConversationShare.id == share.id)
-        .first()
-    )
-    return _serialize_shared_conversation(share)
+    share = _get_valid_share(token, db)
+    return _serialize_shared_conversation(share, db)
 
 
 @router.post(
@@ -254,17 +327,11 @@ def access_password_protected_share(
     request: Request,
     db: Session = Depends(get_db),
 ):
-
     share = _get_valid_share(token, db)
     if share.password_hash is None:
         _record_share_access(share.id, db)
-        share = (
-            db.query(ConversationShare)
-            .options(selectinload(ConversationShare.conversation).selectinload(Conversation.messages))
-            .filter(ConversationShare.id == share.id)
-            .first()
-        )
-        return _serialize_shared_conversation(share)
+        share = _get_valid_share(token, db)
+        return _serialize_shared_conversation(share, db)
 
     ip = _client_ip(request)
     rate_limit = check_rate_limit(
@@ -293,10 +360,5 @@ def access_password_protected_share(
         )
 
     _record_share_access(share.id, db)
-    share = (
-        db.query(ConversationShare)
-        .options(selectinload(ConversationShare.conversation).selectinload(Conversation.messages))
-        .filter(ConversationShare.id == share.id)
-        .first()
-    )
-    return _serialize_shared_conversation(share)
+    share = _get_valid_share(token, db)
+    return _serialize_shared_conversation(share, db)
