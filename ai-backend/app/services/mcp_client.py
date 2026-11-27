@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from urllib.parse import urlsplit
 from dataclasses import dataclass
 from typing import Any
 
@@ -44,7 +45,10 @@ def _load_server_configs() -> list[MCPServerConfig]:
             continue
         name = str(item.get("name") or "").strip()
         url = str(item.get("url") or "").strip()
-        enabled = bool(item.get("enabled", True))
+        raw_enabled = item.get("enabled", True)
+        if not isinstance(raw_enabled, bool):
+            raise MCPIntegrationError("MCP server enabled must be a boolean.")
+        enabled = raw_enabled
         raw_allowed_tools = item.get("allowed_tools", [])
         if not isinstance(raw_allowed_tools, list):
             raise MCPIntegrationError(
@@ -88,7 +92,7 @@ def _tool_schema(tool: Any) -> dict:
     schema = getattr(tool, "inputSchema", None)
     if isinstance(schema, dict):
         return schema
-    return {"type": "object", "properties": {}}
+    raise MCPIntegrationError("MCP tool is missing a valid input schema.")
 
 
 def _format_tool_result(result: Any) -> str:
@@ -124,10 +128,10 @@ async def _call_remote_tool(
             result = await client.call_tool(remote_name, arguments)
     except Exception as exc:
         logger.warning(
-            "MCP tool call failed server=%s tool=%s error=%s",
+            "MCP tool call failed server=%s tool=%s error_type=%s",
             server.name,
             remote_name,
-            exc,
+            type(exc).__name__,
         )
         return ToolResult(
             content=f"تعذر الاتصال بأداة MCP '{remote_name}' على الخادم '{server.name}'.",
@@ -150,16 +154,16 @@ async def discover_mcp_tools() -> list[ToolSpec]:
         return []
 
     specs: list[ToolSpec] = []
+    registered_names: set[str] = set()
     for server in _load_server_configs():
         try:
             async with Client(server.url) as client:
                 result = await client.list_tools()
         except Exception as exc:
             logger.warning(
-                "MCP discovery failed server=%s url=%s error=%s",
+                "MCP discovery failed server=%s error_type=%s",
                 server.name,
-                server.url,
-                exc,
+                type(exc).__name__,
             )
             continue
 
@@ -183,6 +187,14 @@ async def discover_mcp_tools() -> list[ToolSpec]:
                 or f"MCP tool from {server.name}."
             ).strip()
             registry_name = _safe_tool_name(server.name, remote_name)
+            if registry_name in registered_names:
+                logger.warning("MCP tool name collision server=%s tool=%s", server.name, remote_name)
+                continue
+            registered_names.add(registry_name)
+            schema = _tool_schema(remote_tool)
+            if schema.get("type") != "object" or not isinstance(schema.get("properties"), dict):
+                logger.warning("MCP tool rejected due to invalid schema server=%s tool=%s", server.name, remote_name)
+                continue
 
             async def handler(
                 arguments: dict[str, Any],
@@ -198,7 +210,7 @@ async def discover_mcp_tools() -> list[ToolSpec]:
                 ToolSpec(
                     name=registry_name,
                     description=f"[MCP:{server.name}] {description}",
-                    parameters=_tool_schema(remote_tool),
+                    parameters=schema,
                     handler=handler,
                     output_trust="untrusted",
                 )
