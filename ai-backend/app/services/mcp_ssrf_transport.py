@@ -176,27 +176,37 @@ class _GuardedNetworkBackend(httpcore2.AsyncNetworkBackend):
             )
 
         addresses = await _resolve_public_addresses(host, port)
-        # Connect to the vetted IP literal. The original hostname is retained by
-        # HTTPCore for Host and TLS SNI, but is never resolved again by connect_tcp.
-        selected = addresses[0]
-        if timeout is None:
-            stream = await anyio.connect_tcp(
-                remote_host=str(selected),
-                remote_port=port,
-                local_host=local_address,
-            )
-        else:
-            with anyio.fail_after(timeout):
-                stream = await anyio.connect_tcp(
-                    remote_host=str(selected),
-                    remote_port=port,
-                    local_host=local_address,
-                )
-        try:
-            return _VerifiedNetworkStream(stream, selected)
-        except Exception:
-            await stream.aclose()
-            raise
+        # Try only vetted IP literals. A failed address never causes a fresh,
+        # implicit hostname lookup outside this guard.
+        last_error: OSError | None = None
+        for selected in addresses:
+            try:
+                if timeout is None:
+                    stream = await anyio.connect_tcp(
+                        remote_host=str(selected),
+                        remote_port=port,
+                        local_host=local_address,
+                    )
+                else:
+                    with anyio.fail_after(timeout):
+                        stream = await anyio.connect_tcp(
+                            remote_host=str(selected),
+                            remote_port=port,
+                            local_host=local_address,
+                        )
+            except OSError as exc:
+                last_error = exc
+                continue
+
+            try:
+                return _VerifiedNetworkStream(stream, selected)
+            except Exception:
+                await stream.aclose()
+                raise
+
+        if last_error is not None:
+            raise last_error
+        raise SSRFProtectionError("No vetted MCP destination address could be connected.")
 
     async def connect_unix_socket(
         self,
