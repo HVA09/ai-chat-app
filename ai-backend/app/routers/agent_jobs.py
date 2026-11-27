@@ -74,6 +74,7 @@ def _get_owned_job(job_id: int, current_user: User, db: Session) -> AgentJob:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="مهمة الوكيل غير موجودة",
         )
+    _get_membership(job.workspace_id, current_user, db)
     return job
 
 
@@ -175,7 +176,15 @@ def list_agent_jobs(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    query = db.query(AgentJob).filter(AgentJob.user_id == current_user.id)
+    query = (
+        db.query(AgentJob)
+        .join(
+            WorkspaceMember,
+            (WorkspaceMember.workspace_id == AgentJob.workspace_id)
+            & (WorkspaceMember.user_id == current_user.id),
+        )
+        .filter(AgentJob.user_id == current_user.id)
+    )
     if workspace_id is not None:
         _get_membership(workspace_id, current_user, db)
         query = query.filter(AgentJob.workspace_id == workspace_id)

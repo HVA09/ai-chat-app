@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from app import tasks as tasks_module
 from app.models.agent_job import AgentJob
 from app.models.agent_workflow_step import AgentWorkflowStep
+from app.models.usage_log import UsageLog
+from app.models.workspace import WorkspaceMember
 
 
 class _FakeAgentTask:
@@ -639,3 +641,149 @@ def test_agent_job_read_paths_redact_legacy_global_mcp_snapshots(
         assert "private-internal-service" not in str(snapshot)
         assert "read_sensitive_records" not in str(snapshot)
 
+
+
+
+def test_agent_job_endpoints_require_current_workspace_membership(
+    client, db_session, monkeypatch
+):
+    token = _register_and_login(client, "agent-job-membership-revoked@example.com")
+    workspace = _create_workspace(client, token)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    import app.routers.agent_jobs as agent_jobs_router
+
+    fake_task = _FakeAgentTask()
+    monkeypatch.setattr(agent_jobs_router, "execute_agent_job", fake_task)
+    monkeypatch.setattr(agent_jobs_router, "celery_app", object())
+
+    created = client.post(
+        "/agent-jobs",
+        json={"workspace_id": workspace["id"], "task": "صلاحية مؤقتة"},
+        headers=headers,
+    )
+    assert created.status_code == 202
+    job_id = created.json()["id"]
+
+    membership = (
+        db_session.query(WorkspaceMember)
+        .filter(WorkspaceMember.workspace_id == workspace["id"])
+        .one()
+    )
+    db_session.delete(membership)
+    db_session.commit()
+
+    assert client.get(f"/agent-jobs/{job_id}", headers=headers).status_code == 404
+    listed = client.get("/agent-jobs", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json() == []
+    assert client.post(f"/agent-jobs/{job_id}/pause", headers=headers).status_code == 404
+    assert client.post(f"/agent-jobs/{job_id}/resume", headers=headers).status_code == 404
+    assert client.post(f"/agent-jobs/{job_id}/cancel", headers=headers).status_code == 404
+
+
+def test_duplicate_agent_job_delivery_does_not_reclaim_running_job(
+    client, db_session, monkeypatch
+):
+    token = _register_and_login(client, "agent-job-duplicate-running@example.com")
+    workspace = _create_workspace(client, token)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    import app.routers.agent_jobs as agent_jobs_router
+
+    fake_task = _FakeAgentTask()
+    monkeypatch.setattr(agent_jobs_router, "execute_agent_job", fake_task)
+    monkeypatch.setattr(agent_jobs_router, "celery_app", object())
+
+    created = client.post(
+        "/agent-jobs",
+        json={"workspace_id": workspace["id"], "task": "لا تنفذ مرتين"},
+        headers=headers,
+    )
+    assert created.status_code == 202
+    job_id = created.json()["id"]
+
+    job = db_session.get(AgentJob, job_id)
+    job.status = "running"
+    db_session.commit()
+
+    provider_calls = []
+    monkeypatch.setattr(
+        tasks_module,
+        "get_provider",
+        lambda model: provider_calls.append(model),
+    )
+    tasks_module._execute_agent_job(job_id, db=db_session)
+
+    db_session.expire_all()
+    assert db_session.get(AgentJob, job_id).status == "running"
+    assert provider_calls == []
+
+
+def test_agent_job_stops_and_discards_output_when_membership_is_revoked_during_provider_wait(
+    client, db_session, monkeypatch
+):
+    token = _register_and_login(client, "agent-job-provider-revoked@example.com")
+    workspace = _create_workspace(client, token)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    import app.routers.agent_jobs as agent_jobs_router
+
+    fake_task = _FakeAgentTask()
+    monkeypatch.setattr(agent_jobs_router, "execute_agent_job", fake_task)
+    monkeypatch.setattr(agent_jobs_router, "celery_app", object())
+
+    created = client.post(
+        "/agent-jobs",
+        json={"workspace_id": workspace["id"], "task": "أوقف بعد سحب العضوية"},
+        headers=headers,
+    )
+    assert created.status_code == 202
+    job_id = created.json()["id"]
+
+    class FakeProvider:
+        name = "fake"
+
+    class FakeResult:
+        run_id = "run-after-revocation"
+        status = "completed"
+        text = "يجب عدم حفظ هذه النتيجة"
+        sources = [{"id": "private"}]
+        input_tokens = 10
+        output_tokens = 5
+
+    class FakeRuntime:
+        def __init__(self, provider, event_sink):
+            self.event_sink = event_sink
+
+        async def run(self, **kwargs):
+            await self.event_sink({"type": "runtime_start"})
+            membership = (
+                db_session.query(WorkspaceMember)
+                .filter(WorkspaceMember.workspace_id == workspace["id"])
+                .one()
+            )
+            db_session.delete(membership)
+            db_session.flush()
+            await self.event_sink({"type": "provider_response_received"})
+            return FakeResult()
+
+    monkeypatch.setattr(tasks_module, "get_provider", lambda model: FakeProvider())
+    monkeypatch.setattr(tasks_module, "AgentRuntime", FakeRuntime)
+    monkeypatch.setattr(tasks_module, "get_daily_ai_limit", lambda user, db: 100)
+
+    tasks_module._execute_agent_job(job_id, db=db_session)
+
+    db_session.expire_all()
+    job = db_session.get(AgentJob, job_id)
+    assert job.status == "failed"
+    assert job.result_text is None
+    assert job.result_sources is None
+    assert job.input_tokens is None
+    assert job.output_tokens is None
+    assert (
+        db_session.query(UsageLog)
+        .filter(UsageLog.endpoint == f"/agent-jobs/{job_id}")
+        .count()
+        == 0
+    )

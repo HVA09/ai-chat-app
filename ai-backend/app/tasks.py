@@ -42,18 +42,45 @@ class AgentJobPaused(Exception):
     """Raised when a persistent Agent job is paused cooperatively."""
 
 
+class AgentJobAccessRevoked(Exception):
+    """Raised when the job owner loses workspace access during execution."""
+
+
+def _assert_agent_job_membership(db, job_id: int) -> None:
+    job = db.get(AgentJob, job_id)
+    if job is None:
+        raise AgentJobAccessRevoked("مهمة الوكيل لم تعد متاحة.")
+    user = db.get(User, job.user_id)
+    membership = (
+        db.query(WorkspaceMember)
+        .filter(
+            WorkspaceMember.workspace_id == job.workspace_id,
+            WorkspaceMember.user_id == job.user_id,
+        )
+        .first()
+    )
+    if user is None or not user.is_active or membership is None:
+        raise AgentJobAccessRevoked("فُقدت صلاحية الوصول إلى مساحة العمل أثناء التنفيذ.")
+
+
 async def _agent_job_event_sink(db, job_id: int, event: dict) -> None:
     if event.get("type") not in {
         "runtime_round_start",
         "runtime_start",
+        "provider_request_start",
+        "provider_response_received",
+        "tool_execution_start",
+        "tool_execution_complete",
+        "runtime_complete",
         "start",
         "result",
     }:
         return
 
+    _assert_agent_job_membership(db, job_id)
     job = db.get(AgentJob, job_id)
     if job is None:
-        return
+        raise AgentJobAccessRevoked("مهمة الوكيل لم تعد متاحة.")
     if job.pause_requested or job.status == "paused":
         raise AgentJobPaused("تم إيقاف مهمة الوكيل مؤقتًا.")
     if job.cancel_requested or job.status == "cancelled":
@@ -276,6 +303,7 @@ def _execute_agent_workflow(db, job, user, workspace, conversation, provider, ev
                     db=db,
                 )
             )
+            _assert_agent_job_membership(db, job.id)
             total_input_tokens += result.input_tokens or 0
             total_output_tokens += result.output_tokens or 0
             sources.extend(result.sources or [])
@@ -431,6 +459,33 @@ def _execute_agent_job(job_id: int, db=None) -> None:
             db.commit()
             return
 
+        # A worker may proceed only if it atomically claims a queued job.
+        # A duplicate delivery observing running/paused/terminal state exits.
+        claimed = (
+            db.query(AgentJob)
+            .filter(
+                AgentJob.id == job_id,
+                AgentJob.status == "queued",
+                AgentJob.pause_requested.is_(False),
+                AgentJob.cancel_requested.is_(False),
+            )
+            .update(
+                {
+                    AgentJob.status: "running",
+                    AgentJob.started_at: now,
+                    AgentJob.finished_at: None,
+                    AgentJob.error: None,
+                },
+                synchronize_session=False,
+            )
+        )
+        if claimed != 1:
+            # Do not roll back caller-owned work when another worker already claimed it.
+            db.commit()
+            return
+        db.commit()
+        db.refresh(job)
+
         user = db.get(User, job.user_id)
         workspace = db.get(Workspace, job.workspace_id)
         conversation = db.get(Conversation, job.conversation_id)
@@ -473,10 +528,6 @@ def _execute_agent_job(job_id: int, db=None) -> None:
 
         model = workspace.default_ai_model
         provider = get_provider(model)
-        job.status = "running"
-        job.started_at = now
-        job.finished_at = None
-        job.error = None
         _save_agent_job_checkpoint(
             db,
             job,
@@ -499,9 +550,10 @@ def _execute_agent_job(job_id: int, db=None) -> None:
             event_sink,
         )
 
+        _assert_agent_job_membership(db, job.id)
         refreshed_job = db.get(AgentJob, job.id)
         if refreshed_job is None:
-            return
+            raise AgentJobAccessRevoked("مهمة الوكيل لم تعد متاحة.")
         if refreshed_job.cancel_requested:
             refreshed_job.status = "cancelled"
             refreshed_job.finished_at = datetime.now(timezone.utc)
@@ -569,6 +621,44 @@ def _execute_agent_job(job_id: int, db=None) -> None:
         )
         db.commit()
 
+    except AgentJobAccessRevoked as exc:
+        # The result is not persisted until after the post-runtime authorization check.
+        # Keep the revoked membership change visible and finalize the job in this
+        # transaction; rolling back the session can also discard the claimed job row
+        # when the caller owns an outer transaction/savepoint.
+        job = db.get(AgentJob, job_id)
+        if job is not None:
+            job.status = "failed"
+            job.error = str(exc)[:1000]
+            job.finished_at = datetime.now(timezone.utc)
+            job.result_text = None
+            job.result_sources = None
+            job.input_tokens = None
+            job.output_tokens = None
+            for step in (
+                db.query(AgentWorkflowStep)
+                .filter(AgentWorkflowStep.agent_job_id == job.id)
+                .all()
+            ):
+                step.result_text = None
+                step.result_sources = None
+                if step.status == "running":
+                    step.status = "failed"
+                    step.error = "توقّف التنفيذ بعد سحب صلاحية مساحة العمل."
+            _save_agent_job_checkpoint(
+                db,
+                job,
+                phase="failed",
+                attempt=job.retry_count,
+                detail=job.error,
+            )
+            _sync_scheduled_agent_run(
+                db,
+                job,
+                succeeded=False,
+                error=job.error,
+            )
+            db.commit()
     except AgentJobPaused:
         job = db.get(AgentJob, job_id)
         if job is not None:

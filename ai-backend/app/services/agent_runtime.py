@@ -382,11 +382,17 @@ class AgentRuntime:
             available_tools = [] if tool_followups_blocked else tools
             # Every model round is an external wait; any reads/writes from the
             # preceding tool/event boundary must not pin a pool connection here.
+            await self._emit(
+                {"type": "provider_request_start", "run_id": run_id, "round": round_number}
+            )
             commit_and_release_connection(db)
             reply = await self.provider.get_reply_with_tools(
                 messages,
                 available_tools,
                 tool_choice="none" if tool_followups_blocked else "auto",
+            )
+            await self._emit(
+                {"type": "provider_response_received", "run_id": run_id, "round": round_number}
             )
             total_input_tokens += reply.input_tokens or 0
             total_output_tokens += reply.output_tokens or 0
@@ -460,6 +466,15 @@ class AgentRuntime:
 
             for call_index, call in enumerate(calls, start=1):
                 total_tool_calls += 1
+                await self._emit(
+                    {
+                        "type": "tool_execution_start",
+                        "run_id": run_id,
+                        "round": round_number,
+                        "call_index": call_index,
+                        "name": call.name,
+                    }
+                )
                 result = await self._execute_tool(
                     registry=registry,
                     conversation=conversation,
@@ -470,6 +485,15 @@ class AgentRuntime:
                     run_id=run_id,
                     round_number=round_number,
                     call_index=call_index,
+                )
+                await self._emit(
+                    {
+                        "type": "tool_execution_complete",
+                        "run_id": run_id,
+                        "round": round_number,
+                        "call_index": call_index,
+                        "name": call.name,
+                    }
                 )
                 sources.extend(result.sources)
                 messages.append(
