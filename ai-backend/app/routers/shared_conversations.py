@@ -212,17 +212,16 @@ def _safe_shared_sources(sources: list[dict] | None) -> list[dict]:
 
         url = source.get("url")
         if isinstance(url, str) and len(url) <= 2048:
-            parsed = urlsplit(url)
-            if parsed.scheme in {"http", "https"} and parsed.netloc:
+            try:
+                parsed = urlsplit(url)
+            except ValueError:
+                parsed = None
+            if parsed is not None and parsed.scheme in {"http", "https"} and parsed.netloc:
                 item["url"] = url
 
         chunk = source.get("chunk")
         if isinstance(chunk, int) and not isinstance(chunk, bool) and chunk >= 0:
             item["chunk"] = chunk
-
-        file_id = source.get("file_id")
-        if isinstance(file_id, int) and not isinstance(file_id, bool) and file_id > 0:
-            item["file_id"] = file_id
 
         if item:
             safe_sources.append(item)
@@ -251,7 +250,7 @@ def _serialize_shared_conversation(
     truncated = message_count > MAX_SHARED_MESSAGES
     total_chars = 0
     output_messages = []
-    for message in messages:
+    for message in reversed(messages):
         remaining = MAX_SHARED_TOTAL_CHARS - total_chars
         if remaining <= 0:
             truncated = True
@@ -270,6 +269,7 @@ def _serialize_shared_conversation(
             )
         )
 
+    output_messages.reverse()
     if len(output_messages) < len(messages):
         truncated = True
 
