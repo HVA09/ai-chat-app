@@ -44,6 +44,10 @@ def test_public_ip_normalization(value, expected):
         "fc00::1",
         "::ffff:127.0.0.1",
         "192.0.2.1",
+        "192.0.0.9",
+        "192.88.99.1",
+        "2001:20::1",
+        "64:ff9b::808:808",
     ],
 )
 def test_non_public_ip_is_rejected(value):
