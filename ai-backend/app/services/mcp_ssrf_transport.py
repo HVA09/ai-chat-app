@@ -106,12 +106,15 @@ async def _resolve_public_addresses(host: str, port: int) -> tuple[IPAddress, ..
 def _stream_extra(stream: Any, info: str) -> Any:
     """Translate HTTPCore extra-info names to AnyIO typed stream attributes."""
     if hasattr(stream, "extra"):
-        if info == "server_addr":
-            return stream.extra(anyio.abc.SocketAttribute.remote_address)
-        if info == "client_addr":
-            return stream.extra(anyio.abc.SocketAttribute.local_address)
-        if info == "ssl_object":
-            return stream.extra(anyio.streams.tls.TLSAttribute.ssl_object)
+        try:
+            if info == "server_addr":
+                return stream.extra(anyio.abc.SocketAttribute.remote_address)
+            if info == "client_addr":
+                return stream.extra(anyio.abc.SocketAttribute.local_address)
+            if info == "ssl_object":
+                return stream.extra(anyio.streams.tls.TLSAttribute.ssl_object)
+        except LookupError:
+            return None
         return None
     getter = getattr(stream, "get_extra_info", None)
     return getter(info) if callable(getter) else None
@@ -159,21 +162,26 @@ class _VerifiedNetworkStream(httpcore2.AsyncNetworkStream):
         server_hostname: str | None = None,
         timeout: float | None = None,
     ) -> httpcore2.AsyncNetworkStream:
-        if timeout is None:
-            tls_stream = await anyio.streams.tls.TLSStream.wrap(
-                self._stream,
-                ssl_context=ssl_context,
-                hostname=server_hostname,
-                standard_compatible=True,
-            )
-        else:
-            with anyio.fail_after(timeout):
+        try:
+            if timeout is None:
                 tls_stream = await anyio.streams.tls.TLSStream.wrap(
                     self._stream,
                     ssl_context=ssl_context,
                     hostname=server_hostname,
                     standard_compatible=True,
                 )
+            else:
+                with anyio.fail_after(timeout):
+                    tls_stream = await anyio.streams.tls.TLSStream.wrap(
+                        self._stream,
+                        ssl_context=ssl_context,
+                        hostname=server_hostname,
+                        standard_compatible=True,
+                    )
+        except BaseException:
+            with anyio.CancelScope(shield=True):
+                await self._stream.aclose()
+            raise
         try:
             return _VerifiedNetworkStream(tls_stream, self._expected_peer)
         except Exception:
