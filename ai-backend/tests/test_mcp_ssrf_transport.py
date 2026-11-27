@@ -231,6 +231,19 @@ def test_tls_peer_mismatch_closes_tls_stream(monkeypatch):
     assert tls_stream.closed is True
 
 
+def test_tls_handshake_failure_closes_raw_stream(monkeypatch):
+    original = FakeStream(("8.8.8.8", 443))
+
+    async def failing_tls_wrap(*_args, **_kwargs):
+        raise OSError("simulated TLS handshake failure")
+
+    monkeypatch.setattr("anyio.streams.tls.TLSStream.wrap", failing_tls_wrap)
+    wrapped = _VerifiedNetworkStream(original, ipaddress.ip_address("8.8.8.8"))
+    with pytest.raises(OSError, match="TLS handshake failure"):
+        asyncio.run(wrapped.start_tls(object(), "mcp.example", 5))
+    assert original.closed is True
+
+
 def test_unix_socket_transport_is_rejected():
     with pytest.raises(SSRFProtectionError):
         asyncio.run(_GuardedNetworkBackend().connect_unix_socket("/tmp/mcp.sock"))
