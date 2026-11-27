@@ -101,6 +101,10 @@ def test_open_mcp_client_uses_guarded_transport_and_disables_proxy_bypass(monkey
 
     asyncio.run(exercise())
     assert captured["transport"] is sentinel_transport
+    assert captured["timeout"].connect == mcp_client.MCP_DEFAULT_TIMEOUT
+    assert captured["timeout"].write == mcp_client.MCP_DEFAULT_TIMEOUT
+    assert captured["timeout"].pool == mcp_client.MCP_DEFAULT_TIMEOUT
+    assert captured["timeout"].read == mcp_client.MCP_DEFAULT_SSE_READ_TIMEOUT
     assert captured["trust_env"] is False
     assert captured["proxy"] is None
     assert captured["follow_redirects"] is False
