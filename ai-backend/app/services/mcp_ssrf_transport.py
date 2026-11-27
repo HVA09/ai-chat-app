@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import ipaddress
 import socket
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Iterable
 from typing import Any
 
 import anyio
@@ -279,7 +279,7 @@ class _CoreResponseStream(httpx2.AsyncByteStream):
     def __init__(self, stream: Any) -> None:
         self._stream = stream
 
-    async def __aiter__(self):
+    async def __aiter__(self) -> AsyncIterator[bytes]:
         async for chunk in self._stream:
             yield chunk
 
