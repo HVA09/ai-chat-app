@@ -173,6 +173,21 @@ def test_tls_stream_keeps_original_hostname_and_rechecks_peer():
     assert tls_stream.get_extra_info("server_addr") == ("8.8.8.8", 443)
 
 
+
+def test_tls_peer_mismatch_closes_tls_stream():
+    class WrongPeerStream(FakeStream):
+        async def start_tls(self, *, ssl_context, hostname, standard_compatible, handshake_timeout):
+            del ssl_context, hostname, standard_compatible, handshake_timeout
+            self.tls_stream = FakeStream(("127.0.0.1", 443))
+            return self.tls_stream
+
+    original = WrongPeerStream(("8.8.8.8", 443))
+    wrapped = _VerifiedNetworkStream(original, ipaddress.ip_address("8.8.8.8"))
+    with pytest.raises(SSRFProtectionError):
+        asyncio.run(wrapped.start_tls(object(), "mcp.example", 5))
+    assert original.tls_stream.closed is True
+
+
 def test_unix_socket_transport_is_rejected():
     with pytest.raises(SSRFProtectionError):
         asyncio.run(_GuardedNetworkBackend().connect_unix_socket("/tmp/mcp.sock"))
