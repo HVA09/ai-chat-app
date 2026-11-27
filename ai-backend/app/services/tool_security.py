@@ -311,8 +311,8 @@ def validate_tool_arguments(
         raise ToolArgumentSecurityError("Tool arguments are too large.")
 
     _walk_depth(arguments, 1, max_depth)
-    if isinstance(parameters, dict):
-        _validate_schema(arguments, parameters, "$")
+    _validate_schema_definition(parameters, "$", root=True)
+    _validate_schema(arguments, parameters, "$")
 
 
 def inspect_untrusted_output(content: str) -> ToolOutputSecurity:
