@@ -622,7 +622,10 @@ def _execute_agent_job(job_id: int, db=None) -> None:
         db.commit()
 
     except AgentJobAccessRevoked as exc:
-        db.rollback()
+        # The result is not persisted until after the post-runtime authorization check.
+        # Keep the revoked membership change visible and finalize the job in this
+        # transaction; rolling back the session can also discard the claimed job row
+        # when the caller owns an outer transaction/savepoint.
         job = db.get(AgentJob, job_id)
         if job is not None:
             job.status = "failed"
