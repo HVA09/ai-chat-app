@@ -13,7 +13,10 @@ from urllib.parse import urlsplit
 import httpx2
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
-from mcp.shared._httpx_utils import MCP_DEFAULT_SSE_READ_TIMEOUT, MCP_DEFAULT_TIMEOUT
+from mcp.shared._httpx_utils import (
+    MCP_DEFAULT_SSE_READ_TIMEOUT,
+    MCP_DEFAULT_TIMEOUT,
+)
 from mcp.types import TextContent
 
 from app.config import settings
@@ -33,7 +36,6 @@ class MCPServerConfig:
     url: str
     enabled: bool = True
     allowed_tools: tuple[str, ...] = ()
-
 
 
 @asynccontextmanager
