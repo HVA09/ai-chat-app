@@ -196,3 +196,75 @@ def test_delete_user_objects_is_noop_without_s3(monkeypatch):
     monkeypatch.setattr(storage, "_client", unexpected_client)
 
     storage.delete_user_objects(42)
+
+
+def test_open_file_uses_local_fallback_only_when_remote_object_is_missing(
+    monkeypatch, tmp_path
+):
+    import pytest
+    from botocore.exceptions import ClientError
+
+    _enable_s3(monkeypatch)
+    fallback = tmp_path / "example.txt"
+    fallback.write_bytes(b"legacy local copy")
+
+    missing = ClientError(
+        {
+            "Error": {"Code": "NoSuchKey", "Message": "missing"},
+            "ResponseMetadata": {"HTTPStatusCode": 404},
+        },
+        "GetObject",
+    )
+
+    class FakeClient:
+        def get_object(self, **kwargs):
+            raise missing
+
+    monkeypatch.setattr(storage, "_client", lambda: FakeClient())
+    with storage.open_file("users/1/example.txt", fallback) as body:
+        assert body.read() == b"legacy local copy"
+
+
+def test_open_file_does_not_fall_back_on_remote_access_denied(
+    monkeypatch, tmp_path
+):
+    import pytest
+    from botocore.exceptions import ClientError
+
+    _enable_s3(monkeypatch)
+    fallback = tmp_path / "example.txt"
+    fallback.write_bytes(b"stale local copy")
+    denied = ClientError(
+        {
+            "Error": {"Code": "AccessDenied", "Message": "denied"},
+            "ResponseMetadata": {"HTTPStatusCode": 403},
+        },
+        "GetObject",
+    )
+
+    class FakeClient:
+        def get_object(self, **kwargs):
+            raise denied
+
+    monkeypatch.setattr(storage, "_client", lambda: FakeClient())
+    with pytest.raises(storage.StorageError):
+        storage.open_file("users/1/example.txt", fallback)
+
+
+def test_open_file_does_not_fall_back_on_remote_connection_error(
+    monkeypatch, tmp_path
+):
+    import pytest
+    from botocore.exceptions import EndpointConnectionError
+
+    _enable_s3(monkeypatch)
+    fallback = tmp_path / "example.txt"
+    fallback.write_bytes(b"stale local copy")
+
+    class FakeClient:
+        def get_object(self, **kwargs):
+            raise EndpointConnectionError(endpoint_url="https://s3.example.test")
+
+    monkeypatch.setattr(storage, "_client", lambda: FakeClient())
+    with pytest.raises(storage.StorageError):
+        storage.open_file("users/1/example.txt", fallback)
