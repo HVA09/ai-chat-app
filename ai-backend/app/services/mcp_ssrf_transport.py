@@ -8,13 +8,15 @@ from __future__ import annotations
 
 import ipaddress
 import socket
+import ssl
 from collections.abc import AsyncIterator, Iterable
 from typing import Any
 
 import anyio
 import httpcore2
-from httpcore2._exceptions import map_exceptions
 import httpx2
+from httpcore2._exceptions import map_exceptions
+from httpcore2._utils import is_socket_readable
 
 
 class SSRFProtectionError(OSError):
@@ -98,8 +100,8 @@ async def _resolve_public_addresses(
                     type=socket.SOCK_STREAM,
                     proto=socket.IPPROTO_TCP,
                 )
-    except TimeoutError:
-        raise
+    except TimeoutError as exc:
+        raise httpcore2.ConnectTimeout(exc) from exc
     except Exception as exc:
         raise SSRFProtectionError("MCP destination DNS resolution failed.") from exc
 
@@ -134,6 +136,9 @@ def _stream_extra(stream: Any, info: str) -> Any:
                 return stream.extra(anyio.streams.tls.TLSAttribute.ssl_object, None)
             if info == "socket":
                 return stream.extra(anyio.abc.SocketAttribute.raw_socket, None)
+            if info == "is_readable":
+                raw_socket = stream.extra(anyio.abc.SocketAttribute.raw_socket, None)
+                return is_socket_readable(raw_socket)
         except LookupError:
             return None
         return None
@@ -200,7 +205,7 @@ class _VerifiedNetworkStream(httpcore2.AsyncNetworkStream):
             TimeoutError: httpcore2.ConnectTimeout,
             anyio.BrokenResourceError: httpcore2.ConnectError,
             anyio.EndOfStream: httpcore2.ConnectError,
-            __import__("ssl").SSLError: httpcore2.ConnectError,
+            ssl.SSLError: httpcore2.ConnectError,
         }
         try:
             with map_exceptions(exc_map):
@@ -235,11 +240,6 @@ class _GuardedNetworkBackend(httpcore2.AsyncNetworkBackend):
         local_address: str | None = None,
         socket_options: Iterable[Any] | None = None,
     ) -> httpcore2.AsyncNetworkStream:
-        if socket_options:
-            raise SSRFProtectionError(
-                "Custom socket options are not supported by guarded MCP transport."
-            )
-
         started_at = anyio.current_time()
         addresses = await _resolve_public_addresses(host, port, timeout=timeout)
         # Try only vetted IP literals. A failed address never causes a fresh,
