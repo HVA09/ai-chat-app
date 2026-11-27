@@ -39,27 +39,47 @@ def _load_server_configs() -> list[MCPServerConfig]:
     if not isinstance(raw, list):
         raise MCPIntegrationError("MCP server configuration must be a JSON list.")
 
+    if len(raw) > settings.MCP_MAX_SERVERS:
+        raise MCPIntegrationError(
+            f"MCP server configuration exceeds the maximum of {settings.MCP_MAX_SERVERS} servers."
+        )
+
     configs: list[MCPServerConfig] = []
-    for item in raw[: settings.MCP_MAX_SERVERS]:
+    for index, item in enumerate(raw):
         if not isinstance(item, dict):
-            continue
-        name = str(item.get("name") or "").strip()
-        url = str(item.get("url") or "").strip()
+            raise MCPIntegrationError(
+                f"MCP server configuration entry {index} must be a JSON object."
+            )
+        raw_name = item.get("name")
+        raw_url = item.get("url")
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            raise MCPIntegrationError(
+                f"MCP server configuration entry {index} requires a non-empty string name."
+            )
+        if not isinstance(raw_url, str) or not raw_url.strip():
+            raise MCPIntegrationError(
+                f"MCP server configuration entry {index} requires a non-empty string URL."
+            )
+        name = raw_name.strip()
+        url = raw_url.strip()
         raw_enabled = item.get("enabled", True)
         if not isinstance(raw_enabled, bool):
             raise MCPIntegrationError("MCP server enabled must be a boolean.")
         enabled = raw_enabled
         raw_allowed_tools = item.get("allowed_tools", [])
-        if not isinstance(raw_allowed_tools, list):
-            raise MCPIntegrationError(
-                f"MCP server '{name}' allowed_tools must be a JSON list."
-            )
-        allowed_tools = tuple(
-            str(tool_name).strip()
+        if not isinstance(raw_allowed_tools, list) or any(
+            not isinstance(tool_name, str) or not tool_name.strip()
             for tool_name in raw_allowed_tools
-            if str(tool_name).strip()
-        )
-        if not name or not url or not enabled:
+        ):
+            raise MCPIntegrationError(
+                f"MCP server '{name}' allowed_tools must contain only non-empty strings."
+            )
+        allowed_tools = tuple(tool_name.strip() for tool_name in raw_allowed_tools)
+        if len(set(allowed_tools)) != len(allowed_tools):
+            raise MCPIntegrationError(
+                f"MCP server '{name}' allowed_tools must not contain duplicates."
+            )
+        if not enabled:
             continue
         try:
             parsed_url = urlsplit(url)
