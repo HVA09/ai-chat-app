@@ -21,6 +21,7 @@ class SSRFProtectionError(OSError):
 
 
 IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
+_MAX_DNS_ADDRESSES = 16
 _SPECIAL_NETWORKS = tuple(
     ipaddress.ip_network(network)
     for network in (
@@ -55,7 +56,9 @@ def _public_ip(value: str) -> IPAddress:
     return address
 
 
-async def _resolve_public_addresses(host: str, port: int) -> tuple[IPAddress, ...]:
+async def _resolve_public_addresses(
+    host: str, port: int, timeout: float | None = None
+) -> tuple[IPAddress, ...]:
     """Resolve a host and reject the entire answer set if any address is unsafe."""
     if (
         not isinstance(host, str)
@@ -77,15 +80,28 @@ async def _resolve_public_addresses(host: str, port: int) -> tuple[IPAddress, ..
         raise SSRFProtectionError("MCP destination hostname is invalid.")
 
     try:
-        records = await anyio.getaddrinfo(
-            normalized_host,
-            port,
-            family=socket.AF_UNSPEC,
-            type=socket.SOCK_STREAM,
-            proto=socket.IPPROTO_TCP,
-        )
+        if timeout is None:
+            records = await anyio.getaddrinfo(
+                normalized_host,
+                port,
+                family=socket.AF_UNSPEC,
+                type=socket.SOCK_STREAM,
+                proto=socket.IPPROTO_TCP,
+            )
+        else:
+            with anyio.fail_after(timeout):
+                records = await anyio.getaddrinfo(
+                    normalized_host,
+                    port,
+                    family=socket.AF_UNSPEC,
+                    type=socket.SOCK_STREAM,
+                    proto=socket.IPPROTO_TCP,
+                )
     except Exception as exc:
         raise SSRFProtectionError("MCP destination DNS resolution failed.") from exc
+
+    if len(records) > _MAX_DNS_ADDRESSES:
+        raise SSRFProtectionError("MCP destination returned too many DNS addresses.")
 
     addresses: list[IPAddress] = []
     for family, _socktype, _proto, _canonname, sockaddr in records:
@@ -206,9 +222,11 @@ class _GuardedNetworkBackend(httpcore2.AsyncNetworkBackend):
                 "Custom socket options are not supported by guarded MCP transport."
             )
 
-        addresses = await _resolve_public_addresses(host, port)
+        started_at = anyio.current_time()
+        addresses = await _resolve_public_addresses(host, port, timeout=timeout)
         # Try only vetted IP literals. A failed address never causes a fresh,
-        # implicit hostname lookup outside this guard.
+        # implicit hostname lookup outside this guard. DNS plus all attempts share
+        # the single connect-timeout budget supplied by HTTPCore.
         last_error: OSError | None = None
         for selected in addresses:
             try:
@@ -219,7 +237,10 @@ class _GuardedNetworkBackend(httpcore2.AsyncNetworkBackend):
                         local_host=local_address,
                     )
                 else:
-                    with anyio.fail_after(timeout):
+                    remaining = timeout - (anyio.current_time() - started_at)
+                    if remaining <= 0:
+                        raise TimeoutError("MCP connection timed out.")
+                    with anyio.fail_after(remaining):
                         stream = await anyio.connect_tcp(
                             remote_host=str(selected),
                             remote_port=port,
