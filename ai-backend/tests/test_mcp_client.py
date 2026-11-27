@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -53,6 +54,13 @@ class FakeClient:
         )
 
 
+
+@asynccontextmanager
+async def _fake_open_mcp_client(url, client_class=FakeClient):
+    async with client_class(url) as client:
+        yield client
+
+
 def test_mcp_discovery_maps_remote_tools(monkeypatch):
     monkeypatch.setattr(mcp_client.settings, "MCP_ENABLED", True)
     monkeypatch.setattr(
@@ -60,7 +68,7 @@ def test_mcp_discovery_maps_remote_tools(monkeypatch):
         "MCP_SERVERS_JSON",
         '[{"name":"demo","url":"https://example.test/mcp","enabled":true,"allowed_tools":["add"]}]',
     )
-    monkeypatch.setattr(mcp_client, "Client", FakeClient)
+    monkeypatch.setattr(mcp_client, "_open_mcp_client", _fake_open_mcp_client)
 
     specs = asyncio.run(discover_mcp_tools())
 
@@ -86,7 +94,7 @@ def test_mcp_tool_handler_calls_remote_tool(monkeypatch):
         "MCP_SERVERS_JSON",
         '[{"name":"demo","url":"https://example.test/mcp","enabled":true,"allowed_tools":["add"]}]',
     )
-    monkeypatch.setattr(mcp_client, "Client", FakeClient)
+    monkeypatch.setattr(mcp_client, "_open_mcp_client", _fake_open_mcp_client)
 
     specs = asyncio.run(discover_mcp_tools())
     result = asyncio.run(specs[0].handler({"a": 2}, None))
@@ -103,7 +111,7 @@ def test_mcp_tools_are_denied_without_server_allowlist(monkeypatch):
         "MCP_SERVERS_JSON",
         '[{"name":"demo","url":"https://example.test/mcp","enabled":true}]',
     )
-    monkeypatch.setattr(mcp_client, "Client", FakeClient)
+    monkeypatch.setattr(mcp_client, "_open_mcp_client", _fake_open_mcp_client)
 
     assert asyncio.run(discover_mcp_tools()) == []
 
@@ -121,7 +129,7 @@ def test_mcp_discovery_skips_tools_without_object_schema(monkeypatch):
         "MCP_SERVERS_JSON",
         '[{"name":"demo","url":"https://example.test/mcp","allowed_tools":["broken"]}]',
     )
-    monkeypatch.setattr(mcp_client, "Client", MissingSchemaClient)
+    monkeypatch.setattr(mcp_client, "_open_mcp_client", lambda url: _fake_open_mcp_client(url, MissingSchemaClient))
 
     assert asyncio.run(discover_mcp_tools()) == []
 
