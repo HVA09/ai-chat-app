@@ -13,6 +13,7 @@ from typing import Any
 
 import anyio
 import httpcore2
+from httpcore2._exceptions import map_exceptions
 import httpx2
 
 
@@ -126,11 +127,13 @@ def _stream_extra(stream: Any, info: str) -> Any:
     if hasattr(stream, "extra"):
         try:
             if info == "server_addr":
-                return stream.extra(anyio.abc.SocketAttribute.remote_address)
+                return stream.extra(anyio.abc.SocketAttribute.remote_address, None)
             if info == "client_addr":
-                return stream.extra(anyio.abc.SocketAttribute.local_address)
+                return stream.extra(anyio.abc.SocketAttribute.local_address, None)
             if info == "ssl_object":
-                return stream.extra(anyio.streams.tls.TLSAttribute.ssl_object)
+                return stream.extra(anyio.streams.tls.TLSAttribute.ssl_object, None)
+            if info == "socket":
+                return stream.extra(anyio.abc.SocketAttribute.raw_socket, None)
         except LookupError:
             return None
         return None
@@ -159,17 +162,30 @@ class _VerifiedNetworkStream(httpcore2.AsyncNetworkStream):
             raise SSRFProtectionError("Connected MCP peer does not match the vetted IP.")
 
     async def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
-        if timeout is None:
-            return await self._stream.receive(max_bytes)
-        with anyio.fail_after(timeout):
-            return await self._stream.receive(max_bytes)
+        exc_map = {
+            TimeoutError: httpcore2.ReadTimeout,
+            anyio.BrokenResourceError: httpcore2.ReadError,
+            anyio.ClosedResourceError: httpcore2.ReadError,
+            anyio.EndOfStream: httpcore2.ReadError,
+        }
+        with map_exceptions(exc_map):
+            with anyio.fail_after(timeout):
+                try:
+                    return await self._stream.receive(max_bytes=max_bytes)
+                except anyio.EndOfStream:
+                    return b""
 
     async def write(self, buffer: bytes, timeout: float | None = None) -> None:
-        if timeout is None:
-            await self._stream.send(buffer)
+        if not buffer:
             return
-        with anyio.fail_after(timeout):
-            await self._stream.send(buffer)
+        exc_map = {
+            TimeoutError: httpcore2.WriteTimeout,
+            anyio.BrokenResourceError: httpcore2.WriteError,
+            anyio.ClosedResourceError: httpcore2.WriteError,
+        }
+        with map_exceptions(exc_map):
+            with anyio.fail_after(timeout):
+                await self._stream.send(item=buffer)
 
     async def aclose(self) -> None:
         await self._stream.aclose()
@@ -180,21 +196,21 @@ class _VerifiedNetworkStream(httpcore2.AsyncNetworkStream):
         server_hostname: str | None = None,
         timeout: float | None = None,
     ) -> httpcore2.AsyncNetworkStream:
+        exc_map = {
+            TimeoutError: httpcore2.ConnectTimeout,
+            anyio.BrokenResourceError: httpcore2.ConnectError,
+            anyio.EndOfStream: httpcore2.ConnectError,
+            __import__("ssl").SSLError: httpcore2.ConnectError,
+        }
         try:
-            if timeout is None:
-                tls_stream = await anyio.streams.tls.TLSStream.wrap(
-                    self._stream,
-                    ssl_context=ssl_context,
-                    hostname=server_hostname,
-                    standard_compatible=True,
-                )
-            else:
+            with map_exceptions(exc_map):
                 with anyio.fail_after(timeout):
                     tls_stream = await anyio.streams.tls.TLSStream.wrap(
                         self._stream,
                         ssl_context=ssl_context,
                         hostname=server_hostname,
-                        standard_compatible=True,
+                        standard_compatible=False,
+                        server_side=False,
                     )
         except BaseException:
             with anyio.CancelScope(shield=True):
@@ -229,30 +245,40 @@ class _GuardedNetworkBackend(httpcore2.AsyncNetworkBackend):
         # Try only vetted IP literals. A failed address never causes a fresh,
         # implicit hostname lookup outside this guard. DNS plus all attempts share
         # the single connect-timeout budget supplied by HTTPCore.
-        last_error: OSError | None = None
+        last_error: Exception | None = None
         for selected in addresses:
+            remaining = (
+                None if timeout is None else timeout - (anyio.current_time() - started_at)
+            )
+            if remaining is not None and remaining <= 0:
+                last_error = httpcore2.ConnectTimeout("MCP connection timed out.")
+                break
+            exc_map = {
+                TimeoutError: httpcore2.ConnectTimeout,
+                OSError: httpcore2.ConnectError,
+                anyio.BrokenResourceError: httpcore2.ConnectError,
+            }
             try:
-                if timeout is None:
-                    stream = await anyio.connect_tcp(
-                        remote_host=str(selected),
-                        remote_port=port,
-                        local_host=local_address,
-                    )
-                else:
-                    remaining = timeout - (anyio.current_time() - started_at)
-                    if remaining <= 0:
-                        raise TimeoutError("MCP connection timed out.")
+                with map_exceptions(exc_map):
                     with anyio.fail_after(remaining):
                         stream = await anyio.connect_tcp(
                             remote_host=str(selected),
                             remote_port=port,
                             local_host=local_address,
                         )
-            except OSError as exc:
+            except (httpcore2.ConnectError, httpcore2.ConnectTimeout) as exc:
                 last_error = exc
                 continue
 
             try:
+                if socket_options:
+                    raw_socket = _stream_extra(stream, "socket")
+                    if raw_socket is None:
+                        raise SSRFProtectionError(
+                            "Unable to apply required MCP socket options."
+                        )
+                    for option in socket_options:
+                        raw_socket.setsockopt(*option)
                 return _VerifiedNetworkStream(stream, selected)
             except Exception:
                 await stream.aclose()
