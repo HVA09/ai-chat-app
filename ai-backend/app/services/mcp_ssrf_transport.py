@@ -46,7 +46,10 @@ def _public_ip(value: str) -> IPAddress:
     if (
         not address.is_global
         or address.is_reserved
-        or any(address.version == network.version and address in network for network in _SPECIAL_NETWORKS)
+        or any(
+            address.version == network.version and address in network
+            for network in _SPECIAL_NETWORKS
+        )
     ):
         raise SSRFProtectionError("MCP destination resolves to a non-public IP address.")
     return address
@@ -163,7 +166,9 @@ class _GuardedNetworkBackend(httpcore2.AsyncNetworkBackend):
         socket_options: Iterable[Any] | None = None,
     ) -> httpcore2.AsyncNetworkStream:
         if socket_options:
-            raise SSRFProtectionError("Custom socket options are not supported by guarded MCP transport.")
+            raise SSRFProtectionError(
+                "Custom socket options are not supported by guarded MCP transport."
+            )
 
         addresses = await _resolve_public_addresses(host, port)
         # Connect to the vetted IP literal. The original hostname is retained by
