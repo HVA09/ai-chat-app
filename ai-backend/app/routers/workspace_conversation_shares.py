@@ -17,6 +17,71 @@ from app.schemas.workspace_conversation_shares import (
 
 router = APIRouter(tags=["Workspace Conversation Sharing"])
 
+MAX_WORKSPACE_SHARED_MESSAGES = 100
+MAX_WORKSPACE_SHARED_MESSAGE_CHARS = 20_000
+MAX_WORKSPACE_SHARED_TOTAL_CHARS = 100_000
+MAX_WORKSPACE_SHARED_SOURCES = 10
+MAX_WORKSPACE_SHARED_SNIPPET_CHARS = 500
+
+
+def _safe_workspace_sources(sources):
+    """Expose only bounded, non-sensitive source metadata to workspace members."""
+    if not isinstance(sources, list):
+        return []
+    result = []
+    for source in sources[:MAX_WORKSPACE_SHARED_SOURCES]:
+        if not isinstance(source, dict):
+            continue
+        item = {}
+        for key, limit in (
+            ("id", 32), ("filename", 255), ("title", 255),
+            ("snippet", MAX_WORKSPACE_SHARED_SNIPPET_CHARS),
+        ):
+            value = source.get(key)
+            if isinstance(value, str) and value:
+                item[key] = value[:limit]
+        chunk = source.get("chunk")
+        if isinstance(chunk, int) and not isinstance(chunk, bool) and chunk >= 0:
+            item["chunk"] = chunk
+        # Never expose file IDs, storage keys, provider metadata, or source URLs.
+        if item:
+            result.append(item)
+    return result
+
+
+def _bounded_workspace_messages(db: Session, conversation_id: int):
+    count = db.query(Message.id).filter(Message.conversation_id == conversation_id).count()
+    messages = (
+        db.query(Message)
+        .filter(Message.conversation_id == conversation_id)
+        .order_by(Message.created_at.desc(), Message.id.desc())
+        .limit(MAX_WORKSPACE_SHARED_MESSAGES)
+        .all()
+    )
+    messages.reverse()
+    total_chars = 0
+    output = []
+    truncated = count > MAX_WORKSPACE_SHARED_MESSAGES
+    for message in reversed(messages):
+        remaining = MAX_WORKSPACE_SHARED_TOTAL_CHARS - total_chars
+        if remaining <= 0:
+            truncated = True
+            break
+        content = message.content[:min(MAX_WORKSPACE_SHARED_MESSAGE_CHARS, remaining)]
+        if len(content) < len(message.content):
+            truncated = True
+        total_chars += len(content)
+        output.append({
+            "role": message.role.value,
+            "content": content,
+            "created_at": message.created_at,
+            "sources": _safe_workspace_sources(message.sources),
+        })
+    output.reverse()
+    if len(output) < len(messages):
+        truncated = True
+    return output, truncated
+
 
 def _get_membership(workspace_id: int, current_user: User, db: Session) -> WorkspaceMember:
     membership = (
@@ -275,15 +340,7 @@ def get_workspace_shared_conversation(
         raise HTTPException(status_code=404, detail="المحادثة المشتركة غير موجودة")
 
     share, conversation, owner = row
-    messages = [
-        {
-            "role": message.role.value,
-            "content": message.content,
-            "created_at": message.created_at,
-            "sources": message.sources or [],
-        }
-        for message in sorted(conversation.messages, key=lambda item: (item.created_at, item.id))
-    ]
+    messages, truncated = _bounded_workspace_messages(db, conversation.id)
     return WorkspaceSharedConversationDetail(
         conversation_id=conversation.id,
         workspace_id=workspace_id,
@@ -291,4 +348,5 @@ def get_workspace_shared_conversation(
         updated_at=conversation.updated_at,
         owner_email=owner.email,
         messages=messages,
+        truncated=truncated,
     )

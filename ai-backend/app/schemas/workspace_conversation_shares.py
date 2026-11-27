@@ -29,3 +29,4 @@ class WorkspaceSharedConversationDetail(BaseModel):
     updated_at: datetime
     owner_email: str
     messages: list[dict]
+    truncated: bool = False
