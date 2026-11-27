@@ -187,6 +187,7 @@ def test_analyze_attached_image_discards_result_when_access_is_revoked(
 ):
     from app.models.conversation import Message
     from app.models.usage_log import UsageLog
+    from app.models.user import User
 
     token = _register_and_login(client, "vision-revoked-access@example.com")
     headers = {"Authorization": f"Bearer {token}"}
@@ -255,12 +256,13 @@ def test_analyze_attached_image_discards_result_when_access_is_revoked(
         .count()
         == messages_before
     )
+    user = db_session.query(User).filter(
+        User.email == "vision-revoked-access@example.com"
+    ).one()
     assert (
         db_session.query(UsageLog)
         .filter(
-            UsageLog.user_id == db_session.query(UsageLog.user_id).filter(
-                UsageLog.endpoint == "/chat/vision"
-            ).scalar_subquery(),
+            UsageLog.user_id == user.id,
             UsageLog.endpoint == "/chat/vision",
         )
         .count()
