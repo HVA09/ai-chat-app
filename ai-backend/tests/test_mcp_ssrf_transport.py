@@ -1,8 +1,6 @@
 import asyncio
 import ipaddress
 import socket
-from types import SimpleNamespace
-
 import pytest
 
 from app.services.mcp_ssrf_transport import (
