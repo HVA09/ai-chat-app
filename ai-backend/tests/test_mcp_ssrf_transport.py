@@ -106,6 +106,20 @@ class FakeStream:
         return FakeStream(self.peer)
 
 
+def test_peer_verification_uses_anyio_typed_socket_attributes():
+    class TypedExtraStream:
+        def extra(self, attribute):
+            import anyio
+
+            assert attribute is anyio.abc.SocketAttribute.remote_address
+            return ("8.8.8.8", 443)
+
+    wrapped = _VerifiedNetworkStream(
+        TypedExtraStream(), ipaddress.ip_address("8.8.8.8")
+    )
+    assert wrapped.get_extra_info("server_addr") == ("8.8.8.8", 443)
+
+
 def test_backend_connects_to_vetted_ip_and_verifies_peer(monkeypatch):
     connected = []
 
@@ -187,27 +201,34 @@ def test_dns_is_revalidated_for_each_new_connection(monkeypatch):
     assert connected == ["8.8.8.8"]
 
 
-def test_tls_stream_keeps_original_hostname_and_rechecks_peer():
+def test_tls_stream_keeps_original_hostname_and_rechecks_peer(monkeypatch):
     original = FakeStream(("8.8.8.8", 443))
+
+    async def fake_tls_wrap(stream, *, ssl_context, hostname, standard_compatible):
+        del ssl_context, standard_compatible
+        stream.tls_hostname = hostname
+        return FakeStream(stream.peer)
+
+    monkeypatch.setattr("anyio.streams.tls.TLSStream.wrap", fake_tls_wrap)
     wrapped = _VerifiedNetworkStream(original, ipaddress.ip_address("8.8.8.8"))
     tls_stream = asyncio.run(wrapped.start_tls(object(), "mcp.example", 5))
     assert original.tls_hostname == "mcp.example"
     assert tls_stream.get_extra_info("server_addr") == ("8.8.8.8", 443)
 
 
+def test_tls_peer_mismatch_closes_tls_stream(monkeypatch):
+    original = FakeStream(("8.8.8.8", 443))
+    tls_stream = FakeStream(("127.0.0.1", 443))
 
-def test_tls_peer_mismatch_closes_tls_stream():
-    class WrongPeerStream(FakeStream):
-        async def start_tls(self, *, ssl_context, hostname, standard_compatible, handshake_timeout):
-            del ssl_context, hostname, standard_compatible, handshake_timeout
-            self.tls_stream = FakeStream(("127.0.0.1", 443))
-            return self.tls_stream
+    async def fake_tls_wrap(stream, *, ssl_context, hostname, standard_compatible):
+        del stream, ssl_context, hostname, standard_compatible
+        return tls_stream
 
-    original = WrongPeerStream(("8.8.8.8", 443))
+    monkeypatch.setattr("anyio.streams.tls.TLSStream.wrap", fake_tls_wrap)
     wrapped = _VerifiedNetworkStream(original, ipaddress.ip_address("8.8.8.8"))
     with pytest.raises(SSRFProtectionError):
         asyncio.run(wrapped.start_tls(object(), "mcp.example", 5))
-    assert original.tls_stream.closed is True
+    assert tls_stream.closed is True
 
 
 def test_unix_socket_transport_is_rejected():
