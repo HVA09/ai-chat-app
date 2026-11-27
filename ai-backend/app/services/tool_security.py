@@ -108,6 +108,8 @@ def _validate_schema_definition(
     schema_type = schema.get("type")
     if root and schema_type != "object":
         raise _schema_error(path, "root type must be object")
+    if root and not isinstance(schema.get("properties"), dict):
+        raise _schema_error(path, "root properties must be an object")
     if schema_type is not None:
         valid_types = (
             isinstance(schema_type, str)
