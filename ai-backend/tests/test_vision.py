@@ -185,6 +185,12 @@ def test_analyze_attached_image_works_without_local_upload_copy(client, monkeypa
 def test_analyze_attached_image_discards_result_when_access_is_revoked(
     client, monkeypatch, db_session
 ):
+    # The setup conversation must not depend on a live provider credential.
+    monkeypatch.setattr(
+        chat_router_module,
+        "get_ai_reply",
+        AsyncMock(return_value=AIReply(text="رد تمهيدي")),
+    )
     from app.models.conversation import Message
     from app.models.usage_log import UsageLog
     from app.models.user import User
