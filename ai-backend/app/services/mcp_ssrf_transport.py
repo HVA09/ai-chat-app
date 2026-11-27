@@ -29,8 +29,11 @@ _SPECIAL_NETWORKS = tuple(
     ipaddress.ip_network(network)
     for network in (
         "192.0.0.0/24",       # IETF protocol assignments (includes globally-reachable exceptions)
+        "192.31.196.0/24",    # AS112 service
+        "192.52.193.0/24",    # Automatic Multicast Tunneling
         "192.88.99.0/24",     # Deprecated 6to4 relay anycast
-        "2001:20::/28",       # ORCHIDv2
+        "192.175.48.0/24",    # AS112 service
+        "2001::/23",          # IETF protocol assignments, including ORCHID and AMT
         "64:ff9b::/96",       # Well-known NAT64 translation prefix
         "64:ff9b:1::/48",     # Local-use NAT64 translation prefix
     )
