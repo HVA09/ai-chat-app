@@ -1231,6 +1231,25 @@ async def analyze_attached_image(
             history,
             conversation.ai_model,
         )
+        # Access can be revoked while the remote provider is processing the image.
+        # Revalidate the live conversation scope and attachment link before accepting
+        # the provider result or persisting messages/usage.
+        conversation = _get_authorized_file_context_conversation(conversation, db)
+        if scope_before_vision != (
+            conversation.workspace_id,
+            conversation.project_id,
+            conversation.assistant_id,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="تغير نطاق المحادثة أثناء تحليل الصورة",
+            )
+        attachment, image_path = _get_attached_image(
+            payload.conversation_id,
+            payload.file_id,
+            current_user,
+            db,
+        )
     except FileNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
