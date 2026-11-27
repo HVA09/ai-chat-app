@@ -5,13 +5,22 @@ from __future__ import annotations
 import json
 import logging
 import re
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
+import httpx2
 from mcp import Client
+from mcp.client.streamable_http import streamable_http_client
+from mcp.shared._httpx_utils import (
+    MCP_DEFAULT_SSE_READ_TIMEOUT,
+    MCP_DEFAULT_TIMEOUT,
+)
 from mcp.types import TextContent
 
 from app.config import settings
+from app.services.mcp_ssrf_transport import SSRFGuardTransport
 from app.services.tools.registry import ToolContext, ToolResult, ToolSpec
 
 logger = logging.getLogger(__name__)
@@ -29,6 +38,24 @@ class MCPServerConfig:
     allowed_tools: tuple[str, ...] = ()
 
 
+@asynccontextmanager
+async def _open_mcp_client(url: str):
+    """Open MCP through the DNS-pinning transport; never use the SDK default client."""
+    async with httpx2.AsyncClient(
+        transport=SSRFGuardTransport(),
+        timeout=httpx2.Timeout(
+            MCP_DEFAULT_TIMEOUT, read=MCP_DEFAULT_SSE_READ_TIMEOUT
+        ),
+        trust_env=False,
+        proxy=None,
+        follow_redirects=False,
+    ) as http_client:
+        async with Client(
+            streamable_http_client(url, http_client=http_client)
+        ) as client:
+            yield client
+
+
 def _load_server_configs() -> list[MCPServerConfig]:
     try:
         raw = json.loads(settings.MCP_SERVERS_JSON)
@@ -38,42 +65,73 @@ def _load_server_configs() -> list[MCPServerConfig]:
     if not isinstance(raw, list):
         raise MCPIntegrationError("MCP server configuration must be a JSON list.")
 
-    configs: list[MCPServerConfig] = []
-    for item in raw[: settings.MCP_MAX_SERVERS]:
-        if not isinstance(item, dict):
-            continue
-        name = str(item.get("name") or "").strip()
-        url = str(item.get("url") or "").strip()
-        enabled = bool(item.get("enabled", True))
-        raw_allowed_tools = item.get("allowed_tools", [])
-        if not isinstance(raw_allowed_tools, list):
-            raise MCPIntegrationError(
-                f"MCP server '{name}' allowed_tools must be a JSON list."
-            )
-        allowed_tools = tuple(
-            str(tool_name).strip()
-            for tool_name in raw_allowed_tools
-            if str(tool_name).strip()
+    if len(raw) > settings.MCP_MAX_SERVERS:
+        raise MCPIntegrationError(
+            f"MCP server configuration exceeds the maximum of {settings.MCP_MAX_SERVERS} servers."
         )
-        if not name or not url or not enabled:
-            continue
-        if not re.match(r"^https?://[^\s]+$", url, flags=re.IGNORECASE):
-            raise MCPIntegrationError(f"Invalid MCP server URL for '{name}'.")
-        if settings.ENVIRONMENT == "production" and not url.lower().startswith("https://"):
+
+    configs: list[MCPServerConfig] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
             raise MCPIntegrationError(
-                f"MCP server '{name}' must use HTTPS in production."
+                f"MCP server configuration entry {index} must be a JSON object."
             )
+        raw_name = item.get("name")
+        raw_url = item.get("url")
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            raise MCPIntegrationError(
+                f"MCP server configuration entry {index} requires a non-empty string name."
+            )
+        if not isinstance(raw_url, str) or not raw_url.strip():
+            raise MCPIntegrationError(
+                f"MCP server configuration entry {index} requires a non-empty string URL."
+            )
+        name = raw_name.strip()
+        url = raw_url.strip()
+        raw_enabled = item.get("enabled", True)
+        if not isinstance(raw_enabled, bool):
+            raise MCPIntegrationError("MCP server enabled must be a boolean.")
+        raw_allowed_tools = item.get("allowed_tools", [])
+        if not isinstance(raw_allowed_tools, list) or any(
+            not isinstance(tool_name, str) or not tool_name.strip()
+            for tool_name in raw_allowed_tools
+        ):
+            raise MCPIntegrationError(
+                f"MCP server '{name}' allowed_tools must contain only non-empty strings."
+            )
+        allowed_tools = tuple(tool_name.strip() for tool_name in raw_allowed_tools)
+        if len(set(allowed_tools)) != len(allowed_tools):
+            raise MCPIntegrationError(
+                f"MCP server '{name}' allowed_tools must not contain duplicates."
+            )
+        if not raw_enabled:
+            continue
+        try:
+            parsed_url = urlsplit(url)
+            _ = parsed_url.port
+        except ValueError as exc:
+            raise MCPIntegrationError(f"Invalid MCP server URL for '{name}'.") from exc
+        if (
+            parsed_url.scheme.lower() not in {"http", "https"}
+            or not parsed_url.hostname
+            or parsed_url.username is not None
+            or parsed_url.password is not None
+            or parsed_url.fragment
+            or any(character.isspace() for character in url)
+        ):
+            raise MCPIntegrationError(f"Invalid MCP server URL for '{name}'.")
+        if settings.ENVIRONMENT == "production" and parsed_url.scheme.lower() != "https":
+            raise MCPIntegrationError(f"MCP server '{name}' must use HTTPS in production.")
         configs.append(
             MCPServerConfig(
                 name=name,
                 url=url,
-                enabled=enabled,
+                enabled=raw_enabled,
                 allowed_tools=allowed_tools,
             )
         )
 
     return configs
-
 
 def _safe_tool_name(server_name: str, tool_name: str) -> str:
     raw = f"mcp__{server_name}__{tool_name}".lower()
@@ -88,7 +146,7 @@ def _tool_schema(tool: Any) -> dict:
     schema = getattr(tool, "inputSchema", None)
     if isinstance(schema, dict):
         return schema
-    return {"type": "object", "properties": {}}
+    raise MCPIntegrationError("MCP tool is missing a valid input schema.")
 
 
 def _format_tool_result(result: Any) -> str:
@@ -120,14 +178,14 @@ async def _call_remote_tool(
     arguments: dict[str, Any],
 ) -> ToolResult:
     try:
-        async with Client(server.url) as client:
+        async with _open_mcp_client(server.url) as client:
             result = await client.call_tool(remote_name, arguments)
     except Exception as exc:
         logger.warning(
-            "MCP tool call failed server=%s tool=%s error=%s",
+            "MCP tool call failed server=%s tool=%s error_type=%s",
             server.name,
             remote_name,
-            exc,
+            type(exc).__name__,
         )
         return ToolResult(
             content=f"تعذر الاتصال بأداة MCP '{remote_name}' على الخادم '{server.name}'.",
@@ -150,16 +208,16 @@ async def discover_mcp_tools() -> list[ToolSpec]:
         return []
 
     specs: list[ToolSpec] = []
+    registered_names: set[str] = set()
     for server in _load_server_configs():
         try:
-            async with Client(server.url) as client:
+            async with _open_mcp_client(server.url) as client:
                 result = await client.list_tools()
         except Exception as exc:
             logger.warning(
-                "MCP discovery failed server=%s url=%s error=%s",
+                "MCP discovery failed server=%s error_type=%s",
                 server.name,
-                server.url,
-                exc,
+                type(exc).__name__,
             )
             continue
 
@@ -183,6 +241,32 @@ async def discover_mcp_tools() -> list[ToolSpec]:
                 or f"MCP tool from {server.name}."
             ).strip()
             registry_name = _safe_tool_name(server.name, remote_name)
+            if registry_name in registered_names:
+                logger.warning(
+                    "MCP tool name collision server=%s tool=%s",
+                    server.name,
+                    remote_name,
+                )
+                continue
+            try:
+                schema = _tool_schema(remote_tool)
+            except MCPIntegrationError:
+                logger.warning(
+                    "MCP tool rejected due to missing schema server=%s tool=%s",
+                    server.name,
+                    remote_name,
+                )
+                continue
+            if schema.get("type") != "object" or not isinstance(
+                schema.get("properties"), dict
+            ):
+                logger.warning(
+                    "MCP tool rejected due to invalid schema server=%s tool=%s",
+                    server.name,
+                    remote_name,
+                )
+                continue
+            registered_names.add(registry_name)
 
             async def handler(
                 arguments: dict[str, Any],
@@ -198,7 +282,7 @@ async def discover_mcp_tools() -> list[ToolSpec]:
                 ToolSpec(
                     name=registry_name,
                     description=f"[MCP:{server.name}] {description}",
-                    parameters=_tool_schema(remote_tool),
+                    parameters=schema,
                     handler=handler,
                     output_trust="untrusted",
                 )
