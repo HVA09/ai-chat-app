@@ -124,6 +124,28 @@ def test_backend_connects_to_vetted_ip_and_verifies_peer(monkeypatch):
     assert stream.get_extra_info("server_addr") == ("8.8.8.8", 443)
 
 
+
+def test_backend_falls_back_only_to_other_vetted_addresses(monkeypatch):
+    connected = []
+
+    async def fake_getaddrinfo(*_args, **_kwargs):
+        return _dns_records("2606:4700:4700::1111", "8.8.8.8")
+
+    async def fake_connect_tcp(**kwargs):
+        address = kwargs["remote_host"]
+        connected.append(address)
+        if address == "2606:4700:4700::1111":
+            raise OSError("simulated IPv6 route failure")
+        return FakeStream((address, 443))
+
+    monkeypatch.setattr("app.services.mcp_ssrf_transport.anyio.getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr("app.services.mcp_ssrf_transport.anyio.connect_tcp", fake_connect_tcp)
+
+    stream = asyncio.run(_GuardedNetworkBackend().connect_tcp("dualstack.example", 443))
+    assert connected == ["2606:4700:4700::1111", "8.8.8.8"]
+    assert stream.get_extra_info("server_addr") == ("8.8.8.8", 443)
+
+
 def test_backend_closes_stream_when_peer_does_not_match(monkeypatch):
     stream = FakeStream(("1.1.1.1", 443))
 
