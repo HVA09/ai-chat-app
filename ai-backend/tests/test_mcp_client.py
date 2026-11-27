@@ -61,6 +61,53 @@ async def _fake_open_mcp_client(url, client_class=FakeClient):
         yield client
 
 
+
+def test_open_mcp_client_uses_guarded_transport_and_disables_proxy_bypass(monkeypatch):
+    captured = {}
+    sentinel_transport = object()
+
+    class FakeHTTPClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeMCPClient:
+        def __init__(self, transport):
+            captured["mcp_transport"] = transport
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(mcp_client.httpx2, "AsyncClient", FakeHTTPClient)
+    monkeypatch.setattr(mcp_client, "SSRFGuardTransport", lambda: sentinel_transport)
+    monkeypatch.setattr(
+        mcp_client,
+        "streamable_http_client",
+        lambda url, *, http_client: (url, http_client),
+    )
+    monkeypatch.setattr(mcp_client, "Client", FakeMCPClient)
+
+    async def exercise():
+        async with mcp_client._open_mcp_client("https://example.test/mcp"):
+            return None
+
+    asyncio.run(exercise())
+    assert captured["transport"] is sentinel_transport
+    assert captured["trust_env"] is False
+    assert captured["proxy"] is None
+    assert captured["follow_redirects"] is False
+    assert captured["mcp_transport"][0] == "https://example.test/mcp"
+    assert captured["mcp_transport"][1] is not None
+
+
 def test_mcp_discovery_maps_remote_tools(monkeypatch):
     monkeypatch.setattr(mcp_client.settings, "MCP_ENABLED", True)
     monkeypatch.setattr(
