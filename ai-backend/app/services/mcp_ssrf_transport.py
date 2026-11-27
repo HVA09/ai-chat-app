@@ -97,6 +97,8 @@ async def _resolve_public_addresses(
                     type=socket.SOCK_STREAM,
                     proto=socket.IPPROTO_TCP,
                 )
+    except TimeoutError:
+        raise
     except Exception as exc:
         raise SSRFProtectionError("MCP destination DNS resolution failed.") from exc
 
