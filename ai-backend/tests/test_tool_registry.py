@@ -840,10 +840,10 @@ def test_registry_rejects_deeply_nested_enum_values():
     result = asyncio.run(
         registry.execute(
             "deep_enum",
-            {"choice": nested},
+            {"choice": "leaf"},
             ToolContext(conversation=None, current_user=None, db=None),
         )
     )
 
     assert result.succeeded is False
-    assert "nesting is too deep" in result.content
+    assert "schema data nesting is too deep" in result.content
