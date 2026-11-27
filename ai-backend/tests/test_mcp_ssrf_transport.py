@@ -256,8 +256,8 @@ def test_dns_is_revalidated_for_each_new_connection(monkeypatch):
 def test_tls_stream_keeps_original_hostname_and_rechecks_peer(monkeypatch):
     original = FakeStream(("8.8.8.8", 443))
 
-    async def fake_tls_wrap(stream, *, ssl_context, hostname, standard_compatible):
-        del ssl_context, standard_compatible
+    async def fake_tls_wrap(stream, *, ssl_context, hostname, standard_compatible, server_side):
+        del ssl_context, standard_compatible, server_side
         stream.tls_hostname = hostname
         return FakeStream(stream.peer)
 
@@ -272,8 +272,8 @@ def test_tls_peer_mismatch_closes_tls_stream(monkeypatch):
     original = FakeStream(("8.8.8.8", 443))
     tls_stream = FakeStream(("127.0.0.1", 443))
 
-    async def fake_tls_wrap(stream, *, ssl_context, hostname, standard_compatible):
-        del stream, ssl_context, hostname, standard_compatible
+    async def fake_tls_wrap(stream, *, ssl_context, hostname, standard_compatible, server_side):
+        del stream, ssl_context, hostname, standard_compatible, server_side
         return tls_stream
 
     monkeypatch.setattr("anyio.streams.tls.TLSStream.wrap", fake_tls_wrap)
