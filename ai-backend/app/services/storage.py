@@ -112,10 +112,21 @@ def open_file(object_key: str, fallback_path: Path) -> BinaryIO:
     try:
         response = _client().get_object(Bucket=settings.S3_BUCKET, Key=object_key)
         return response["Body"]
-    except (BotoCoreError, ClientError) as exc:
-        # Keep existing local uploads readable during migration.
-        if fallback_path.exists():
+    except ClientError as exc:
+        # A local copy is a migration fallback only when the remote object is
+        # definitively absent. Permission, bucket, and service errors must not
+        # silently serve stale local bytes.
+        error = exc.response.get("Error", {})
+        error_code = str(error.get("Code", ""))
+        status_code = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        if (
+            error_code in {"NoSuchKey", "NotFound", "404"}
+            and status_code == 404
+            and fallback_path.exists()
+        ):
             return fallback_path.open("rb")
+        raise StorageError("فشل قراءة الملف من Object Storage") from exc
+    except BotoCoreError as exc:
         raise StorageError("فشل قراءة الملف من Object Storage") from exc
 
 
