@@ -124,12 +124,17 @@ class _VerifiedNetworkStream(httpcore2.AsyncNetworkStream):
             raise SSRFProtectionError("Connected MCP peer does not match the vetted IP.")
 
     async def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
-        del timeout
-        return await self._stream.receive(max_bytes)
+        if timeout is None:
+            return await self._stream.receive(max_bytes)
+        with anyio.fail_after(timeout):
+            return await self._stream.receive(max_bytes)
 
     async def write(self, buffer: bytes, timeout: float | None = None) -> None:
-        del timeout
-        await self._stream.send(buffer)
+        if timeout is None:
+            await self._stream.send(buffer)
+            return
+        with anyio.fail_after(timeout):
+            await self._stream.send(buffer)
 
     async def aclose(self) -> None:
         await self._stream.aclose()
