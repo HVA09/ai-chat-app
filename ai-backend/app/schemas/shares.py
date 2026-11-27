@@ -44,3 +44,4 @@ class SharedConversationOut(BaseModel):
     created_at: datetime
     expires_at: datetime | None
     messages: list[SharedMessageOut]
+    truncated: bool = False
