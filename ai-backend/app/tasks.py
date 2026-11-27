@@ -480,7 +480,8 @@ def _execute_agent_job(job_id: int, db=None) -> None:
             )
         )
         if claimed != 1:
-            db.rollback()
+            # Do not roll back caller-owned work when another worker already claimed it.
+            db.commit()
             return
         db.commit()
         db.refresh(job)
