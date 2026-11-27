@@ -195,6 +195,8 @@ def _get_valid_share(token: str, db: Session) -> ConversationShare:
 
 def _safe_shared_sources(sources: list[dict] | None) -> list[dict]:
     """Project source metadata onto the small public schema used by ChatMessage."""
+    if not isinstance(sources, list):
+        return []
     safe_sources = []
     for source in (sources or [])[:MAX_SHARED_SOURCES_PER_MESSAGE]:
         if not isinstance(source, dict):
