@@ -103,8 +103,22 @@ async def _resolve_public_addresses(host: str, port: int) -> tuple[IPAddress, ..
     return tuple(dict.fromkeys(addresses))
 
 
+def _stream_extra(stream: Any, info: str) -> Any:
+    """Translate HTTPCore extra-info names to AnyIO typed stream attributes."""
+    if hasattr(stream, "extra"):
+        if info == "server_addr":
+            return stream.extra(anyio.abc.SocketAttribute.remote_address)
+        if info == "client_addr":
+            return stream.extra(anyio.abc.SocketAttribute.local_address)
+        if info == "ssl_object":
+            return stream.extra(anyio.streams.tls.TLSAttribute.ssl_object)
+        return None
+    getter = getattr(stream, "get_extra_info", None)
+    return getter(info) if callable(getter) else None
+
+
 def _peer_ip(stream: Any) -> IPAddress:
-    peer = stream.get_extra_info("server_addr")
+    peer = _stream_extra(stream, "server_addr")
     if not isinstance(peer, tuple) or not peer:
         raise SSRFProtectionError("Unable to verify the connected MCP peer.")
     try:
@@ -145,12 +159,21 @@ class _VerifiedNetworkStream(httpcore2.AsyncNetworkStream):
         server_hostname: str | None = None,
         timeout: float | None = None,
     ) -> httpcore2.AsyncNetworkStream:
-        tls_stream = await self._stream.start_tls(
-            ssl_context=ssl_context,
-            hostname=server_hostname,
-            standard_compatible=True,
-            handshake_timeout=timeout,
-        )
+        if timeout is None:
+            tls_stream = await anyio.streams.tls.TLSStream.wrap(
+                self._stream,
+                ssl_context=ssl_context,
+                hostname=server_hostname,
+                standard_compatible=True,
+            )
+        else:
+            with anyio.fail_after(timeout):
+                tls_stream = await anyio.streams.tls.TLSStream.wrap(
+                    self._stream,
+                    ssl_context=ssl_context,
+                    hostname=server_hostname,
+                    standard_compatible=True,
+                )
         try:
             return _VerifiedNetworkStream(tls_stream, self._expected_peer)
         except Exception:
@@ -158,7 +181,7 @@ class _VerifiedNetworkStream(httpcore2.AsyncNetworkStream):
             raise
 
     def get_extra_info(self, info: str) -> Any:
-        return self._stream.get_extra_info(info)
+        return _stream_extra(self._stream, info)
 
 
 class _GuardedNetworkBackend(httpcore2.AsyncNetworkBackend):
