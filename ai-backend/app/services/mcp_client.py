@@ -201,7 +201,11 @@ async def discover_mcp_tools() -> list[ToolSpec]:
                 logger.warning("MCP tool name collision server=%s tool=%s", server.name, remote_name)
                 continue
             registered_names.add(registry_name)
-            schema = _tool_schema(remote_tool)
+            try:
+                schema = _tool_schema(remote_tool)
+            except MCPIntegrationError:
+                logger.warning("MCP tool rejected due to missing schema server=%s tool=%s", server.name, remote_name)
+                continue
             if schema.get("type") != "object" or not isinstance(schema.get("properties"), dict):
                 logger.warning("MCP tool rejected due to invalid schema server=%s tool=%s", server.name, remote_name)
                 continue
