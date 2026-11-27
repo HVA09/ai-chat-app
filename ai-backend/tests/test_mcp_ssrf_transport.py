@@ -1,0 +1,176 @@
+import asyncio
+import ipaddress
+import socket
+from types import SimpleNamespace
+
+import pytest
+
+from app.services.mcp_ssrf_transport import (
+    SSRFProtectionError,
+    _GuardedNetworkBackend,
+    _VerifiedNetworkStream,
+    _public_ip,
+    _resolve_public_addresses,
+)
+
+
+def _dns_records(*addresses, port=443):
+    records = []
+    for value in addresses:
+        parsed = ipaddress.ip_address(value)
+        family = socket.AF_INET if parsed.version == 4 else socket.AF_INET6
+        sockaddr = (value, port) if parsed.version == 4 else (value, port, 0, 0)
+        records.append((family, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", sockaddr))
+    return records
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("8.8.8.8", "8.8.8.8"),
+        ("2606:4700:4700::1111", "2606:4700:4700::1111"),
+        ("::ffff:8.8.8.8", "8.8.8.8"),
+    ],
+)
+def test_public_ip_normalization(value, expected):
+    assert str(_public_ip(value)) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "127.0.0.1",
+        "10.0.0.1",
+        "169.254.1.1",
+        "::1",
+        "fc00::1",
+        "::ffff:127.0.0.1",
+        "192.0.2.1",
+    ],
+)
+def test_non_public_ip_is_rejected(value):
+    with pytest.raises(SSRFProtectionError):
+        _public_ip(value)
+
+
+def test_dns_rejects_mixed_public_and_private_answers(monkeypatch):
+    async def fake_getaddrinfo(*_args, **_kwargs):
+        return _dns_records("8.8.8.8", "127.0.0.1")
+
+    monkeypatch.setattr("app.services.mcp_ssrf_transport.anyio.getaddrinfo", fake_getaddrinfo)
+    with pytest.raises(SSRFProtectionError, match="non-public"):
+        asyncio.run(_resolve_public_addresses("mixed.example", 443))
+
+
+def test_dns_accepts_only_public_ipv4_and_ipv6(monkeypatch):
+    async def fake_getaddrinfo(*_args, **_kwargs):
+        return _dns_records("8.8.8.8", "2606:4700:4700::1111")
+
+    monkeypatch.setattr("app.services.mcp_ssrf_transport.anyio.getaddrinfo", fake_getaddrinfo)
+    result = asyncio.run(_resolve_public_addresses("public.example", 443))
+    assert {str(item) for item in result} == {"8.8.8.8", "2606:4700:4700::1111"}
+
+
+def test_nonstandard_numeric_hostname_is_rejected_after_resolution(monkeypatch):
+    async def fake_getaddrinfo(*_args, **_kwargs):
+        return _dns_records("127.0.0.1")
+
+    monkeypatch.setattr("app.services.mcp_ssrf_transport.anyio.getaddrinfo", fake_getaddrinfo)
+    with pytest.raises(SSRFProtectionError):
+        asyncio.run(_resolve_public_addresses("2130706433", 443))
+
+
+class FakeStream:
+    def __init__(self, peer):
+        self.peer = peer
+        self.closed = False
+        self.tls_hostname = None
+
+    async def receive(self, _max_bytes):
+        return b""
+
+    async def send(self, _buffer):
+        return None
+
+    async def aclose(self):
+        self.closed = True
+
+    def get_extra_info(self, info):
+        return self.peer if info == "server_addr" else None
+
+    async def start_tls(self, *, ssl_context, hostname, standard_compatible, handshake_timeout):
+        del ssl_context, standard_compatible, handshake_timeout
+        self.tls_hostname = hostname
+        return FakeStream(self.peer)
+
+
+def test_backend_connects_to_vetted_ip_and_verifies_peer(monkeypatch):
+    connected = []
+
+    async def fake_getaddrinfo(*_args, **_kwargs):
+        return _dns_records("8.8.8.8")
+
+    async def fake_connect_tcp(**kwargs):
+        connected.append(kwargs["remote_host"])
+        return FakeStream(("8.8.8.8", 443))
+
+    monkeypatch.setattr("app.services.mcp_ssrf_transport.anyio.getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr("app.services.mcp_ssrf_transport.anyio.connect_tcp", fake_connect_tcp)
+
+    stream = asyncio.run(_GuardedNetworkBackend().connect_tcp("public.example", 443))
+    assert connected == ["8.8.8.8"]
+    assert stream.get_extra_info("server_addr") == ("8.8.8.8", 443)
+
+
+def test_backend_closes_stream_when_peer_does_not_match(monkeypatch):
+    stream = FakeStream(("1.1.1.1", 443))
+
+    async def fake_getaddrinfo(*_args, **_kwargs):
+        return _dns_records("8.8.8.8")
+
+    async def fake_connect_tcp(**_kwargs):
+        return stream
+
+    monkeypatch.setattr("app.services.mcp_ssrf_transport.anyio.getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr("app.services.mcp_ssrf_transport.anyio.connect_tcp", fake_connect_tcp)
+
+    with pytest.raises(SSRFProtectionError, match="does not match"):
+        asyncio.run(_GuardedNetworkBackend().connect_tcp("public.example", 443))
+    assert stream.closed is True
+
+
+def test_dns_is_revalidated_for_each_new_connection(monkeypatch):
+    dns_calls = 0
+    connected = []
+
+    async def fake_getaddrinfo(*_args, **_kwargs):
+        nonlocal dns_calls
+        dns_calls += 1
+        return _dns_records("8.8.8.8" if dns_calls == 1 else "127.0.0.1")
+
+    async def fake_connect_tcp(**kwargs):
+        connected.append(kwargs["remote_host"])
+        return FakeStream((kwargs["remote_host"], 443))
+
+    monkeypatch.setattr("app.services.mcp_ssrf_transport.anyio.getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr("app.services.mcp_ssrf_transport.anyio.connect_tcp", fake_connect_tcp)
+
+    backend = _GuardedNetworkBackend()
+    asyncio.run(backend.connect_tcp("rebind.example", 443))
+    with pytest.raises(SSRFProtectionError):
+        asyncio.run(backend.connect_tcp("rebind.example", 443))
+    assert dns_calls == 2
+    assert connected == ["8.8.8.8"]
+
+
+def test_tls_stream_keeps_original_hostname_and_rechecks_peer():
+    original = FakeStream(("8.8.8.8", 443))
+    wrapped = _VerifiedNetworkStream(original, ipaddress.ip_address("8.8.8.8"))
+    tls_stream = asyncio.run(wrapped.start_tls(object(), "mcp.example", 5))
+    assert original.tls_hostname == "mcp.example"
+    assert tls_stream.get_extra_info("server_addr") == ("8.8.8.8", 443)
+
+
+def test_unix_socket_transport_is_rejected():
+    with pytest.raises(SSRFProtectionError):
+        asyncio.run(_GuardedNetworkBackend().connect_unix_socket("/tmp/mcp.sock"))
