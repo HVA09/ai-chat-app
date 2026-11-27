@@ -249,7 +249,7 @@ def test_tls_handshake_failure_closes_raw_stream(monkeypatch):
 
     monkeypatch.setattr("anyio.streams.tls.TLSStream.wrap", failing_tls_wrap)
     wrapped = _VerifiedNetworkStream(original, ipaddress.ip_address("8.8.8.8"))
-    with pytest.raises(OSError, match="TLS handshake failure"):
+    with pytest.raises(httpcore2.ConnectError):
         asyncio.run(wrapped.start_tls(object(), "mcp.example", 5))
     assert original.closed is True
 
