@@ -13,6 +13,9 @@ def test_celery_app_has_production_scheduled_task():
     entry = schedule["run-due-scheduled-tasks"]
     assert entry["task"] == "run_due_scheduled_tasks"
     assert entry["schedule"] == 60.0
+    recovery = schedule["recover-webhook-deliveries"]
+    assert recovery["task"] == "recover_webhook_deliveries"
+    assert recovery["schedule"] == 60.0
 
 
 def test_celery_redis_tls_is_required_only_for_rediss_urls():
