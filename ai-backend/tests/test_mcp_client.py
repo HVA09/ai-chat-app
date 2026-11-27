@@ -209,3 +209,50 @@ def test_mcp_rejects_malformed_url_shapes(monkeypatch, url):
     monkeypatch.setattr(mcp_client.settings, "MCP_SERVERS_JSON", json.dumps([{"name": "demo", "url": url}]))
     with pytest.raises(MCPIntegrationError, match="Invalid MCP server URL"):
         _load_server_configs()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '[null]',
+        '[{"name":"demo","url":"https://example.test","enabled":true}, null]',
+        '[{"url":"https://example.test"}]',
+        '[{"name":"demo","url":12}]',
+        '[{"name":"demo","url":"https://example.test","allowed_tools":["add", 7]}]',
+        '[{"name":"demo","url":"https://example.test","allowed_tools":["add", " "]}]',
+        '[{"name":"demo","url":"https://example.test","allowed_tools":["add", "add"]}]',
+    ],
+)
+def test_mcp_server_config_rejects_malformed_entries_and_allowlists(monkeypatch, payload):
+    monkeypatch.setattr(mcp_client.settings, "ENVIRONMENT", "development")
+    monkeypatch.setattr(mcp_client.settings, "MCP_SERVERS_JSON", payload)
+
+    with pytest.raises(MCPIntegrationError):
+        _load_server_configs()
+
+
+def test_mcp_server_config_rejects_server_count_over_limit(monkeypatch):
+    import json
+
+    monkeypatch.setattr(mcp_client.settings, "MCP_MAX_SERVERS", 1)
+    monkeypatch.setattr(
+        mcp_client.settings,
+        "MCP_SERVERS_JSON",
+        json.dumps([
+            {"name": "first", "url": "https://first.example"},
+            {"name": "second", "url": "https://second.example"},
+        ]),
+    )
+
+    with pytest.raises(MCPIntegrationError, match="exceeds the maximum"):
+        _load_server_configs()
+
+
+def test_disabled_mcp_server_is_validated_but_not_loaded(monkeypatch):
+    monkeypatch.setattr(
+        mcp_client.settings,
+        "MCP_SERVERS_JSON",
+        '[{"name":"demo","url":"https://example.test","enabled":false,"allowed_tools":[]}]',
+    )
+
+    assert _load_server_configs() == []
