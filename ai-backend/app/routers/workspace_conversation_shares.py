@@ -15,7 +15,8 @@ from app.schemas.workspace_conversation_shares import (
     WorkspaceSharedConversationOut,
 )
 
-router = APIRouter(tags=["Workspace Conversation Sharing"])\n
+router = APIRouter(tags=["Workspace Conversation Sharing"])
+
 MAX_WORKSPACE_SHARED_MESSAGES = 100
 MAX_WORKSPACE_SHARED_MESSAGE_CHARS = 20_000
 MAX_WORKSPACE_SHARED_TOTAL_CHARS = 100_000
@@ -80,7 +81,6 @@ def _bounded_workspace_messages(db: Session, conversation_id: int):
     if len(output) < len(messages):
         truncated = True
     return output, truncated
-
 
 
 def _get_membership(workspace_id: int, current_user: User, db: Session) -> WorkspaceMember:
