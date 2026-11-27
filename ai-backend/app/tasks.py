@@ -2,6 +2,7 @@
 مهام خلفية (Celery) — البريد الإلكتروني + تنفيذ مهام AI المجدولة.
 """
 import asyncio
+import os
 import ssl
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
@@ -1191,11 +1192,14 @@ try:
             "task": "run_due_scheduled_tasks",
             "schedule": 60.0,
         },
-        "recover-webhook-deliveries": {
+    }
+    # Recovery remains opt-in: do not add a new periodic worker/scheduler
+    # to existing deployments until the operator explicitly enables it.
+    if os.getenv("WEBHOOK_DELIVERY_RECOVERY_ENABLED", "").strip().lower() == "true":
+        celery_app.conf.beat_schedule["recover-webhook-deliveries"] = {
             "task": "recover_webhook_deliveries",
             "schedule": 60.0,
         }
-    }
 
     @celery_app.task(name="send_email_task")
     def send_email_task(to: str, subject: str, body: str) -> None:
