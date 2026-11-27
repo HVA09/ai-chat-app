@@ -254,6 +254,8 @@ def _schedule_retry(delivery: WebhookDelivery, db: Session, *, error: str, respo
         delivery.last_error = error[:1000]
         delivery.response_status = response_status
         delivery.next_attempt_at = None
+        # Persist the terminal state when an owned worker session closes.
+        db.commit()
         return False
 
     delay = _retry_delay(delivery.attempt_count)
@@ -273,8 +275,18 @@ def deliver_webhook_delivery(delivery_id: int, db: Session | None = None) -> Non
         db = SessionLocal()
 
     try:
-        delivery = db.get(WebhookDelivery, delivery_id)
-        if delivery is None or delivery.status == "delivered":
+        delivery = (
+            db.query(WebhookDelivery)
+            .filter(WebhookDelivery.id == delivery_id)
+            .with_for_update()
+            .first()
+        )
+        if delivery is None or delivery.status != "queued":
+            return
+        if (
+            delivery.next_attempt_at is not None
+            and delivery.next_attempt_at > datetime.now(timezone.utc)
+        ):
             return
 
         endpoint = db.get(WebhookEndpoint, delivery.webhook_endpoint_id)
@@ -318,7 +330,9 @@ def deliver_webhook_delivery(delivery_id: int, db: Session | None = None) -> Non
         delivery.attempt_count += 1
         delivery.status = "sending"
         delivery.last_error = None
-        db.commit()
+        # Keep the row lock and transaction open through the bounded HTTP call.
+        # The recovery sweep uses FOR UPDATE SKIP LOCKED and cannot reclaim this
+        # delivery while a sender is active. A crashed worker rolls back to queued.
 
         timestamp = int(datetime.now(timezone.utc).timestamp())
         headers = {

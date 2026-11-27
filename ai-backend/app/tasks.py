@@ -2,11 +2,13 @@
 مهام خلفية (Celery) — البريد الإلكتروني + تنفيذ مهام AI المجدولة.
 """
 import asyncio
+import os
 import ssl
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import and_, or_
 from sqlalchemy.exc import IntegrityError
 
 from app.database import SessionLocal, commit_and_release_connection
@@ -21,6 +23,7 @@ from app.models.scheduled_task import (
 )
 from app.models.scheduled_task_run import ScheduledTaskRun, ScheduledTaskRunStatus
 from app.models.usage_log import UsageLog
+from app.models.webhook_delivery import WebhookDelivery
 from app.models.user import User, UserRole
 from app.models.workspace import Workspace, WorkspaceMember
 from app.services.workspace_rbac import has_workspace_permission
@@ -1099,6 +1102,62 @@ def _run_due_scheduled_tasks() -> None:
         _execute_scheduled_task(task_id, run_id)
 
 
+def _run_webhook_delivery_outbox_batch(batch_size: int = 50) -> int:
+    """Re-enqueue due webhook deliveries and recover abandoned sends."""
+    now = datetime.now(timezone.utc)
+    stale_sending_before = now - timedelta(minutes=15)
+    db = SessionLocal()
+    try:
+        deliveries = (
+            db.query(WebhookDelivery)
+            .filter(
+                or_(
+                    and_(
+                        WebhookDelivery.status == "queued",
+                        or_(
+                            WebhookDelivery.next_attempt_at.is_(None),
+                            WebhookDelivery.next_attempt_at <= now,
+                        ),
+                    ),
+                    and_(
+                        WebhookDelivery.status == "sending",
+                        WebhookDelivery.updated_at <= stale_sending_before,
+                    ),
+                )
+            )
+            .order_by(WebhookDelivery.created_at.asc(), WebhookDelivery.id.asc())
+            .with_for_update(skip_locked=True)
+            .limit(max(1, min(batch_size, 200)))
+            .all()
+        )
+        delivery_ids = []
+        for delivery in deliveries:
+            if delivery.status == "sending":
+                # Legacy/stale sending rows are recoverable only after the
+                # bounded HTTP timeout plus a conservative safety interval.
+                delivery.status = "queued"
+                delivery.next_attempt_at = now
+            delivery_ids.append(delivery.id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Could not claim webhook delivery outbox rows")
+        raise
+    finally:
+        db.close()
+
+    for delivery_id in delivery_ids:
+        try:
+            deliver_webhook_task.delay(delivery_id)
+        except Exception:
+            # Keep the durable row queued; the next Beat pass will retry enqueue.
+            logger.warning(
+                "Could not enqueue webhook delivery %s; it remains in the outbox",
+                delivery_id,
+            )
+    return len(delivery_ids)
+
+
 def _redis_ssl_options(redis_url: str) -> dict | None:
     """Require verified TLS only for Redis URLs that explicitly use rediss://."""
     if urlsplit(redis_url).scheme.lower() != "rediss":
@@ -1132,8 +1191,15 @@ try:
         "run-due-scheduled-tasks": {
             "task": "run_due_scheduled_tasks",
             "schedule": 60.0,
-        }
+        },
     }
+    # Recovery remains opt-in: do not add a new periodic worker/scheduler
+    # to existing deployments until the operator explicitly enables it.
+    if os.getenv("WEBHOOK_DELIVERY_RECOVERY_ENABLED", "").strip().lower() == "true":
+        celery_app.conf.beat_schedule["recover-webhook-deliveries"] = {
+            "task": "recover_webhook_deliveries",
+            "schedule": 60.0,
+        }
 
     @celery_app.task(name="send_email_task")
     def send_email_task(to: str, subject: str, body: str) -> None:
@@ -1158,6 +1224,10 @@ try:
     def run_due_scheduled_tasks() -> None:
         _run_due_scheduled_tasks()
 
+    @celery_app.task(name="recover_webhook_deliveries")
+    def recover_webhook_deliveries() -> int:
+        return _run_webhook_delivery_outbox_batch()
+
     _CELERY_AVAILABLE = True
 except ImportError:
     celery_app = None
@@ -1165,6 +1235,7 @@ except ImportError:
     execute_scheduled_task = None
     execute_agent_job = None
     run_due_scheduled_tasks = None
+    recover_webhook_deliveries = None
     _CELERY_AVAILABLE = False
     logger.info("مكتبة celery غير مثبّتة — المهام الخلفية غير مفعّلة")
 
