@@ -34,6 +34,7 @@ _SPECIAL_NETWORKS = tuple(
         "192.88.99.0/24",     # Deprecated 6to4 relay anycast
         "192.175.48.0/24",    # AS112 service
         "2001::/23",          # IETF protocol assignments, including ORCHID and AMT
+        "2002::/16",          # Deprecated 6to4 transition prefix; embeds an IPv4 destination
         "64:ff9b::/96",       # Well-known NAT64 translation prefix
         "64:ff9b:1::/48",     # Local-use NAT64 translation prefix
     )
