@@ -117,3 +117,18 @@ def test_mcp_server_config_parses_allowed_tools(monkeypatch):
     config = _load_server_configs()[0]
 
     assert config.allowed_tools == ("add", "lookup")
+
+
+def test_mcp_enabled_requires_boolean(monkeypatch):
+    monkeypatch.setattr(mcp_client.settings, "MCP_SERVERS_JSON", '[{"name":"demo","url":"https://example.test","enabled":"false"}]')
+    with pytest.raises(MCPIntegrationError, match="enabled must be a boolean"):
+        _load_server_configs()
+
+
+@pytest.mark.parametrize("url", ["https://user:pass@example.test/mcp", "https://example.test:bad/mcp", "https://example.test/mcp#fragment", "https:///missing-host"])
+def test_mcp_rejects_malformed_url_shapes(monkeypatch, url):
+    import json
+    monkeypatch.setattr(mcp_client.settings, "ENVIRONMENT", "development")
+    monkeypatch.setattr(mcp_client.settings, "MCP_SERVERS_JSON", json.dumps([{"name": "demo", "url": url}]))
+    with pytest.raises(MCPIntegrationError, match="Invalid MCP server URL"):
+        _load_server_configs()
