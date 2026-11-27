@@ -2,6 +2,9 @@ import asyncio
 import ipaddress
 import socket
 import pytest
+from types import SimpleNamespace
+import httpcore2
+import ssl
 
 from app.services.mcp_ssrf_transport import (
     SSRFProtectionError,
