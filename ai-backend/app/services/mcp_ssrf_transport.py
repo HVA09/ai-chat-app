@@ -279,6 +279,10 @@ class SSRFGuardTransport(httpx2.AsyncBaseTransport):
             network_backend=_GuardedNetworkBackend(),
         )
 
+    async def __aenter__(self):
+        await self._pool.__aenter__()
+        return self
+
     async def handle_async_request(self, request: httpx2.Request) -> httpx2.Response:
         if not isinstance(request.stream, httpx2.AsyncByteStream):
             raise TypeError("MCP HTTP request body must be an asynchronous byte stream.")
