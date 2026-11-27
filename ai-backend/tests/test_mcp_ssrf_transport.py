@@ -170,6 +170,43 @@ def test_backend_falls_back_only_to_other_vetted_addresses(monkeypatch):
     assert stream.get_extra_info("server_addr") == ("8.8.8.8", 443)
 
 
+def test_backend_applies_socket_options_to_the_connected_socket(monkeypatch):
+    raw_socket = SimpleNamespace(options=[])
+
+    def setsockopt(*option):
+        raw_socket.options.append(option)
+
+    raw_socket.setsockopt = setsockopt
+
+    class SocketOptionStream(FakeStream):
+        def extra(self, attribute, default=None):
+            import anyio
+
+            if attribute is anyio.abc.SocketAttribute.remote_address:
+                return self.peer
+            if attribute is anyio.abc.SocketAttribute.raw_socket:
+                return raw_socket
+            return default
+
+    async def fake_getaddrinfo(*_args, **_kwargs):
+        return _dns_records("8.8.8.8")
+
+    async def fake_connect_tcp(**_kwargs):
+        return SocketOptionStream(("8.8.8.8", 443))
+
+    monkeypatch.setattr("app.services.mcp_ssrf_transport.anyio.getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr("app.services.mcp_ssrf_transport.anyio.connect_tcp", fake_connect_tcp)
+
+    asyncio.run(
+        _GuardedNetworkBackend().connect_tcp(
+            "public.example",
+            443,
+            socket_options=[(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)],
+        )
+    )
+    assert raw_socket.options == [(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)]
+
+
 def test_backend_closes_stream_when_peer_does_not_match(monkeypatch):
     stream = FakeStream(("1.1.1.1", 443))
 
