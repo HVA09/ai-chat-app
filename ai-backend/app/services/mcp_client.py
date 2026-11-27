@@ -61,12 +61,22 @@ def _load_server_configs() -> list[MCPServerConfig]:
         )
         if not name or not url or not enabled:
             continue
-        if not re.match(r"^https?://[^\s]+$", url, flags=re.IGNORECASE):
+        try:
+            parsed_url = urlsplit(url)
+            _ = parsed_url.port
+        except ValueError as exc:
+            raise MCPIntegrationError(f"Invalid MCP server URL for '{name}'.") from exc
+        if (
+            parsed_url.scheme.lower() not in {"http", "https"}
+            or not parsed_url.hostname
+            or parsed_url.username is not None
+            or parsed_url.password is not None
+            or parsed_url.fragment
+            or any(character.isspace() for character in url)
+        ):
             raise MCPIntegrationError(f"Invalid MCP server URL for '{name}'.")
-        if settings.ENVIRONMENT == "production" and not url.lower().startswith("https://"):
-            raise MCPIntegrationError(
-                f"MCP server '{name}' must use HTTPS in production."
-            )
+        if settings.ENVIRONMENT == "production" and parsed_url.scheme.lower() != "https":
+            raise MCPIntegrationError(f"MCP server '{name}' must use HTTPS in production.")
         configs.append(
             MCPServerConfig(
                 name=name,
