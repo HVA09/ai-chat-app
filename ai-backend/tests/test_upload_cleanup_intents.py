@@ -109,3 +109,36 @@ def test_upload_cleanup_attempts_are_monotonic_and_completion_is_terminal(db_ses
         succeeded=False,
         error_code="late_failure",
     )
+
+
+def test_cleanup_intent_insert_failure_preserves_callers_transaction(db_session, monkeypatch):
+    from sqlalchemy.exc import IntegrityError
+
+    user = _make_user(db_session)
+    original_flush = db_session.flush
+    raised = False
+
+    def fail_cleanup_insert(*args, **kwargs):
+        nonlocal raised
+        if not raised and any(
+            isinstance(item, UploadCleanupIntent) for item in db_session.new
+        ):
+            raised = True
+            raise IntegrityError("simulated unique-key race", {}, Exception("duplicate"))
+        return original_flush(*args, **kwargs)
+
+    monkeypatch.setattr(db_session, "flush", fail_cleanup_insert)
+    try:
+        enqueue_upload_cleanup_intent(
+            db_session,
+            user_id=user.id,
+            object_key=f"users/{user.id}/{uuid4().hex}.txt",
+        )
+        assert False, "expected the simulated insert failure"
+    except IntegrityError:
+        pass
+
+    # The failed insert must not roll back the caller's existing transaction.
+    another_user = _make_user(db_session)
+    assert another_user.id is not None
+    db_session.commit()
