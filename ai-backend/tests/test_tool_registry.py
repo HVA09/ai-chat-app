@@ -647,3 +647,203 @@ def test_project_archive_releases_database_before_remote_upload(
     assert db.commits == 2
     assert db.expire_on_commit is True
 
+
+
+
+@pytest.mark.parametrize(
+    "schema",
+    [
+        {"type": "object", "properties": {}, "patternProperties": {}},
+        {"type": "object", "properties": {"value": {"type": ["string", "unsupported"]}}},
+        {"type": "array", "items": {"type": "string"}},
+        {},
+    ],
+)
+def test_registry_rejects_invalid_or_unsupported_schemas(schema):
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            name="invalid_schema",
+            description="Invalid schema",
+            parameters=schema,
+            handler=_ok_handler,
+        )
+    )
+
+    result = asyncio.run(
+        registry.execute(
+            "invalid_schema",
+            {},
+            ToolContext(conversation=None, current_user=None, db=None),
+        )
+    )
+
+    assert result.succeeded is False
+    assert "Invalid tool schema" in result.content
+
+
+@pytest.mark.parametrize(
+    ("schema", "arguments", "expected"),
+    [
+        (
+            {
+                "type": "object",
+                "properties": {"count": {"type": "integer", "minimum": 2}},
+            },
+            {"count": 1},
+            "minimum",
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {"count": {"type": "number", "maximum": 5}},
+            },
+            {"count": 6},
+            "maximum",
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {"items": {"type": "array", "minItems": 2}},
+            },
+            {"items": ["one"]},
+            "minItems",
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {"value": {"enum": [1]}},
+            },
+            {"value": True},
+            "Invalid tool argument value",
+        ),
+    ],
+)
+def test_registry_enforces_supported_schema_constraints(schema, arguments, expected):
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            name="constrained",
+            description="Constrained schema",
+            parameters=schema,
+            handler=_ok_handler,
+        )
+    )
+
+    result = asyncio.run(
+        registry.execute(
+            "constrained",
+            arguments,
+            ToolContext(conversation=None, current_user=None, db=None),
+        )
+    )
+
+    assert result.succeeded is False
+    assert expected in result.content
+
+
+def test_registry_accepts_valid_empty_object_schema():
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            name="no_args",
+            description="No arguments",
+            parameters={
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+            handler=_ok_handler,
+        )
+    )
+
+    result = asyncio.run(
+        registry.execute(
+            "no_args",
+            {},
+            ToolContext(conversation=None, current_user=None, db=None),
+        )
+    )
+
+    assert result.succeeded is True
+
+
+@pytest.mark.parametrize(
+    ("schema", "expected"),
+    [
+        (
+            {
+                "type": "object",
+                "properties": {
+                    f"field_{index}": {"type": "string"}
+                    for index in range(257)
+                },
+            },
+            "too many properties",
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {"choice": {"enum": list(range(257))}},
+            },
+            "enum contains too many values",
+        ),
+        (
+            {
+                "type": "object",
+                "properties": {"choice": {"enum": [float("nan")]}},
+            },
+            "finite",
+        ),
+    ],
+)
+def test_registry_rejects_resource_exhaustion_or_non_json_schemas(schema, expected):
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            name="bounded_schema",
+            description="Bounded schema",
+            parameters=schema,
+            handler=_ok_handler,
+        )
+    )
+
+    result = asyncio.run(
+        registry.execute(
+            "bounded_schema",
+            {},
+            ToolContext(conversation=None, current_user=None, db=None),
+        )
+    )
+
+    assert result.succeeded is False
+    assert expected in result.content
+
+
+def test_registry_rejects_deeply_nested_enum_values():
+    nested = "leaf"
+    for _ in range(70):
+        nested = [nested]
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            name="deep_enum",
+            description="Deep enum",
+            parameters={
+                "type": "object",
+                "properties": {"choice": {"enum": [nested]}},
+            },
+            handler=_ok_handler,
+        )
+    )
+
+    result = asyncio.run(
+        registry.execute(
+            "deep_enum",
+            {"choice": "leaf"},
+            ToolContext(conversation=None, current_user=None, db=None),
+        )
+    )
+
+    assert result.succeeded is False
+    assert "schema data nesting is too deep" in result.content
