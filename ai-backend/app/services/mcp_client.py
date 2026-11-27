@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 import httpx2
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
+from mcp.shared._httpx_utils import MCP_DEFAULT_SSE_READ_TIMEOUT, MCP_DEFAULT_TIMEOUT
 from mcp.types import TextContent
 
 from app.config import settings
@@ -40,6 +41,9 @@ async def _open_mcp_client(url: str):
     """Open MCP through the DNS-pinning transport; never use the SDK default client."""
     async with httpx2.AsyncClient(
         transport=SSRFGuardTransport(),
+        timeout=httpx2.Timeout(
+            MCP_DEFAULT_TIMEOUT, read=MCP_DEFAULT_SSE_READ_TIMEOUT
+        ),
         trust_env=False,
         proxy=None,
         follow_redirects=False,
