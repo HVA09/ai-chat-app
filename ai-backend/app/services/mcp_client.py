@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import re
-from urllib.parse import urlsplit
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 from typing import Any
 
 from mcp import Client
@@ -198,17 +198,31 @@ async def discover_mcp_tools() -> list[ToolSpec]:
             ).strip()
             registry_name = _safe_tool_name(server.name, remote_name)
             if registry_name in registered_names:
-                logger.warning("MCP tool name collision server=%s tool=%s", server.name, remote_name)
+                logger.warning(
+                    "MCP tool name collision server=%s tool=%s",
+                    server.name,
+                    remote_name,
+                )
                 continue
-            registered_names.add(registry_name)
             try:
                 schema = _tool_schema(remote_tool)
             except MCPIntegrationError:
-                logger.warning("MCP tool rejected due to missing schema server=%s tool=%s", server.name, remote_name)
+                logger.warning(
+                    "MCP tool rejected due to missing schema server=%s tool=%s",
+                    server.name,
+                    remote_name,
+                )
                 continue
-            if schema.get("type") != "object" or not isinstance(schema.get("properties"), dict):
-                logger.warning("MCP tool rejected due to invalid schema server=%s tool=%s", server.name, remote_name)
+            if schema.get("type") != "object" or not isinstance(
+                schema.get("properties"), dict
+            ):
+                logger.warning(
+                    "MCP tool rejected due to invalid schema server=%s tool=%s",
+                    server.name,
+                    remote_name,
+                )
                 continue
+            registered_names.add(registry_name)
 
             async def handler(
                 arguments: dict[str, Any],
