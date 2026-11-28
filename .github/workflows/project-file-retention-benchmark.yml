@@ -1,0 +1,133 @@
+name: Project file retention benchmark
+
+on:
+  pull_request:
+    branches:
+      - security/project-retention-lock-order-20261119-v2
+    paths:
+      - ".github/workflows/project-file-retention-benchmark.yml"
+      - "ai-backend/scripts/benchmark_project_file_retention.py"
+  workflow_dispatch:
+    inputs:
+      rows:
+        description: Synthetic rows per scenario
+        type: choice
+        required: true
+        default: "10000"
+        options:
+          - "1000"
+          - "10000"
+          - "50000"
+          - "100000"
+          - "500000"
+      repetitions:
+        description: Repetitions per scenario
+        type: choice
+        required: true
+        default: "3"
+        options:
+          - "2"
+          - "3"
+          - "5"
+      array_ratio:
+        description: Requested array snapshot ratio
+        type: choice
+        required: true
+        default: "0.5"
+        options:
+          - "0.5"
+          - "1.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: project-file-retention-benchmark-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.ref == 'perf/project-retention-benchmark-20261119'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: ghcr.io/jonathanmcohen/pgvector:16-0.8.7
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ai_backend_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ai_backend_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ai_backend_test
+      ROWS: ${{ inputs.rows || '10000' }}
+      REPETITIONS: ${{ inputs.repetitions || '3' }}
+      ARRAY_RATIO: ${{ inputs.array_ratio || '0.5' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install minimal benchmark dependencies
+        run: python -m pip install --disable-pip-version-check "sqlalchemy>=2.0" "psycopg[binary]>=3.2"
+      - name: Wait for disposable PostgreSQL
+        run: |
+          for attempt in $(seq 1 30); do
+            if pg_isready -h localhost -p 5432 -U postgres -d ai_backend_test; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Disposable PostgreSQL did not become ready" >&2
+          exit 1
+      - name: Run isolated retention benchmark
+        working-directory: ai-backend
+        run: |
+          python scripts/benchmark_project_file_retention.py \
+            --rows "$ROWS" \
+            --modes sparse,dense,no-match \
+            --array-ratio "$ARRAY_RATIO" \
+            --repetitions "$REPETITIONS" \
+            --output retention-benchmark-report.json
+          cat retention-benchmark-report.json
+      - name: Publish benchmark summary
+        if: success()
+        working-directory: ai-backend
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("retention-benchmark-report.json").read_text())
+          lines = [
+              "## Project file retention benchmark",
+              "",
+              f"- Commit: `{report.get('commit_sha')}`",
+              f"- PostgreSQL: {report.get('postgresql_version')}",
+              f"- Runner: {report['runtime'].get('platform')} / {report['runtime'].get('machine')}",
+              f"- CPU count: {report['runtime'].get('cpu_count')}",
+              f"- Rows per scenario: {', '.join(str(item['rows']) for item in report['results'][::3])}",
+              "",
+              "| Rows | Mode | Scanned | Matched | Scan p50 (ms) | Scan p95 (ms) | Unrelated lock wait (ms) |",
+              "|---:|---|---:|---:|---:|---:|---:|",
+          ]
+          for item in report["results"]:
+              lines.append(
+                  f"| {item['rows']} | {item['mode']} | {item['scanned_rows_per_run']} "
+                  f"| {item['matched_rows_per_run']} | {item['scan_ms_p50']} "
+                  f"| {item['scan_ms_p95']} | {item['unrelated_row_lock_wait_ms']} |"
+              )
+          Path(__import__("os").environ["GITHUB_STEP_SUMMARY"]).write_text("\n".join(lines) + "\n")
+          PY
+      - name: Upload JSON benchmark report
+        if: always() && hashFiles('ai-backend/retention-benchmark-report.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: project-file-retention-benchmark-${{ github.run_id }}
+          path: ai-backend/retention-benchmark-report.json
+          if-no-files-found: error
+          retention-days: 14
