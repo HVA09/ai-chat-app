@@ -1482,3 +1482,136 @@ def test_upload_rechecks_file_count_quota_after_account_lock(
     assert db_session.query(FileAttachment).filter(
         FileAttachment.original_filename == "second.txt"
     ).count() == 0
+
+
+@pytest.mark.parametrize("quota_kind", ["file_count", "storage_bytes"])
+def test_concurrent_uploads_cannot_exceed_account_quota_on_postgres(
+    db_session, tmp_path, monkeypatch, quota_kind
+):
+    """Two independent uploads racing for the final quota slot serialize at the user lock."""
+    import asyncio
+    from io import BytesIO
+    from threading import Barrier, Thread
+    from uuid import uuid4
+
+    import pytest
+    from fastapi import HTTPException
+    from sqlalchemy.orm import sessionmaker
+    from starlette.datastructures import Headers, UploadFile
+
+    from app.config import settings
+    from app.models.file_attachment import FileAttachment
+    from app.models.user import User
+    from app.routers import files as files_router
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for this regression test")
+
+    monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(settings, "MAX_FILES_PER_USER", 1 if quota_kind == "file_count" else 10)
+    monkeypatch.setattr(settings, "MAX_STORAGE_PER_USER_MB", 1)
+    monkeypatch.setattr(files_router, "extract_text", lambda *_args, **_kwargs: None)
+
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    suffix = uuid4().hex
+    creator = session_factory()
+    user = User(
+        email=f"concurrent-quota-{suffix}@example.test",
+        hashed_password="test-only-hash",
+    )
+    creator.add(user)
+    creator.commit()
+    user_id = user.id
+    creator.close()
+
+    # Both requests must finish the initial quota check and reach external
+    # storage before either is allowed to finalize under the user row lock.
+    storage_barrier = Barrier(2)
+    objects = {}
+    upload_results = []
+    upload_errors = []
+
+    def fake_put_file(local_path, object_key, _content_type):
+        storage_barrier.wait(timeout=10)
+        objects[object_key] = local_path.read_bytes()
+
+    def fake_delete_file(object_key, fallback_path):
+        objects.pop(object_key, None)
+        fallback_path.unlink(missing_ok=True)
+
+    monkeypatch.setattr(files_router, "put_file", fake_put_file)
+    monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
+
+    payloads = (
+        b"first concurrent upload",
+        b"second concurrent upload",
+    )
+    if quota_kind == "storage_bytes":
+        # A 1 MiB account limit; each upload is 600 KiB, so only one may commit.
+        payloads = (b"a" * (600 * 1024), b"b" * (600 * 1024))
+
+    def run_upload(index, payload):
+        try:
+            with session_factory() as upload_db:
+                upload_db.begin()
+                current_user = upload_db.get(User, user_id)
+                upload = UploadFile(
+                    filename=f"quota-{index}.txt",
+                    file=BytesIO(payload),
+                    headers=Headers({"content-type": "text/plain"}),
+                )
+                result = asyncio.run(
+                    files_router.upload_file(
+                        upload,
+                        current_user=current_user,
+                        db=upload_db,
+                    )
+                )
+                upload_results.append(result)
+        except BaseException as exc:
+            upload_errors.append(exc)
+
+    threads = [
+        Thread(target=run_upload, args=(index, payload), daemon=True)
+        for index, payload in enumerate(payloads)
+    ]
+    try:
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=20)
+        assert all(not thread.is_alive() for thread in threads), "upload threads did not finish"
+
+        assert len(upload_results) == 1
+        assert len(upload_errors) == 1
+        assert isinstance(upload_errors[0], HTTPException)
+        assert upload_errors[0].status_code == 413
+
+        with session_factory() as verify:
+            saved = (
+                verify.query(FileAttachment)
+                .filter(FileAttachment.user_id == user_id)
+                .all()
+            )
+            assert len(saved) == 1
+            if quota_kind == "storage_bytes":
+                assert sum(item.size_bytes for item in saved) <= 1024 * 1024
+        assert len(objects) == 1
+    finally:
+        # Ensure a failed test cannot leave worker threads blocked at the barrier.
+        try:
+            storage_barrier.abort()
+        except Exception:
+            pass
+        for thread in threads:
+            thread.join(timeout=5)
+        with session_factory() as cleanup:
+            cleanup.query(FileAttachment).filter(
+                FileAttachment.user_id == user_id
+            ).delete(synchronize_session=False)
+            cleanup.query(User).filter(User.id == user_id).delete(
+                synchronize_session=False
+            )
+            cleanup.commit()
