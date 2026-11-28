@@ -302,3 +302,76 @@ def test_postgres_independent_workers_ignore_stale_failure_after_reclaim(monkeyp
         assert saved.lease_token is None
         assert saved.last_error is None
         assert saved.completed_at is not None
+
+
+
+def test_postgres_two_workers_claim_distinct_outbox_rows_concurrently(monkeypatch):
+    """Two real worker threads should claim separate due rows without duplication."""
+    from threading import Barrier, Thread
+
+    import pytest
+    from app.database import SessionLocal as IndependentSessionLocal
+
+    with IndependentSessionLocal() as setup_db:
+        if setup_db.get_bind().dialect.name != "postgresql":
+            pytest.skip("PostgreSQL SKIP LOCKED behavior is required")
+        rows = [
+            StorageCleanupOutbox(
+                operation="delete_user_prefix",
+                user_id=987654329 + index,
+                status="pending",
+                available_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+            )
+            for index in range(2)
+        ]
+        setup_db.add_all(rows)
+        setup_db.commit()
+        row_ids = [row.id for row in rows]
+
+    monkeypatch.setattr(tasks, "SessionLocal", IndependentSessionLocal)
+    storage_barrier = Barrier(2)
+    claimed_user_ids = []
+    worker_results = []
+    worker_errors = []
+
+    def fake_storage_cleanup(_operation, user_id, _object_key, _fallback_path):
+        claimed_user_ids.append(user_id)
+        storage_barrier.wait(timeout=15)
+
+    def run_worker():
+        try:
+            worker_results.append(tasks._run_storage_cleanup_outbox_batch(batch_size=1))
+        except BaseException as exc:
+            worker_errors.append(exc)
+
+    monkeypatch.setattr(tasks, "_perform_storage_cleanup", fake_storage_cleanup)
+    workers = [Thread(target=run_worker, daemon=True) for _ in range(2)]
+    try:
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=25)
+
+        assert all(not worker.is_alive() for worker in workers), "workers did not finish"
+        assert worker_errors == []
+        assert worker_results == [1, 1]
+        assert sorted(claimed_user_ids) == [987654329, 987654330]
+        with IndependentSessionLocal() as verify_db:
+            saved = (
+                verify_db.query(StorageCleanupOutbox)
+                .filter(StorageCleanupOutbox.id.in_(row_ids))
+                .order_by(StorageCleanupOutbox.id)
+                .all()
+            )
+            assert len(saved) == 2
+            assert all(row.status == "completed" for row in saved)
+            assert all(row.attempt_count == 1 for row in saved)
+    finally:
+        storage_barrier.abort()
+        for worker in workers:
+            worker.join(timeout=5)
+        with IndependentSessionLocal() as cleanup_db:
+            cleanup_db.query(StorageCleanupOutbox).filter(
+                StorageCleanupOutbox.id.in_(row_ids)
+            ).delete(synchronize_session=False)
+            cleanup_db.commit()
