@@ -3,6 +3,7 @@
 تُخزَّن الملفات على القرص (مجلد UPLOAD_DIR) والبيانات الوصفية بقاعدة البيانات
 """
 import base64
+import logging
 import uuid
 from pathlib import Path
 import tempfile
@@ -46,6 +47,8 @@ from app.services.upload_cleanup_intents import (
 from app.services.workspace_rbac import has_workspace_permission
 
 router = APIRouter(prefix="/files", tags=["Files"])
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg",
@@ -436,6 +439,34 @@ async def upload_file(
             detail="الحساب غير موجود",
         )
 
+    # Recheck account-wide quotas while holding the user row lock. The first
+    # check happens before storage I/O to reject obvious excess early, but
+    # concurrent uploads may have committed while this request was uploading.
+    locked_file_count = (
+        db.query(func.count(FileAttachment.id))
+        .filter(FileAttachment.user_id == current_user.id)
+        .scalar()
+        or 0
+    )
+    if locked_file_count >= settings.MAX_FILES_PER_USER:
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise HTTPException(status_code=413, detail="وصلت للحد الأقصى لعدد الملفات")
+
+    locked_storage_bytes = (
+        db.query(func.coalesce(func.sum(FileAttachment.size_bytes), 0))
+        .filter(FileAttachment.user_id == current_user.id)
+        .scalar()
+        or 0
+    )
+    if locked_storage_bytes + total > max_storage:
+        db.rollback()
+        cleanup_unfinalized_upload()
+        raise HTTPException(
+            status_code=413,
+            detail=f"تجاوزت سعة التخزين للحساب ({settings.MAX_STORAGE_PER_USER_MB} ميجابايت)",
+        )
+
     extracted_text = None
     if sniffed is not None:
         try:
@@ -455,13 +486,19 @@ async def upload_file(
 
     if workspace_id is not None:
         # Finalization locks user first, then workspace, matching account-retention order.
-        locked_workspace = (
-            db.query(Workspace.id)
-            .filter(Workspace.id == workspace_id)
-            .with_for_update()
-            .first()
-        )
+        try:
+            locked_workspace = (
+                db.query(Workspace.id)
+                .filter(Workspace.id == workspace_id)
+                .with_for_update()
+                .first()
+            )
+        except Exception:
+            db.rollback()
+            cleanup_unfinalized_upload()
+            raise
         if locked_workspace is None:
+            db.rollback()
             cleanup_unfinalized_upload()
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -469,21 +506,27 @@ async def upload_file(
             )
         try:
             _get_workspace_membership(workspace_id, current_user, db)
-        except HTTPException:
+        except Exception:
             db.rollback()
             cleanup_unfinalized_upload()
             raise
         if project_id is not None:
-            current_project = (
-                db.query(WorkspaceProject)
-                .populate_existing()
-                .filter(
-                    WorkspaceProject.id == project_id,
-                    WorkspaceProject.workspace_id == workspace_id,
+            try:
+                current_project = (
+                    db.query(WorkspaceProject)
+                    .populate_existing()
+                    .filter(
+                        WorkspaceProject.id == project_id,
+                        WorkspaceProject.workspace_id == workspace_id,
+                    )
+                    .first()
                 )
-                .first()
-            )
+            except Exception:
+                db.rollback()
+                cleanup_unfinalized_upload()
+                raise
             if current_project is None:
+                db.rollback()
                 cleanup_unfinalized_upload()
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,

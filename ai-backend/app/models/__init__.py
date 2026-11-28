@@ -39,6 +39,7 @@ from app.models.notification import Notification
 from app.models.webhook_event import WebhookEvent
 from app.models.webhook_endpoint import WebhookEndpoint
 from app.models.webhook_delivery import WebhookDelivery
+from app.models.storage_cleanup_outbox import StorageCleanupOutbox
 
 __all__ = [
     "User",
@@ -90,6 +91,7 @@ __all__ = [
     "WebhookEvent",
     "WebhookEndpoint",
     "WebhookDelivery",
+    "StorageCleanupOutbox",
     "WorkspaceRBACRole",
     "WorkspaceRBACPermission",
 ]

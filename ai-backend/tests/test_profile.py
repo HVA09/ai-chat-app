@@ -75,6 +75,39 @@ def test_delete_account_requires_correct_password(client):
     assert response.status_code == 401
 
 
+def test_delete_account_finishes_db_retention_before_storage(client, monkeypatch):
+    from app.routers import users as users_router_module
+
+    events = []
+    monkeypatch.setattr(
+        users_router_module,
+        "privatize_account_workspace_attachments",
+        lambda _db, user_id: events.append(("retention", user_id)),
+    )
+    monkeypatch.setattr(
+        users_router_module,
+        "enqueue_user_storage_cleanup",
+        lambda _db, user_id: events.append(("outbox", user_id)),
+    )
+    monkeypatch.setattr(
+        users_router_module,
+        "dispatch_storage_cleanup",
+        lambda: events.append(("dispatch", None)),
+    )
+
+    token = _register_and_login(client, "ordered-self-delete@example.com")
+    response = client.request(
+        "DELETE",
+        "/users/me",
+        json={"password": "StrongPass123"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 204
+    assert [event[0] for event in events] == ["retention", "outbox", "dispatch"]
+    assert events[0][1] == events[1][1]
+
+
 def test_delete_account_success(client):
     token = _register_and_login(client, "deleteme@example.com", "StrongPass123")
     response = client.request("DELETE", "/users/me", json={"password": "StrongPass123"}, headers={"Authorization": f"Bearer {token}"})

@@ -26,7 +26,10 @@ from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.models.user_session import UserSession
 from app.services.storage import StorageError, delete_user_objects
-from app.services.project_file_retention import privatize_account_workspace_attachments
+from app.services.project_file_retention import (
+    lock_user_for_update,
+    privatize_account_workspace_attachments,
+)
 from app.schemas.admin import (
     AdminConversationOut,
     AdminPlanOut,
@@ -590,20 +593,33 @@ def delete_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="ما تقدر تحذف حسابك من هنا — استخدم حذف الحساب من صفحتك الشخصية",
         )
-    user = db.get(User, user_id)
-    if not user:
+    # Serialize administrative deletion with uploads and self-service deletion.
+    if not lock_user_for_update(db, user_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المستخدم غير موجود")
+
+    # The row may have changed while this transaction waited for the lock.
+    user = (
+        db.query(User)
+        .populate_existing()
+        .filter(User.id == user_id)
+        .first()
+    )
+    if not user:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="المستخدم غير موجود")
+
+    # Complete DB-side retention work before deleting external objects. If
+    # this phase fails, no user objects have been irreversibly removed.
+    privatize_account_workspace_attachments(db, user.id)
 
     try:
         delete_user_objects(user.id)
     except StorageError as exc:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="تعذر تنظيف ملفات المستخدم الآن. أعد المحاولة لاحقًا.",
         ) from exc
-
-    # Protect uploads owned by other members before workspace/project cascades run.
-    privatize_account_workspace_attachments(db, user.id)
 
     log_event(db, "admin_user_deleted", f"admin {admin.email} حذف المستخدم {user.email}", admin.id)
     shutil.rmtree(Path(app_settings.UPLOAD_DIR) / str(user.id), ignore_errors=True)
