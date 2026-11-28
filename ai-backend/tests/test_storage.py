@@ -268,3 +268,23 @@ def test_open_file_does_not_fall_back_on_remote_connection_error(
     monkeypatch.setattr(storage, "_client", lambda: FakeClient())
     with pytest.raises(storage.StorageError):
         storage.open_file("users/1/example.txt", fallback)
+
+def test_get_bytes_enforces_local_size_limit(monkeypatch, tmp_path):
+    import pytest
+
+    for name in (
+        "S3_BUCKET",
+        "S3_ENDPOINT_URL",
+        "S3_REGION",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.setattr(storage.settings, name, "")
+
+    target = tmp_path / "artifact.bin"
+    target.write_bytes(b"12345")
+    monkeypatch.setattr(storage.settings, "UPLOAD_DIR", str(tmp_path))
+
+    with pytest.raises(storage.StorageError):
+        storage.get_bytes("artifact.bin", max_bytes=4)
+    assert storage.get_bytes("artifact.bin", max_bytes=5) == b"12345"
