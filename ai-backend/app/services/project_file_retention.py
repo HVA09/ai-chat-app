@@ -1,6 +1,7 @@
 """Preserve original-uploader privacy when a project/workspace scope is removed."""
 
-from sqlalchemy import or_
+from sqlalchemy import case, cast, exists, func, literal, or_, select
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, load_only
 
 from app.models.assistant import Assistant
@@ -44,31 +45,55 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
         return
 
     target_ids = set(file_ids)
-    # Snapshot creation/update takes the assistant row lock before reading live
-    # links. Lock every assistant currently linked to these files first so a
-    # concurrent snapshot either commits before this scan or observes links
-    # after they have been removed. Assistant IDs are always locked in order.
-    # Discover snapshot candidates before taking Assistant locks so we can
-    # preserve the global Assistant -> AssistantVersion lock order.
-    candidate_ids = []
-    candidate_assistant_ids = set()
-    candidates = (
-        db.query(
-            AssistantVersion.id,
-            AssistantVersion.assistant_id,
-            AssistantVersion.knowledge_file_ids,
+    # Discover candidate snapshots before taking Assistant locks so lock order
+    # remains Assistant -> AssistantVersion. PostgreSQL uses a JSONB predicate
+    # to avoid scanning every historical snapshot in Python.
+    if db.get_bind().dialect.name == "postgresql":
+        json_value = cast(AssistantVersion.knowledge_file_ids, JSONB)
+        safe_json_array = case(
+            (func.jsonb_typeof(json_value) == "array", json_value),
+            else_=cast(literal("[]"), JSONB),
         )
-        .filter(AssistantVersion.knowledge_file_ids.is_not(None))
-        .order_by(AssistantVersion.id.asc())
-        .yield_per(200)
-    )
-    for snapshot_id, assistant_id, saved_ids in candidates:
-        if isinstance(saved_ids, list) and any(
-            str(file_id).isdigit() and int(file_id) in target_ids
-            for file_id in saved_ids
-        ):
-            candidate_ids.append(snapshot_id)
-            candidate_assistant_ids.add(assistant_id)
+        saved_file_ids = (
+            func.jsonb_array_elements_text(safe_json_array)
+            .table_valued("value")
+            .alias("saved_file_ids")
+        )
+        matching_snapshot_file = (
+            select(1)
+            .select_from(saved_file_ids)
+            .where(saved_file_ids.c.value.in_([str(file_id) for file_id in target_ids]))
+            .correlate(AssistantVersion)
+        )
+        candidate_rows = (
+            db.query(AssistantVersion.id, AssistantVersion.assistant_id)
+            .filter(AssistantVersion.knowledge_file_ids.is_not(None))
+            .filter(exists(matching_snapshot_file))
+            .order_by(AssistantVersion.id.asc())
+            .all()
+        )
+        candidate_ids = {snapshot_id for snapshot_id, _ in candidate_rows}
+        candidate_assistant_ids = {assistant_id for _, assistant_id in candidate_rows}
+    else:
+        candidate_ids = set()
+        candidate_assistant_ids = set()
+        candidates = (
+            db.query(
+                AssistantVersion.id,
+                AssistantVersion.assistant_id,
+                AssistantVersion.knowledge_file_ids,
+            )
+            .filter(AssistantVersion.knowledge_file_ids.is_not(None))
+            .order_by(AssistantVersion.id.asc())
+            .yield_per(200)
+        )
+        for snapshot_id, assistant_id, saved_ids in candidates:
+            if isinstance(saved_ids, list) and any(
+                str(file_id).isdigit() and int(file_id) in target_ids
+                for file_id in saved_ids
+            ):
+                candidate_ids.add(snapshot_id)
+                candidate_assistant_ids.add(assistant_id)
 
     linked_assistant_ids = {
         assistant_id
@@ -106,10 +131,8 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
                 for file_id in saved_ids
             ):
                 candidate_ids.add(snapshot_id)
-        candidate_ids = sorted(candidate_ids)
-    # Lock and refresh only snapshots discovered to reference target IDs.
-    # The JSON membership scan above is portable across supported dialects.
 
+    # Lock and refresh only snapshots known to reference target IDs.
     if candidate_ids:
         snapshots = (
             db.query(AssistantVersion)
@@ -120,9 +143,9 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
                 )
             )
             .populate_existing()
-            .filter(AssistantVersion.id.in_(candidate_ids))
-            # Keep the same lock order as restore: AssistantVersion before links.
+            .filter(AssistantVersion.id.in_(sorted(candidate_ids)))
             .order_by(AssistantVersion.id.asc())
+            # Keep the same lock order as restore: AssistantVersion before links.
             .with_for_update()
             .yield_per(200)
         )
@@ -144,8 +167,7 @@ def _privatize_attachment_ids(db: Session, file_ids: list[int]) -> None:
 
     # Keep the same row-lock order as assistant-version restore:
     # workspace rows (held by the caller), then Assistant rows, then
-    # AssistantVersion rows, then AssistantFileLink rows. Deleting links before locking snapshots can
-    # deadlock with restore, which locks a snapshot before replacing links.
+    # AssistantVersion rows, then AssistantFileLink rows.
     db.query(AssistantFileLink).filter(
         AssistantFileLink.file_id.in_(file_ids)
     ).delete(synchronize_session=False)
