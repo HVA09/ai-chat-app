@@ -163,3 +163,142 @@ def test_storage_cleanup_moves_repeated_failures_to_dead_letter(db_session, monk
     assert saved.status == "failed"
     assert saved.attempt_count == 12
     assert saved.locked_at is None
+
+
+def test_stale_worker_cannot_mark_reclaimed_item_completed(db_session, monkeypatch):
+    row = StorageCleanupOutbox(
+        operation="delete_user_prefix",
+        user_id=987654325,
+        status="pending",
+        available_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    db_session.add(row)
+    db_session.commit()
+    row_id = row.id
+    monkeypatch.setattr(tasks, "SessionLocal", _worker_session_factory(db_session))
+
+    def reclaim_during_storage_io(*_args):
+        current = db_session.get(StorageCleanupOutbox, row_id)
+        current.status = "running"
+        current.lease_token = "worker-b-lease"
+        current.locked_at = datetime.now(timezone.utc)
+        db_session.commit()
+
+    monkeypatch.setattr(tasks, "_perform_storage_cleanup", reclaim_during_storage_io)
+    assert tasks._run_storage_cleanup_outbox_batch(batch_size=1) == 1
+    db_session.expire_all()
+    saved = db_session.get(StorageCleanupOutbox, row_id)
+    assert saved.status == "running"
+    assert saved.lease_token == "worker-b-lease"
+    assert saved.completed_at is None
+
+
+def test_stale_worker_cannot_schedule_retry_after_lease_reclaim(db_session, monkeypatch):
+    row = StorageCleanupOutbox(
+        operation="delete_user_prefix",
+        user_id=987654326,
+        status="pending",
+        available_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    db_session.add(row)
+    db_session.commit()
+    row_id = row.id
+    monkeypatch.setattr(tasks, "SessionLocal", _worker_session_factory(db_session))
+
+    def reclaim_then_fail(*_args):
+        current = db_session.get(StorageCleanupOutbox, row_id)
+        current.status = "running"
+        current.lease_token = "worker-b-lease"
+        current.locked_at = datetime.now(timezone.utc)
+        db_session.commit()
+        raise OSError("stale worker failure")
+
+    monkeypatch.setattr(tasks, "_perform_storage_cleanup", reclaim_then_fail)
+    assert tasks._run_storage_cleanup_outbox_batch(batch_size=1) == 1
+    db_session.expire_all()
+    saved = db_session.get(StorageCleanupOutbox, row_id)
+    assert saved.status == "running"
+    assert saved.lease_token == "worker-b-lease"
+    assert saved.last_error is None
+
+
+def test_postgres_independent_workers_reclaim_and_fence_stale_completion(monkeypatch):
+    """Exercise A/B lease reclaim through separate PostgreSQL sessions."""
+    from app.database import SessionLocal as IndependentSessionLocal
+
+    row = StorageCleanupOutbox(
+        operation="delete_user_prefix",
+        user_id=987654327,
+        status="pending",
+        available_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    with IndependentSessionLocal() as setup_db:
+        setup_db.add(row)
+        setup_db.commit()
+        row_id = row.id
+
+    monkeypatch.setattr(tasks, "SessionLocal", IndependentSessionLocal)
+    calls = {"count": 0}
+
+    def storage_io(*_args):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            # Expire A's lease from another independent connection, then let B
+            # reclaim and finish the same row before A attempts its completion.
+            with IndependentSessionLocal() as expiry_db:
+                current = expiry_db.get(StorageCleanupOutbox, row_id)
+                current.locked_at = datetime.now(timezone.utc) - timedelta(minutes=16)
+                expiry_db.commit()
+            assert tasks._run_storage_cleanup_outbox_batch(batch_size=1) == 1
+
+    monkeypatch.setattr(tasks, "_perform_storage_cleanup", storage_io)
+    assert tasks._run_storage_cleanup_outbox_batch(batch_size=1) == 1
+    assert calls["count"] == 2
+
+    with IndependentSessionLocal() as verify_db:
+        saved = verify_db.get(StorageCleanupOutbox, row_id)
+        assert saved.status == "completed"
+        assert saved.attempt_count == 2
+        assert saved.lease_token is None
+        assert saved.completed_at is not None
+
+
+def test_postgres_independent_workers_ignore_stale_failure_after_reclaim(monkeypatch):
+    """A's late failure must not overwrite B's successful completion."""
+    from app.database import SessionLocal as IndependentSessionLocal
+
+    row = StorageCleanupOutbox(
+        operation="delete_user_prefix",
+        user_id=987654328,
+        status="pending",
+        available_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    with IndependentSessionLocal() as setup_db:
+        setup_db.add(row)
+        setup_db.commit()
+        row_id = row.id
+
+    monkeypatch.setattr(tasks, "SessionLocal", IndependentSessionLocal)
+    calls = {"count": 0}
+
+    def storage_io(*_args):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            with IndependentSessionLocal() as expiry_db:
+                current = expiry_db.get(StorageCleanupOutbox, row_id)
+                current.locked_at = datetime.now(timezone.utc) - timedelta(minutes=16)
+                expiry_db.commit()
+            assert tasks._run_storage_cleanup_outbox_batch(batch_size=1) == 1
+            raise OSError("late stale worker failure")
+
+    monkeypatch.setattr(tasks, "_perform_storage_cleanup", storage_io)
+    assert tasks._run_storage_cleanup_outbox_batch(batch_size=1) == 1
+    assert calls["count"] == 2
+
+    with IndependentSessionLocal() as verify_db:
+        saved = verify_db.get(StorageCleanupOutbox, row_id)
+        assert saved.status == "completed"
+        assert saved.attempt_count == 2
+        assert saved.lease_token is None
+        assert saved.last_error is None
+        assert saved.completed_at is not None

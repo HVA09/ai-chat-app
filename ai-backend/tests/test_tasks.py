@@ -15,6 +15,17 @@ def test_celery_app_has_production_scheduled_task():
     assert entry["schedule"] == 60.0
     assert "recover-webhook-deliveries" not in schedule
 
+    # Storage cleanup dispatch is deliberately opt-in; a default deployment
+    # must not acquire a new periodic worker until an operator enables it.
+    import os
+
+    if os.getenv("STORAGE_CLEANUP_OUTBOX_ENABLED", "").strip().lower() == "true":
+        cleanup_entry = schedule["process-storage-cleanup-outbox"]
+        assert cleanup_entry["task"] == "process_storage_cleanup_outbox"
+        assert cleanup_entry["schedule"] == 60.0
+    else:
+        assert "process-storage-cleanup-outbox" not in schedule
+
 
 def test_celery_redis_tls_is_required_only_for_rediss_urls():
     assert celery_app is not None
@@ -53,3 +64,7 @@ def test_scheduled_task_releases_db_before_provider_wait(monkeypatch):
         ("provider", "scheduled prompt", [], "test-model"),
     ]
 
+def test_celery_cli_application_target_resolves():
+    from celery.app.utils import find_app
+
+    assert find_app("app.tasks:celery_app") is celery_app
