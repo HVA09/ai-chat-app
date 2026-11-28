@@ -51,17 +51,25 @@ def test_upload_lock_failure_attempts_cleanup_without_masking_original_error(
     def fake_put_file(_path, object_key, _content_type):
         events.append(("stored", object_key))
 
+    from types import SimpleNamespace
+    from app.services.storage import StorageError
+
     def fail_cleanup(_object_key, _fallback_path):
         events.append(("cleanup_failed", None))
-        raise OSError("storage cleanup unavailable")
+        raise StorageError("storage cleanup unavailable")
 
     monkeypatch.setattr(files_router, "lock_user_for_update", fail_user_lock)
     monkeypatch.setattr(files_router, "put_file", fake_put_file)
     monkeypatch.setattr(files_router, "delete_stored_file", fail_cleanup)
     monkeypatch.setattr(
         files_router,
-        "record_file_cleanup_failure",
-        lambda object_key, _path: events.append(("outbox", object_key)),
+        "enqueue_upload_cleanup_intent",
+        lambda *_args, **_kwargs: SimpleNamespace(id="intent-1", status="pending"),
+    )
+    monkeypatch.setattr(
+        files_router,
+        "record_upload_cleanup_attempt",
+        lambda *_args, **_kwargs: events.append(("outbox", None)),
     )
 
     token = _register_and_login(client, "upload-lock-failure@example.com")
@@ -856,7 +864,7 @@ def test_account_delete_holds_user_lock_until_audit_commit_on_postgres(
 
     monkeypatch.setattr(settings, "UPLOAD_DIR", str(tmp_path))
     monkeypatch.setattr(users_router, "verify_password", lambda *_args: True)
-    monkeypatch.setattr(users_router, "delete_user_objects", lambda _user_id: None)
+    monkeypatch.setattr(users_router, "dispatch_storage_cleanup", lambda: None)
     monkeypatch.setattr(
         users_router, "privatize_account_workspace_attachments", lambda *_args: None
     )
@@ -1030,8 +1038,16 @@ def test_personal_upload_indexing_cannot_outlive_account_deletion(
             raise AssertionError("test did not release the embedding/indexing phase")
         return original_index(db, attachment)
 
+    from app import tasks
+    from app.services import storage as storage_service
+
     monkeypatch.setattr(files_router, "put_file", fake_put_file)
-    monkeypatch.setattr(users_router, "delete_user_objects", fake_delete_user_objects)
+    monkeypatch.setattr(storage_service, "delete_user_objects", fake_delete_user_objects)
+    monkeypatch.setattr(
+        users_router,
+        "dispatch_storage_cleanup",
+        lambda: tasks._run_storage_cleanup_outbox_batch(),
+    )
     monkeypatch.setattr(files_router, "index_file_chunks", delayed_index)
     monkeypatch.setattr(
         rag_service,
@@ -1187,9 +1203,17 @@ def test_personal_upload_embedding_failure_after_account_deletion_is_clean_404(
             raise AssertionError("test did not release the embedding failure")
         raise EmbeddingServiceError("simulated provider failure after account deletion")
 
+    from app import tasks
+    from app.services import storage as storage_service
+
     monkeypatch.setattr(files_router, "put_file", fake_put_file)
     monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
-    monkeypatch.setattr(users_router, "delete_user_objects", fake_delete_user_objects)
+    monkeypatch.setattr(storage_service, "delete_user_objects", fake_delete_user_objects)
+    monkeypatch.setattr(
+        users_router,
+        "dispatch_storage_cleanup",
+        lambda: tasks._run_storage_cleanup_outbox_batch(),
+    )
     monkeypatch.setattr(files_router, "index_file_chunks", fail_index_after_delete)
     monkeypatch.setattr(
         files_router,

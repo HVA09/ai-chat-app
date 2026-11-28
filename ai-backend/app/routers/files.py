@@ -373,7 +373,7 @@ async def upload_file(
 
     attachment_committed = False
 
-    def cleanup_unfinalized_upload() -> None:
+    def cleanup_unfinalized_upload(*, preserve_original_error: bool = False) -> None:
         # Once the attachment transaction committed, this object is no longer
         # an unfinalized upload. Account deletion owns any later retention work.
         if attachment_committed:
@@ -406,10 +406,12 @@ async def upload_file(
                 error_code="storage_delete_failed",
             )
             db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="تعذر تنظيف الملف؛ حُفظ طلب التنظيف لإعادة المحاولة.",
-            ) from exc
+            if not preserve_original_error:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="تعذر تنظيف الملف؛ حُفظ طلب التنظيف لإعادة المحاولة.",
+                ) from exc
+            return
 
         record_upload_cleanup_attempt(
             db,
@@ -421,7 +423,16 @@ async def upload_file(
     # Match account deletion's user -> workspace lock order immediately after
     # external storage I/O. Hold the user lock through extraction and finalization
     # so deletion cannot remove the local path or miss a late S3 object.
-    if not lock_user_for_update(db, upload_user_id):
+    try:
+        user_locked = lock_user_for_update(db, upload_user_id)
+    except Exception:
+        # The lock query itself may fail after the object has been written.
+        # Persist cleanup intent and attempt best-effort deletion, but never mask
+        # the original database/lock failure with a secondary storage failure.
+        db.rollback()
+        cleanup_unfinalized_upload(preserve_original_error=True)
+        raise
+    if not user_locked:
         db.rollback()
         cleanup_unfinalized_upload()
         raise HTTPException(

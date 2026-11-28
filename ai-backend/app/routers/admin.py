@@ -3,8 +3,6 @@
 """
 import csv
 import io
-import shutil
-from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,7 +23,10 @@ from app.models.file_attachment import FileAttachment
 from app.models.usage_log import UsageLog
 from app.models.user import User
 from app.models.user_session import UserSession
-from app.services.storage import StorageError, delete_user_objects
+from app.services.storage_cleanup_outbox import (
+    dispatch_storage_cleanup,
+    enqueue_user_storage_cleanup,
+)
 from app.services.project_file_retention import (
     lock_user_for_update,
     privatize_account_workspace_attachments,
@@ -612,19 +613,24 @@ def delete_user(
     # this phase fails, no user objects have been irreversibly removed.
     privatize_account_workspace_attachments(db, user.id)
 
+    # Persist storage cleanup with the account deletion; the outbox survives
+    # the user cascade and workers can retry after transient storage failures.
     try:
-        delete_user_objects(user.id)
-    except StorageError as exc:
+        enqueue_user_storage_cleanup(db, user.id)
+        log_event(
+            db,
+            "admin_user_deleted",
+            f"admin {admin.email} حذف المستخدم {user.email}",
+            admin.id,
+            commit=False,
+            emit_log=False,
+        )
+        db.delete(user)
+        db.commit()
+    except Exception:
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="تعذر تنظيف ملفات المستخدم الآن. أعد المحاولة لاحقًا.",
-        ) from exc
-
-    log_event(db, "admin_user_deleted", f"admin {admin.email} حذف المستخدم {user.email}", admin.id)
-    shutil.rmtree(Path(app_settings.UPLOAD_DIR) / str(user.id), ignore_errors=True)
-    db.delete(user)
-    db.commit()
+        raise
+    dispatch_storage_cleanup()
 
 
 @router.get("/conversations", response_model=list[AdminConversationOut])
