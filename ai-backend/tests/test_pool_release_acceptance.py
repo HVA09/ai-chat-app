@@ -23,7 +23,7 @@ from app.models.user import User
 from app.models.workspace import Workspace
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
-from app.services import image_rag, rag
+from app.services import image_rag, rag, storage
 
 
 def _local_ci_database_url() -> str:
@@ -289,7 +289,7 @@ def test_second_session_can_use_only_pool_slot_while_external_io_is_blocked(
                     image_path = tmp_path / f"{scenario['file_id']}.png"
                     image_path.write_bytes(b"\x89PNG\r\n")
                     monkeypatch.setattr(
-                        chat_router_module,
+                        storage,
                         "materialize_file",
                         lambda *_args, **_kwargs: nullcontext(image_path),
                     )
@@ -413,7 +413,7 @@ def test_second_session_can_use_pool_slot_during_blocked_image_embeddings(
         image_path.write_bytes(b"\x89PNG\r\n")
 
         monkeypatch.setattr(
-            image_rag,
+            storage,
             "materialize_file",
             lambda *_args, **_kwargs: nullcontext(image_path),
         )

@@ -41,6 +41,7 @@ from app.models.webhook_endpoint import WebhookEndpoint
 from app.models.webhook_delivery import WebhookDelivery
 from app.models.storage_cleanup_outbox import StorageCleanupOutbox
 from app.models.storage_profile import StorageProfile
+from app.models.file_attachment_read_lease import FileAttachmentReadLease
 
 __all__ = [
     "User",
@@ -94,6 +95,7 @@ __all__ = [
     "WebhookDelivery",
     "StorageCleanupOutbox",
     "StorageProfile",
+    "FileAttachmentReadLease",
     "WorkspaceRBACRole",
     "WorkspaceRBACPermission",
 ]

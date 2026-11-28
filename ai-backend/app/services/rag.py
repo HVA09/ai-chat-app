@@ -356,7 +356,7 @@ async def retrieve_relevant_chunks(
                 AssistantWorkspaceShare.workspace_id == conversation.workspace_id,
             ),
         )
-        .filter(FileChunk.embedding.is_not(None), chunk_scope)
+        .filter(FileChunk.embedding.is_not(None), FileAttachment.deletion_status == "available", chunk_scope)
         .first()
     )
     if candidate is None:
@@ -393,6 +393,7 @@ async def retrieve_relevant_chunks(
         )
         .filter(
             FileChunk.embedding.is_not(None),
+            FileAttachment.deletion_status == "available",
             chunk_scope,
         )
         .order_by(FileChunk.embedding.cosine_distance(query_embedding))

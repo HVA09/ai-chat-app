@@ -16,6 +16,7 @@ from app.models.conversation import Message, MessageRole
 from app.models.user import User
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
+from app.services import file_read_leases
 
 
 def test_chat_stream_error_message_explains_rate_limit():
@@ -1554,22 +1555,28 @@ def test_non_agent_chat_stream_releases_db_connection_before_streaming_response(
                 lambda *_args, **_kwargs: attachment,
             )
             monkeypatch.setattr(
+                file_read_leases,
+                "commit_and_release_connection",
+                lambda _session: events.append("release"),
+            )
+            monkeypatch.setattr(
                 chat_router_module,
                 "commit_and_release_connection",
                 lambda _session: events.append("release"),
             )
 
-            def fake_materialize_file(*_args, **_kwargs):
+            def fake_leased_materialize_file(_attachment, _db, _fallback_path):
+                file_read_leases.commit_and_release_connection(_db)
                 assert events == ["release"], (
-                    "streaming data analysis must release DB before file materialization"
+                    "streaming data analysis must persist the reader lease before materialization"
                 )
                 events.append("materialize")
                 return nullcontext("/tmp/fake-notes.csv")
 
             monkeypatch.setattr(
                 chat_router_module,
-                "materialize_file",
-                fake_materialize_file,
+                "leased_materialize_file",
+                fake_leased_materialize_file,
             )
             monkeypatch.setattr(
                 chat_router_module,
@@ -2281,7 +2288,7 @@ def test_vision_neutralizes_prompt_delimiters_before_provider_call(
     )
     monkeypatch.setattr(
         chat_router_module,
-        "materialize_file",
+        "leased_materialize_file",
         lambda *_args, **_kwargs: nullcontext(image_path),
     )
     vision_reply = AsyncMock(return_value=AIReply(text="تم تحليل الصورة"))

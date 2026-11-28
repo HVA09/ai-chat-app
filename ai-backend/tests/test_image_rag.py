@@ -10,6 +10,7 @@ from app.models.file_chunk import FileChunk
 from app.services.ai_providers.base import AIReply
 from app.routers import files as files_router
 from app.services import image_rag
+from app.services import file_read_leases
 
 
 PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"fake-image-bytes"
@@ -54,6 +55,11 @@ def test_index_image_for_rag_is_explicit_and_persists_usage(client, monkeypatch,
         "commit_and_release_connection",
         lambda _db: events.append("embedding-release"),
     )
+    monkeypatch.setattr(
+        file_read_leases,
+        "commit_and_release_connection",
+        lambda _db: events.append("file-release"),
+    )
 
     async def fake_vision_reply(*_args, **_kwargs):
         events.append("vision")
@@ -93,7 +99,7 @@ def test_index_image_for_rag_is_explicit_and_persists_usage(client, monkeypatch,
     )
     assert response.status_code == 200
     assert response.json()["is_ai_indexed"] is True
-    assert events == ["file-release", "vision", "embedding-release", "embeddings"]
+    assert events == ["file-release", "file-release", "vision", "embedding-release", "embeddings"]
 
     attachment = db_session.get(FileAttachment, file_id)
     assert "[IMAGE DESCRIPTION]" in attachment.extracted_text
@@ -148,7 +154,13 @@ def test_index_image_for_rag_materializes_remote_object(monkeypatch, tmp_path):
 
     vision_reply = AIReply(text="مخطط تجريبي")
     get_vision_reply = AsyncMock(return_value=vision_reply)
-    monkeypatch.setattr(image_rag, "materialize_file", fake_materialize)
+    monkeypatch.setattr(
+        image_rag,
+        "leased_materialize_file",
+        lambda attachment, db, fallback_path: fake_materialize(
+            attachment.object_key, fallback_path
+        ),
+    )
     monkeypatch.setattr(image_rag, "get_ai_vision_reply", get_vision_reply)
     monkeypatch.setattr(image_rag, "index_file_chunks", lambda db, attachment: 2)
 

@@ -1,6 +1,8 @@
 """Tests for durable storage cleanup processing and safe local paths."""
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from app.config import settings as app_settings
 from app.models.storage_cleanup_outbox import StorageCleanupOutbox
 from app import tasks
@@ -111,6 +113,58 @@ def test_local_user_prefix_cleanup_removes_only_user_directory(tmp_path, monkeyp
 
     assert not user_dir.exists()
     assert (other_dir / "keep.bin").exists()
+
+
+
+def test_user_prefix_cleanup_defers_when_reader_lease_is_active(tmp_path, monkeypatch):
+    from app.services import file_read_leases, storage
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    user_dir = tmp_path / "42"
+    user_dir.mkdir()
+    (user_dir / "active.bin").write_bytes(b"keep while reading")
+    monkeypatch.setattr(file_read_leases, "has_active_user_read_leases", lambda _user_id: True)
+    storage_calls = []
+    monkeypatch.setattr(storage, "delete_user_objects", lambda user_id: storage_calls.append(user_id))
+
+    with pytest.raises(file_read_leases.ActiveFileReadLeaseError):
+        tasks._perform_storage_cleanup("delete_user_prefix", 42, None, None)
+
+    assert user_dir.exists()
+    assert (user_dir / "active.bin").exists()
+    assert storage_calls == []
+
+
+def test_active_reader_deferral_does_not_consume_cleanup_retry_budget(db_session, monkeypatch):
+    _clear_pending_cleanup_rows(db_session)
+    from app.services.file_read_leases import ActiveFileReadLeaseError
+
+    row = StorageCleanupOutbox(
+        operation="delete_user_prefix",
+        user_id=987654329,
+        status="pending",
+        attempt_count=4,
+        available_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    db_session.add(row)
+    db_session.commit()
+    row_id = row.id
+    monkeypatch.setattr(tasks, "SessionLocal", _worker_session_factory(db_session))
+    monkeypatch.setattr(
+        tasks,
+        "_perform_storage_cleanup",
+        lambda *_args: (_ for _ in ()).throw(
+            ActiveFileReadLeaseError("active reader")
+        ),
+    )
+
+    assert tasks._run_storage_cleanup_outbox_batch(batch_size=1) == 1
+    db_session.expire_all()
+    saved = db_session.get(StorageCleanupOutbox, row_id)
+    assert saved.status == "pending"
+    assert saved.attempt_count == 4
+    assert saved.locked_at is None
+    assert saved.available_at > datetime.now(timezone.utc)
 
 
 def test_storage_cleanup_worker_recovers_expired_running_lease(db_session, monkeypatch):
@@ -357,7 +411,8 @@ def test_postgres_two_workers_claim_distinct_outbox_rows_concurrently(monkeypatc
     worker_errors = []
 
     def fake_storage_cleanup(
-        _operation, user_id, _object_key, _fallback_path, _storage_profile_id=None
+        _operation, user_id, _object_key, _fallback_path,
+        _storage_profile_id=None, _file_attachment_id=None,
     ):
         claimed_user_ids.append(user_id)
         storage_barrier.wait(timeout=15)

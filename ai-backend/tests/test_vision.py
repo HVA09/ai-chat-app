@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
+from app.services import file_read_leases
 
 
 PNG_HEADER = b"\x89PNG\r\n\x1a\n" + b"fake-image-bytes"
@@ -48,6 +49,11 @@ def test_analyze_attached_image(client, monkeypatch):
     file_id = uploaded.json()["id"]
 
     events = []
+    monkeypatch.setattr(
+        file_read_leases,
+        "commit_and_release_connection",
+        lambda _db: events.append("release"),
+    )
     monkeypatch.setattr(
         chat_router_module,
         "commit_and_release_connection",
@@ -155,13 +161,17 @@ def test_analyze_attached_image_works_without_local_upload_copy(client, monkeypa
     materialize_calls = []
 
     @contextmanager
-    def fake_materialize(object_key, fallback_path):
-        materialize_calls.append((object_key, fallback_path))
+    def fake_leased_materialize(attachment, _db, fallback_path):
+        materialize_calls.append((attachment.object_key, fallback_path))
         # Simulate a Render redeploy: the ephemeral local copy no longer exists.
         fallback_path.unlink(missing_ok=True)
         yield materialized_remote_copy
 
-    monkeypatch.setattr(chat_router_module, "materialize_file", fake_materialize)
+    monkeypatch.setattr(
+        chat_router_module,
+        "leased_materialize_file",
+        fake_leased_materialize,
+    )
 
     response = client.post(
         "/chat/vision",

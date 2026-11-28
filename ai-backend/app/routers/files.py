@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import ObjectDeletedError, StaleDataError
+from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.database import commit_and_release_connection, get_db
@@ -45,13 +46,30 @@ from app.services.storage_cleanup_outbox import (
     record_file_cleanup_failure,
 )
 from app.services.storage_profiles import get_or_create_active_storage_profile
+from app.services.file_read_leases import acquire_file_read_lease, release_file_read_lease, stream_file_with_lease, FileUnavailableError
 from app.services.project_access import can_edit_project
-from app.services.project_file_retention import lock_user_for_update
+from app.services.project_file_retention import lock_user_for_update, lock_workspaces_for_update
 from app.services.upload_cleanup_intents import (
     enqueue_upload_cleanup_intent,
     record_upload_cleanup_attempt,
 )
 from app.services.workspace_rbac import has_workspace_permission
+
+class LeaseAwareStreamingResponse(StreamingResponse):
+    """Close the lease-owning sync iterator even when ASGI delivery disconnects."""
+
+    def __init__(self, content, *args, **kwargs):
+        self._lease_content = content
+        super().__init__(content, *args, **kwargs)
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            close = getattr(self._lease_content, "close", None)
+            if callable(close):
+                await run_in_threadpool(close)
+
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
@@ -848,15 +866,24 @@ def download_file(
 ):
     attachment = _get_accessible_file(file_id, current_user, db)
     path = _user_upload_dir(attachment.user_id) / attachment.stored_filename
-    # The response streams bytes from object storage; return the DB checkout
-    # before opening the remote object and before the response body is consumed.
+    # The lease is acquired under the attachment row lock. Deletion marks the
+    # row pending under the same lock, so exactly one operation wins this race.
+    try:
+        read_lease_id = acquire_file_read_lease(file_id, db)
+    except FileUnavailableError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود") from exc
+
     commit_and_release_connection(db)
     try:
         body = open_file(attachment.object_key or f"users/{attachment.user_id}/{attachment.stored_filename}", path)
     except (FileNotFoundError, StorageError) as exc:
+        release_file_read_lease(read_lease_id)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود") from exc
-    return StreamingResponse(
-        body,
+
+    leased_body = stream_file_with_lease(body, read_lease_id)
+
+    return LeaseAwareStreamingResponse(
+        leased_body,
         media_type=attachment.content_type,
         headers={"Content-Disposition": "attachment; filename=\"" + attachment.original_filename + "\""},
     )
@@ -871,6 +898,11 @@ def reindex_file_for_rag(
     """Safely rebuild the embeddings for one file with live ACL/source checks."""
     attachment = _get_accessible_file(file_id, current_user, db)
     _require_file_reindex_permission(attachment, current_user, db)
+    if attachment.deletion_status != "available":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الملف غير متاح للقراءة.",
+        )
 
     source_text = (attachment.extracted_text or "").strip()
     if not source_text:
@@ -922,6 +954,11 @@ def reindex_file_for_rag(
     try:
         latest = _get_accessible_file(file_id, current_user, db)
         _require_file_reindex_permission(latest, current_user, db)
+        if latest.deletion_status != "available":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="الملف غير متاح للقراءة.",
+            )
     except HTTPException:
         db.rollback()
         raise
@@ -964,6 +1001,11 @@ async def index_image_for_rag(
 ):
     """يفهرس صورة صراحةً في RAG بدون استدعاء Vision مخفي أثناء كل رسالة."""
     attachment = _get_accessible_file(file_id, current_user, db)
+    if attachment.deletion_status != "available":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="الملف غير متاح للقراءة.",
+        )
 
     if not attachment.content_type.startswith("image/"):
         raise HTTPException(
@@ -1024,11 +1066,30 @@ def delete_file(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Preserve the global user -> attachment lock order used by uploads and
-    # retention. This prevents delete/upload/account-cleanup lock inversions.
-    if not lock_user_for_update(db, current_user.id):
+    # Read scope only as a hint, then acquire locks in the shared lifecycle order:
+    # actor/uploader users (ascending IDs) -> workspace -> attachment. Account
+    # deletion and project retention use the same user/workspace-first protocol.
+    candidate = (
+        db.query(FileAttachment.user_id, FileAttachment.workspace_id)
+        .filter(FileAttachment.id == file_id)
+        .first()
+    )
+    if candidate is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
+    owner_id, workspace_id = candidate
 
+    for lock_user_id in sorted({int(current_user.id), int(owner_id)}):
+        if not lock_user_for_update(db, lock_user_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="الملف غير موجود",
+            )
+
+    if workspace_id is not None:
+        lock_workspaces_for_update(db, [workspace_id])
+
+    # Re-read under lock. If retention changed the file scope while the hint
+    # was being collected, abort instead of continuing with a stale lock set.
     attachment = (
         db.query(FileAttachment)
         .populate_existing()
@@ -1036,7 +1097,12 @@ def delete_file(
         .filter(FileAttachment.id == file_id)
         .first()
     )
-    if attachment is None:
+    if (
+        attachment is None
+        or attachment.user_id != owner_id
+        or attachment.workspace_id != workspace_id
+    ):
+        db.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
 
     # Reuse the established ownership/workspace ACL checks after taking the row lock.

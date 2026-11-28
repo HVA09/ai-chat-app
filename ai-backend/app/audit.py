@@ -19,6 +19,7 @@ def log_event(
     commit: bool = True,
     emit_log: bool = True,
 ) -> None:
+    """Record an audit event; callers may defer commit to their transaction boundary."""
     db.add(
         AuditLog(
             user_id=user_id,
@@ -29,8 +30,16 @@ def log_event(
     )
     if commit:
         db.commit()
-    if emit_log:
-        scope = f" workspace={workspace_id}" if workspace_id is not None else ""
-        # Descriptions can contain user-controlled text. Keep the full detail
-        # in the structured audit table, but never copy it into application logs.
-        logger.info("[%s]%s", event_type, scope)
+    if commit and emit_log:
+        log_event_to_logger(event_type, description, workspace_id)
+
+
+def log_event_to_logger(
+    event_type: str,
+    description: str,
+    workspace_id: int | None = None,
+) -> None:
+    """Emit a sanitized application log after the transaction has committed."""
+    scope = f" workspace={workspace_id}" if workspace_id is not None else ""
+    # Descriptions may contain user-controlled text; keep them out of app logs.
+    logger.info("[%s]%s", event_type, scope)
