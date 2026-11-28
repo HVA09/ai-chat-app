@@ -98,7 +98,10 @@ def get_bytes(object_key: str, max_bytes: int | None = None) -> bytes:
         raise StorageError("حد القراءة غير صالح")
     if not _s3_enabled():
         try:
-            target = Path(settings.UPLOAD_DIR) / object_key
+            upload_root = Path(settings.UPLOAD_DIR).resolve()
+            target = (upload_root / object_key).resolve()
+            if not target.is_relative_to(upload_root):
+                raise StorageError("مسار التخزين غير صالح")
             if max_bytes is not None and target.stat().st_size > max_bytes:
                 raise StorageError("الملف يتجاوز حد القراءة")
             return target.read_bytes()
