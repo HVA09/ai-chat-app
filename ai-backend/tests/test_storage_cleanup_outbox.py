@@ -375,3 +375,78 @@ def test_postgres_two_workers_claim_distinct_outbox_rows_concurrently(monkeypatc
                 StorageCleanupOutbox.id.in_(row_ids)
             ).delete(synchronize_session=False)
             cleanup_db.commit()
+
+
+
+def test_postgres_recovers_after_storage_cleanup_succeeds_but_completion_commit_fails(monkeypatch):
+    """An expired lease retries idempotent cleanup if completion could not persist."""
+    import pytest
+    from app.database import SessionLocal as IndependentSessionLocal
+
+    with IndependentSessionLocal() as setup_db:
+        if setup_db.get_bind().dialect.name != "postgresql":
+            pytest.skip("Independent PostgreSQL sessions are required")
+        row = StorageCleanupOutbox(
+            operation="delete_user_prefix",
+            user_id=987654331,
+            status="pending",
+            available_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+        )
+        setup_db.add(row)
+        setup_db.commit()
+        row_id = row.id
+
+    try:
+        session_count = {"value": 0}
+
+        def fail_completion_commit_once():
+            session = IndependentSessionLocal()
+            session_count["value"] += 1
+            if session_count["value"] == 2:
+                original_commit = session.commit
+
+                def fail_once():
+                    session.commit = original_commit
+                    raise OSError("simulated completion persistence failure")
+
+                session.commit = fail_once
+            return session
+
+        cleanup_calls = []
+        monkeypatch.setattr(tasks, "SessionLocal", fail_completion_commit_once)
+        monkeypatch.setattr(
+            tasks,
+            "_perform_storage_cleanup",
+            lambda *args: cleanup_calls.append(args),
+        )
+
+        assert tasks._run_storage_cleanup_outbox_batch(batch_size=1) == 1
+        with IndependentSessionLocal() as verify_db:
+            saved = verify_db.get(StorageCleanupOutbox, row_id)
+            assert saved.status == "running"
+            assert saved.lease_token
+            assert saved.completed_at is None
+
+        # Simulate the worker being unavailable until its 15-minute lease expires.
+        with IndependentSessionLocal() as expiry_db:
+            saved = expiry_db.get(StorageCleanupOutbox, row_id)
+            saved.locked_at = datetime.now(timezone.utc) - timedelta(minutes=16)
+            expiry_db.commit()
+
+        monkeypatch.setattr(tasks, "SessionLocal", IndependentSessionLocal)
+        assert tasks._run_storage_cleanup_outbox_batch(batch_size=1) == 1
+        assert len(cleanup_calls) == 2
+
+        with IndependentSessionLocal() as verify_db:
+            saved = verify_db.get(StorageCleanupOutbox, row_id)
+            assert saved.status == "completed"
+            assert saved.attempt_count == 2
+            assert saved.lease_token is None
+            assert saved.completed_at is not None
+
+    finally:
+        with IndependentSessionLocal() as cleanup_db:
+            cleanup_db.query(StorageCleanupOutbox).filter(
+                StorageCleanupOutbox.id == row_id
+            ).delete(synchronize_session=False)
+            cleanup_db.commit()
