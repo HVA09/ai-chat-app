@@ -21,6 +21,7 @@ from app.database import commit_and_release_connection, get_db
 from app.dependencies import enforce_daily_ai_limit, enforce_workspace_daily_ai_limit, get_allowed_ai_models, get_current_user
 from app.audit import log_event
 from app.models.conversation import Conversation
+from app.models.audit_log import AuditLog
 from app.models.conversation_file_link import ConversationFileLink
 from app.models.file_attachment import FileAttachment, extracted_text_fingerprint
 from app.models.file_chunk import FileChunk
@@ -38,7 +39,11 @@ from app.services.rag import (
 )
 from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
-from app.services.storage_cleanup_outbox import record_file_cleanup_failure
+from app.services.storage_cleanup_outbox import (
+    dispatch_storage_cleanup,
+    enqueue_file_storage_cleanup,
+    record_file_cleanup_failure,
+)
 from app.services.storage_profiles import get_or_create_active_storage_profile
 from app.services.project_access import can_edit_project
 from app.services.project_file_retention import lock_user_for_update
@@ -183,10 +188,16 @@ def _get_workspace_membership(
 
 
 def _get_accessible_file(
-    file_id: int, current_user: User, db: Session
+    file_id: int,
+    current_user: User,
+    db: Session,
+    *,
+    include_deletion_pending: bool = False,
 ) -> FileAttachment:
     file = db.query(FileAttachment).filter(FileAttachment.id == file_id).first()
     if not file:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
+    if file.deletion_status == "deletion_pending" and not include_deletion_pending:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
 
     if file.workspace_id is None:
@@ -1013,28 +1024,74 @@ def delete_file(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    attachment = _get_accessible_file(file_id, current_user, db)
+    # Preserve the global user -> attachment lock order used by uploads and
+    # retention. This prevents delete/upload/account-cleanup lock inversions.
+    if not lock_user_for_update(db, current_user.id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
+
+    attachment = (
+        db.query(FileAttachment)
+        .populate_existing()
+        .with_for_update()
+        .filter(FileAttachment.id == file_id)
+        .first()
+    )
+    if attachment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
+
+    # Reuse the established ownership/workspace ACL checks after taking the row lock.
+    # Repeated delete requests remain idempotent while reads reject pending files.
+    attachment = _get_accessible_file(
+        file_id, current_user, db, include_deletion_pending=True
+    )
     if not _file_response(attachment, current_user, db).can_delete:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="ليس لديك صلاحية حذف هذا الملف",
         )
-    path = _user_upload_dir(attachment.user_id) / attachment.stored_filename
-    # Object-storage deletion can block on external I/O. Authorization and
-    # metadata are already loaded, so return the database checkout first.
-    commit_and_release_connection(db)
-    try:
-        delete_stored_file(
-            attachment.object_key or f"users/{attachment.user_id}/{attachment.stored_filename}",
-            path,
+
+    if attachment.deletion_status == "deletion_pending":
+        db.rollback()
+        return
+
+    # A legacy attachment with no reliable storage identity must never be
+    # destructively deleted using whichever backend happens to be configured now.
+    if not attachment.storage_profile_id:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="مصدر تخزين هذا الملف القديم غير محدد؛ تم إيقاف الحذف لحمايته.",
         )
-    except StorageError as exc:
-        raise HTTPException(status_code=503, detail="تعذر حذف الملف من Object Storage") from exc
-    db.delete(attachment)
-    db.commit()
-    log_event(
-        db,
-        "file_deleted",
-        f"حذف ملف: {attachment.original_filename} بواسطة {current_user.email}",
-        current_user.id,
+
+    object_key = attachment.object_key or (
+        f"users/{attachment.user_id}/{attachment.stored_filename}"
     )
+    fallback_path = _user_upload_dir(attachment.user_id) / attachment.stored_filename
+
+    try:
+        enqueue_file_storage_cleanup(
+            db,
+            object_key,
+            fallback_path,
+            storage_profile_id=attachment.storage_profile_id,
+            file_attachment_id=attachment.id,
+        )
+        attachment.deletion_status = "deletion_pending"
+        db.add(
+            AuditLog(
+                user_id=current_user.id,
+                workspace_id=attachment.workspace_id,
+                event_type="file_deletion_requested",
+                description=(
+                    f"تم تسجيل طلب حذف الملف {attachment.original_filename}"
+                ),
+            )
+        )
+        # The attachment, cleanup intent, and audit event become durable together.
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    # Dispatch is only a wake-up signal; the committed outbox row is durable.
+    dispatch_storage_cleanup()

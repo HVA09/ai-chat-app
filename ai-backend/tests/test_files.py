@@ -171,42 +171,87 @@ def test_download_file_returns_original_bytes(client, tmp_path, monkeypatch):
     assert events == ["release", "storage"]
 
 
-def test_delete_file_releases_db_before_object_storage_delete(
-    client, tmp_path, monkeypatch
+def test_delete_file_commits_outbox_intent_without_storage_io(
+    client, db_session, tmp_path, monkeypatch
 ):
+    from app.models.file_attachment import FileAttachment
+    from app.models.storage_cleanup_outbox import StorageCleanupOutbox
+
     monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
-    events = []
-    original_release = files_router.commit_and_release_connection
-    original_delete = files_router.delete_stored_file
-
-    def track_release(db):
-        events.append("release")
-        original_release(db)
-
-    def track_storage_delete(*args, **kwargs):
-        events.append("storage_delete")
-        return original_delete(*args, **kwargs)
-
-    monkeypatch.setattr(files_router, "commit_and_release_connection", track_release)
-    monkeypatch.setattr(files_router, "delete_stored_file", track_storage_delete)
+    storage_calls = []
+    dispatch_calls = []
+    monkeypatch.setattr(
+        files_router, "delete_stored_file",
+        lambda *args, **kwargs: storage_calls.append(args),
+    )
+    monkeypatch.setattr(
+        files_router, "dispatch_storage_cleanup",
+        lambda: dispatch_calls.append("wake"),
+    )
 
     token = _register_and_login(client)
     headers = {"Authorization": f"Bearer {token}"}
-    upload_response = client.post(
+    uploaded = client.post(
         "/files/upload",
         files={"file": ("a.png", b"\x89PNG\r\n\x1a\n" + b"bytes", "image/png")},
         headers=headers,
     )
-    assert upload_response.status_code == 201, upload_response.text
-    file_id = upload_response.json()["id"]
+    assert uploaded.status_code == 201, uploaded.text
+    file_id = uploaded.json()["id"]
 
-    # Ignore upload's own release boundaries; assert the delete path order only.
-    events.clear()
-    delete_response = client.delete(f"/files/{file_id}", headers=headers)
+    # Observe the SQL order after the route begins its owner-lock protocol.
+    from sqlalchemy import event
 
-    assert delete_response.status_code == 204
-    assert events == ["release", "storage_delete"]
-    assert client.get(f"/files/{file_id}", headers=headers).status_code == 404
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    lock_order = []
+    original_owner_lock = files_router.lock_user_for_update
+
+    def capture_owner_lock(db, user_id):
+        lock_order.append("owner_lock")
+        return original_owner_lock(db, user_id)
+
+    def capture_attachment_query(_conn, _cursor, statement, _params, _context, _many):
+        normalized = statement.lower()
+        if lock_order and "file_attachments" in normalized and normalized.lstrip().startswith("select"):
+            lock_order.append("attachment_query")
+
+    monkeypatch.setattr(files_router, "lock_user_for_update", capture_owner_lock)
+    event.listen(engine, "before_cursor_execute", capture_attachment_query)
+    try:
+        deleted = client.delete(f"/files/{file_id}", headers=headers)
+    finally:
+        event.remove(engine, "before_cursor_execute", capture_attachment_query)
+
+    assert deleted.status_code == 204
+    assert lock_order[:2] == ["owner_lock", "attachment_query"]
+    attachment = db_session.get(FileAttachment, file_id)
+    assert attachment is not None
+    assert attachment.deletion_status == "deletion_pending"
+    intent = (
+        db_session.query(StorageCleanupOutbox)
+        .filter(StorageCleanupOutbox.file_attachment_id == file_id)
+        .one()
+    )
+    assert intent.status == "pending"
+    assert intent.storage_profile_id == attachment.storage_profile_id
+    assert intent.object_key == attachment.object_key
+    assert storage_calls == []
+    assert dispatch_calls == ["wake"]
+
+    # Repeated requests are idempotent and do not create another intent.
+    repeated = client.delete(f"/files/{file_id}", headers=headers)
+    assert repeated.status_code == 204
+    assert (
+        db_session.query(StorageCleanupOutbox)
+        .filter(StorageCleanupOutbox.file_attachment_id == file_id)
+        .count()
+        == 1
+    )
+
+
+
+
 
 
 def test_cannot_access_other_users_file(client, tmp_path, monkeypatch):
@@ -522,6 +567,7 @@ def test_object_storage_upload_download_delete_survives_local_file_loss(
     monkeypatch.setattr(files_router, "put_file", fake_put_file)
     monkeypatch.setattr(files_router, "open_file", fake_open_file)
     monkeypatch.setattr(files_router, "delete_stored_file", fake_delete_file)
+    monkeypatch.setattr(files_router, "dispatch_storage_cleanup", lambda: None)
     monkeypatch.setattr(files_router, "index_file_chunks", lambda db, file: 0)
 
     token = _register_and_login(client, "remote-storage-roundtrip@example.com")
@@ -552,9 +598,21 @@ def test_object_storage_upload_download_delete_survives_local_file_loss(
 
     deleted = client.delete(f"/files/{file_id}", headers=headers)
     assert deleted.status_code == 204
-    assert object_key not in objects
+    db_session.expire_all()
+    attachment = db_session.get(FileAttachment, file_id)
+    assert attachment is not None
+    assert attachment.deletion_status == "deletion_pending"
+    from app.models.storage_cleanup_outbox import StorageCleanupOutbox
+    intent = (
+        db_session.query(StorageCleanupOutbox)
+        .filter(StorageCleanupOutbox.file_attachment_id == file_id)
+        .one()
+    )
+    assert intent.status == "pending"
+    assert intent.object_key == object_key
+    assert object_key in objects  # Physical deletion is deferred to the cleanup processor.
     assert client.get(f"/files/{file_id}", headers=headers).status_code == 404
-    assert [operation[0] for operation in operations] == ["put", "get", "delete"]
+    assert [operation[0] for operation in operations] == ["put", "get"]
 
 
 def test_upload_failure_cleans_partial_file_and_allows_retry(
@@ -1614,4 +1672,189 @@ def test_concurrent_uploads_cannot_exceed_account_quota_on_postgres(
             cleanup.query(User).filter(User.id == user_id).delete(
                 synchronize_session=False
             )
+            cleanup.commit()
+def test_delete_file_commit_failure_rolls_back_intent_without_storage_io(
+    client, db_session, tmp_path, monkeypatch
+):
+    """A failed transaction must leave the file available and never touch storage."""
+    from sqlalchemy.orm import Session
+    from app.models.file_attachment import FileAttachment
+    from app.models.storage_cleanup_outbox import StorageCleanupOutbox
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    storage_calls = []
+    dispatch_calls = []
+    monkeypatch.setattr(
+        files_router,
+        "delete_stored_file",
+        lambda *args, **kwargs: storage_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        files_router,
+        "dispatch_storage_cleanup",
+        lambda: dispatch_calls.append("wake"),
+    )
+
+    token = _register_and_login(client, "delete-commit-failure@example.com")
+    headers = {"Authorization": f"Bearer {token}"}
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("rollback.txt", b"must remain", "text/plain")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    file_id = uploaded.json()["id"]
+
+    original_commit = Session.commit
+    fail_commit = {"enabled": False}
+
+    def fail_target_commit(session):
+        if fail_commit["enabled"]:
+            fail_commit["enabled"] = False
+            raise RuntimeError("simulated database commit failure")
+        return original_commit(session)
+
+    monkeypatch.setattr(Session, "commit", fail_target_commit)
+    fail_commit["enabled"] = True
+
+    with pytest.raises(RuntimeError, match="simulated database commit failure"):
+        client.delete(f"/files/{file_id}", headers=headers)
+
+    db_session.expire_all()
+    attachment = db_session.get(FileAttachment, file_id)
+    assert attachment is not None
+    assert attachment.deletion_status == "available"
+    assert (
+        db_session.query(StorageCleanupOutbox)
+        .filter(StorageCleanupOutbox.file_attachment_id == file_id)
+        .count()
+        == 0
+    )
+    assert storage_calls == []
+    assert dispatch_calls == []
+
+
+def test_concurrent_delete_requests_create_one_outbox_intent_on_postgres(
+    db_session, tmp_path, monkeypatch
+):
+    """Two independent transactions serialize on the attachment row lock."""
+    from threading import Event, Thread
+    from uuid import uuid4
+
+    import pytest
+    from sqlalchemy.orm import sessionmaker
+
+    from app.models.file_attachment import FileAttachment
+    from app.models.storage_cleanup_outbox import StorageCleanupOutbox
+    from app.models.user import User
+    from app.models.workspace import Workspace, WorkspaceMember, WorkspaceRole
+    from app.routers import files as files_router
+    from app.services.storage_profiles import get_or_create_active_storage_profile
+
+    bind = db_session.get_bind()
+    engine = bind.engine if hasattr(bind, "engine") else bind
+    if engine.dialect.name != "postgresql":
+        pytest.skip("PostgreSQL row-lock behavior is required for concurrent DELETE")
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+
+    session_factory = sessionmaker(
+        bind=engine, autoflush=False, expire_on_commit=False
+    )
+    suffix = uuid4().hex
+    creator = session_factory()
+    user = User(
+        email=f"concurrent-file-delete-{suffix}@example.test",
+        hashed_password="test-only-hash",
+    )
+    creator.add(user)
+    creator.flush()
+    workspace = Workspace(owner_id=user.id, name=f"Delete race {suffix[:12]}")
+    creator.add(workspace)
+    creator.flush()
+    creator.add(
+        WorkspaceMember(
+            workspace_id=workspace.id,
+            user_id=user.id,
+            role=WorkspaceRole.owner,
+        )
+    )
+    profile = get_or_create_active_storage_profile(creator)
+    stored_filename = f"{suffix}.txt"
+    upload_dir = tmp_path / str(user.id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    (upload_dir / stored_filename).write_bytes(b"concurrent delete")
+    attachment = FileAttachment(
+        user_id=user.id,
+        workspace_id=workspace.id,
+        original_filename="concurrent.txt",
+        stored_filename=stored_filename,
+        object_key=f"users/{user.id}/{stored_filename}",
+        storage_profile_id=profile.id,
+        content_type="text/plain",
+        size_bytes=len(b"concurrent delete"),
+    )
+    creator.add(attachment)
+    creator.commit()
+    user_id, file_id = user.id, attachment.id
+    creator.close()
+
+    first_enqueue_entered = Event()
+    release_first_enqueue = Event()
+    enqueue_calls = []
+    route_errors = []
+
+    original_enqueue = files_router.enqueue_file_storage_cleanup
+
+    def pause_first_enqueue(*args, **kwargs):
+        enqueue_calls.append(1)
+        result = original_enqueue(*args, **kwargs)
+        if len(enqueue_calls) == 1:
+            first_enqueue_entered.set()
+            if not release_first_enqueue.wait(10):
+                raise TimeoutError("concurrent delete test did not release first request")
+        return result
+
+    monkeypatch.setattr(
+        files_router, "enqueue_file_storage_cleanup", pause_first_enqueue
+    )
+    monkeypatch.setattr(files_router, "dispatch_storage_cleanup", lambda: None)
+
+    def run_delete():
+        try:
+            with session_factory() as session:
+                current_user = session.get(User, user_id)
+                files_router.delete_file(file_id, current_user, session)
+        except BaseException as exc:
+            route_errors.append(exc)
+
+    first = Thread(target=run_delete, daemon=True)
+    second = Thread(target=run_delete, daemon=True)
+    try:
+        first.start()
+        assert first_enqueue_entered.wait(10), "first DELETE did not acquire the row lock"
+        second.start()
+        release_first_enqueue.set()
+        first.join(timeout=10)
+        second.join(timeout=10)
+        assert not first.is_alive()
+        assert not second.is_alive()
+        assert route_errors == []
+        assert len(enqueue_calls) == 1
+
+        with session_factory() as verify:
+            persisted = verify.get(FileAttachment, file_id)
+            assert persisted is not None
+            assert persisted.deletion_status == "deletion_pending"
+            assert (
+                verify.query(StorageCleanupOutbox)
+                .filter_by(file_attachment_id=file_id)
+                .count()
+                == 1
+            )
+    finally:
+        release_first_enqueue.set()
+        first.join(timeout=10)
+        second.join(timeout=10)
+        with session_factory() as cleanup:
+            cleanup.query(User).filter(User.id == user_id).delete()
             cleanup.commit()

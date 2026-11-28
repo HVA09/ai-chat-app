@@ -4,7 +4,7 @@
 import hashlib
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, Text, event
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, String, Text, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -15,6 +15,10 @@ from app.models.storage_profile import StorageProfile
 class FileAttachment(Base):
     __tablename__ = "file_attachments"
     __table_args__ = (
+        CheckConstraint(
+            "deletion_status IN ('available', 'deletion_pending')",
+            name="ck_file_attachments_deletion_status",
+        ),
         Index("ix_file_attachments_user_id_created_at", "user_id", "created_at"),
         Index("ix_file_attachments_stored_filename", "stored_filename", unique=True),
     )
@@ -33,11 +37,10 @@ class FileAttachment(Base):
     stored_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     object_key: Mapped[str | None] = mapped_column(String(512), unique=True, nullable=True, index=True)
     storage_profile_id: Mapped[str | None] = mapped_column(ForeignKey("storage_profiles.id", ondelete="RESTRICT"), nullable=True, index=True)
+    deletion_status: Mapped[str] = mapped_column(String(24), nullable=False, default="available", server_default="available")
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Current source and indexed vectors are tracked separately. Legacy rows
-    # remain NULL until their existing chunks are safely reindexed.
     extracted_text_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     indexed_text_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     indexed_embedding_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -59,7 +62,6 @@ class FileAttachment(Base):
     assistant_links = relationship(
         "AssistantFileLink", back_populates="file", cascade="all, delete-orphan", passive_deletes=True
     )
-
 
 
 def extracted_text_fingerprint(text: str | None) -> str | None:

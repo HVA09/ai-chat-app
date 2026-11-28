@@ -26,6 +26,9 @@ def enqueue_file_storage_cleanup(
     db: Session,
     object_key: str,
     fallback_path: Path,
+    *,
+    storage_profile_id: str | None = None,
+    file_attachment_id: int | None = None,
 ) -> StorageCleanupOutbox:
     """Add a single-object cleanup instruction using a safe relative path."""
     root = Path(settings.UPLOAD_DIR).resolve()
@@ -38,6 +41,8 @@ def enqueue_file_storage_cleanup(
         operation="delete_file",
         object_key=object_key,
         fallback_path=relative.as_posix(),
+        storage_profile_id=storage_profile_id,
+        file_attachment_id=file_attachment_id,
         status="pending",
     )
     db.add(row)
