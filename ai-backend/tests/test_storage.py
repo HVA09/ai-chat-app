@@ -281,10 +281,41 @@ def test_get_bytes_enforces_local_size_limit(monkeypatch, tmp_path):
     ):
         monkeypatch.setattr(storage.settings, name, "")
 
-    target = tmp_path / "artifact.bin"
-    target.write_bytes(b"12345")
     monkeypatch.setattr(storage.settings, "UPLOAD_DIR", str(tmp_path))
+    object_key = "previews/42/artifact/index.html"
+    storage.put_bytes(b"12345", object_key, "text/html")
+
+    generated_root = tmp_path / ".generated-objects"
+    stored_files = list(generated_root.iterdir())
+    assert len(stored_files) == 1
+    assert stored_files[0].name.isalnum()
+    assert stored_files[0].name == storage._local_bytes_path(object_key).name
 
     with pytest.raises(storage.StorageError):
-        storage.get_bytes("artifact.bin", max_bytes=4)
-    assert storage.get_bytes("artifact.bin", max_bytes=5) == b"12345"
+        storage.get_bytes(object_key, max_bytes=4)
+    assert storage.get_bytes(object_key, max_bytes=5) == b"12345"
+
+
+def test_local_generated_object_paths_do_not_use_object_key_as_a_path(
+    monkeypatch, tmp_path
+):
+    import pytest
+
+    for name in (
+        "S3_BUCKET",
+        "S3_ENDPOINT_URL",
+        "S3_REGION",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.setattr(storage.settings, name, "")
+
+    monkeypatch.setattr(storage.settings, "UPLOAD_DIR", str(tmp_path))
+    object_key = "previews/42/artifact/nested/index.html"
+    storage.put_bytes(b"safe", object_key, "text/html")
+
+    assert not (tmp_path / object_key).exists()
+    assert storage.get_bytes(object_key) == b"safe"
+
+    with pytest.raises(storage.StorageError):
+        storage.get_bytes("../../outside.txt")
