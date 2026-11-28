@@ -62,7 +62,7 @@ from app.services.tools.data_analysis import (
     analyze_file,
     extract_data_analysis_request,
 )
-from app.services.storage import materialize_file
+from app.services.file_read_leases import FileUnavailableError, leased_materialize_file
 from app.services.tools.web_search import WebSearchError, extract_web_search_query, format_web_search_response, search_web
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -1204,9 +1204,8 @@ async def analyze_attached_image(
 
     # The conversation, history, file metadata and prompt are in memory.
     # Release the DB checkout before object storage and the remote vision provider.
-    commit_and_release_connection(db)
     try:
-        with materialize_file(attachment.object_key, image_path) as materialized_path:
+        with leased_materialize_file(attachment, db, image_path) as materialized_path:
             raw = materialized_path.read_bytes()
         image_data_url = (
             f"data:{attachment.content_type};base64,"
@@ -1254,6 +1253,11 @@ async def analyze_attached_image(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="ملف الصورة غير موجود في التخزين",
+        ) from exc
+    except FileUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="ملف الصورة غير متاح للقراءة",
         ) from exc
     except OSError as exc:
         raise HTTPException(
@@ -1497,8 +1501,7 @@ async def chat(
             )
             # File materialization may use remote object storage; do not hold
             # a PostgreSQL checkout while it waits.
-            commit_and_release_connection(db)
-            with materialize_file(attachment.object_key, fallback_path) as path:
+            with leased_materialize_file(attachment, db, fallback_path) as path:
                 data_file = DataFile(
                     path=path,
                     original_filename=attachment.original_filename,
@@ -1510,6 +1513,11 @@ async def chat(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="الملف غير موجود في التخزين.",
+            ) from exc
+        except FileUnavailableError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="الملف غير متاح للقراءة.",
             ) from exc
         except DataAnalysisError as exc:
             raise HTTPException(
@@ -1859,8 +1867,7 @@ async def chat_stream(
             )
             # Streaming data analysis also materializes remote files before
             # creating its SSE response; return the DB connection first.
-            commit_and_release_connection(db)
-            with materialize_file(attachment.object_key, fallback_path) as path:
+            with leased_materialize_file(attachment, db, fallback_path) as path:
                 data_file = DataFile(
                     path=path,
                     original_filename=attachment.original_filename,
@@ -1872,6 +1879,11 @@ async def chat_stream(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="الملف غير موجود في التخزين.",
+            ) from exc
+        except FileUnavailableError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="الملف غير متاح للقراءة.",
             ) from exc
         except DataAnalysisError as exc:
             raise HTTPException(

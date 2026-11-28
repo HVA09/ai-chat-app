@@ -3,10 +3,16 @@
 """
 from unittest.mock import AsyncMock
 
+import pytest
+from sqlalchemy.orm import Session
+
 from app.config import settings as app_settings
 from app.auth import routes as auth_routes_module
 from app.routers import chat as chat_router_module
 from app.services.ai_providers.base import AIReply
+from app.models.audit_log import AuditLog
+from app.models.storage_cleanup_outbox import StorageCleanupOutbox
+from app.models.user import User
 
 
 def _register_and_login(client, email, password="StrongPass123", admin=False):
@@ -607,3 +613,46 @@ def test_admin_disable_and_reactivate_invalidates_old_access_tokens(client):
         json={"email": "state-target@example.com", "password": "StrongPass123"},
     )
     assert fresh_login.status_code == 200
+def test_admin_delete_rolls_back_audit_and_cleanup_outbox_when_commit_fails(
+    client, db_session, monkeypatch
+):
+    admin_token = _register_and_login(client, "rollback-admin@example.com", admin=True)
+    headers = {"Authorization": f"Bearer {admin_token}"}
+    admin_id = client.get("/users/me", headers=headers).json()["id"]
+    _register_and_login(client, "rollback-target@example.com")
+
+    target = (
+        db_session.query(User)
+        .filter(User.email == "rollback-target@example.com")
+        .one()
+    )
+    target_id = target.id
+    original_commit = Session.commit
+
+    def fail_account_deletion_commit(session):
+        if any(isinstance(item, User) and item.id == target_id for item in session.deleted):
+            raise RuntimeError("simulated account deletion commit failure")
+        return original_commit(session)
+
+    monkeypatch.setattr(Session, "commit", fail_account_deletion_commit)
+
+    with pytest.raises(RuntimeError, match="simulated account deletion commit failure"):
+        client.delete(f"/admin/users/{target_id}", headers=headers)
+
+    # A failed request transaction must not persist deletion, audit, or cleanup work.
+    assert db_session.query(User).filter(User.id == target_id).one_or_none() is not None
+    assert (
+        db_session.query(AuditLog)
+        .filter(AuditLog.event_type == "admin_user_deleted", AuditLog.user_id == admin_id)
+        .count()
+        == 0
+    )
+    assert (
+        db_session.query(StorageCleanupOutbox)
+        .filter(
+            StorageCleanupOutbox.operation == "delete_user_prefix",
+            StorageCleanupOutbox.user_id == target_id,
+        )
+        .count()
+        == 0
+    )

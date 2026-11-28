@@ -35,9 +35,9 @@ from app.services.tools.data_analysis import DataAnalysisError, DataFile, analyz
 from app.services.storage import (
     StorageError,
     delete_file as delete_stored_file,
-    materialize_file,
     put_file,
 )
+from app.services.file_read_leases import FileUnavailableError, leased_materialize_file
 from app.services.tool_security import (
     ToolArgumentSecurityError,
     inspect_untrusted_output,
@@ -277,19 +277,16 @@ async def _analyze_data(arguments: dict[str, Any], context: ToolContext) -> Tool
             / str(context.current_user.id)
             / attachment.stored_filename
         )
-        # Attachment metadata is loaded; release its read transaction before
-        # opening the remote object-storage stream.
-        commit_and_release_connection(context.db)
         try:
-            with materialize_file(attachment.object_key, fallback_path) as path:
+            with leased_materialize_file(attachment, context.db, fallback_path) as path:
                 data_file = DataFile(
                     path=path,
                     original_filename=attachment.original_filename,
                     content_type=attachment.content_type,
                 )
                 result = analyze_file(data_file)
-        except FileNotFoundError as exc:
-            raise DataAnalysisError("الملف المطلوب غير موجود في التخزين.") from exc
+        except (FileNotFoundError, FileUnavailableError) as exc:
+            raise DataAnalysisError("الملف المطلوب غير موجود أو غير متاح للقراءة في التخزين.") from exc
         source = {
             "id": "D1",
             "filename": attachment.original_filename,

@@ -213,7 +213,12 @@ def test_delete_file_commits_outbox_intent_without_storage_io(
 
     def capture_attachment_query(_conn, _cursor, statement, _params, _context, _many):
         normalized = statement.lower()
-        if lock_order and "file_attachments" in normalized and normalized.lstrip().startswith("select"):
+        if (
+            lock_order
+            and "file_attachments" in normalized
+            and normalized.lstrip().startswith("select")
+            and "for update" in normalized
+        ):
             lock_order.append("attachment_query")
 
     monkeypatch.setattr(files_router, "lock_user_for_update", capture_owner_lock)

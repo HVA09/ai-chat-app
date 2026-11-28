@@ -287,15 +287,19 @@ def test_analyze_data_releases_database_before_remote_file_materialization(
     materialized_path.write_text("value\n1\n", encoding="utf-8")
 
     @contextmanager
-    def fake_materialize(object_key, fallback_path):
-        assert object_key == attachment.object_key
+    def fake_leased_materialize_file(received_attachment, received_db, fallback_path):
+        assert received_attachment is attachment
+        assert received_db is db
         assert isinstance(fallback_path, Path)
-        assert db.commits == 1
+        assert db.commits == 0
+        # Model the helper's durable lease commit before storage materialization.
+        db.commit()
         assert db.expire_on_commit is True
         yield materialized_path
 
     monkeypatch.setattr(
-        "app.services.tools.registry.materialize_file", fake_materialize
+        "app.services.tools.registry.leased_materialize_file",
+        fake_leased_materialize_file,
     )
     monkeypatch.setattr(
         "app.services.tools.registry.analyze_file",

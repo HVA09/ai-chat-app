@@ -1174,12 +1174,21 @@ def _storage_cleanup_fallback_path(relative_path: str) -> Path:
 def _perform_storage_cleanup(
     operation: str, user_id, object_key, fallback_path,
     storage_profile_id: str | None = None,
+    file_attachment_id: int | None = None,
 ) -> None:
     from app.services.storage import delete_file, delete_user_objects
 
     if operation == "delete_user_prefix":
         if user_id is None or int(user_id) < 1:
             raise RuntimeError("Invalid user id in storage cleanup outbox")
+        from app.services.file_read_leases import (
+            ActiveFileReadLeaseError,
+            has_active_user_read_leases,
+        )
+        if has_active_user_read_leases(int(user_id)):
+            raise ActiveFileReadLeaseError(
+                "User-prefix cleanup deferred while an active reader lease exists"
+            )
         delete_user_objects(int(user_id))
         user_dir = (Path(settings.UPLOAD_DIR).resolve() / str(int(user_id))).resolve()
         root = Path(settings.UPLOAD_DIR).resolve()
@@ -1190,6 +1199,10 @@ def _perform_storage_cleanup(
         return
 
     if operation == "delete_file":
+        if file_attachment_id is not None:
+            from app.services.file_read_leases import has_active_file_read_leases, ActiveFileReadLeaseError
+            if has_active_file_read_leases(file_attachment_id):
+                raise ActiveFileReadLeaseError("File cleanup deferred while an active reader lease exists")
         if not object_key or not fallback_path:
             raise RuntimeError("Incomplete file cleanup outbox payload")
         if storage_profile_id is not None:
@@ -1269,7 +1282,8 @@ def _run_storage_cleanup_outbox_batch(batch_size: int = 50) -> int:
     ) in claimed:
         try:
             _perform_storage_cleanup(
-                operation, user_id, object_key, fallback_path, storage_profile_id
+                operation, user_id, object_key, fallback_path, storage_profile_id,
+                file_attachment_id,
             )
         except Exception as exc:
             retry_db = SessionLocal()
@@ -1279,7 +1293,13 @@ def _run_storage_cleanup_outbox_batch(batch_size: int = 50) -> int:
                     "lease_token": None,
                     "last_error": str(exc)[:1000],
                 }
-                if attempt_count >= 12:
+                from app.services.file_read_leases import ActiveFileReadLeaseError
+                if isinstance(exc, ActiveFileReadLeaseError):
+                    # A live reader is a deferral, not a failed cleanup attempt.
+                    values["status"] = "pending"
+                    values["attempt_count"] = max(0, attempt_count - 1)
+                    values["available_at"] = datetime.now(timezone.utc) + timedelta(seconds=30)
+                elif attempt_count >= 12:
                     values["status"] = "failed"
                 else:
                     delay_seconds = min(3600, 30 * (2 ** min(attempt_count - 1, 7)))

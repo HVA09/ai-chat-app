@@ -6,6 +6,18 @@ from sqlalchemy.orm import Session, sessionmaker, declarative_base
 
 from app.config import settings
 
+# Bound PostgreSQL connection establishment and detect dead peers promptly.
+# These driver options are ignored for non-PostgreSQL database URLs.
+connect_args = {}
+if settings.DATABASE_URL.startswith("postgresql"):
+    connect_args = {
+        "connect_timeout": settings.DATABASE_CONNECT_TIMEOUT_SECONDS,
+        "keepalives": 1,
+        "keepalives_idle": 10,
+        "keepalives_interval": 5,
+        "keepalives_count": 3,
+    }
+
 # The API, embedded Celery worker, and Celery beat run in separate processes;
 # each process creates its own engine. Keep each pool bounded for external session
 # poolers with per-user client limits.
@@ -16,6 +28,7 @@ engine = create_engine(
     max_overflow=settings.DATABASE_MAX_OVERFLOW,
     pool_timeout=settings.DATABASE_POOL_TIMEOUT_SECONDS,
     pool_recycle=1800,
+    connect_args=connect_args,
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

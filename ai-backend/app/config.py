@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     DATABASE_POOL_SIZE: int = 2
     DATABASE_MAX_OVERFLOW: int = 1
     DATABASE_POOL_TIMEOUT_SECONDS: int = 15
+    DATABASE_CONNECT_TIMEOUT_SECONDS: int = 10
 
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
@@ -157,6 +158,13 @@ class Settings(BaseSettings):
     def validate_database_pool_timeout(cls, value: int) -> int:
         if value < 1:
             raise ValueError("DATABASE_POOL_TIMEOUT_SECONDS must be at least 1")
+        return value
+
+    @field_validator("DATABASE_CONNECT_TIMEOUT_SECONDS")
+    @classmethod
+    def validate_database_connect_timeout(cls, value: int) -> int:
+        if value < 1 or value > 60:
+            raise ValueError("DATABASE_CONNECT_TIMEOUT_SECONDS must be between 1 and 60")
         return value
 
     @field_validator("PREVIEW_BUILD_TIMEOUT_SECONDS")

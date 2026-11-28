@@ -15,7 +15,7 @@ from app.services.ai_providers.base import AIReply
 from app.services.ai_service import get_ai_vision_reply
 from app.services.embeddings import EmbeddingServiceError
 from app.services.rag import index_file_chunks
-from app.services.storage import materialize_file
+from app.services.file_read_leases import FileUnavailableError, leased_materialize_file
 
 IMAGE_INDEX_PROMPT = (
     "Create a concise but information-rich factual description of this image for "
@@ -41,10 +41,10 @@ async def index_image_file(
     """
     fallback_path = _image_path(file)
     try:
-        with materialize_file(file.object_key, fallback_path) as path:
+        with leased_materialize_file(file, db, fallback_path) as path:
             raw = path.read_bytes()
-    except FileNotFoundError as exc:
-        raise FileNotFoundError("ملف الصورة غير موجود في التخزين") from exc
+    except (FileNotFoundError, FileUnavailableError) as exc:
+        raise FileNotFoundError("ملف الصورة غير موجود أو غير متاح في التخزين") from exc
     image_data_url = (
         f"data:{file.content_type};base64,"
         f"{base64.b64encode(raw).decode('ascii')}"
