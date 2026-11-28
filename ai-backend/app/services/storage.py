@@ -90,20 +90,48 @@ def put_bytes(content: bytes, object_key: str, content_type: str) -> None:
         raise StorageError("فشل رفع الملف المولد إلى Object Storage") from exc
 
 
-def get_bytes(object_key: str) -> bytes:
-    """Read generated artifacts from object storage or the local fallback."""
+def get_bytes(object_key: str, max_bytes: int | None = None) -> bytes:
+    """Read bytes, optionally enforcing a hard size bound for generated artifacts."""
     if not object_key or object_key.startswith("/") or ".." in Path(object_key).parts:
         raise StorageError("مسار التخزين غير صالح")
+    if max_bytes is not None and max_bytes < 0:
+        raise StorageError("حد القراءة غير صالح")
     if not _s3_enabled():
         try:
-            return (Path(settings.UPLOAD_DIR) / object_key).read_bytes()
+            target = Path(settings.UPLOAD_DIR) / object_key
+            if max_bytes is not None and target.stat().st_size > max_bytes:
+                raise StorageError("الملف يتجاوز حد القراءة")
+            return target.read_bytes()
+        except StorageError:
+            raise
         except OSError as exc:
             raise StorageError("تعذر قراءة الملف المولد") from exc
+    body = None
     try:
         response = _client().get_object(Bucket=settings.S3_BUCKET, Key=object_key)
-        return response["Body"].read()
+        body = response["Body"]
+        if max_bytes is not None and response.get("ContentLength", max_bytes + 1) > max_bytes:
+            raise StorageError("الملف يتجاوز حد القراءة")
+        if max_bytes is None:
+            return body.read()
+        chunks = []
+        total = 0
+        while True:
+            chunk = body.read(min(64 * 1024, max_bytes - total + 1))
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                raise StorageError("الملف يتجاوز حد القراءة")
+            chunks.append(chunk)
+        return b"".join(chunks)
+    except StorageError:
+        raise
     except (BotoCoreError, ClientError) as exc:
         raise StorageError("تعذر قراءة الملف المولد من Object Storage") from exc
+    finally:
+        if body is not None:
+            body.close()
 
 
 def open_file(object_key: str, fallback_path: Path) -> BinaryIO:
