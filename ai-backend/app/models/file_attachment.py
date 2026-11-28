@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.database import Base
+from app.models.storage_profile import StorageProfile
 
 
 class FileAttachment(Base):
@@ -31,6 +32,7 @@ class FileAttachment(Base):
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     stored_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     object_key: Mapped[str | None] = mapped_column(String(512), unique=True, nullable=True, index=True)
+    storage_profile_id: Mapped[str | None] = mapped_column(ForeignKey("storage_profiles.id", ondelete="RESTRICT"), nullable=True, index=True)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     extracted_text: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -45,6 +47,7 @@ class FileAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")
+    storage_profile = relationship("StorageProfile")
     workspace = relationship("Workspace", back_populates="file_attachments")
     project = relationship("WorkspaceProject", back_populates="file_attachments")
     conversation_links = relationship(

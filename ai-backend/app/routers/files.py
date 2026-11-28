@@ -38,6 +38,8 @@ from app.services.rag import (
 )
 from app.services.image_rag import index_image_file
 from app.services.storage import StorageError, delete_file as delete_stored_file, open_file, put_file
+from app.services.storage_cleanup_outbox import record_file_cleanup_failure
+from app.services.storage_profiles import get_or_create_active_storage_profile
 from app.services.project_access import can_edit_project
 from app.services.project_file_retention import lock_user_for_update
 from app.services.upload_cleanup_intents import (
@@ -544,6 +546,7 @@ async def upload_file(
                     detail="المشروع غير موجود",
                 )
 
+    storage_profile = get_or_create_active_storage_profile(db)
     attachment = FileAttachment(
         user_id=upload_user_id,
         workspace_id=workspace_id,
@@ -551,6 +554,7 @@ async def upload_file(
         original_filename=(file.filename or stored_filename)[:255],
         stored_filename=stored_filename,
         object_key=object_key,
+        storage_profile_id=storage_profile.id,
         content_type=sniffed,
         size_bytes=total,
         extracted_text=extracted_text,
