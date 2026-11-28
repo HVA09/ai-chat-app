@@ -181,7 +181,7 @@ def publish_preview_artifact(
 def read_preview_file(project_id: int, artifact_id: str, path: str) -> tuple[bytes, str]:
     safe_path = _safe_zip_path(path)
     try:
-        content = get_bytes(_object_key(project_id, artifact_id, safe_path))
+        content = get_bytes(_object_key(project_id, artifact_id, safe_path), max_bytes=settings.PREVIEW_MAX_ARTIFACT_BYTES)
     except StorageError as exc:
         raise PreviewArtifactError("تعذر قراءة artifact المعاينة.") from exc
     content_type = mimetypes.guess_type(safe_path)[0] or "application/octet-stream"
