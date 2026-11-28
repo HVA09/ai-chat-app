@@ -1,9 +1,7 @@
 """
 مسارات بيانات المستخدم: عرض الملف الشخصي، تعديله، تغيير كلمة المرور، حذف الحساب
 """
-from pathlib import Path
 import json
-import shutil
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -12,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from app.auth.security import hash_password, verify_password
 from app.audit import log_event
-from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.api_key import APIKey
@@ -29,7 +26,10 @@ from app.models.user_session import UserSession
 from app.models.user_memory import UserMemory
 from app.models.workspace import Workspace, WorkspaceMember
 from app.schemas.user import ChangePasswordRequest, DeleteAccountRequest, ProfileUpdate, UserOut
-from app.services.storage import StorageError, delete_user_objects
+from app.services.storage_cleanup_outbox import (
+    dispatch_storage_cleanup,
+    enqueue_user_storage_cleanup,
+)
 from app.logging_config import get_logger
 from app.services.project_file_retention import (
     lock_user_for_update,
@@ -423,25 +423,15 @@ def delete_account(
             detail="الحساب غير موجود",
         )
 
-    # Clean remote objects before deleting the account metadata, so a storage failure
-    # does not silently leave user-owned objects behind after the account is gone.
-    try:
-        delete_user_objects(current_user.id)
-    except StorageError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="تعذر تنظيف ملفات الحساب الآن. أعد المحاولة لاحقًا.",
-        ) from exc
-
     # Workspace/project cascades must not leave other members' uploads in a shared scope.
     privatize_account_workspace_attachments(db, current_user.id)
 
-    # Keep the user row lock until the account deletion and audit record commit
-    # together. log_event's default commit would release the lock too early.
+    # Persist the external cleanup instruction in the same transaction as account
+    # deletion. The outbox deliberately has no user FK, so it survives the cascade.
     user_id = current_user.id
-    user_email = current_user.email
-    description = f"حذف حساب: {user_email}"
+    description = f"حذف حساب: {current_user.email}"
     try:
+        enqueue_user_storage_cleanup(db, user_id)
         log_event(
             db,
             "account_deleted",
@@ -456,7 +446,7 @@ def delete_account(
         db.rollback()
         raise
 
-    # Emit success only after the transaction has committed successfully.
-    logger.info("[account_deleted] %s", description)
-    user_upload_dir = Path(settings.UPLOAD_DIR) / str(user_id)
-    shutil.rmtree(user_upload_dir, ignore_errors=True)
+    # Wake the worker only after the transaction is durable; pending work remains
+    # recoverable from the outbox if the best-effort dispatch cannot be delivered.
+    logger.info("[account_deleted]")
+    dispatch_storage_cleanup()
