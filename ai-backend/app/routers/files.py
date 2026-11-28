@@ -188,10 +188,16 @@ def _get_workspace_membership(
 
 
 def _get_accessible_file(
-    file_id: int, current_user: User, db: Session
+    file_id: int,
+    current_user: User,
+    db: Session,
+    *,
+    include_deletion_pending: bool = False,
 ) -> FileAttachment:
     file = db.query(FileAttachment).filter(FileAttachment.id == file_id).first()
     if not file:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
+    if file.deletion_status == "deletion_pending" and not include_deletion_pending:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
 
     if file.workspace_id is None:
@@ -1018,8 +1024,11 @@ def delete_file(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Lock the attachment before checking deletion state so concurrent delete
-    # requests converge on one durable outbox intent.
+    # Preserve the global user -> attachment lock order used by uploads and
+    # retention. This prevents delete/upload/account-cleanup lock inversions.
+    if not lock_user_for_update(db, current_user.id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
+
     attachment = (
         db.query(FileAttachment)
         .populate_existing()
@@ -1031,7 +1040,10 @@ def delete_file(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="الملف غير موجود")
 
     # Reuse the established ownership/workspace ACL checks after taking the row lock.
-    attachment = _get_accessible_file(file_id, current_user, db)
+    # Repeated delete requests remain idempotent while reads reject pending files.
+    attachment = _get_accessible_file(
+        file_id, current_user, db, include_deletion_pending=True
+    )
     if not _file_response(attachment, current_user, db).can_delete:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

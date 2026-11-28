@@ -334,7 +334,9 @@ def test_postgres_two_workers_claim_distinct_outbox_rows_concurrently(monkeypatc
     worker_results = []
     worker_errors = []
 
-    def fake_storage_cleanup(_operation, user_id, _object_key, _fallback_path):
+    def fake_storage_cleanup(
+        _operation, user_id, _object_key, _fallback_path, _storage_profile_id=None
+    ):
         claimed_user_ids.append(user_id)
         storage_barrier.wait(timeout=15)
 
