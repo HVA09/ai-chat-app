@@ -1,7 +1,7 @@
 """Add a durable outbox for object-storage cleanup.
 
-Revision ID: 0083_storage_cleanup_outbox
-Revises: 0082_file_index_fingerprints
+Revision ID: 0085_storage_cleanup_outbox
+Revises: 0084_upload_cleanup_intents
 """
 from typing import Sequence, Union
 
@@ -9,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "0083_storage_cleanup_outbox"
-down_revision: Union[str, None] = "0082_file_index_fingerprints"
+revision: str = "0085_storage_cleanup_outbox"
+down_revision: Union[str, None] = "0084_upload_cleanup_intents"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
