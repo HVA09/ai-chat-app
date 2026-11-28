@@ -1195,7 +1195,9 @@ def _perform_storage_cleanup(operation: str, user_id, object_key, fallback_path)
 
 
 def _run_storage_cleanup_outbox_batch(batch_size: int = 50) -> int:
-    """Claim durable cleanup work, perform idempotent I/O, and schedule retries."""
+    """Claim durable cleanup work and fence every state write by lease ownership."""
+    from uuid import uuid4
+
     now = datetime.now(timezone.utc)
     expired_lease = now - timedelta(minutes=15)
     claim_db = SessionLocal()
@@ -1222,11 +1224,14 @@ def _run_storage_cleanup_outbox_batch(batch_size: int = 50) -> int:
         )
         claimed = []
         for row in rows:
+            lease_token = uuid4().hex
             row.status = "running"
             row.locked_at = now
+            row.lease_token = lease_token
             row.attempt_count += 1
             claimed.append(
-                (row.id, row.operation, row.user_id, row.object_key, row.fallback_path, row.attempt_count)
+                (row.id, row.operation, row.user_id, row.object_key,
+                 row.fallback_path, row.attempt_count, lease_token)
             )
         claim_db.commit()
     except Exception:
@@ -1236,27 +1241,40 @@ def _run_storage_cleanup_outbox_batch(batch_size: int = 50) -> int:
     finally:
         claim_db.close()
 
-    for row_id, operation, user_id, object_key, fallback_path, attempt_count in claimed:
+    for row_id, operation, user_id, object_key, fallback_path, attempt_count, lease_token in claimed:
         try:
             _perform_storage_cleanup(operation, user_id, object_key, fallback_path)
         except Exception as exc:
             retry_db = SessionLocal()
             try:
-                row = retry_db.get(StorageCleanupOutbox, row_id)
-                if row is not None and row.status == "running":
-                    row.locked_at = None
-                    row.last_error = str(exc)[:1000]
-                    if attempt_count >= 12:
-                        row.status = "failed"
-                    else:
-                        delay_seconds = min(3600, 30 * (2 ** min(attempt_count - 1, 7)))
-                        row.status = "pending"
-                        row.available_at = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
-                    retry_db.commit()
-                logger.warning(
-                    "Storage cleanup outbox item %s failed on attempt %s; retry scheduled: %s",
-                    row_id, attempt_count, exc,
+                values = {
+                    "locked_at": None,
+                    "lease_token": None,
+                    "last_error": str(exc)[:1000],
+                }
+                if attempt_count >= 12:
+                    values["status"] = "failed"
+                else:
+                    delay_seconds = min(3600, 30 * (2 ** min(attempt_count - 1, 7)))
+                    values["status"] = "pending"
+                    values["available_at"] = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
+                updated = (
+                    retry_db.query(StorageCleanupOutbox)
+                    .filter(
+                        StorageCleanupOutbox.id == row_id,
+                        StorageCleanupOutbox.status == "running",
+                        StorageCleanupOutbox.lease_token == lease_token,
+                    )
+                    .update(values, synchronize_session=False)
                 )
+                retry_db.commit()
+                if not updated:
+                    logger.info("Ignoring stale cleanup failure from worker for outbox item %s", row_id)
+                else:
+                    logger.warning(
+                        "Storage cleanup outbox item %s failed on attempt %s; retry scheduled: %s",
+                        row_id, attempt_count, exc,
+                    )
             except Exception:
                 retry_db.rollback()
                 logger.exception("Could not persist retry state for storage cleanup item %s", row_id)
@@ -1265,20 +1283,33 @@ def _run_storage_cleanup_outbox_batch(batch_size: int = 50) -> int:
         else:
             complete_db = SessionLocal()
             try:
-                row = complete_db.get(StorageCleanupOutbox, row_id)
-                if row is not None and row.status == "running":
-                    row.status = "completed"
-                    row.locked_at = None
-                    row.completed_at = datetime.now(timezone.utc)
-                    row.last_error = None
-                    complete_db.commit()
+                updated = (
+                    complete_db.query(StorageCleanupOutbox)
+                    .filter(
+                        StorageCleanupOutbox.id == row_id,
+                        StorageCleanupOutbox.status == "running",
+                        StorageCleanupOutbox.lease_token == lease_token,
+                    )
+                    .update(
+                        {
+                            "status": "completed",
+                            "locked_at": None,
+                            "lease_token": None,
+                            "completed_at": datetime.now(timezone.utc),
+                            "last_error": None,
+                        },
+                        synchronize_session=False,
+                    )
+                )
+                complete_db.commit()
+                if not updated:
+                    logger.info("Ignoring stale cleanup completion from worker for outbox item %s", row_id)
             except Exception:
                 complete_db.rollback()
                 logger.exception("Could not mark storage cleanup item %s complete", row_id)
             finally:
                 complete_db.close()
     return len(claimed)
-
 
 def _redis_ssl_options(redis_url: str) -> dict | None:
     """Require verified TLS only for Redis URLs that explicitly use rediss://."""
