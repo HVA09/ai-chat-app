@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import hashlib
 from pathlib import Path
 from shutil import copyfileobj
 from tempfile import NamedTemporaryFile
@@ -16,6 +17,26 @@ from app.config import settings
 
 class StorageError(RuntimeError):
     pass
+
+
+def _local_bytes_path(object_key: str) -> Path:
+    """Map an object key to an opaque, filesystem-safe local filename."""
+    upload_root = Path(settings.UPLOAD_DIR).resolve()
+    generated_root = upload_root / ".generated-objects"
+    try:
+        generated_root.mkdir(parents=True, exist_ok=True)
+        resolved_root = generated_root.resolve()
+        if not resolved_root.is_relative_to(upload_root):
+            raise StorageError("مسار التخزين غير صالح")
+        filename = hashlib.sha256(object_key.encode("utf-8")).hexdigest()
+        target = resolved_root / filename
+        if target.is_symlink():
+            raise StorageError("مسار التخزين غير صالح")
+        return target
+    except StorageError:
+        raise
+    except OSError as exc:
+        raise StorageError("تعذر تجهيز مسار التخزين المحلي") from exc
 
 
 def _s3_enabled() -> bool:
@@ -72,8 +93,7 @@ def put_bytes(content: bytes, object_key: str, content_type: str) -> None:
     if not object_key or object_key.startswith("/") or ".." in Path(object_key).parts:
         raise StorageError("مسار التخزين غير صالح")
     if not _s3_enabled():
-        target = Path(settings.UPLOAD_DIR) / object_key
-        target.parent.mkdir(parents=True, exist_ok=True)
+        target = _local_bytes_path(object_key)
         try:
             target.write_bytes(content)
         except OSError as exc:
@@ -98,10 +118,7 @@ def get_bytes(object_key: str, max_bytes: int | None = None) -> bytes:
         raise StorageError("حد القراءة غير صالح")
     if not _s3_enabled():
         try:
-            upload_root = Path(settings.UPLOAD_DIR).resolve()
-            target = (upload_root / object_key).resolve()
-            if not target.is_relative_to(upload_root):
-                raise StorageError("مسار التخزين غير صالح")
+            target = _local_bytes_path(object_key)
             if max_bytes is not None and target.stat().st_size > max_bytes:
                 raise StorageError("الملف يتجاوز حد القراءة")
             return target.read_bytes()
