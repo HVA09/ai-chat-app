@@ -6,6 +6,19 @@ from app.models.storage_cleanup_outbox import StorageCleanupOutbox
 from app import tasks
 
 
+
+
+def _clear_pending_cleanup_rows(db):
+    """Keep worker tests isolated from durable intents created by API tests."""
+    db.query(StorageCleanupOutbox).filter(
+        StorageCleanupOutbox.status.in_(("pending", "running"))
+    ).update(
+        {"status": "completed", "locked_at": None, "lease_token": None},
+        synchronize_session=False,
+    )
+    db.commit()
+
+
 def _worker_session_factory(db_session):
     from sqlalchemy.orm import sessionmaker
 
@@ -18,6 +31,7 @@ def _worker_session_factory(db_session):
 
 
 def test_storage_cleanup_worker_marks_successful_item_completed(db_session, monkeypatch):
+    _clear_pending_cleanup_rows(db_session)
     row = StorageCleanupOutbox(
         operation="delete_user_prefix",
         user_id=987654321,
@@ -46,6 +60,7 @@ def test_storage_cleanup_worker_marks_successful_item_completed(db_session, monk
 
 
 def test_storage_cleanup_worker_schedules_retry_after_storage_failure(db_session, monkeypatch):
+    _clear_pending_cleanup_rows(db_session)
     row = StorageCleanupOutbox(
         operation="delete_user_prefix",
         user_id=987654322,
@@ -99,6 +114,7 @@ def test_local_user_prefix_cleanup_removes_only_user_directory(tmp_path, monkeyp
 
 
 def test_storage_cleanup_worker_recovers_expired_running_lease(db_session, monkeypatch):
+    _clear_pending_cleanup_rows(db_session)
     row = StorageCleanupOutbox(
         operation="delete_user_prefix",
         user_id=987654324,
@@ -139,6 +155,7 @@ def test_local_file_cleanup_is_idempotent_when_object_is_already_missing(tmp_pat
     assert not (tmp_path / missing_path).exists()
 
 def test_storage_cleanup_moves_repeated_failures_to_dead_letter(db_session, monkeypatch):
+    _clear_pending_cleanup_rows(db_session)
     row = StorageCleanupOutbox(
         operation="delete_user_prefix",
         user_id=987654323,
@@ -166,6 +183,7 @@ def test_storage_cleanup_moves_repeated_failures_to_dead_letter(db_session, monk
 
 
 def test_stale_worker_cannot_mark_reclaimed_item_completed(db_session, monkeypatch):
+    _clear_pending_cleanup_rows(db_session)
     row = StorageCleanupOutbox(
         operation="delete_user_prefix",
         user_id=987654325,
@@ -194,6 +212,7 @@ def test_stale_worker_cannot_mark_reclaimed_item_completed(db_session, monkeypat
 
 
 def test_stale_worker_cannot_schedule_retry_after_lease_reclaim(db_session, monkeypatch):
+    _clear_pending_cleanup_rows(db_session)
     row = StorageCleanupOutbox(
         operation="delete_user_prefix",
         user_id=987654326,
@@ -233,6 +252,7 @@ def test_postgres_independent_workers_reclaim_and_fence_stale_completion(monkeyp
         available_at=datetime.now(timezone.utc) - timedelta(seconds=1),
     )
     with IndependentSessionLocal() as setup_db:
+        _clear_pending_cleanup_rows(setup_db)
         setup_db.add(row)
         setup_db.commit()
         row_id = row.id
@@ -274,6 +294,7 @@ def test_postgres_independent_workers_ignore_stale_failure_after_reclaim(monkeyp
         available_at=datetime.now(timezone.utc) - timedelta(seconds=1),
     )
     with IndependentSessionLocal() as setup_db:
+        _clear_pending_cleanup_rows(setup_db)
         setup_db.add(row)
         setup_db.commit()
         row_id = row.id
@@ -313,6 +334,7 @@ def test_postgres_two_workers_claim_distinct_outbox_rows_concurrently(monkeypatc
     from app.database import SessionLocal as IndependentSessionLocal
 
     with IndependentSessionLocal() as setup_db:
+        _clear_pending_cleanup_rows(setup_db)
         if setup_db.get_bind().dialect.name != "postgresql":
             pytest.skip("PostgreSQL SKIP LOCKED behavior is required")
         rows = [
