@@ -37,8 +37,8 @@ def _safe_endpoint(value: str) -> str:
     return urlunsplit((parsed.scheme.lower(), host, parsed.path.rstrip("/"), "", ""))
 
 
-def get_or_create_active_storage_profile(db: Session) -> StorageProfile:
-    """Capture the active backend identity; legacy rows remain unclassified."""
+def active_storage_profile_identity() -> tuple[str, dict]:
+    """Return the deterministic identity and safe persisted fields for current config."""
     if _s3_enabled():
         identity = {
             "provider": "s3",
@@ -57,10 +57,15 @@ def get_or_create_active_storage_profile(db: Session) -> StorageProfile:
             "root_path": str(settings.UPLOAD_DIR),
             "credential_ref": None,
         }
-
     profile_id = hashlib.sha256(
         json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+    return profile_id, identity
+
+
+def get_or_create_active_storage_profile(db: Session) -> StorageProfile:
+    """Capture the active backend identity; legacy rows remain unclassified."""
+    profile_id, identity = active_storage_profile_identity()
     statement = (
         insert(StorageProfile)
         .values(id=profile_id, **identity)

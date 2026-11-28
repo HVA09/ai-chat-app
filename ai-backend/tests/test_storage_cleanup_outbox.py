@@ -450,3 +450,150 @@ def test_postgres_recovers_after_storage_cleanup_succeeds_but_completion_commit_
                 StorageCleanupOutbox.id == row_id
             ).delete(synchronize_session=False)
             cleanup_db.commit()
+def test_file_cleanup_fails_closed_when_active_profile_changed(
+    tmp_path, monkeypatch
+):
+    """Never delete a persisted object through a different active backend."""
+    from app import tasks
+    from app.services import storage as storage_service
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    for name in (
+        "S3_BUCKET",
+        "S3_ENDPOINT_URL",
+        "S3_REGION",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+    ):
+        monkeypatch.setattr(app_settings, name, "")
+
+    calls = []
+    monkeypatch.setattr(
+        storage_service,
+        "delete_file",
+        lambda *args: calls.append(args),
+    )
+    try:
+        tasks._perform_storage_cleanup(
+            "delete_file",
+            None,
+            "users/42/file.txt",
+            "42/file.txt",
+            "0" * 64,
+        )
+    except RuntimeError as exc:
+        assert "does not match" in str(exc)
+    else:
+        raise AssertionError("cleanup must fail closed for a mismatched profile")
+    assert calls == []
+
+
+
+def test_file_delete_storage_failure_preserves_metadata_until_retry_succeeds(
+    client, db_session, tmp_path, monkeypatch
+):
+    """A failed object deletion keeps the attachment and dependent rows intact."""
+    from app.models.conversation import Conversation
+    from app.models.conversation_file_link import ConversationFileLink
+    from app.models.file_attachment import FileAttachment
+    from app.models.file_chunk import FileChunk
+    from app.models.storage_cleanup_outbox import StorageCleanupOutbox
+    from app.models.user import User
+    from app.routers import files as files_router
+
+    monkeypatch.setattr(app_settings, "UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setattr(
+        files_router, "dispatch_storage_cleanup", lambda: None
+    )
+
+    email = "cleanup-retry-preserves-data@example.com"
+    password = "StrongPass123"
+    client.post("/auth/register", json={"email": email, "password": password})
+    login = client.post("/auth/login", json={"email": email, "password": password})
+    assert login.status_code == 200
+    headers = {"Authorization": f"Bearer {client.cookies.get('access_token')}"}
+
+    uploaded = client.post(
+        "/files/upload",
+        files={"file": ("retry.txt", b"retryable content", "text/plain")},
+        headers=headers,
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    file_id = uploaded.json()["id"]
+
+    owner = db_session.query(User).filter_by(email=email).one()
+    conversation = Conversation(
+        user_id=owner.id,
+        workspace_id=owner.owned_workspaces[0].id,
+        title="Cleanup retry test",
+    )
+    db_session.add(conversation)
+    db_session.flush()
+    db_session.add(
+        ConversationFileLink(conversation_id=conversation.id, file_id=file_id)
+    )
+    db_session.add(
+        FileChunk(file_id=file_id, chunk_index=0, content="indexed content")
+    )
+    db_session.commit()
+    conversation_id = conversation.id
+
+    deleted = client.delete(f"/files/{file_id}", headers=headers)
+    assert deleted.status_code == 204
+
+    monkeypatch.setattr(tasks, "SessionLocal", _worker_session_factory(db_session))
+    storage_calls = []
+
+    def fail_once_then_succeed(*args):
+        storage_calls.append(args)
+        if len(storage_calls) == 1:
+            raise OSError("temporary object-store outage")
+
+    monkeypatch.setattr(tasks, "_perform_storage_cleanup", fail_once_then_succeed)
+
+    assert tasks._run_storage_cleanup_outbox_batch(batch_size=1) == 1
+    db_session.expire_all()
+
+    attachment = db_session.get(FileAttachment, file_id)
+    assert attachment is not None
+    assert attachment.deletion_status == "deletion_pending"
+    assert db_session.query(FileChunk).filter_by(file_id=file_id).count() == 1
+    assert (
+        db_session.query(ConversationFileLink)
+        .filter_by(file_id=file_id, conversation_id=conversation_id)
+        .count()
+        == 1
+    )
+    intent = (
+        db_session.query(StorageCleanupOutbox)
+        .filter_by(file_attachment_id=file_id)
+        .one()
+    )
+    assert intent.status == "pending"
+    assert intent.attempt_count == 1
+    assert "temporary object-store outage" in intent.last_error
+
+    # Make the scheduled retry due without sleeping through the backoff.
+    intent.available_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db_session.commit()
+
+    assert tasks._run_storage_cleanup_outbox_batch(batch_size=1) == 1
+    db_session.expire_all()
+
+    assert db_session.get(FileAttachment, file_id) is None
+    assert db_session.query(FileChunk).filter_by(file_id=file_id).count() == 0
+    assert (
+        db_session.query(ConversationFileLink)
+        .filter_by(file_id=file_id, conversation_id=conversation_id)
+        .count()
+        == 0
+    )
+    completed = (
+        db_session.query(StorageCleanupOutbox)
+        .filter_by(file_attachment_id=file_id)
+        .one()
+    )
+    assert completed.status == "completed"
+    assert completed.attempt_count == 2
+    assert completed.completed_at is not None
+    assert len(storage_calls) == 2

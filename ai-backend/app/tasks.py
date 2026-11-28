@@ -26,6 +26,7 @@ from app.models.scheduled_task import (
 )
 from app.models.scheduled_task_run import ScheduledTaskRun, ScheduledTaskRunStatus
 from app.models.storage_cleanup_outbox import StorageCleanupOutbox
+from app.models.file_attachment import FileAttachment
 from app.models.usage_log import UsageLog
 from app.models.webhook_delivery import WebhookDelivery
 from app.models.user import User, UserRole
@@ -1170,7 +1171,10 @@ def _storage_cleanup_fallback_path(relative_path: str) -> Path:
     return target
 
 
-def _perform_storage_cleanup(operation: str, user_id, object_key, fallback_path) -> None:
+def _perform_storage_cleanup(
+    operation: str, user_id, object_key, fallback_path,
+    storage_profile_id: str | None = None,
+) -> None:
     from app.services.storage import delete_file, delete_user_objects
 
     if operation == "delete_user_prefix":
@@ -1188,6 +1192,15 @@ def _perform_storage_cleanup(operation: str, user_id, object_key, fallback_path)
     if operation == "delete_file":
         if not object_key or not fallback_path:
             raise RuntimeError("Incomplete file cleanup outbox payload")
+        if storage_profile_id is not None:
+            from app.services.storage_profiles import active_storage_profile_identity
+
+            active_profile_id, _identity = active_storage_profile_identity()
+            if active_profile_id != storage_profile_id:
+                raise RuntimeError(
+                    "Refusing cleanup because the active storage configuration "
+                    "does not match the attachment's persisted storage profile"
+                )
         delete_file(object_key, _storage_cleanup_fallback_path(fallback_path))
         return
 
@@ -1230,8 +1243,17 @@ def _run_storage_cleanup_outbox_batch(batch_size: int = 50) -> int:
             row.lease_token = lease_token
             row.attempt_count += 1
             claimed.append(
-                (row.id, row.operation, row.user_id, row.object_key,
-                 row.fallback_path, row.attempt_count, lease_token)
+                (
+                    row.id,
+                    row.operation,
+                    row.user_id,
+                    row.object_key,
+                    row.fallback_path,
+                    row.storage_profile_id,
+                    row.file_attachment_id,
+                    row.attempt_count,
+                    lease_token,
+                )
             )
         claim_db.commit()
     except Exception:
@@ -1241,9 +1263,14 @@ def _run_storage_cleanup_outbox_batch(batch_size: int = 50) -> int:
     finally:
         claim_db.close()
 
-    for row_id, operation, user_id, object_key, fallback_path, attempt_count, lease_token in claimed:
+    for (
+        row_id, operation, user_id, object_key, fallback_path,
+        storage_profile_id, file_attachment_id, attempt_count, lease_token,
+    ) in claimed:
         try:
-            _perform_storage_cleanup(operation, user_id, object_key, fallback_path)
+            _perform_storage_cleanup(
+                operation, user_id, object_key, fallback_path, storage_profile_id
+            )
         except Exception as exc:
             retry_db = SessionLocal()
             try:
@@ -1283,30 +1310,39 @@ def _run_storage_cleanup_outbox_batch(batch_size: int = 50) -> int:
         else:
             complete_db = SessionLocal()
             try:
-                updated = (
+                owned_row = (
                     complete_db.query(StorageCleanupOutbox)
                     .filter(
                         StorageCleanupOutbox.id == row_id,
                         StorageCleanupOutbox.status == "running",
                         StorageCleanupOutbox.lease_token == lease_token,
                     )
-                    .update(
-                        {
-                            "status": "completed",
-                            "locked_at": None,
-                            "lease_token": None,
-                            "completed_at": datetime.now(timezone.utc),
-                            "last_error": None,
-                        },
-                        synchronize_session=False,
-                    )
+                    .with_for_update()
+                    .first()
                 )
+                if owned_row is None:
+                    logger.info(
+                        "Ignoring stale cleanup completion from worker for outbox item %s",
+                        row_id,
+                    )
+                else:
+                    # Finalize metadata and outbox state in one transaction only
+                    # after the physical object deletion has succeeded.
+                    if owned_row.file_attachment_id is not None:
+                        attachment = complete_db.get(
+                            FileAttachment, owned_row.file_attachment_id
+                        )
+                        if attachment is not None:
+                            complete_db.delete(attachment)
+                    owned_row.status = "completed"
+                    owned_row.locked_at = None
+                    owned_row.lease_token = None
+                    owned_row.completed_at = datetime.now(timezone.utc)
+                    owned_row.last_error = None
                 complete_db.commit()
-                if not updated:
-                    logger.info("Ignoring stale cleanup completion from worker for outbox item %s", row_id)
             except Exception:
                 complete_db.rollback()
-                logger.exception("Could not mark storage cleanup item %s complete", row_id)
+                logger.exception("Could not finalize storage cleanup item %s", row_id)
             finally:
                 complete_db.close()
     return len(claimed)
