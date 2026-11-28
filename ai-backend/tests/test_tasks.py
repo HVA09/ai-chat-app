@@ -15,9 +15,16 @@ def test_celery_app_has_production_scheduled_task():
     assert entry["schedule"] == 60.0
     assert "recover-webhook-deliveries" not in schedule
 
-    cleanup_entry = schedule["process-storage-cleanup-outbox"]
-    assert cleanup_entry["task"] == "process_storage_cleanup_outbox"
-    assert cleanup_entry["schedule"] == 60.0
+    # Storage cleanup dispatch is deliberately opt-in; a default deployment
+    # must not acquire a new periodic worker until an operator enables it.
+    import os
+
+    if os.getenv("STORAGE_CLEANUP_OUTBOX_ENABLED", "").strip().lower() == "true":
+        cleanup_entry = schedule["process-storage-cleanup-outbox"]
+        assert cleanup_entry["task"] == "process_storage_cleanup_outbox"
+        assert cleanup_entry["schedule"] == 60.0
+    else:
+        assert "process-storage-cleanup-outbox" not in schedule
 
 
 def test_celery_redis_tls_is_required_only_for_rediss_urls():
